@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
   const { login } = useAuth()
@@ -12,53 +12,55 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setLoading(true)
     setError('')
+    setLoading(true)
     try {
-      await login(username, password)
-      navigate('/') // redirect to home or dashboard
-    } catch (err) {
-      setError(err.message)
+      const success = await login(username, password)
+      if (success) navigate('/')
+      else setError('Invalid username or password')
+    } catch {
+      setError('Login failed. Please try again.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
-      <form
-        onSubmit={handleSubmit}
-        className="bg-gray-800 p-8 rounded-lg shadow-lg w-80"
-      >
-        <h2 className="text-2xl mb-4 text-center">GameDB Login</h2>
-        {error && <p className="text-red-400 mb-3 text-center">{error}</p>}
+    <div className="login-page">
+      <div className="login-card">
+        <h1 className="login-title">GameDB</h1>
+        <p className="login-subtitle">Sign in to your account</p>
 
-        <label className="block mb-2">Username</label>
-        <input
-          type="text"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          className="w-full p-2 mb-4 rounded bg-gray-700 border border-gray-600"
-          required
-        />
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Username</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Enter username"
+              required
+            />
+          </div>
 
-        <label className="block mb-2">Password</label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full p-2 mb-6 rounded bg-gray-700 border border-gray-600"
-          required
-        />
+          <div className="form-group">
+            <label>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter password"
+              required
+            />
+          </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-blue-600 hover:bg-blue-700 p-2 rounded font-semibold"
-        >
-          {loading ? 'Logging in…' : 'Login'}
-        </button>
-      </form>
+          {error && <p className="error-msg">{error}</p>}
+
+          <button type="submit" disabled={loading}>
+            {loading ? 'Signing in...' : 'Sign In'}
+          </button>
+        </form>
+      </div>
     </div>
   )
 }

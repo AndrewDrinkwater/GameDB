@@ -1,3 +1,4 @@
+// App.jsx
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import Layout from './components/Layout.jsx'
@@ -15,37 +16,18 @@ export default function App() {
           {/* Public route */}
           <Route path="/login" element={<Login />} />
 
-          {/* Protected routes inside layout */}
+          {/* Protected section */}
           <Route
-            path="/"
             element={
               <ProtectedRoute>
-                <Layout>
-                  <WorldsPage />
-                </Layout>
+                <Layout />
               </ProtectedRoute>
             }
-          />
-          <Route
-            path="/campaigns"
-            element={
-              <ProtectedRoute>
-                <Layout>
-                  <CampaignsPage />
-                </Layout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/characters"
-            element={
-              <ProtectedRoute>
-                <Layout>
-                  <CharactersPage />
-                </Layout>
-              </ProtectedRoute>
-            }
-          />
+          >
+            <Route path="/" element={<WorldsPage />} />
+            <Route path="/campaigns" element={<CampaignsPage />} />
+            <Route path="/characters" element={<CharactersPage />} />
+          </Route>
         </Routes>
       </Router>
     </AuthProvider>
