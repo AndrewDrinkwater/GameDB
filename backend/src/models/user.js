@@ -1,30 +1,18 @@
-import { DataTypes } from 'sequelize'
-import { sequelize } from '../sequelize.js'
-import bcrypt from 'bcrypt'
+// src/models/user.js
+export default (sequelize, DataTypes) => {
+  const User = sequelize.define('User', {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    username: { type: DataTypes.STRING, unique: true, allowNull: false },
+    password_hash: { type: DataTypes.STRING, allowNull: false },
+    role: { type: DataTypes.STRING, defaultValue: 'player' },
+  })
 
-export const User = sequelize.define('User', {
-  id: {
-    type: DataTypes.UUID,
-    defaultValue: DataTypes.UUIDV4,
-    primaryKey: true,
-  },
-  username: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    unique: true,
-  },
-  password_hash: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  role: {
-    type: DataTypes.ENUM('system_admin', 'dungeon_master', 'player'),
-    allowNull: false,
-    defaultValue: 'player',
-  },
-})
+  User.associate = (models) => {
+    User.hasMany(models.World, {
+      foreignKey: 'created_by',
+      as: 'worlds',
+    })
+  }
 
-// helper function to check passwords
-User.prototype.validatePassword = async function (password) {
-  return bcrypt.compare(password, this.password_hash)
+  return User
 }

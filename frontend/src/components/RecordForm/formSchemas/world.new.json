@@ -1,0 +1,22 @@
+{
+  "title": "Create New World",
+  "mode": "new",
+  "sections": [
+    {
+      "title": "General",
+      "columns": 2,
+      "fields": ["name", "system", "genre"]
+    },
+    {
+      "title": "Description",
+      "columns": 1,
+      "fields": ["description"]
+    }
+  ],
+  "fields": [
+    { "key": "name", "label": "Name", "type": "text", "required": true },
+    { "key": "system", "label": "System", "type": "select", "options": ["DnD 5e", "Mothership", "Pathfinder"], "required": true },
+    { "key": "genre", "label": "Genre", "type": "text" },
+    { "key": "description", "label": "Description", "type": "textarea" }
+  ]
+}

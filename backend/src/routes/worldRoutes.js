@@ -1,19 +1,22 @@
-import { Router } from 'express'
-import { getWorlds, createWorld, deleteWorld } from '../controllers/worldController.js'
+import express from 'express'
+import { getWorlds, createWorld, updateWorld, deleteWorld } from '../controllers/worldController.js'
 import { authenticate, requireRole } from '../middleware/authMiddleware.js'
 
-const router = Router()
+const router = express.Router()
 
-// all routes require login
+// All routes require authentication
 router.use(authenticate)
 
-// list worlds (any logged-in user)
+// List worlds (any logged-in user)
 router.get('/', getWorlds)
 
-// create world (only system_admin or dungeon_master)
+// Create world (only system_admin or dungeon_master)
 router.post('/', requireRole('system_admin', 'dungeon_master'), createWorld)
 
-// delete world (only creator or admin, checked in controller)
+// Update world (only creator or admin)
+router.put('/:id', requireRole('system_admin', 'dungeon_master'), updateWorld)
+
+// Delete world (only creator or admin, checked in controller)
 router.delete('/:id', deleteWorld)
 
 export default router

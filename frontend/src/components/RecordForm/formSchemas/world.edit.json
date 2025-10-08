@@ -1,0 +1,31 @@
+{
+  "title": "Edit World",
+  "mode": "edit",
+  "sections": [
+    {
+      "title": "General",
+      "columns": 2,
+      "fields": ["name", "system", "genre", "is_active"]
+    },
+    {
+      "title": "Description",
+      "columns": 1,
+      "fields": ["description"]
+    },
+    {
+      "title": "Metadata",
+      "columns": 2,
+      "fields": ["created_by", "created_at", "updated_at"]
+    }
+  ],
+  "fields": [
+    { "key": "name", "label": "Name", "type": "text", "required": true },
+    { "key": "system", "label": "System", "type": "select", "options": ["DnD 5e", "Mothership", "Pathfinder"], "required": true },
+    { "key": "genre", "label": "Genre", "type": "text" },
+    { "key": "description", "label": "Description", "type": "textarea" },
+    { "key": "is_active", "label": "Active", "type": "checkbox" },
+    { "key": "created_by", "label": "Created By", "type": "readonly" },
+    { "key": "created_at", "label": "Created", "type": "readonly" },
+    { "key": "updated_at", "label": "Updated", "type": "readonly" }
+  ]
+}
