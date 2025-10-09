@@ -83,7 +83,7 @@ export default function WorldsPage() {
       columns={columns}
       title="Worlds"
       extraActions={
-        <button className="new-btn" onClick={handleNew}>
+        <button type="button" className="btn submit" onClick={handleNew}>
           + New
         </button>
       }

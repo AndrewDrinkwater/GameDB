@@ -570,18 +570,42 @@ th {
 }
 
 .btn {
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.55rem 1.1rem;
+  min-height: 2.5rem;
+  min-width: 2.5rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
   font-weight: 500;
-  border: none;
+  line-height: 1;
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: background 0.2s;
+  white-space: nowrap;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  box-sizing: border-box;
+}
+
+.btn:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .btn.cancel {
   background: #f1f5f9;
   color: #1e293b;
+  border-color: #cbd5f5;
+}
+
+.btn.cancel:hover {
+  background: #e2e8f0;
 }
 
 .btn.submit {
@@ -600,5 +624,14 @@ th {
 
 .btn.delete:hover {
   background: #b91c1c;
+}
+
+.btn.neutral {
+  background: #1e293b;
+  color: #ffffff;
+}
+
+.btn.neutral:hover {
+  background: #334155;
 }
 

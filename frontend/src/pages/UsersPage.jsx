@@ -143,7 +143,7 @@ export default function UsersPage() {
       columns={columns}
       title="Users"
       extraActions={
-        <button className="new-btn" onClick={handleNew}>
+        <button type="button" className="btn submit" onClick={handleNew}>
           + New
         </button>
       }
