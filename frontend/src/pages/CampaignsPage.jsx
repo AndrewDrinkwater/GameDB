@@ -8,6 +8,7 @@ import {
 } from '../api/campaigns'
 import ListViewer from '../components/ListViewer'
 import FormRenderer from '../components/RecordForm/FormRenderer'
+import CampaignMembersManager from '../components/CampaignMembersManager'
 import newSchema from '../components/RecordForm/formSchemas/campaign.new.json'
 import editSchema from '../components/RecordForm/formSchemas/campaign.edit.json'
 
@@ -98,15 +99,21 @@ export default function CampaignsPage() {
   if (viewMode === 'new')
     return <FormRenderer schema={newSchema} initialData={{}} onSubmit={handleCreate} onCancel={handleCancel} />
 
-  if (viewMode === 'edit')
+  if (viewMode === 'edit' && selectedCampaign)
     return (
-      <FormRenderer
-        schema={editSchema}
-        initialData={selectedCampaign}
-        onSubmit={handleUpdate}
-        onDelete={handleDelete}
-        onCancel={handleCancel}
-      />
+      <div className="campaign-editor">
+        <FormRenderer
+          schema={editSchema}
+          initialData={selectedCampaign}
+          onSubmit={handleUpdate}
+          onDelete={handleDelete}
+          onCancel={handleCancel}
+        />
+        <CampaignMembersManager
+          campaignId={selectedCampaign.id}
+          canManage={canManage(selectedCampaign)}
+        />
+      </div>
     )
 
   if (viewMode === 'view' && selectedCampaign)

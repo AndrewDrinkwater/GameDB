@@ -29,6 +29,10 @@ export default (sequelize, DataTypes) => {
     if (models.User) {
       Campaign.belongsTo(models.User, { foreignKey: 'created_by', as: 'owner' })
     }
+
+    if (models.UserCampaignRole) {
+      Campaign.hasMany(models.UserCampaignRole, { foreignKey: 'campaign_id', as: 'members' })
+    }
   }
 
   return Campaign

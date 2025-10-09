@@ -35,5 +35,11 @@ export default (sequelize) => {
     }
   )
 
+  User.associate = (models) => {
+    if (models.UserCampaignRole) {
+      User.hasMany(models.UserCampaignRole, { foreignKey: 'user_id', as: 'campaignRoles' })
+    }
+  }
+
   return User
 }

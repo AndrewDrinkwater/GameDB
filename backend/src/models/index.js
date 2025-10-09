@@ -28,11 +28,12 @@ export const UserCampaignRole = UserCampaignRoleModel(sequelize, DataTypes)
 export const EntityRelationship = EntityRelationshipModel(sequelize, DataTypes)
 
 // --- Associations ---
-if (User.associate) User.associate({ World, Campaign, Character })
+if (User.associate) User.associate({ World, Campaign, Character, UserCampaignRole })
 if (World.associate) World.associate({ User, Campaign, Entity })
-if (Campaign.associate) Campaign.associate({ World, Character, Entity })
+if (Campaign.associate) Campaign.associate({ World, Character, Entity, User, UserCampaignRole })
 if (Character.associate) Character.associate({ Campaign, User })
 if (Entity.associate) Entity.associate({ World, Campaign })
+if (UserCampaignRole.associate) UserCampaignRole.associate({ User, Campaign })
 
 // --- Init DB ---
 export async function initDB() {
