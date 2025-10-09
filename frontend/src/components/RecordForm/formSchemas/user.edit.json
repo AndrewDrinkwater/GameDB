@@ -12,8 +12,7 @@
           "label": "Role",
           "type": "select",
           "options": [
-            { "value": "player", "label": "Player" },
-            { "value": "gm", "label": "Game Master" },
+            { "value": "user", "label": "User" },
             { "value": "system_admin", "label": "System Admin" }
           ]
         },

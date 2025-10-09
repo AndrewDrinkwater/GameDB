@@ -22,7 +22,7 @@ export const register = async (req, res) => {
     const user = await User.create({
       username,
       password_hash,
-      role: role || 'player',
+      role: role || 'user',
     })
 
     res.status(201).json({

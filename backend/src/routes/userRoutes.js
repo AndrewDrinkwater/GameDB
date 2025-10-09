@@ -57,7 +57,7 @@ router.post('/', async (req, res) => {
       username,
       email,
       password_hash,
-      role: role || 'player',
+      role: role || 'user',
     })
 
     res.json({ success: true, data: toSafeUser(newUser) })

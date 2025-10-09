@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { fetchWorlds, updateWorld, removeWorld } from '../api/worlds'
 import FormRenderer from '../components/RecordForm/FormRenderer'
@@ -13,7 +13,7 @@ export default function WorldDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  const loadWorld = async () => {
+  const loadWorld = useCallback(async () => {
     try {
       const res = await fetchWorlds()
       const found = (res?.data || res || []).find((w) => w.id === id)
@@ -25,11 +25,11 @@ export default function WorldDetailPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [id])
 
   useEffect(() => {
     if (sessionReady && token) loadWorld()
-  }, [sessionReady, token, id])
+  }, [sessionReady, token, loadWorld])
 
   const handleUpdate = async (data) => {
     try {
