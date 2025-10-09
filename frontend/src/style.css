@@ -228,7 +228,7 @@
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
 }
 
-button[type='submit'] {
+.login-card button[type='submit'] {
   width: 100%;
   background: #1e3a8a;
   color: white;
@@ -242,7 +242,7 @@ button[type='submit'] {
   transition: background 0.3s;
 }
 
-button[type='submit']:hover {
+.login-card button[type='submit']:hover {
   background: #2563eb;
 }
 
