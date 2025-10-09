@@ -5,6 +5,14 @@ export default (sequelize, DataTypes) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
     },
+    world_id: {
+      type: DataTypes.UUID,
+      allowNull: false,
+    },
+    created_by: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
     name: { type: DataTypes.STRING, allowNull: false },
     description: { type: DataTypes.TEXT },
     status: {
@@ -17,6 +25,10 @@ export default (sequelize, DataTypes) => {
     Campaign.belongsTo(models.World, { foreignKey: 'world_id', as: 'world' })
     Campaign.hasMany(models.Character, { foreignKey: 'campaign_id', as: 'characters' })
     Campaign.hasMany(models.Entity, { foreignKey: 'campaign_id', as: 'entities' })
+
+    if (models.User) {
+      Campaign.belongsTo(models.User, { foreignKey: 'created_by', as: 'owner' })
+    }
   }
 
   return Campaign

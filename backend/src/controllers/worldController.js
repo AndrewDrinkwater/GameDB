@@ -1,17 +1,49 @@
-import { World, User } from '../models/index.js'
+import { World, User, Campaign, Character } from '../models/index.js'
 
 // Get all worlds (admins see all, others only their own)
 export const getWorlds = async (req, res) => {
   try {
-    const where =
-      req.user.role === 'system_admin'
-        ? {}
-        : { created_by: req.user.id }
+    let worlds
 
-    const worlds = await World.findAll({
-      where,
-      include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'role'] }],
-    })
+    if (req.user.role === 'system_admin') {
+      worlds = await World.findAll({
+        include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'role'] }],
+      })
+    } else {
+      const ownedWorlds = await World.findAll({
+        where: { created_by: req.user.id },
+        attributes: ['id'],
+        raw: true,
+      })
+
+      const characterCampaigns = await Character.findAll({
+        where: { user_id: req.user.id },
+        attributes: [],
+        include: [
+          {
+            model: Campaign,
+            as: 'campaign',
+            attributes: ['world_id'],
+          },
+        ],
+      })
+
+      const accessibleWorldIds = new Set(ownedWorlds.map((w) => w.id))
+      characterCampaigns.forEach((character) => {
+        const worldId = character.campaign?.world_id
+        if (worldId) accessibleWorldIds.add(worldId)
+      })
+
+      if (accessibleWorldIds.size === 0) {
+        return res.json({ success: true, data: [] })
+      }
+
+      worlds = await World.findAll({
+        where: { id: [...accessibleWorldIds] },
+        include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'role'] }],
+      })
+    }
+
     res.json({ success: true, data: worlds })
   } catch (err) {
     res.status(500).json({ success: false, message: err.message })

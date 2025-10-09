@@ -26,7 +26,7 @@ export default (sequelize) => {
       role: {
         type: DataTypes.STRING,
         allowNull: true,
-        defaultValue: 'player',
+        defaultValue: 'user',
       },
     },
     {

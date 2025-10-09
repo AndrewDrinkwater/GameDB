@@ -59,7 +59,7 @@ export default function UsersPage() {
         username: formData.username,
         email: formData.email,
         password: formData.password,
-        role: formData.role || 'player',
+        role: formData.role || 'user',
       }
 
       await createUser(payload)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { fetchWorlds, createWorld } from '../api/worlds'
@@ -15,7 +15,7 @@ export default function WorldsPage() {
   const [creating, setCreating] = useState(false)
 
   // --- Load Worlds (only when token/session ready)
-  const loadWorlds = async () => {
+  const loadWorlds = useCallback(async () => {
     if (!token) return
     setLoading(true)
     setError(null)
@@ -28,11 +28,11 @@ export default function WorldsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [token])
 
   useEffect(() => {
     if (sessionReady && token) loadWorlds()
-  }, [sessionReady, token])
+  }, [sessionReady, token, loadWorlds])
 
   // --- Table Columns
   const columns = [

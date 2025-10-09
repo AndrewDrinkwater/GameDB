@@ -10,11 +10,11 @@ router.use(authenticate)
 // List worlds (any logged-in user)
 router.get('/', getWorlds)
 
-// Create world (only system_admin or dungeon_master)
-router.post('/', requireRole('system_admin', 'dungeon_master'), createWorld)
+// Create world (any recognised role)
+router.post('/', requireRole('system_admin', 'user'), createWorld)
 
-// Update world (only creator or admin)
-router.put('/:id', requireRole('system_admin', 'dungeon_master'), updateWorld)
+// Update world (only creator or admin, enforced in controller)
+router.put('/:id', requireRole('system_admin', 'user'), updateWorld)
 
 // Delete world (only creator or admin, checked in controller)
 router.delete('/:id', deleteWorld)
