@@ -1,5 +1,12 @@
 import express from 'express'
-import { Campaign, Character, User, UserCampaignRole, World } from '../models/index.js'
+import {
+  Campaign,
+  Character,
+  User,
+  UserCampaignRole,
+  World,
+  sequelize,
+} from '../models/index.js'
 import { authenticate as authMiddleware } from '../middleware/authMiddleware.js'
 
 const router = express.Router()
@@ -160,6 +167,18 @@ router.put('/:id', authMiddleware, async (req, res) => {
       status: req.body.status ?? campaign.status,
     }
 
+    if (req.user.role === 'system_admin' && Object.prototype.hasOwnProperty.call(req.body, 'created_by')) {
+      if (req.body.created_by === null || req.body.created_by === '') {
+        updates.created_by = null
+      } else {
+        const newOwner = await User.findByPk(req.body.created_by)
+        if (!newOwner) {
+          return res.status(400).json({ success: false, message: 'Owner not found' })
+        }
+        updates.created_by = req.body.created_by
+      }
+    }
+
     await campaign.update(updates)
     const refreshed = await Campaign.findByPk(campaign.id, { include: baseIncludes })
     res.json({ success: true, data: refreshed })
@@ -178,7 +197,11 @@ router.delete('/:id', authMiddleware, async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    await campaign.destroy()
+    await sequelize.transaction(async (transaction) => {
+      await Character.destroy({ where: { campaign_id: campaign.id }, transaction })
+      await UserCampaignRole.destroy({ where: { campaign_id: campaign.id }, transaction })
+      await campaign.destroy({ transaction })
+    })
     res.json({ success: true })
   } catch (err) {
     res.status(400).json({ success: false, message: err.message })
