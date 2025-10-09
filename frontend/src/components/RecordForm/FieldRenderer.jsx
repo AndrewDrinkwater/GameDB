@@ -3,18 +3,7 @@ import { getAuthToken } from '../../utils/authHelpers.js'
 
 
 export default function FieldRenderer({ field, data, onChange }) {
-  const key = field.key || field.name || field.field
-  if (!key) {
-    console.warn('⚠️ Field without key/name skipped:', field)
-    return null
-  }
-
-  const label = field.label || key
-  const type = (field.type || 'text').toLowerCase()
-  const value = key.includes('.')
-    ? key.split('.').reduce((acc, k) => (acc ? acc[k] : ''), data)
-    : data?.[key] ?? ''
-
+  const key = field.key || field.name || field.field || ''
   const [dynamicOptions, setDynamicOptions] = useState([])
 
   // 🔐 Wait for token before fetching dynamic options
@@ -33,19 +22,26 @@ export default function FieldRenderer({ field, data, onChange }) {
       if (!field.optionsSource) return
       let endpoint = null
 
-    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
-        switch (field.optionsSource) {
+      switch (field.optionsSource) {
         case 'worlds':
-            endpoint = `${API_BASE}/api/worlds`
-            break
+          endpoint = `${API_BASE}/api/worlds`
+          break
         case 'campaigns':
-            endpoint = `${API_BASE}/api/campaigns`
-            break
+          endpoint = `${API_BASE}/api/campaigns`
+          break
         case 'entities':
-            endpoint = `${API_BASE}/api/entities`
-            break
-        }
+          endpoint = `${API_BASE}/api/entities`
+          break
+        case 'users':
+          endpoint = `${API_BASE}/api/users`
+          break
+        default:
+          endpoint = null
+      }
+
+      if (!endpoint) return
 
       try {
         const token = await waitForToken()
@@ -67,13 +63,37 @@ export default function FieldRenderer({ field, data, onChange }) {
           return
         }
 
-        if (json?.data?.length) {
-          setDynamicOptions(
-            json.data.map((item) => ({
-              value: item.id,
-              label: item.name,
-            }))
-          )
+        const toOption = (item) => {
+          if (!item || typeof item !== 'object') return null
+
+          const valueKey = field.optionValueKey || 'id'
+          const labelKey = field.optionLabelKey || 'name'
+
+          const value = item?.[valueKey] ?? item?.id ?? null
+          if (!value) return null
+
+          let label = item?.[labelKey]
+          if (!label) {
+            const fallbacks = ['name', 'title', 'username']
+            for (const key of fallbacks) {
+              if (item?.[key]) {
+                label = item[key]
+                break
+              }
+            }
+          }
+
+          if (!label) label = String(value)
+
+          return { value, label }
+        }
+
+        const options = Array.isArray(json?.data)
+          ? json.data.map(toOption).filter(Boolean)
+          : []
+
+        if (options.length) {
+          setDynamicOptions(options)
         } else {
           console.warn(`⚠️ ${field.optionsSource} returned no data`, json)
         }
@@ -83,7 +103,18 @@ export default function FieldRenderer({ field, data, onChange }) {
     }
 
     loadOptions()
-  }, [field.optionsSource])
+  }, [field.optionsSource, field.optionLabelKey, field.optionValueKey])
+
+  if (!key) {
+    console.warn('⚠️ Field without key/name skipped:', field)
+    return null
+  }
+
+  const label = field.label || key
+  const type = (field.type || 'text').toLowerCase()
+  const value = key.includes('.')
+    ? key.split('.').reduce((acc, k) => (acc ? acc[k] : ''), data)
+    : data?.[key] ?? ''
 
   const handleChange = (e) => onChange(key, e.target.value)
   const handleCheck = (e) => onChange(key, e.target.checked)
