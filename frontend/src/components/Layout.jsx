@@ -3,7 +3,7 @@ import HeaderBar from './HeaderBar.jsx'
 import Sidebar from './Sidebar.jsx'
 import { Outlet } from 'react-router-dom'
 
-export default function Layout({ children }) {
+export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPinned, setMenuPinned] = useState(false)
 
@@ -18,8 +18,8 @@ export default function Layout({ children }) {
           onClose={() => setMenuOpen(false)}
         />
         <main className={`content ${menuPinned ? 'pinned' : ''}`}>
-  <Outlet /> {/* ✅ Renders child route (Worlds, Campaigns, etc.) */}
-</main>
+          <Outlet /> {/* ✅ Renders child route (Worlds, Campaigns, etc.) */}
+        </main>
       </div>
     </div>
   )

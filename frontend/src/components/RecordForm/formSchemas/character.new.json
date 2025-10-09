@@ -1,0 +1,51 @@
+{
+  "title": "New Character",
+  "sections": [
+    {
+      "title": "Associations",
+      "columns": 2,
+      "fields": [
+        {
+          "key": "campaign_id",
+          "label": "Campaign",
+          "type": "select",
+          "optionsSource": "campaigns",
+          "required": true
+        },
+        {
+          "key": "user_id",
+          "label": "Player",
+          "type": "select",
+          "optionsSource": "users",
+          "optionLabelKey": "username",
+          "required": true
+        }
+      ]
+    },
+    {
+      "title": "Character Details",
+      "columns": 2,
+      "fields": [
+        { "key": "name", "label": "Name", "type": "text", "placeholder": "Character name", "required": true },
+        { "key": "level", "label": "Level", "type": "text", "inputType": "number", "placeholder": "1" },
+        { "key": "class", "label": "Class", "type": "text", "placeholder": "Fighter, Wizard..." },
+        { "key": "race", "label": "Race", "type": "text", "placeholder": "Elf, Human..." },
+        { "key": "alignment", "label": "Alignment", "type": "text", "placeholder": "Neutral Good" },
+        { "key": "is_active", "label": "Active Character", "type": "checkbox" }
+      ]
+    },
+    {
+      "title": "Notes",
+      "columns": 1,
+      "fields": [
+        {
+          "key": "notes",
+          "label": "Notes",
+          "type": "textarea",
+          "rows": 6,
+          "placeholder": "Backstory, hooks, etc."
+        }
+      ]
+    }
+  ]
+}
