@@ -35,7 +35,12 @@ export default function App() {
 
             {/* Other routes */}
             <Route path="campaigns" element={<CampaignsPage />} />
-            <Route path="characters" element={<CharactersPage />} />
+            <Route path="characters">
+              <Route index element={<Navigate to="/characters/my" replace />} />
+              <Route path="my" element={<CharactersPage scope="my" />} />
+              <Route path="others" element={<CharactersPage scope="others" />} />
+              <Route path="all" element={<CharactersPage scope="all" />} />
+            </Route>
 
             {/* Admin-only route */}
             <Route path="users" element={<UsersPage />} />

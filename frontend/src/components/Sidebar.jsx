@@ -34,12 +34,31 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
           Campaigns
         </Link>
 
-        <Link
-          to="/characters"
-          className={location.pathname === '/characters' ? 'active' : ''}
-        >
-          Characters
-        </Link>
+        <div className="nav-group">
+          <span className="nav-heading">Characters</span>
+          <Link
+            to="/characters/my"
+            className={location.pathname === '/characters/my' ? 'active' : ''}
+          >
+            My Characters
+          </Link>
+          <Link
+            to="/characters/others"
+            className={location.pathname === '/characters/others' ? 'active' : ''}
+          >
+            Other Characters
+          </Link>
+          {user?.role === 'system_admin' && (
+            <Link
+              to="/characters/all"
+              className={
+                location.pathname === '/characters/all' ? 'active admin-link' : 'admin-link'
+              }
+            >
+              All Characters
+            </Link>
+          )}
+        </div>
 
         {/* Admin-only link */}
         {user?.role === 'system_admin' && (

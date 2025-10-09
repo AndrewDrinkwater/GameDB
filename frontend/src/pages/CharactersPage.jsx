@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   fetchCharacters,
@@ -39,8 +40,9 @@ const toPayload = (formData = {}) => {
   }
 }
 
-export default function CharactersPage() {
-  const { token, sessionReady } = useAuth()
+export default function CharactersPage({ scope = 'my' }) {
+  const navigate = useNavigate()
+  const { token, sessionReady, user } = useAuth()
   const [characters, setCharacters] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -48,18 +50,47 @@ export default function CharactersPage() {
   const [selectedCharacter, setSelectedCharacter] = useState(null)
   const [editingId, setEditingId] = useState(null)
 
+  const title = useMemo(() => {
+    switch (scope) {
+      case 'my':
+        return 'My Characters'
+      case 'others':
+        return 'Other Characters'
+      case 'all':
+        return 'All Characters'
+      default:
+        return 'Characters'
+    }
+  }, [scope])
+
+  const canCreate = scope === 'my' || user?.role === 'system_admin'
+
+  useEffect(() => {
+    if (scope === 'all' && user && user.role !== 'system_admin') {
+      navigate('/characters/my', { replace: true })
+    }
+  }, [scope, user, navigate])
+
+  useEffect(() => {
+    setViewMode('list')
+    setSelectedCharacter(null)
+    setEditingId(null)
+  }, [scope])
+
   const loadCharacters = useCallback(async () => {
     if (!token) return
+    if (scope === 'all' && user && user.role !== 'system_admin') return
     setLoading(true)
     setError(null)
     try {
-      const res = await fetchCharacters()
+      const res = await fetchCharacters({ scope })
       const list = (res?.data || res || []).map((item) => ({
         ...item,
         playerName: item.player?.username || '',
         campaignName: item.campaign?.name || '',
         status: item.is_active ? 'Active' : 'Inactive',
         formValues: mapToFormValues(item),
+        isOwned: item.user_id === user?.id,
       }))
       setCharacters(list)
     } catch (err) {
@@ -68,7 +99,7 @@ export default function CharactersPage() {
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, scope, user])
 
   useEffect(() => {
     if (sessionReady && token) loadCharacters()
@@ -86,6 +117,7 @@ export default function CharactersPage() {
   ]
 
   const handleNew = () => {
+    if (!canCreate) return
     setViewMode('new')
     setSelectedCharacter(null)
     setEditingId(null)
@@ -144,7 +176,12 @@ export default function CharactersPage() {
     return (
       <FormRenderer
         schema={newSchema}
-        initialData={{ level: 1, is_active: true }}
+        initialData={{
+          level: 1,
+          is_active: true,
+          user_id:
+            user?.role === 'system_admin' ? '' : user?.id || '',
+        }}
         onSubmit={handleCreate}
         onCancel={handleCancel}
       />
@@ -167,13 +204,17 @@ export default function CharactersPage() {
     <ListViewer
       data={characters}
       columns={columns}
-      title="Characters"
+      title={title}
       extraActions={
-        <button type="button" className="btn submit" onClick={handleNew}>
-          + New
-        </button>
+        canCreate ? (
+          <button type="button" className="btn submit" onClick={handleNew}>
+            + New
+          </button>
+        ) : null
       }
       onRowClick={(row) => {
+        const isOwner = row.isOwned || user?.role === 'system_admin'
+        if (!isOwner) return
         setSelectedCharacter(row.formValues || mapToFormValues(row))
         setEditingId(row.id)
         setViewMode('edit')
