@@ -55,6 +55,7 @@ export default function FormRenderer({
                         field={field}
                         data={formData}
                         onChange={handleChange}
+                        mode="edit"
                     />
                 )
             })}

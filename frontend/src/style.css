@@ -617,7 +617,7 @@ th {
 .form-grid.cols-3 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 
 /* Fields */
-.form-group {
+.form-group { 
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -637,6 +637,25 @@ th {
   transition: border-color 0.2s, box-shadow 0.2s;
   background: white;
   box-sizing: border-box;
+}
+
+.form-group.readonly label {
+  color: #475569;
+}
+
+.form-group.readonly .readonly-control,
+.form-group.readonly input[disabled],
+.form-group.readonly select[disabled],
+.form-group.readonly textarea[disabled],
+.form-group.readonly .textarea-field:disabled {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+.form-group.readonly .readonly-control {
+  cursor: not-allowed;
 }
 
 .textarea-field {
@@ -687,6 +706,23 @@ th {
   padding: 0.6rem 0.8rem;
   font-size: 0.95rem;
   color: #475569;
+}
+
+.record-view {
+  gap: 1rem;
+}
+
+.record-view .form-actions {
+  justify-content: flex-end;
+}
+
+.record-info {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin: 0;
 }
 
 /* Buttons */

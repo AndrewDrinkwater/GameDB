@@ -1,0 +1,30 @@
+{
+  "title": "Campaign Details",
+  "sections": [
+    {
+      "title": "Overview",
+      "columns": 2,
+      "fields": [
+        { "name": "name", "label": "Name", "type": "text" },
+        { "name": "statusLabel", "label": "Status", "type": "text" },
+        { "name": "worldName", "label": "World", "type": "text" },
+        { "name": "ownerName", "label": "Owner", "type": "text" }
+      ]
+    },
+    {
+      "title": "Description",
+      "columns": 1,
+      "fields": [
+        { "name": "description", "label": "Description", "type": "textarea" }
+      ]
+    },
+    {
+      "title": "Metadata",
+      "columns": 2,
+      "fields": [
+        { "name": "createdAt", "label": "Created", "type": "text" },
+        { "name": "updatedAt", "label": "Updated", "type": "text" }
+      ]
+    }
+  ]
+}
