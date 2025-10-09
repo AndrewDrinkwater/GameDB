@@ -29,11 +29,18 @@ export default function CampaignsPage() {
     try {
       const res = await fetchCampaigns()
       const data = res?.data || res || []
-      const normalised = data.map((item) => ({
-        ...item,
-        ownerName: item.owner?.username || '—',
-        worldName: item.world?.name || '—',
-      }))
+      const normalised = data.map((item) => {
+        const players = Array.isArray(item.members)
+          ? item.members.filter((member) => member.role === 'player')
+          : []
+
+        return {
+          ...item,
+          ownerName: item.owner?.username || '—',
+          worldName: item.world?.name || '—',
+          player_ids: players.map((member) => member.user_id),
+        }
+      })
       setCampaigns(normalised)
     } catch (err) {
       setError(err.message)
@@ -102,7 +109,19 @@ export default function CampaignsPage() {
       alert('You do not have permission to update this campaign.')
       return
     }
-    const res = await updateCampaign(selectedCampaign.id, data)
+    const payload = { ...data }
+
+    if (Object.prototype.hasOwnProperty.call(data, 'player_ids')) {
+      if (Array.isArray(data.player_ids)) {
+        payload.player_ids = data.player_ids.filter((value) => value !== null && value !== undefined && value !== '')
+      } else if (typeof data.player_ids === 'string' && data.player_ids !== '') {
+        payload.player_ids = [data.player_ids]
+      } else {
+        payload.player_ids = []
+      }
+    }
+
+    const res = await updateCampaign(selectedCampaign.id, payload)
     if (res.success) { await loadCampaigns(); setViewMode('list'); setSelectedCampaign(null) }
   }
 
@@ -149,18 +168,29 @@ export default function CampaignsPage() {
   if (viewMode === 'new')
     return <FormRenderer schema={newSchema} initialData={{}} onSubmit={handleCreate} onCancel={handleCancel} />
 
-  if (viewMode === 'edit' && selectedCampaign)
+  const editInitialData = useMemo(() => {
+    if (!selectedCampaign) return null
+
+    const createdBy =
+      selectedCampaign.created_by ?? selectedCampaign.owner?.id ?? ''
+
+    const players = Array.isArray(selectedCampaign.members)
+      ? selectedCampaign.members.filter((member) => member.role === 'player')
+      : []
+
+    return {
+      ...selectedCampaign,
+      created_by: createdBy,
+      player_ids: players.map((member) => member.user_id),
+    }
+  }, [selectedCampaign])
+
+  if (viewMode === 'edit' && selectedCampaign && editInitialData)
     return (
       <div className="campaign-editor">
         <FormRenderer
           schema={editSchema}
-          initialData={{
-            ...selectedCampaign,
-            created_by:
-              selectedCampaign.created_by ??
-              selectedCampaign.owner?.id ??
-              '',
-          }}
+          initialData={editInitialData}
           onSubmit={handleUpdate}
           onDelete={handleDelete}
           onCancel={handleCancel}

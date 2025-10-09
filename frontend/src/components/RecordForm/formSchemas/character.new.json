@@ -10,7 +10,9 @@
           "label": "Campaign",
           "type": "select",
           "optionsSource": "campaigns",
-          "required": true
+          "required": true,
+          "noOptionsMessage": "You do not have any campaigns available for character creation.",
+          "helpText": "Only campaigns you own or have been added to as a player are listed here."
         },
         {
           "key": "user_id",

@@ -528,6 +528,10 @@ th {
   margin-top: 0.25rem;
 }
 
+.help-text.warning {
+  color: #b45309;
+}
+
 .campaign-editor {
   display: flex;
   flex-direction: column;
