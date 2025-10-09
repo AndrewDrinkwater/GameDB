@@ -1,0 +1,30 @@
+{
+  "title": "Edit User",
+  "sections": [
+    {
+      "title": "Account Details",
+      "columns": 2,
+      "fields": [
+        { "key": "username", "label": "Username", "type": "text" },
+        { "key": "email", "label": "Email", "type": "text", "inputType": "email" },
+        {
+          "key": "role",
+          "label": "Role",
+          "type": "select",
+          "options": [
+            { "value": "player", "label": "Player" },
+            { "value": "gm", "label": "Game Master" },
+            { "value": "system_admin", "label": "System Admin" }
+          ]
+        },
+        {
+          "key": "password",
+          "label": "New Password",
+          "type": "text",
+          "inputType": "password",
+          "placeholder": "Leave blank to keep current password"
+        }
+      ]
+    }
+  ]
+}

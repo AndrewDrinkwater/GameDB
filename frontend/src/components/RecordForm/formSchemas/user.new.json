@@ -1,0 +1,24 @@
+{
+  "title": "Create New User",
+  "sections": [
+    {
+      "title": "Account Details",
+      "columns": 2,
+      "fields": [
+        { "key": "username", "label": "Username", "type": "text", "placeholder": "Enter username" },
+        { "key": "email", "label": "Email", "type": "text", "inputType": "email", "placeholder": "user@example.com" },
+        { "key": "password", "label": "Password", "type": "text", "inputType": "password", "placeholder": "Choose a secure password" },
+        {
+          "key": "role",
+          "label": "Role",
+          "type": "select",
+          "options": [
+            { "value": "player", "label": "Player" },
+            { "value": "gm", "label": "Game Master" },
+            { "value": "system_admin", "label": "System Admin" }
+          ]
+        }
+      ]
+    }
+  ]
+}
