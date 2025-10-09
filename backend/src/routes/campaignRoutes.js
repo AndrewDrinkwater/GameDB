@@ -1,5 +1,5 @@
 import express from 'express'
-import { Campaign, Character, User, World } from '../models/index.js'
+import { Campaign, Character, User, UserCampaignRole, World } from '../models/index.js'
 import { authenticate as authMiddleware } from '../middleware/authMiddleware.js'
 
 const router = express.Router()
@@ -7,6 +7,12 @@ const router = express.Router()
 const baseIncludes = [
   { model: User, as: 'owner', attributes: ['id', 'username'] },
   { model: World, as: 'world', attributes: ['id', 'name'] },
+  {
+    model: UserCampaignRole,
+    as: 'members',
+    attributes: ['id', 'role', 'user_id', 'campaign_id', 'createdAt'],
+    include: [{ model: User, as: 'user', attributes: ['id', 'username', 'email', 'role'] }],
+  },
 ]
 
 const canManageCampaign = (campaign, user) => {
@@ -16,7 +22,7 @@ const canManageCampaign = (campaign, user) => {
 
 const buildAccessibleCampaignQuery = async (req, worldFilter) => {
   if (req.user.role === 'system_admin') {
-    const query = { include: baseIncludes, order: [['createdAt', 'DESC']] }
+    const query = { include: baseIncludes, order: [['createdAt', 'DESC']], distinct: true }
     if (worldFilter) query.where = { world_id: worldFilter }
     return query
   }
@@ -33,8 +39,18 @@ const buildAccessibleCampaignQuery = async (req, worldFilter) => {
     raw: true,
   })
 
+  const memberCampaigns = await UserCampaignRole.findAll({
+    where: { user_id: req.user.id },
+    attributes: ['campaign_id'],
+    raw: true,
+  })
+
   const accessibleIds = new Set(owned.map((c) => c.id))
   characterCampaigns.forEach(({ campaign_id }) => {
+    if (campaign_id) accessibleIds.add(campaign_id)
+  })
+
+  memberCampaigns.forEach(({ campaign_id }) => {
     if (campaign_id) accessibleIds.add(campaign_id)
   })
 
@@ -46,6 +62,7 @@ const buildAccessibleCampaignQuery = async (req, worldFilter) => {
     where: { id: [...accessibleIds], ...(worldFilter ? { world_id: worldFilter } : {}) },
     include: baseIncludes,
     order: [['createdAt', 'DESC']],
+    distinct: true,
   }
 }
 
@@ -65,7 +82,15 @@ const fetchCampaignById = async (id, user) => {
     where: { user_id: user.id, campaign_id: id },
   })
 
-  if (participation === 0) {
+  if (participation > 0) {
+    return { campaign }
+  }
+
+  const membership = await UserCampaignRole.count({
+    where: { user_id: user.id, campaign_id: id },
+  })
+
+  if (membership === 0) {
     return { error: { status: 403, message: 'Forbidden' } }
   }
 

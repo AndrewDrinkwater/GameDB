@@ -16,13 +16,14 @@ export default (sequelize, DataTypes) => {
     role: {
       type: DataTypes.ENUM('dm', 'player', 'observer'),
       allowNull: false,
+      defaultValue: 'player',
     },
-    created_at: {
+    createdAt: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
     },
   }, {
-    tableName: 'user_campaign_roles',
+    tableName: 'UserCampaignRoles',
     timestamps: false,
   })
 
