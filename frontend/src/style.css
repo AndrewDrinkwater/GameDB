@@ -90,6 +90,24 @@
   gap: 0.5rem;
 }
 
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.nav-heading {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(226, 232, 240, 0.7);
+  padding: 0 0.75rem;
+}
+
+.nav-group > a {
+  padding-left: 1.5rem;
+}
+
 .nav-links a {
   color: #e2e8f0;
   text-decoration: none;
