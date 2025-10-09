@@ -1,118 +1,156 @@
-import { useEffect, useState } from 'react'
-import { fetchUsers, createUser, updateUser, removeUser } from '../api/users.js'
-import FormRenderer from '../components/RecordForm/FormRenderer.jsx'
-import { useAuth } from '../context/AuthContext.jsx'
-
-const schema = {
-  title: 'User',
-  fields: [
-    { key: 'username', label: 'Username', type: 'text' },
-    { key: 'password', label: 'Password', type: 'text', inputType: 'password' },
-    { key: 'role', label: 'Role', type: 'select', options: ['player', 'gm', 'system_admin'] },
-  ],
-}
+import { useCallback, useEffect, useState } from 'react'
+import { fetchUsers, createUser, updateUser, removeUser } from '../api/users'
+import ListViewer from '../components/ListViewer'
+import FormRenderer from '../components/RecordForm/FormRenderer'
+import newSchema from '../components/RecordForm/formSchemas/user.new.json'
+import editSchema from '../components/RecordForm/formSchemas/user.edit.json'
+import { useAuth } from '../context/AuthContext'
 
 export default function UsersPage() {
-  const { user } = useAuth()
+  const { user, token, sessionReady } = useAuth()
   const [users, setUsers] = useState([])
-  const [selected, setSelected] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [viewMode, setViewMode] = useState('list')
+  const [selectedUser, setSelectedUser] = useState(null)
 
-  useEffect(() => {
-    if (user?.role !== 'system_admin') return
-    loadUsers()
-  }, [user])
+  const loadUsers = useCallback(async () => {
+    if (!token || user?.role !== 'system_admin') return
 
-  const loadUsers = async () => {
+    setLoading(true)
+    setError(null)
     try {
-      setLoading(true)
-      const json = await fetchUsers()
-      setUsers(json.data || [])
+      const res = await fetchUsers()
+      setUsers(res?.data || res || [])
     } catch (err) {
       console.error('❌ Failed to load users:', err)
+      setError(err.message)
     } finally {
       setLoading(false)
     }
+  }, [token, user?.role])
+
+  useEffect(() => {
+    if (sessionReady && token && user?.role === 'system_admin') {
+      loadUsers()
+    }
+  }, [sessionReady, token, user?.role, loadUsers])
+
+  const columns = [
+    { key: 'username', label: 'Username' },
+    { key: 'email', label: 'Email' },
+    { key: 'role', label: 'Role' },
+    { key: 'createdAt', label: 'Created' },
+  ]
+
+  const handleNew = () => {
+    setSelectedUser(null)
+    setViewMode('new')
   }
 
-  const handleSave = async (formData) => {
+  const handleCancel = () => {
+    setViewMode('list')
+    setSelectedUser(null)
+  }
+
+  const handleCreate = async (formData) => {
     try {
-      if (selected?.id) {
-        await updateUser(selected.id, formData)
-      } else {
-        await createUser(formData)
+      const payload = {
+        username: formData.username,
+        email: formData.email,
+        password: formData.password,
+        role: formData.role || 'player',
       }
-      setShowForm(false)
-      setSelected(null)
-      loadUsers()
+
+      await createUser(payload)
+      setViewMode('list')
+      setSelectedUser(null)
+      await loadUsers()
     } catch (err) {
-      alert(`Error saving user: ${err.message}`)
+      alert(`Error creating user: ${err.message}`)
     }
   }
 
-  const handleDelete = async (u) => {
-    if (!confirm(`Delete user "${u.username}"?`)) return
+  const handleUpdate = async (formData) => {
+    if (!selectedUser?.id) return
+
     try {
-      await removeUser(u.id)
-      loadUsers()
+      const payload = {
+        username: formData.username,
+        email: formData.email,
+        role: formData.role,
+      }
+
+      if (formData.password) {
+        payload.password = formData.password
+      }
+
+      await updateUser(selectedUser.id, payload)
+      setViewMode('list')
+      setSelectedUser(null)
+      await loadUsers()
+    } catch (err) {
+      alert(`Error updating user: ${err.message}`)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!selectedUser?.id) return
+    if (!confirm(`Delete user "${selectedUser.username}"?`)) return
+
+    try {
+      await removeUser(selectedUser.id)
+      setViewMode('list')
+      setSelectedUser(null)
+      await loadUsers()
     } catch (err) {
       alert(`Error deleting user: ${err.message}`)
     }
   }
 
-  if (!user || user.role !== 'system_admin') {
-    return <p className="error">Access denied. Admins only.</p>
+  if (!sessionReady) return <p>Restoring session...</p>
+  if (!token) return <p>Authenticating...</p>
+  if (!user || user.role !== 'system_admin') return <p className="error">Access denied. Admins only.</p>
+  if (loading) return <p>Loading users...</p>
+  if (error) return <p className="error">Error: {error}</p>
+
+  if (viewMode === 'new') {
+    return (
+      <FormRenderer
+        schema={newSchema}
+        initialData={{}}
+        onSubmit={handleCreate}
+        onCancel={handleCancel}
+      />
+    )
+  }
+
+  if (viewMode === 'edit') {
+    return (
+      <FormRenderer
+        schema={editSchema}
+        initialData={selectedUser || {}}
+        onSubmit={handleUpdate}
+        onCancel={handleCancel}
+        onDelete={handleDelete}
+      />
+    )
   }
 
   return (
-    <div className="page users-page">
-      <header className="page-header">
-        <h1>Users</h1>
-        <button className="btn primary" onClick={() => { setSelected(null); setShowForm(true) }}>
-          New User
+    <ListViewer
+      data={users}
+      columns={columns}
+      title="Users"
+      extraActions={
+        <button className="new-btn" onClick={handleNew}>
+          + New
         </button>
-      </header>
-
-      {loading ? (
-        <p>Loading...</p>
-      ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Username</th>
-              <th>Role</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td>{u.username}</td>
-                <td>{u.role}</td>
-                <td className="actions">
-                  <button onClick={() => { setSelected(u); setShowForm(true) }}>Edit</button>
-                  <button className="danger" onClick={() => handleDelete(u)}>Delete</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {showForm && (
-        <div className="modal">
-          <div className="modal-content">
-            <FormRenderer
-              schema={schema}
-              initialData={selected || {}}
-              onSubmit={handleSave}
-              onCancel={() => setShowForm(false)}
-              onDelete={selected ? () => handleDelete(selected) : undefined}
-            />
-          </div>
-        </div>
-      )}
-    </div>
+      }
+      onRowClick={(row) => {
+        setSelectedUser(row)
+        setViewMode('edit')
+      }}
+    />
   )
 }
