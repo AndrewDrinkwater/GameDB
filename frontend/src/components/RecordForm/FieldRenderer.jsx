@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { getAuthToken } from '../../utils/authHelpers.js'
 
 
-export default function FieldRenderer({ field, data, onChange }) {
+export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) {
   const key = field.key || field.name || field.field || ''
   const [dynamicOptions, setDynamicOptions] = useState([])
+  const isViewMode = mode === 'view'
 
   // 🔐 Wait for token before fetching dynamic options
   async function waitForToken(retries = 5, delay = 200) {
@@ -116,12 +117,49 @@ export default function FieldRenderer({ field, data, onChange }) {
     ? key.split('.').reduce((acc, k) => (acc ? acc[k] : ''), data)
     : data?.[key] ?? ''
 
-  const handleChange = (e) => onChange(key, e.target.value)
-  const handleCheck = (e) => onChange(key, e.target.checked)
+  const readonlyField = field.readonly || field.disabled
+  const isReadOnly = isViewMode || readonlyField
+
+  const formattedValue = (val) => {
+    if (val === null || val === undefined || val === '') return '—'
+    if (typeof val === 'boolean') return val ? 'Yes' : 'No'
+    return String(val)
+  }
+
+  const safeValue = formattedValue(value)
+
+  const handleChange = (e) => onChange?.(key, e.target.value)
+  const handleCheck = (e) => onChange?.(key, e.target.checked)
 
   // --- SELECT / DROPDOWN ---
   if (['select', 'dropdown', 'reference'].includes(type)) {
     const opts = [...(field.options || []), ...dynamicOptions]
+    if (isReadOnly) {
+      const selected = opts.find((opt) => {
+        if (!opt) return false
+        if (typeof opt === 'object') return String(opt.value) === String(value)
+        return String(opt) === String(value)
+      })
+      const display = field.displayKey && data?.[field.displayKey]
+        ? formattedValue(data[field.displayKey])
+        : formattedValue(
+            selected
+              ? (typeof selected === 'object' ? selected.label ?? selected.value : selected)
+              : value
+          )
+
+      return (
+        <div className={`form-group ${isReadOnly ? 'readonly' : ''}`}>
+          <label>{label}</label>
+          <input
+            type="text"
+            value={display}
+            disabled
+            className="readonly-control"
+          />
+        </div>
+      )
+    }
     return (
       <div className="form-group">
         <label>{label}</label>
@@ -146,13 +184,14 @@ export default function FieldRenderer({ field, data, onChange }) {
   // --- TEXTAREA ---
   if (['textarea', 'multiline'].includes(type)) {
     return (
-      <div className="form-group">
+      <div className={`form-group ${isReadOnly ? 'readonly' : ''}`}>
         <label>{label}</label>
         <textarea
           className="textarea-field"
           rows={field.rows || 4}
-          value={value}
+          value={isReadOnly ? safeValue : value}
           onChange={handleChange}
+          disabled={isReadOnly}
         />
       </div>
     )
@@ -163,7 +202,12 @@ export default function FieldRenderer({ field, data, onChange }) {
     return (
       <div className="form-group checkbox">
         <label>
-          <input type="checkbox" checked={!!value} onChange={handleCheck} />
+          <input
+            type="checkbox"
+            checked={!!value}
+            onChange={handleCheck}
+            disabled={isReadOnly}
+          />
           {label}
         </label>
       </div>
@@ -183,13 +227,15 @@ export default function FieldRenderer({ field, data, onChange }) {
 
   // --- DEFAULT TEXT INPUT ---
   return (
-    <div className="form-group">
+    <div className={`form-group ${isReadOnly ? 'readonly' : ''}`}>
       <label>{label}</label>
       <input
         type={field.inputType || 'text'}
-        value={value}
+        value={isReadOnly ? safeValue : value}
         onChange={handleChange}
         placeholder={field.placeholder || ''}
+        disabled={isReadOnly}
+        className={isReadOnly ? 'readonly-control' : undefined}
       />
     </div>
   )

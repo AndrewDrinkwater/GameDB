@@ -8,9 +8,11 @@ import {
 } from '../api/campaigns'
 import ListViewer from '../components/ListViewer'
 import FormRenderer from '../components/RecordForm/FormRenderer'
+import RecordView from '../components/RecordForm/RecordView'
 import CampaignMembersManager from '../components/CampaignMembersManager'
 import newSchema from '../components/RecordForm/formSchemas/campaign.new.json'
 import baseEditSchema from '../components/RecordForm/formSchemas/campaign.edit.json'
+import viewSchemaDefinition from '../components/RecordForm/formSchemas/campaign.view.json'
 
 export default function CampaignsPage() {
   const { user, token, sessionReady } = useAuth()
@@ -127,6 +129,18 @@ export default function CampaignsPage() {
 
   const closeDetail = () => { setViewMode('list'); setSelectedCampaign(null) }
 
+  const viewData = useMemo(() => {
+    if (!selectedCampaign) return null
+    const status = selectedCampaign.status || ''
+    const statusLabel = status
+      ? status.charAt(0).toUpperCase() + status.slice(1)
+      : '—'
+    return {
+      ...selectedCampaign,
+      statusLabel,
+    }
+  }, [selectedCampaign])
+
   if (!sessionReady) return <p>Restoring session...</p>
   if (!token) return <p>Authenticating...</p>
   if (loading) return <p>Loading campaigns...</p>
@@ -160,19 +174,13 @@ export default function CampaignsPage() {
 
   if (viewMode === 'view' && selectedCampaign)
     return (
-      <div className="record-detail">
-        <h2>{selectedCampaign.name}</h2>
-        <p><strong>World:</strong> {selectedCampaign.worldName}</p>
-        <p><strong>Owner:</strong> {selectedCampaign.ownerName}</p>
-        <p><strong>Status:</strong> {selectedCampaign.status}</p>
-        <p><strong>Description:</strong> {selectedCampaign.description || '—'}</p>
-        <p><strong>Created:</strong> {selectedCampaign.createdAt}</p>
-        <p><strong>Updated:</strong> {selectedCampaign.updatedAt}</p>
-        <p className="info">You can view this campaign but only the owner or a system admin can make changes.</p>
-        <button type="button" className="btn" onClick={closeDetail}>
-          Back to campaigns
-        </button>
-      </div>
+      <RecordView
+        schema={viewSchemaDefinition}
+        data={viewData || {}}
+        onClose={closeDetail}
+        closeLabel="Back to campaigns"
+        infoMessage="You can view this campaign but only the owner or a system admin can make changes."
+      />
     )
 
   return (
