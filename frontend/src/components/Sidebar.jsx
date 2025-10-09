@@ -1,10 +1,12 @@
+import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Pin } from 'lucide-react'
+import { Pin, ChevronDown } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 
 export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
   const location = useLocation()
   const { user } = useAuth()
+  const [charactersCollapsed, setCharactersCollapsed] = useState(false)
 
   return (
     <aside className={`sidebar ${open ? 'open' : 'closed'}`}>
@@ -34,30 +36,46 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
           Campaigns
         </Link>
 
-        <div className="nav-group">
-          <span className="nav-heading">Characters</span>
-          <Link
-            to="/characters/my"
-            className={location.pathname === '/characters/my' ? 'active' : ''}
+        <div className={`nav-group ${charactersCollapsed ? 'collapsed' : ''}`}>
+          <button
+            type="button"
+            className="nav-heading-btn"
+            onClick={() => setCharactersCollapsed((prev) => !prev)}
+            aria-expanded={!charactersCollapsed}
+            aria-controls="characters-nav"
           >
-            My Characters
-          </Link>
-          <Link
-            to="/characters/others"
-            className={location.pathname === '/characters/others' ? 'active' : ''}
-          >
-            Other Characters
-          </Link>
-          {user?.role === 'system_admin' && (
+            <span className="nav-heading">Characters</span>
+            <ChevronDown
+              size={14}
+              className={`nav-heading-icon ${charactersCollapsed ? 'collapsed' : ''}`}
+            />
+          </button>
+          <div id="characters-nav" className="nav-sub-links">
             <Link
-              to="/characters/all"
-              className={
-                location.pathname === '/characters/all' ? 'active admin-link' : 'admin-link'
-              }
+              to="/characters/my"
+              className={location.pathname === '/characters/my' ? 'active' : ''}
             >
-              All Characters
+              My Characters
             </Link>
-          )}
+            <Link
+              to="/characters/others"
+              className={location.pathname === '/characters/others' ? 'active' : ''}
+            >
+              Other Characters
+            </Link>
+            {user?.role === 'system_admin' && (
+              <Link
+                to="/characters/all"
+                className={
+                  location.pathname === '/characters/all'
+                    ? 'active admin-link'
+                    : 'admin-link'
+                }
+              >
+                All Characters
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* Admin-only link */}
