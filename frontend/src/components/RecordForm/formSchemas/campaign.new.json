@@ -1,0 +1,38 @@
+{
+  "title": "New Campaign",
+  "fields": [
+    {
+      "name": "world_id",
+      "label": "World",
+      "type": "select",
+      "optionsSource": "worlds",
+      "required": true
+    },
+    {
+      "name": "name",
+      "label": "Name",
+      "type": "text",
+      "required": true,
+      "placeholder": "Enter campaign name"
+    },
+    {
+      "name": "description",
+      "label": "Description",
+      "type": "textarea",
+      "placeholder": "Brief description of the campaign world"
+    },
+    {
+      "name": "status",
+      "label": "Status",
+      "type": "select",
+      "options": [
+        { "label": "Draft", "value": "draft" },
+        { "label": "Active", "value": "active" },
+        { "label": "Completed", "value": "completed" },
+        { "label": "Archived", "value": "archived" }
+      ],
+      "default": "draft"
+    }
+  ],
+  "submitLabel": "Create Campaign"
+}

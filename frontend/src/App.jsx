@@ -5,6 +5,7 @@ import WorldsPage from './pages/WorldsPage.jsx'
 import WorldDetailPage from './pages/WorldDetailPage.jsx'
 import CampaignsPage from './pages/CampaignsPage.jsx'
 import CharactersPage from './pages/CharactersPage.jsx'
+import UsersPage from './pages/UsersPage.jsx'
 import Login from './pages/Login.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 
@@ -35,7 +36,13 @@ export default function App() {
             {/* Other routes */}
             <Route path="campaigns" element={<CampaignsPage />} />
             <Route path="characters" element={<CharactersPage />} />
+
+            {/* Admin-only route */}
+            <Route path="users" element={<UsersPage />} />
           </Route>
+
+          {/* Fallback: redirect anything unknown */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
     </AuthProvider>

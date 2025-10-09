@@ -1,20 +1,46 @@
-export async function up(pg) {
-  await pg.query(`
-    CREATE TABLE IF NOT EXISTS entities (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      world_id UUID REFERENCES worlds(id) ON DELETE CASCADE,
-      type VARCHAR(50) NOT NULL, -- npc, location, organisation, etc.
-      name VARCHAR(255) NOT NULL,
-      description TEXT,
-      metadata JSONB DEFAULT '{}'::jsonb,
-      visibility VARCHAR(50) DEFAULT 'private', -- public | private | restricted
-      created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
-    );
-  `);
+export async function up(queryInterface, Sequelize) {
+  await queryInterface.createTable('Entities', {
+    id: {
+      type: Sequelize.UUID,
+      defaultValue: Sequelize.literal('gen_random_uuid()'),
+      primaryKey: true,
+    },
+    world_id: {
+      type: Sequelize.UUID,
+      allowNull: false,
+      references: { model: 'Worlds', key: 'id' },
+      onDelete: 'CASCADE',
+    },
+    type: {
+      type: Sequelize.STRING(50),
+      allowNull: false, // npc, location, organisation, etc.
+    },
+    name: {
+      type: Sequelize.STRING(255),
+      allowNull: false,
+    },
+    description: {
+      type: Sequelize.TEXT,
+    },
+    metadata: {
+      type: Sequelize.JSONB,
+      defaultValue: {},
+    },
+    visibility: {
+      type: Sequelize.ENUM('visible', 'hidden', 'partial'),
+      defaultValue: 'hidden',
+    },
+    createdAt: {
+      type: Sequelize.DATE,
+      defaultValue: Sequelize.literal('NOW()'),
+    },
+    updatedAt: {
+      type: Sequelize.DATE,
+      defaultValue: Sequelize.literal('NOW()'),
+    },
+  })
 }
 
-export async function down(pg) {
-  await pg.query(`DROP TABLE IF EXISTS entities;`);
+export async function down(queryInterface) {
+  await queryInterface.dropTable('Entities')
 }

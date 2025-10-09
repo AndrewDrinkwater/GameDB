@@ -8,20 +8,29 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(null)
   const [sessionReady, setSessionReady] = useState(false)
 
+  // ✅ Default API base (so reloads always work)
+  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000/api'
+
   // --- Restore session from localStorage
   useEffect(() => {
-    const stored = localStorage.getItem('gamedb_session')
-    if (stored) {
-      try {
+    try {
+      const stored = localStorage.getItem('gamedb_session')
+      if (stored) {
         const parsed = JSON.parse(stored)
-        setUser(parsed.user)
-        setToken(parsed.token)
-      } catch (err) {
-        console.warn('Invalid stored session, clearing...')
-        localStorage.removeItem('gamedb_session')
+        if (parsed?.user && parsed?.token) {
+          setUser(parsed.user)
+          setToken(parsed.token)
+        } else {
+          console.warn('⚠️ Incomplete session found, clearing...')
+          localStorage.removeItem('gamedb_session')
+        }
       }
+    } catch (err) {
+      console.warn('⚠️ Invalid stored session, clearing...', err)
+      localStorage.removeItem('gamedb_session')
+    } finally {
+      setSessionReady(true)
     }
-    setSessionReady(true) // ✅ Always mark complete after attempt
   }, [])
 
   // --- Persist session to localStorage
@@ -36,7 +45,7 @@ export function AuthProvider({ children }) {
   // --- Login
   const login = async (username, password) => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE}/auth/login`, {
+      const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -45,7 +54,9 @@ export function AuthProvider({ children }) {
       const data = await res.json()
       console.log('🔐 Raw login response:', data)
 
-      if (!data.success) throw new Error(data.message || 'Invalid credentials')
+      if (!data.success || !data.token) {
+        throw new Error(data.message || 'Invalid credentials')
+      }
 
       setUser(data.user)
       setToken(data.token)
@@ -68,6 +79,11 @@ export function AuthProvider({ children }) {
     setUser(null)
     setToken(null)
     localStorage.removeItem('gamedb_session')
+  }
+
+  // 🕐 Prevent blank page on reload: delay render until restored
+  if (!sessionReady) {
+    return <div className="loading-screen">Loading session...</div>
   }
 
   return (

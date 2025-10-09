@@ -1,17 +1,44 @@
-export async function up(pg) {
-  await pg.query(`
-    CREATE TABLE IF NOT EXISTS entity_relationships (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      from_entity UUID REFERENCES entities(id) ON DELETE CASCADE,
-      to_entity UUID REFERENCES entities(id) ON DELETE CASCADE,
-      relationship_type VARCHAR(100) NOT NULL, -- e.g. ally_of, enemy_of, member_of
-      bidirectional BOOLEAN DEFAULT false,
-      context JSONB DEFAULT '{}'::jsonb,
-      created_at TIMESTAMP DEFAULT NOW()
-    );
-  `);
+// src/migrations/20251011_create_entity_relationships.js
+export async function up(queryInterface, Sequelize) {
+  await queryInterface.createTable('EntityRelationships', {
+    id: {
+      type: Sequelize.UUID,
+      defaultValue: Sequelize.literal('gen_random_uuid()'),
+      primaryKey: true,
+    },
+    from_entity: {
+      type: Sequelize.UUID,
+      allowNull: false,
+      references: { model: 'Entities', key: 'id' },
+      onDelete: 'CASCADE',
+    },
+    to_entity: {
+      type: Sequelize.UUID,
+      allowNull: false,
+      references: { model: 'Entities', key: 'id' },
+      onDelete: 'CASCADE',
+    },
+    relationship_type: {
+      type: Sequelize.STRING(100),
+      allowNull: false,
+      comment: 'e.g. ally_of, enemy_of, member_of, sibling_of',
+    },
+    bidirectional: {
+      type: Sequelize.BOOLEAN,
+      defaultValue: false,
+    },
+    context: {
+      type: Sequelize.JSONB,
+      defaultValue: {},
+      comment: 'Any custom metadata or context for the relationship',
+    },
+    createdAt: {
+      type: Sequelize.DATE,
+      defaultValue: Sequelize.literal('NOW()'),
+    },
+  })
 }
 
-export async function down(pg) {
-  await pg.query(`DROP TABLE IF EXISTS entity_relationships;`);
+export async function down(queryInterface) {
+  await queryInterface.dropTable('EntityRelationships')
 }

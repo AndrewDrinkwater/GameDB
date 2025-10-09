@@ -44,14 +44,20 @@ export default function FormRenderer({
         <div className="form-section" key={i}>
           {section.title ? <h3>{section.title}</h3> : null}
           <div className={`form-grid cols-${section.columns || 1}`}>
-            {(section.fields || []).map((field, idx) => (
-                <FieldRenderer
-                    key={`${field.key || field.name || field.field || 'field'}-${idx}`}
-                    field={field}
-                    data={formData}
-                    onChange={handleChange}
-                />
-            ))}
+            {(section.fields || []).map((field, idx) => {
+                if (!field || typeof field !== 'object') {
+                    console.warn('⚠️ Skipping invalid field in schema:', field)
+                return null
+                }
+                return (
+                    <FieldRenderer
+                        key={`${field.key || field.name || field.field || 'field'}-${idx}`}
+                        field={field}
+                        data={formData}
+                        onChange={handleChange}
+                    />
+                )
+            })}
           </div>
         </div>
       ))}

@@ -41,7 +41,7 @@ const PORT = process.env.PORT || 3000
 async function start() {
   try {
     await initDB()
-    await sequelize.sync() // optional: use { alter: true } during dev
+    await sequelize.sync({ alter: true })
     console.log('✅ Database connected & synced')
 
     app.listen(PORT, () => {

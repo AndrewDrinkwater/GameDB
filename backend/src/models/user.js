@@ -1,18 +1,39 @@
 // src/models/user.js
-export default (sequelize, DataTypes) => {
-  const User = sequelize.define('User', {
-    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    username: { type: DataTypes.STRING, unique: true, allowNull: false },
-    password_hash: { type: DataTypes.STRING, allowNull: false },
-    role: { type: DataTypes.STRING, defaultValue: 'player' },
-  })
+import { DataTypes } from 'sequelize'
 
-  User.associate = (models) => {
-    User.hasMany(models.World, {
-      foreignKey: 'created_by',
-      as: 'worlds',
-    })
-  }
+export default (sequelize) => {
+  const User = sequelize.define(
+    'User',
+    {
+      id: {
+        type: DataTypes.UUID,
+        defaultValue: DataTypes.UUIDV4,
+        primaryKey: true,
+      },
+      username: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+      },
+      password_hash: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      email: {                      // ✅ REQUIRED
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      role: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: 'player',
+      },
+    },
+    {
+      tableName: 'Users',           // ✅ match existing DB table
+      timestamps: true,
+    }
+  )
 
   return User
 }

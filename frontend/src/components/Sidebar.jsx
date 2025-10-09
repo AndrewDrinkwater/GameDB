@@ -1,8 +1,10 @@
 import { Link, useLocation } from 'react-router-dom'
 import { Pin } from 'lucide-react'
+import { useAuth } from '../context/AuthContext.jsx'
 
 export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
   const location = useLocation()
+  const { user } = useAuth()
 
   return (
     <aside className={`sidebar ${open ? 'open' : 'closed'}`}>
@@ -18,21 +20,37 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
       </div>
 
       <nav className="nav-links" onClick={!pinned ? onClose : undefined}>
-        <Link to="/" className={location.pathname === '/' ? 'active' : ''}>
+        <Link
+          to="/worlds"
+          className={location.pathname === '/worlds' ? 'active' : ''}
+        >
           Worlds
         </Link>
+
         <Link
           to="/campaigns"
           className={location.pathname === '/campaigns' ? 'active' : ''}
         >
           Campaigns
         </Link>
+
         <Link
           to="/characters"
           className={location.pathname === '/characters' ? 'active' : ''}
         >
           Characters
         </Link>
+
+        {/* Admin-only link */}
+        {user?.role === 'system_admin' && (
+          <Link
+            to="/users"
+            className={location.pathname === '/users' ? 'active admin-link' : 'admin-link'}
+            title="User Management (Admin Only)"
+          >
+            Users
+          </Link>
+        )}
       </nav>
     </aside>
   )

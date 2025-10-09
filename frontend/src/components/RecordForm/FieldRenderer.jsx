@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react'
+import { getAuthToken } from '../../utils/authHelpers.js'
+
+
 export default function FieldRenderer({ field, data, onChange }) {
-  // Ensure we have a valid unique field key
   const key = field.key || field.name || field.field
   if (!key) {
     console.warn('⚠️ Field without key/name skipped:', field)
@@ -8,28 +11,99 @@ export default function FieldRenderer({ field, data, onChange }) {
 
   const label = field.label || key
   const type = (field.type || 'text').toLowerCase()
-
-  // Get value safely
   const value = key.includes('.')
     ? key.split('.').reduce((acc, k) => (acc ? acc[k] : ''), data)
     : data?.[key] ?? ''
 
-  // Handlers
+  const [dynamicOptions, setDynamicOptions] = useState([])
+
+  // 🔐 Wait for token before fetching dynamic options
+  async function waitForToken(retries = 5, delay = 200) {
+    for (let i = 0; i < retries; i++) {
+      const token = getAuthToken()
+      if (token) return token
+      await new Promise(res => setTimeout(res, delay))
+    }
+    return null
+  }
+
+  // 🔄 Fetch options dynamically if `optionsSource` provided
+  useEffect(() => {
+    const loadOptions = async () => {
+      if (!field.optionsSource) return
+      let endpoint = null
+
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+
+        switch (field.optionsSource) {
+        case 'worlds':
+            endpoint = `${API_BASE}/api/worlds`
+            break
+        case 'campaigns':
+            endpoint = `${API_BASE}/api/campaigns`
+            break
+        case 'entities':
+            endpoint = `${API_BASE}/api/entities`
+            break
+        }
+
+      try {
+        const token = await waitForToken()
+        if (!token) {
+          console.warn('⚠️ No auth token available when loading options')
+          return
+        }
+
+        const res = await fetch(endpoint, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        })
+
+        const json = await res.json()
+        if (!res.ok) {
+          console.warn(`⚠️ ${field.optionsSource} fetch failed`, json)
+          return
+        }
+
+        if (json?.data?.length) {
+          setDynamicOptions(
+            json.data.map((item) => ({
+              value: item.id,
+              label: item.name,
+            }))
+          )
+        } else {
+          console.warn(`⚠️ ${field.optionsSource} returned no data`, json)
+        }
+      } catch (err) {
+        console.error(`❌ Failed to load ${field.optionsSource}:`, err)
+      }
+    }
+
+    loadOptions()
+  }, [field.optionsSource])
+
   const handleChange = (e) => onChange(key, e.target.value)
   const handleCheck = (e) => onChange(key, e.target.checked)
 
+  // --- SELECT / DROPDOWN ---
   if (['select', 'dropdown', 'reference'].includes(type)) {
+    const opts = [...(field.options || []), ...dynamicOptions]
     return (
       <div className="form-group">
         <label>{label}</label>
         <div className="select-wrapper">
           <select value={value} onChange={handleChange}>
             <option value="">Select...</option>
-            {(field.options || []).map((opt, i) => {
+            {opts.map((opt, i) => {
               const val = typeof opt === 'object' ? opt.value : opt
               const text = typeof opt === 'object' ? opt.label : opt
               return (
-                <option key={val || i} value={val}>{text}</option>
+                <option key={val || i} value={val}>
+                  {text}
+                </option>
               )
             })}
           </select>
@@ -38,6 +112,7 @@ export default function FieldRenderer({ field, data, onChange }) {
     )
   }
 
+  // --- TEXTAREA ---
   if (['textarea', 'multiline'].includes(type)) {
     return (
       <div className="form-group">
@@ -52,6 +127,7 @@ export default function FieldRenderer({ field, data, onChange }) {
     )
   }
 
+  // --- CHECKBOX ---
   if (['checkbox', 'boolean'].includes(type)) {
     return (
       <div className="form-group checkbox">
@@ -63,6 +139,7 @@ export default function FieldRenderer({ field, data, onChange }) {
     )
   }
 
+  // --- READONLY ---
   if (type === 'readonly') {
     const display = value?.username || value?.name || value || '-'
     return (
@@ -73,7 +150,7 @@ export default function FieldRenderer({ field, data, onChange }) {
     )
   }
 
-  // Default: single-line text input
+  // --- DEFAULT TEXT INPUT ---
   return (
     <div className="form-group">
       <label>{label}</label>
