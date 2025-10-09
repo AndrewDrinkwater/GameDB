@@ -1,4 +1,5 @@
 import express from 'express'
+import bcrypt from 'bcrypt'
 import { User } from '../models/index.js'
 import { authenticate } from '../middleware/authMiddleware.js'
 
@@ -6,6 +7,13 @@ const router = express.Router()
 
 // Apply auth middleware to all user routes
 router.use(authenticate)
+
+const toSafeUser = (userInstance) => {
+  if (!userInstance) return null
+
+  const { id, username, email, role, createdAt, updatedAt } = userInstance
+  return { id, username, email, role, createdAt, updatedAt }
+}
 
 // === GET all users ===
 router.get('/', async (req, res) => {
@@ -43,8 +51,16 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing required fields' })
     }
 
-    const newUser = await User.create({ username, email, password, role: role || 'user' })
-    res.json({ success: true, data: newUser })
+    const password_hash = await bcrypt.hash(password, 10)
+
+    const newUser = await User.create({
+      username,
+      email,
+      password_hash,
+      role: role || 'player',
+    })
+
+    res.json({ success: true, data: toSafeUser(newUser) })
   } catch (err) {
     console.error('❌ Failed to create user:', err)
     res.status(500).json({ success: false, message: err.message })
@@ -57,8 +73,19 @@ router.put('/:id', async (req, res) => {
     const user = await User.findByPk(req.params.id)
     if (!user) return res.status(404).json({ success: false, message: 'User not found' })
 
-    await user.update(req.body)
-    res.json({ success: true, data: user })
+    const { username, email, role, password } = req.body
+    const updates = {}
+
+    if (username !== undefined) updates.username = username
+    if (email !== undefined) updates.email = email
+    if (role !== undefined) updates.role = role
+
+    if (password) {
+      updates.password_hash = await bcrypt.hash(password, 10)
+    }
+
+    await user.update(updates)
+    res.json({ success: true, data: toSafeUser(user) })
   } catch (err) {
     console.error('❌ Failed to update user:', err)
     res.status(500).json({ success: false, message: err.message })
