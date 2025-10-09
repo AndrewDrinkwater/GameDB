@@ -80,7 +80,11 @@ export default function CampaignsPage() {
       data={campaigns}
       columns={columns}
       title="Campaigns"
-      extraActions={<button className="new-btn" onClick={handleNew}>+ New</button>}
+      extraActions={
+        <button type="button" className="btn submit" onClick={handleNew}>
+          + New
+        </button>
+      }
       onRowClick={(row) => { setSelectedCampaign(row); setViewMode('edit') }}
     />
   )
