@@ -1,3 +1,12 @@
 export function getAuthToken() {
-  return localStorage.getItem('token')
+  try {
+    const session = JSON.parse(localStorage.getItem('gamedb_session'))
+    return session?.token || null
+  } catch {
+    return null
+  }
 }
+
+
+
+

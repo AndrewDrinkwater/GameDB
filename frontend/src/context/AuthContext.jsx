@@ -1,3 +1,4 @@
+// src/context/AuthContext.jsx
 import { createContext, useContext, useState, useEffect } from 'react'
 
 const AuthContext = createContext(null)
@@ -5,18 +6,25 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(null)
+  const [sessionReady, setSessionReady] = useState(false)
 
-  // Try to load saved session from localStorage on startup
+  // --- Restore session from localStorage
   useEffect(() => {
     const stored = localStorage.getItem('gamedb_session')
     if (stored) {
-      const parsed = JSON.parse(stored)
-      setUser(parsed.user)
-      setToken(parsed.token)
+      try {
+        const parsed = JSON.parse(stored)
+        setUser(parsed.user)
+        setToken(parsed.token)
+      } catch (err) {
+        console.warn('Invalid stored session, clearing...')
+        localStorage.removeItem('gamedb_session')
+      }
     }
+    setSessionReady(true) // ✅ Always mark complete after attempt
   }, [])
 
-  // Persist to localStorage when token changes
+  // --- Persist session to localStorage
   useEffect(() => {
     if (token && user) {
       localStorage.setItem('gamedb_session', JSON.stringify({ user, token }))
@@ -25,60 +33,45 @@ export function AuthProvider({ children }) {
     }
   }, [token, user])
 
-  // Login
-const login = async (username, password) => {
-  try {
-    const res = await fetch('http://localhost:3000/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    })
-
-    // Handle network errors or non-JSON responses
-    if (!res.ok) {
-      console.error('Login request failed with status:', res.status)
-      throw new Error(`Server responded with ${res.status}`)
-    }
-
-    // Try to parse response body
-    const text = await res.text()
-    console.log('Raw login response:', text)
-    let data
+  // --- Login
+  const login = async (username, password) => {
     try {
-      data = JSON.parse(text)
-    } catch (e) {
-      throw new Error('Invalid JSON response from server')
+      const res = await fetch(`${import.meta.env.VITE_API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      })
+
+      const data = await res.json()
+      console.log('🔐 Raw login response:', data)
+
+      if (!data.success) throw new Error(data.message || 'Invalid credentials')
+
+      setUser(data.user)
+      setToken(data.token)
+      localStorage.setItem(
+        'gamedb_session',
+        JSON.stringify({ user: data.user, token: data.token })
+      )
+
+      console.log('✅ Login successful:', data.user)
+      return true
+    } catch (err) {
+      console.error('❌ Login error:', err.message)
+      alert(`Login failed: ${err.message}`)
+      return false
     }
-
-    // Handle backend error
-    if (!data.success) {
-      console.warn('Login rejected by server:', data.message)
-      throw new Error(data.message || 'Invalid credentials')
-    }
-
-    // Success — update context state
-    setUser(data.user)
-    setToken(data.token)
-    localStorage.setItem('user', JSON.stringify(data.user))
-    localStorage.setItem('token', data.token)
-
-    console.log('Login successful:', data.user)
-    return true
-  } catch (err) {
-    console.error('Login error:', err.message)
-    alert(`Login failed: ${err.message}`)
-    return false
   }
-}
 
-  // Logout
+  // --- Logout
   const logout = () => {
     setUser(null)
     setToken(null)
+    localStorage.removeItem('gamedb_session')
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
+    <AuthContext.Provider value={{ user, token, sessionReady, login, logout }}>
       {children}
     </AuthContext.Provider>
   )

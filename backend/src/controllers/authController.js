@@ -1,13 +1,8 @@
 // src/controllers/authController.js
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
-import dotenv from 'dotenv'
 import { User } from '../models/index.js'
-
-dotenv.config()
-
-const JWT_SECRET = process.env.JWT_SECRET || 'devsecret'
-const JWT_EXPIRY = '8h'
+import { cfg } from '../config/env.js'
 
 // Register a new user
 export const register = async (req, res) => {
@@ -61,8 +56,8 @@ export const login = async (req, res) => {
 
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRY }
+      cfg.jwtSecret,
+      { expiresIn: cfg.jwtExpiry }
     )
 
     res.json({

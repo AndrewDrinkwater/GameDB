@@ -1,30 +1,25 @@
 import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
 import HeaderBar from './HeaderBar.jsx'
 import Sidebar from './Sidebar.jsx'
+import { Outlet } from 'react-router-dom'
 
-export default function Layout() {
+export default function Layout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPinned, setMenuPinned] = useState(false)
 
-  const handleMenuToggle = () => setMenuOpen(!menuOpen)
-  const handlePinToggle = () => setMenuPinned(!menuPinned)
-  const handleClose = () => setMenuOpen(false)
-
   return (
     <div className="app-shell">
-      <HeaderBar onMenuToggle={handleMenuToggle} />
-
+      <HeaderBar onMenuToggle={() => setMenuOpen(!menuOpen)} />
       <div className="app-body">
         <Sidebar
           open={menuOpen || menuPinned}
           pinned={menuPinned}
-          onPinToggle={handlePinToggle}
-          onClose={handleClose}
+          onPinToggle={() => setMenuPinned(!menuPinned)}
+          onClose={() => setMenuOpen(false)}
         />
-        <main className="content">
-          <Outlet /> {/* This shows your Worlds, Campaigns, etc. */}
-        </main>
+        <main className={`content ${menuPinned ? 'pinned' : ''}`}>
+  <Outlet /> {/* ✅ Renders child route (Worlds, Campaigns, etc.) */}
+</main>
       </div>
     </div>
   )

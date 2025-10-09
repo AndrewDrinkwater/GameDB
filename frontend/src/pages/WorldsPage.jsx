@@ -1,106 +1,82 @@
 import { useEffect, useState } from 'react'
-import { fetchWorlds, createWorld, updateWorld } from '../api/worlds'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { fetchWorlds, createWorld } from '../api/worlds'
 import ListViewer from '../components/ListViewer'
 import FormRenderer from '../components/RecordForm/FormRenderer'
 import newSchema from '../components/RecordForm/formSchemas/world.new.json'
-import editSchema from '../components/RecordForm/formSchemas/world.edit.json'
 
 export default function WorldsPage() {
+  const navigate = useNavigate()
+  const { token, sessionReady } = useAuth()
   const [worlds, setWorlds] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [viewMode, setViewMode] = useState('list') // 'list' | 'new' | 'edit'
-  const [selectedWorld, setSelectedWorld] = useState(null)
+  const [creating, setCreating] = useState(false)
 
-  // Load all worlds from API
+  // --- Load Worlds (only when token/session ready)
   const loadWorlds = async () => {
+    if (!token) return
+    setLoading(true)
+    setError(null)
     try {
-      setLoading(true)
-      setError(null)
-
       const res = await fetchWorlds()
-      const list = Array.isArray(res.data) ? res.data : [] // ✅ fix for .map crash
-      setWorlds(list)
+      setWorlds(res?.data || res || [])
     } catch (err) {
       console.error('❌ Failed to load worlds:', err)
-      setError('Failed to load worlds. Please try again.')
+      setError(err.message)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    loadWorlds()
-  }, [])
+    if (sessionReady && token) loadWorlds()
+  }, [sessionReady, token])
 
+  // --- Table Columns
   const columns = [
     { key: 'name', label: 'Name' },
     { key: 'system', label: 'System' },
-    { key: 'genre', label: 'Genre' },
+    { key: 'status', label: 'Status' },
     { key: 'description', label: 'Description' },
     { key: 'createdAt', label: 'Created' },
   ]
 
-  const handleNew = () => setViewMode('new')
-
-  const handleCancel = () => {
-    setViewMode('list')
-    setSelectedWorld(null)
-  }
+  // --- Handlers
+  const handleNew = () => setCreating(true)
+  const handleCancel = () => setCreating(false)
 
   const handleCreate = async (data) => {
     try {
       const res = await createWorld(data)
       if (res.success) {
         await loadWorlds()
-        setViewMode('list')
-      } else {
-        alert(res.message || 'Failed to create world.')
+        setCreating(false)
       }
     } catch (err) {
-      console.error('❌ Create world error:', err)
-      alert('Error creating world.')
+      alert(`Failed to create world: ${err.message}`)
     }
   }
 
-  const handleUpdate = async (data) => {
-    try {
-      const res = await updateWorld(selectedWorld.id, data)
-      if (res.success) {
-        await loadWorlds()
-        setViewMode('list')
-        setSelectedWorld(null)
-      } else {
-        alert(res.message || 'Failed to update world.')
-      }
-    } catch (err) {
-      console.error('❌ Update world error:', err)
-      alert('Error updating world.')
-    }
-  }
-
+  // --- UI States
+  if (!sessionReady) return <p>Restoring session...</p>
+  if (!token) return <p>Authenticating...</p>
   if (loading) return <p>Loading worlds...</p>
-  if (error) return <p style={{ color: 'red' }}>{error}</p>
+  if (error) return <p className="error">Error: {error}</p>
 
-  if (viewMode === 'new')
+  if (creating) {
     return (
       <FormRenderer
         schema={newSchema}
+        initialData={{}}
         onSubmit={handleCreate}
         onCancel={handleCancel}
       />
     )
+  }
 
-  if (viewMode === 'edit')
-    return (
-      <FormRenderer
-        schema={editSchema}
-        initialData={selectedWorld}
-        onSubmit={handleUpdate}
-        onCancel={handleCancel}
-      />
-    )
-
+  // --- Main list view
   return (
     <ListViewer
       data={worlds}
@@ -111,10 +87,7 @@ export default function WorldsPage() {
           + New
         </button>
       }
-      onRowClick={(row) => {
-        setSelectedWorld(row)
-        setViewMode('edit')
-      }}
+      onRowClick={(row) => navigate(`/worlds/${row.id}`)} // ← Go to detail page
     />
   )
 }

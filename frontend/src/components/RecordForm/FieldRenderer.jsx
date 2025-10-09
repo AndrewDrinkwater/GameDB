@@ -1,51 +1,88 @@
-export default function FieldRenderer({ field, value, onChange }) {
-  const handleChange = (e) => onChange(field.key, e.target.value)
+export default function FieldRenderer({ field, data, onChange }) {
+  // Ensure we have a valid unique field key
+  const key = field.key || field.name || field.field
+  if (!key) {
+    console.warn('⚠️ Field without key/name skipped:', field)
+    return null
+  }
 
-  switch (field.type) {
-    case 'select':
-      return (
-        <div className="form-group">
-          <label>{field.label}</label>
+  const label = field.label || key
+  const type = (field.type || 'text').toLowerCase()
+
+  // Get value safely
+  const value = key.includes('.')
+    ? key.split('.').reduce((acc, k) => (acc ? acc[k] : ''), data)
+    : data?.[key] ?? ''
+
+  // Handlers
+  const handleChange = (e) => onChange(key, e.target.value)
+  const handleCheck = (e) => onChange(key, e.target.checked)
+
+  if (['select', 'dropdown', 'reference'].includes(type)) {
+    return (
+      <div className="form-group">
+        <label>{label}</label>
+        <div className="select-wrapper">
           <select value={value} onChange={handleChange}>
-            {(field.options || []).map((opt) => (
-              <option key={opt}>{opt}</option>
-            ))}
+            <option value="">Select...</option>
+            {(field.options || []).map((opt, i) => {
+              const val = typeof opt === 'object' ? opt.value : opt
+              const text = typeof opt === 'object' ? opt.label : opt
+              return (
+                <option key={val || i} value={val}>{text}</option>
+              )
+            })}
           </select>
         </div>
-      )
-    case 'textarea':
-      return (
-        <div className="form-group">
-          <label>{field.label}</label>
-          <textarea rows="4" value={value} onChange={handleChange} />
-        </div>
-      )
-    case 'checkbox':
-      return (
-        <div className="form-group checkbox">
-          <label>
-            <input
-              type="checkbox"
-              checked={!!value}
-              onChange={(e) => onChange(field.key, e.target.checked)}
-            />
-            {field.label}
-          </label>
-        </div>
-      )
-    case 'readonly':
-      return (
-        <div className="form-group readonly">
-          <label>{field.label}</label>
-          <div className="readonly-value">{value || '-'}</div>
-        </div>
-      )
-    default:
-      return (
-        <div className="form-group">
-          <label>{field.label}</label>
-          <input type={field.type || 'text'} value={value} onChange={handleChange} />
-        </div>
-      )
+      </div>
+    )
   }
+
+  if (['textarea', 'multiline'].includes(type)) {
+    return (
+      <div className="form-group">
+        <label>{label}</label>
+        <textarea
+          className="textarea-field"
+          rows={field.rows || 4}
+          value={value}
+          onChange={handleChange}
+        />
+      </div>
+    )
+  }
+
+  if (['checkbox', 'boolean'].includes(type)) {
+    return (
+      <div className="form-group checkbox">
+        <label>
+          <input type="checkbox" checked={!!value} onChange={handleCheck} />
+          {label}
+        </label>
+      </div>
+    )
+  }
+
+  if (type === 'readonly') {
+    const display = value?.username || value?.name || value || '-'
+    return (
+      <div className="form-group readonly">
+        <label>{label}</label>
+        <div className="readonly-value">{display}</div>
+      </div>
+    )
+  }
+
+  // Default: single-line text input
+  return (
+    <div className="form-group">
+      <label>{label}</label>
+      <input
+        type={field.inputType || 'text'}
+        value={value}
+        onChange={handleChange}
+        placeholder={field.placeholder || ''}
+      />
+    </div>
+  )
 }
