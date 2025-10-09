@@ -69,7 +69,7 @@ export default function FormRenderer({
             className="btn delete"
             onClick={() => onDelete(formData)}
           >
-            Delete
+            {schema?.deleteLabel || 'Delete'}
           </button>
         )}
 

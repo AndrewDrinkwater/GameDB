@@ -10,7 +10,7 @@ import ListViewer from '../components/ListViewer'
 import FormRenderer from '../components/RecordForm/FormRenderer'
 import CampaignMembersManager from '../components/CampaignMembersManager'
 import newSchema from '../components/RecordForm/formSchemas/campaign.new.json'
-import editSchema from '../components/RecordForm/formSchemas/campaign.edit.json'
+import baseEditSchema from '../components/RecordForm/formSchemas/campaign.edit.json'
 
 export default function CampaignsPage() {
   const { user, token, sessionReady } = useAuth()
@@ -61,6 +61,32 @@ export default function CampaignsPage() {
     return user.role === 'system_admin' || campaign.created_by === user.id
   }
 
+  const editSchema = useMemo(() => {
+    if (user?.role !== 'system_admin') return baseEditSchema
+
+    const schema = JSON.parse(JSON.stringify(baseEditSchema))
+    const ownerField = {
+      name: 'created_by',
+      label: 'Owner',
+      type: 'select',
+      optionsSource: 'users',
+      optionLabelKey: 'username',
+      optionValueKey: 'id',
+    }
+
+    if (Array.isArray(schema.fields)) {
+      const existingIndex = schema.fields.findIndex((field) => field?.name === 'created_by')
+      if (existingIndex >= 0) {
+        schema.fields[existingIndex] = { ...schema.fields[existingIndex], ...ownerField }
+      } else {
+        const insertAt = Math.min(2, schema.fields.length)
+        schema.fields.splice(insertAt, 0, ownerField)
+      }
+    }
+
+    return schema
+  }, [user])
+
   const handleNew = () => setViewMode('new')
   const handleCancel = () => { setViewMode('list'); setSelectedCampaign(null) }
 
@@ -78,15 +104,25 @@ export default function CampaignsPage() {
     if (res.success) { await loadCampaigns(); setViewMode('list'); setSelectedCampaign(null) }
   }
 
-  const handleDelete = async () => {
-    if (!selectedCampaign?.id) return
-    if (!canManage(selectedCampaign)) {
+  const handleDelete = async (data) => {
+    const target = data || selectedCampaign
+    const targetId = target?.id
+    if (!targetId) return
+    if (!canManage(target)) {
       alert('You do not have permission to delete this campaign.')
       return
     }
     if (!confirm('Delete this campaign?')) return
-    const res = await removeCampaign(selectedCampaign.id)
-    if (res.success) { await loadCampaigns(); setViewMode('list'); setSelectedCampaign(null) }
+    try {
+      const res = await removeCampaign(targetId)
+      if (res.success) {
+        await loadCampaigns()
+        setViewMode('list')
+        setSelectedCampaign(null)
+      }
+    } catch (err) {
+      alert(err.message)
+    }
   }
 
   const closeDetail = () => { setViewMode('list'); setSelectedCampaign(null) }
@@ -104,7 +140,13 @@ export default function CampaignsPage() {
       <div className="campaign-editor">
         <FormRenderer
           schema={editSchema}
-          initialData={selectedCampaign}
+          initialData={{
+            ...selectedCampaign,
+            created_by:
+              selectedCampaign.created_by ??
+              selectedCampaign.owner?.id ??
+              '',
+          }}
           onSubmit={handleUpdate}
           onDelete={handleDelete}
           onCancel={handleCancel}
