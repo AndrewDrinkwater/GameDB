@@ -1,5 +1,6 @@
 import express from 'express'
 import bcrypt from 'bcrypt'
+import { Op } from 'sequelize'
 import { User } from '../models/index.js'
 import { authenticate } from '../middleware/authMiddleware.js'
 
@@ -18,7 +19,23 @@ const toSafeUser = (userInstance) => {
 // === GET all users ===
 router.get('/', async (req, res) => {
   try {
+    const where = {}
+
+    if (req.query.role) {
+      where.role = req.query.role
+    } else if (req.query.roles) {
+      const roles = String(req.query.roles)
+        .split(',')
+        .map((role) => role.trim())
+        .filter(Boolean)
+
+      if (roles.length > 0) {
+        where.role = { [Op.in]: roles }
+      }
+    }
+
     const users = await User.findAll({
+      where,
       attributes: ['id', 'username', 'email', 'role', 'createdAt', 'updatedAt'],
       order: [['createdAt', 'DESC']],
     })

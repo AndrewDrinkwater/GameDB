@@ -30,6 +30,16 @@
         { "label": "Completed", "value": "completed" },
         { "label": "Archived", "value": "archived" }
       ]
+    },
+    {
+      "name": "player_ids",
+      "label": "Players",
+      "type": "multiselect",
+      "optionsSource": "players",
+      "optionLabelKey": "username",
+      "optionValueKey": "id",
+      "helpText": "Players selected here can create characters in this campaign.",
+      "noOptionsMessage": "No eligible players are currently available."
     }
   ],
   "submitLabel": "Save Changes",

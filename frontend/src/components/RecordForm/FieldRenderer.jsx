@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { getAuthToken } from '../../utils/authHelpers.js'
 
-
 export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) {
   const key = field.key || field.name || field.field || ''
   const [dynamicOptions, setDynamicOptions] = useState([])
+  const [optionsLoaded, setOptionsLoaded] = useState(!field.optionsSource)
   const isViewMode = mode === 'view'
 
   // 🔐 Wait for token before fetching dynamic options
@@ -12,18 +12,26 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     for (let i = 0; i < retries; i++) {
       const token = getAuthToken()
       if (token) return token
-      await new Promise(res => setTimeout(res, delay))
+      await new Promise((res) => setTimeout(res, delay))
     }
     return null
   }
 
   // 🔄 Fetch options dynamically if `optionsSource` provided
   useEffect(() => {
+    let isMounted = true
+
     const loadOptions = async () => {
-      if (!field.optionsSource) return
-      let endpoint = null
+      if (!field.optionsSource) {
+        if (isMounted) {
+          setDynamicOptions([])
+          setOptionsLoaded(true)
+        }
+        return
+      }
 
       const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+      let endpoint = null
 
       switch (field.optionsSource) {
         case 'worlds':
@@ -38,16 +46,32 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
         case 'users':
           endpoint = `${API_BASE}/api/users`
           break
+        case 'players': {
+          const roles = field.roles || 'player,user'
+          endpoint = `${API_BASE}/api/users?roles=${encodeURIComponent(roles)}`
+          break
+        }
         default:
           endpoint = null
       }
 
-      if (!endpoint) return
+      if (!endpoint) {
+        if (isMounted) {
+          setDynamicOptions([])
+          setOptionsLoaded(true)
+        }
+        return
+      }
+
+      if (isMounted) {
+        setOptionsLoaded(false)
+      }
 
       try {
         const token = await waitForToken()
         if (!token) {
           console.warn('⚠️ No auth token available when loading options')
+          if (isMounted) setOptionsLoaded(true)
           return
         }
 
@@ -61,6 +85,7 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
         const json = await res.json()
         if (!res.ok) {
           console.warn(`⚠️ ${field.optionsSource} fetch failed`, json)
+          if (isMounted) setOptionsLoaded(true)
           return
         }
 
@@ -76,9 +101,9 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
           let label = item?.[labelKey]
           if (!label) {
             const fallbacks = ['name', 'title', 'username']
-            for (const key of fallbacks) {
-              if (item?.[key]) {
-                label = item[key]
+            for (const fallbackKey of fallbacks) {
+              if (item?.[fallbackKey]) {
+                label = item[fallbackKey]
                 break
               }
             }
@@ -93,18 +118,26 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
           ? json.data.map(toOption).filter(Boolean)
           : []
 
-        if (options.length) {
+        if (isMounted) {
           setDynamicOptions(options)
-        } else {
-          console.warn(`⚠️ ${field.optionsSource} returned no data`, json)
+          setOptionsLoaded(true)
+
+          if (options.length === 0) {
+            console.warn(`⚠️ ${field.optionsSource} returned no data`, json)
+          }
         }
       } catch (err) {
         console.error(`❌ Failed to load ${field.optionsSource}:`, err)
+        if (isMounted) setOptionsLoaded(true)
       }
     }
 
     loadOptions()
-  }, [field.optionsSource, field.optionLabelKey, field.optionValueKey])
+
+    return () => {
+      isMounted = false
+    }
+  }, [field.optionsSource, field.optionLabelKey, field.optionValueKey, field.roles])
 
   if (!key) {
     console.warn('⚠️ Field without key/name skipped:', field)
@@ -113,50 +146,93 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
 
   const label = field.label || key
   const type = (field.type || 'text').toLowerCase()
-  const value = key.includes('.')
-    ? key.split('.').reduce((acc, k) => (acc ? acc[k] : ''), data)
-    : data?.[key] ?? ''
+  const rawValue = key.includes('.')
+    ? key.split('.').reduce((acc, k) => (acc ? acc[k] : undefined), data)
+    : data?.[key]
+
+  const normalisedValue = (() => {
+    if (['checkbox', 'boolean'].includes(type)) {
+      return !!rawValue
+    }
+
+    if (type === 'multiselect') {
+      if (Array.isArray(rawValue)) {
+        return rawValue.map((value) => String(value))
+      }
+      if (typeof rawValue === 'string' && rawValue.length > 0) {
+        return rawValue.split(',').map((value) => value.trim()).filter(Boolean)
+      }
+      return []
+    }
+
+    return rawValue ?? ''
+  })()
 
   const readonlyField = field.readonly || field.disabled
   const isReadOnly = isViewMode || readonlyField
 
   const formattedValue = (val) => {
     if (val === null || val === undefined || val === '') return '—'
+    if (Array.isArray(val)) {
+      return val.length > 0 ? val.join(', ') : '—'
+    }
     if (typeof val === 'boolean') return val ? 'Yes' : 'No'
     return String(val)
   }
 
-  const safeValue = formattedValue(value)
+  const safeValue = formattedValue(normalisedValue)
 
   const handleChange = (e) => onChange?.(key, e.target.value)
   const handleCheck = (e) => onChange?.(key, e.target.checked)
+  const handleMultiChange = (e) => {
+    const selections = Array.from(e.target.selectedOptions).map((option) => option.value)
+    onChange?.(key, selections)
+  }
+
+  const renderHelpText = (showEmptyNotice) => {
+    const help = []
+    if (field.helpText) {
+      help.push(
+        <p key="help" className="help-text">
+          {field.helpText}
+        </p>
+      )
+    }
+    if (showEmptyNotice) {
+      help.push(
+        <p key="empty" className="help-text warning">
+          {field.noOptionsMessage || 'No options available.'}
+        </p>
+      )
+    }
+    return help
+  }
 
   // --- SELECT / DROPDOWN ---
   if (['select', 'dropdown', 'reference'].includes(type)) {
     const opts = [...(field.options || []), ...dynamicOptions]
+    const selectValue = normalisedValue ?? ''
+    const showEmptyNotice = optionsLoaded && field.optionsSource && opts.length === 0
+
     if (isReadOnly) {
       const selected = opts.find((opt) => {
         if (!opt) return false
-        if (typeof opt === 'object') return String(opt.value) === String(value)
-        return String(opt) === String(value)
+        if (typeof opt === 'object') return String(opt.value) === String(selectValue)
+        return String(opt) === String(selectValue)
       })
       const display = field.displayKey && data?.[field.displayKey]
         ? formattedValue(data[field.displayKey])
         : formattedValue(
             selected
               ? (typeof selected === 'object' ? selected.label ?? selected.value : selected)
-              : value
+              : selectValue
           )
 
       return (
         <div className={`form-group ${isReadOnly ? 'readonly' : ''}`}>
           <label>{label}</label>
-          <input
-            type="text"
-            value={display}
-            disabled
-            className="readonly-control"
-          />
+          <input type="text" value={display} disabled className="readonly-control" />
+          {renderHelpText(false)}
         </div>
       )
     }
@@ -164,7 +240,11 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
       <div className="form-group">
         <label>{label}</label>
         <div className="select-wrapper">
-          <select value={value} onChange={handleChange}>
+          <select
+            value={selectValue}
+            onChange={handleChange}
+            disabled={showEmptyNotice}
+          >
             <option value="">Select...</option>
             {opts.map((opt, i) => {
               const val = typeof opt === 'object' ? opt.value : opt
@@ -177,6 +257,66 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
             })}
           </select>
         </div>
+        {renderHelpText(showEmptyNotice)}
+      </div>
+    )
+  }
+
+  if (type === 'multiselect') {
+    const opts = [...(field.options || []), ...dynamicOptions]
+    const values = Array.isArray(normalisedValue)
+      ? normalisedValue.map((val) => String(val))
+      : []
+    const showEmptyNotice = optionsLoaded && field.optionsSource && opts.length === 0
+
+    if (isReadOnly) {
+      const labels = values
+        .map((val) => {
+          const opt = opts.find((option) => {
+            if (!option) return false
+            if (typeof option === 'object') return String(option.value) === String(val)
+            return String(option) === String(val)
+          })
+          if (!opt) return null
+          return typeof opt === 'object' ? opt.label ?? opt.value : opt
+        })
+        .filter(Boolean)
+
+      return (
+        <div className={`form-group ${isReadOnly ? 'readonly' : ''}`}>
+          <label>{label}</label>
+          <textarea
+            className="textarea-field"
+            value={labels.length ? labels.join('\n') : '—'}
+            readOnly
+          />
+          {renderHelpText(false)}
+        </div>
+      )
+    }
+
+    return (
+      <div className="form-group">
+        <label>{label}</label>
+        <div className="select-wrapper">
+          <select
+            multiple
+            value={values}
+            onChange={handleMultiChange}
+            disabled={showEmptyNotice}
+          >
+            {opts.map((opt, i) => {
+              const val = typeof opt === 'object' ? opt.value : opt
+              const text = typeof opt === 'object' ? opt.label : opt
+              return (
+                <option key={val || i} value={val}>
+                  {text}
+                </option>
+              )
+            })}
+          </select>
+        </div>
+        {renderHelpText(showEmptyNotice)}
       </div>
     )
   }
@@ -189,10 +329,11 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
         <textarea
           className="textarea-field"
           rows={field.rows || 4}
-          value={isReadOnly ? safeValue : value}
+          value={isReadOnly ? safeValue : normalisedValue}
           onChange={handleChange}
           disabled={isReadOnly}
         />
+        {renderHelpText(false)}
       </div>
     )
   }
@@ -204,23 +345,25 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
         <label>
           <input
             type="checkbox"
-            checked={!!value}
+            checked={!!normalisedValue}
             onChange={handleCheck}
             disabled={isReadOnly}
           />
           {label}
         </label>
+        {renderHelpText(false)}
       </div>
     )
   }
 
   // --- READONLY ---
   if (type === 'readonly') {
-    const display = value?.username || value?.name || value || '-'
+    const display = normalisedValue?.username || normalisedValue?.name || normalisedValue || '-'
     return (
       <div className="form-group readonly">
         <label>{label}</label>
         <div className="readonly-value">{display}</div>
+        {renderHelpText(false)}
       </div>
     )
   }
@@ -231,12 +374,13 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
       <label>{label}</label>
       <input
         type={field.inputType || 'text'}
-        value={isReadOnly ? safeValue : value}
+        value={isReadOnly ? safeValue : normalisedValue}
         onChange={handleChange}
         placeholder={field.placeholder || ''}
         disabled={isReadOnly}
         className={isReadOnly ? 'readonly-control' : undefined}
       />
+      {renderHelpText(false)}
     </div>
   )
 }

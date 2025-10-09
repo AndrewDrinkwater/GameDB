@@ -1,4 +1,5 @@
 import express from 'express'
+import { Op } from 'sequelize'
 import {
   Campaign,
   Character,
@@ -47,7 +48,10 @@ const buildAccessibleCampaignQuery = async (req, worldFilter) => {
   })
 
   const memberCampaigns = await UserCampaignRole.findAll({
-    where: { user_id: req.user.id },
+    where: {
+      user_id: req.user.id,
+      role: { [Op.in]: ['player', 'dm'] },
+    },
     attributes: ['campaign_id'],
     raw: true,
   })
@@ -167,6 +171,31 @@ router.put('/:id', authMiddleware, async (req, res) => {
       status: req.body.status ?? campaign.status,
     }
 
+    let playersToSync = null
+
+    if (Object.prototype.hasOwnProperty.call(req.body, 'player_ids')) {
+      const rawValue = req.body.player_ids
+
+      if (Array.isArray(rawValue)) {
+        playersToSync = rawValue
+      } else if (typeof rawValue === 'string') {
+        playersToSync = rawValue
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
+      } else if (rawValue === null || rawValue === '') {
+        playersToSync = []
+      } else {
+        return res
+          .status(400)
+          .json({ success: false, message: 'player_ids must be an array of user IDs' })
+      }
+
+      if (playersToSync !== null) {
+        playersToSync = [...new Set(playersToSync.map((value) => String(value)))]
+      }
+    }
+
     if (req.user.role === 'system_admin' && Object.prototype.hasOwnProperty.call(req.body, 'created_by')) {
       if (req.body.created_by === null || req.body.created_by === '') {
         updates.created_by = null
@@ -179,7 +208,56 @@ router.put('/:id', authMiddleware, async (req, res) => {
       }
     }
 
-    await campaign.update(updates)
+    await sequelize.transaction(async (transaction) => {
+      if (Object.keys(updates).length > 0) {
+        await campaign.update(updates, { transaction })
+      }
+
+      if (playersToSync !== null) {
+        if (playersToSync.length > 0) {
+          const users = await User.findAll({
+            where: { id: playersToSync },
+            attributes: ['id', 'role'],
+            transaction,
+          })
+
+          if (users.length !== playersToSync.length) {
+            throw new Error('One or more selected players could not be found')
+          }
+        }
+
+        const existingPlayers = await UserCampaignRole.findAll({
+          where: { campaign_id: campaign.id, role: 'player' },
+          transaction,
+        })
+
+        const desiredPlayerIds = new Set(playersToSync)
+
+        const assignmentsToRemove = existingPlayers.filter(
+          (assignment) => !desiredPlayerIds.has(String(assignment.user_id))
+        )
+
+        if (assignmentsToRemove.length > 0) {
+          await UserCampaignRole.destroy({
+            where: { id: assignmentsToRemove.map((assignment) => assignment.id) },
+            transaction,
+          })
+        }
+
+        for (const userId of desiredPlayerIds) {
+          const [record] = await UserCampaignRole.findOrCreate({
+            where: { campaign_id: campaign.id, user_id },
+            defaults: { role: 'player' },
+            transaction,
+          })
+
+          if (record.role !== 'player') {
+            await record.update({ role: 'player' }, { transaction })
+          }
+        }
+      }
+    })
+
     const refreshed = await Campaign.findByPk(campaign.id, { include: baseIncludes })
     res.json({ success: true, data: refreshed })
   } catch (err) {
