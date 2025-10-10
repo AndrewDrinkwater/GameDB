@@ -1,0 +1,89 @@
+{
+  "info": {
+    "name": "Entity Relationships",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Sample requests covering create, fetch and delete relationship endpoints."
+  },
+  "item": [
+    {
+      "name": "List Relationship Types",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/entity-relationships/types",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "entity-relationships", "types"]
+        }
+      }
+    },
+    {
+      "name": "Create Relationship",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"from_entity\": \"{{fromEntityId}}\",\n  \"to_entity\": \"{{toEntityId}}\",\n  \"relationship_type_id\": \"{{relationshipTypeId}}\",\n  \"bidirectional\": true,\n  \"context\": { \"note\": \"Old companions\" }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/entity-relationships",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "entity-relationships"]
+        }
+      }
+    },
+    {
+      "name": "Get Relationships By Entity",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/entity-relationships/entity/{{entityId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "entity-relationships", "entity", "{{entityId}}"]
+        }
+      }
+    },
+    {
+      "name": "Delete Relationship",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/entity-relationships/{{relationshipId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "entity-relationships", "{{relationshipId}}"]
+        }
+      }
+    }
+  ]
+}
