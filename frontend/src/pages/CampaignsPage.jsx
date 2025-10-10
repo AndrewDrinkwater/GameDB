@@ -14,7 +14,7 @@ import newSchema from '../components/RecordForm/formSchemas/campaign.new.json'
 import baseEditSchema from '../components/RecordForm/formSchemas/campaign.edit.json'
 import viewSchemaDefinition from '../components/RecordForm/formSchemas/campaign.view.json'
 
-export default function CampaignsPage() {
+export default function CampaignsPage({ scope = 'all' }) {
   const { user, token, sessionReady } = useAuth()
   const [campaigns, setCampaigns] = useState([])
   const [loading, setLoading] = useState(false)
@@ -177,6 +177,18 @@ export default function CampaignsPage() {
     }
   }, [selectedCampaign])
 
+  const filteredCampaigns = useMemo(() => {
+    if (scope === 'my') {
+      if (!user?.id) return []
+      return campaigns.filter((campaign) => campaign.created_by === user.id)
+    }
+
+    return campaigns
+  }, [campaigns, scope, user])
+
+  const title = scope === 'my' ? 'My Campaigns' : 'All Campaigns'
+  const closeLabel = scope === 'my' ? 'Back to my campaigns' : 'Back to all campaigns'
+
   if (!sessionReady) return <p>Restoring session...</p>
   if (!token) return <p>Authenticating...</p>
   if (loading) return <p>Loading campaigns...</p>
@@ -208,16 +220,16 @@ export default function CampaignsPage() {
         schema={viewSchemaDefinition}
         data={viewData || {}}
         onClose={closeDetail}
-        closeLabel="Back to campaigns"
+        closeLabel={closeLabel}
         infoMessage="You can view this campaign but only the owner or a system admin can make changes."
       />
     )
 
   return (
     <ListViewer
-      data={campaigns}
+      data={filteredCampaigns}
       columns={columns}
-      title="Campaigns"
+      title={title}
       extraActions={
         <button type="button" className="btn submit" onClick={handleNew}>
           + New
