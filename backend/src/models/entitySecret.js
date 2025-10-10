@@ -28,6 +28,7 @@ export default (sequelize, DataTypes) => {
       tableName: 'entity_secrets',
       underscored: true,
       timestamps: true,
+      freezeTableName: true,
     }
   )
 
