@@ -246,7 +246,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
 
         for (const userId of desiredPlayerIds) {
           const [record] = await UserCampaignRole.findOrCreate({
-            where: { campaign_id: campaign.id, user_id },
+            where: { campaign_id: campaign.id, user_id: userId },
             defaults: { role: 'player' },
             transaction,
           })
