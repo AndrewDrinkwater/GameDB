@@ -1,8 +1,4 @@
-import {
-  EntityType,
-  EntityTypeField,
-  World,
-} from '../models/index.js'
+import { EntityType, EntityTypeField } from '../models/index.js'
 import { coerceValueForField } from '../utils/entityMetadataValidator.js'
 
 const FIELD_ORDER = [
@@ -14,12 +10,7 @@ const ALLOWED_TYPES = new Set(['string', 'number', 'boolean', 'text', 'date', 'e
 
 const isSystemAdmin = (user) => user?.role === 'system_admin'
 
-const ensureManageAccess = async (user) => {
-  if (!user) return false
-  if (isSystemAdmin(user)) return true
-  const ownedWorlds = await World.count({ where: { created_by: user.id } })
-  return ownedWorlds > 0
-}
+const ensureManageAccess = async (user) => isSystemAdmin(user)
 
 const normaliseOptions = (options) => {
   if (options === undefined || options === null) return {}

@@ -9,7 +9,7 @@ import {
 import { useAuth } from '../../context/AuthContext.jsx'
 import EntityTypeForm from './EntityTypeForm.jsx'
 
-const MANAGER_ROLES = new Set(['dm', 'owner', 'system_admin'])
+const MANAGER_ROLES = new Set(['system_admin'])
 
 export default function EntityTypeList() {
   const { user, token, sessionReady } = useAuth()
@@ -173,8 +173,8 @@ export default function EntityTypeList() {
 
       {!canManage && (
         <div className="alert info" role="status">
-          You can view the existing entity types, but only Dungeon Masters or
-          owners can make changes.
+          You can view the existing entity types, but only system administrators
+          can make changes.
         </div>
       )}
 
