@@ -66,6 +66,16 @@ export default (sequelize, DataTypes) => {
         as: 'campaigns',
       })
     }
+    if (models.EntityRelationship) {
+      Entity.hasMany(models.EntityRelationship, {
+        foreignKey: 'from_entity',
+        as: 'relationshipsFrom',
+      })
+      Entity.hasMany(models.EntityRelationship, {
+        foreignKey: 'to_entity',
+        as: 'relationshipsTo',
+      })
+    }
   }
 
   return Entity

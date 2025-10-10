@@ -39,7 +39,15 @@ if (World.associate) World.associate({ User, Campaign, Entity })
 if (Campaign.associate) Campaign.associate({ World, Character, Entity, User, UserCampaignRole })
 if (Character.associate) Character.associate({ Campaign, User })
 if (EntityType.associate) EntityType.associate({ Entity })
-if (Entity.associate) Entity.associate({ World, Campaign, EntityType, EntitySecret, User })
+if (Entity.associate)
+  Entity.associate({
+    World,
+    Campaign,
+    EntityType,
+    EntitySecret,
+    User,
+    EntityRelationship,
+  })
 if (EntitySecret.associate) EntitySecret.associate({ Entity, User })
 if (EntityRelationshipType.associate) EntityRelationshipType.associate({ EntityRelationship })
 if (EntityRelationship.associate) EntityRelationship.associate({ Entity, EntityRelationshipType })
