@@ -13,7 +13,7 @@ const ROLE_OPTIONS = [
   { label: 'Observer', value: 'observer' },
 ]
 
-export default function CampaignMembersManager({ campaignId, canManage }) {
+export default function CampaignMembersManager({ campaignId, canManage, onMembersChanged }) {
   const [members, setMembers] = useState([])
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -81,10 +81,15 @@ export default function CampaignMembersManager({ campaignId, canManage }) {
       if (record) {
         setMembers((prev) => {
           const existing = prev.find((item) => item.id === record.id)
-          if (existing) {
-            return prev.map((item) => (item.id === record.id ? record : item))
+          const nextMembers = existing
+            ? prev.map((item) => (item.id === record.id ? record : item))
+            : [record, ...prev]
+
+          if (typeof onMembersChanged === 'function') {
+            onMembersChanged(nextMembers)
           }
-          return [record, ...prev]
+
+          return nextMembers
         })
         resetForm()
       }
@@ -110,7 +115,15 @@ export default function CampaignMembersManager({ campaignId, canManage }) {
       const res = await updateCampaignAssignment(id, { role })
       const record = res?.data
       if (record) {
-        setMembers((prev) => prev.map((item) => (item.id === record.id ? record : item)))
+        setMembers((prev) => {
+          const nextMembers = prev.map((item) => (item.id === record.id ? record : item))
+
+          if (typeof onMembersChanged === 'function') {
+            onMembersChanged(nextMembers)
+          }
+
+          return nextMembers
+        })
       }
     } catch (err) {
       setError(err.message)
@@ -122,7 +135,15 @@ export default function CampaignMembersManager({ campaignId, canManage }) {
     setError(null)
     try {
       await removeUserFromCampaign(id)
-      setMembers((prev) => prev.filter((item) => item.id !== id))
+      setMembers((prev) => {
+        const nextMembers = prev.filter((item) => item.id !== id)
+
+        if (typeof onMembersChanged === 'function') {
+          onMembersChanged(nextMembers)
+        }
+
+        return nextMembers
+      })
     } catch (err) {
       setError(err.message)
     }

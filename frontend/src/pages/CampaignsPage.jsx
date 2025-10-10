@@ -185,6 +185,42 @@ export default function CampaignsPage({ scope = 'all' }) {
     }
   }
 
+  const handleMembersChanged = useCallback((campaignId, nextMembers) => {
+    const normaliseMembers = (membersList) => {
+      if (!Array.isArray(membersList)) return { members: [], playerIds: [] }
+
+      const players = membersList.filter((member) => member.role === 'player')
+      return {
+        members: membersList,
+        playerIds: players.map((member) => member.user_id),
+      }
+    }
+
+    setCampaigns((prev) =>
+      prev.map((campaign) => {
+        if (campaign.id !== campaignId) return campaign
+
+        const { members, playerIds } = normaliseMembers(nextMembers)
+        return {
+          ...campaign,
+          members,
+          player_ids: playerIds,
+        }
+      }),
+    )
+
+    setSelectedCampaign((prev) => {
+      if (!prev || prev.id !== campaignId) return prev
+
+      const { members, playerIds } = normaliseMembers(nextMembers)
+      return {
+        ...prev,
+        members,
+        player_ids: playerIds,
+      }
+    })
+  }, [])
+
   const handleDelete = async (data) => {
     const target = data || selectedCampaign
     const targetId = target?.id
@@ -278,6 +314,7 @@ export default function CampaignsPage({ scope = 'all' }) {
         <CampaignMembersManager
           campaignId={selectedCampaign.id}
           canManage={canManage(selectedCampaign)}
+          onMembersChanged={(members) => handleMembersChanged(selectedCampaign.id, members)}
         />
       </div>
     )
