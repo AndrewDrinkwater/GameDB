@@ -1,6 +1,7 @@
 import express from 'express'
 import { getWorlds, createWorld, updateWorld, deleteWorld } from '../controllers/worldController.js'
 import { listWorldEntities, createWorldEntity } from '../controllers/entityController.js'
+import { listWorldEntityTypesWithEntities } from '../controllers/entityTypeController.js'
 import { authenticate, requireRole } from '../middleware/authMiddleware.js'
 import { ensureWorldAccess } from '../middleware/worldAccess.js'
 
@@ -16,6 +17,7 @@ router.get('/', getWorlds)
 router.post('/', requireRole('system_admin', 'user'), createWorld)
 
 // World-scoped entity management
+router.get('/:id/entity-types', ensureWorldAccess, listWorldEntityTypesWithEntities)
 router.get('/:id/entities', ensureWorldAccess, listWorldEntities)
 router.post('/:id/entities', ensureWorldAccess, createWorldEntity)
 
