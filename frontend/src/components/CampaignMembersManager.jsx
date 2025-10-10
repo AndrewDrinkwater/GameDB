@@ -20,6 +20,7 @@ export default function CampaignMembersManager({ campaignId, canManage }) {
   const [error, setError] = useState(null)
   const [formState, setFormState] = useState({ user_id: '', role: 'player' })
   const [saving, setSaving] = useState(false)
+  const [isFormOpen, setIsFormOpen] = useState(false)
 
   const loadMembers = useCallback(async () => {
     if (!campaignId) return
@@ -61,6 +62,10 @@ export default function CampaignMembersManager({ campaignId, canManage }) {
       .map((user) => ({ value: user.id, label: user.username || user.email || user.id }))
   }, [users, members])
 
+  const resetForm = useCallback(() => {
+    setFormState({ user_id: '', role: 'player' })
+  }, [])
+
   const handleAdd = async (event) => {
     event.preventDefault()
     if (!formState.user_id) return
@@ -81,13 +86,22 @@ export default function CampaignMembersManager({ campaignId, canManage }) {
           }
           return [record, ...prev]
         })
-        setFormState({ user_id: '', role: 'player' })
+        resetForm()
       }
     } catch (err) {
       setError(err.message)
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleOpenForm = () => {
+    setIsFormOpen(true)
+  }
+
+  const handleCloseForm = () => {
+    setIsFormOpen(false)
+    resetForm()
   }
 
   const handleRoleChange = async (id, role) => {
@@ -117,110 +131,140 @@ export default function CampaignMembersManager({ campaignId, canManage }) {
   if (!campaignId) return null
 
   return (
-    <div className="panel">
-      <div className="panel-header">
-        <h3>Campaign Members</h3>
-      </div>
-
-      {error && <p className="error">{error}</p>}
-      {loading ? (
-        <p>Loading members…</p>
-      ) : members.length === 0 ? (
-        <p>No users associated with this campaign yet.</p>
-      ) : (
-        <table className="compact-table">
-          <thead>
-            <tr>
-              <th>User</th>
-              <th>Role</th>
-              <th>Added</th>
-              {canManage ? <th>Actions</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {members.map((member) => (
-              <tr key={member.id}>
-                <td>{member.user?.username || member.user?.email || member.user_id}</td>
-                <td>
-                  {canManage ? (
-                    <select
-                      value={member.role}
-                      onChange={(e) => handleRoleChange(member.id, e.target.value)}
-                    >
-                      {ROLE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    member.role
-                  )}
-                </td>
-                <td>
-                  {member.createdAt ? new Date(member.createdAt).toLocaleString() : '—'}
-                </td>
-                {canManage ? (
-                  <td>
-                    <button type="button" className="btn danger" onClick={() => handleRemove(member.id)}>
-                      Remove
-                    </button>
-                  </td>
-                ) : null}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {canManage ? (
-        <form className="member-form" onSubmit={handleAdd}>
-          <h4>Add user to campaign</h4>
-          <div className="form-grid cols-2">
-            <div className="form-group">
-              <label>User</label>
-              <select
-                value={formState.user_id}
-                onChange={(e) => setFormState((prev) => ({ ...prev, user_id: e.target.value }))}
-                disabled={saving || availableUsers.length === 0}
-              >
-                <option value="">Select user…</option>
-                {availableUsers.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              {availableUsers.length === 0 ? (
-                <p className="help-text">All registered users are already assigned.</p>
-              ) : null}
-            </div>
-            <div className="form-group">
-              <label>Role</label>
-              <select
-                value={formState.role}
-                onChange={(e) => setFormState((prev) => ({ ...prev, role: e.target.value }))}
-                disabled={saving}
-              >
-                {ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="form-actions">
+    <>
+      <div className="panel">
+        <div className="panel-header">
+          <h3>Campaign Members</h3>
+          {canManage ? (
             <button
-              type="submit"
+              type="button"
               className="btn submit"
-              disabled={saving || !formState.user_id}
+              onClick={handleOpenForm}
+              disabled={availableUsers.length === 0}
             >
-              {saving ? 'Saving…' : 'Add user'}
+              Add User
             </button>
-          </div>
-        </form>
+          ) : null}
+        </div>
+
+        {error && <p className="error">{error}</p>}
+        {loading ? (
+          <p>Loading members…</p>
+        ) : members.length === 0 ? (
+          <p>No users associated with this campaign yet.</p>
+        ) : (
+          <table className="compact-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Role</th>
+                <th>Added</th>
+                {canManage ? <th>Actions</th> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {members.map((member) => (
+                <tr key={member.id}>
+                  <td>{member.user?.username || member.user?.email || member.user_id}</td>
+                  <td>
+                    {canManage ? (
+                      <select
+                        value={member.role}
+                        onChange={(e) => handleRoleChange(member.id, e.target.value)}
+                      >
+                        {ROLE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      member.role
+                    )}
+                  </td>
+                  <td>
+                    {member.createdAt ? new Date(member.createdAt).toLocaleString() : '—'}
+                  </td>
+                  {canManage ? (
+                    <td>
+                      <button type="button" className="btn danger" onClick={() => handleRemove(member.id)}>
+                        Remove
+                      </button>
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {canManage && availableUsers.length === 0 ? (
+          <p className="help-text">All registered users are already assigned.</p>
+        ) : null}
+      </div>
+      {canManage && isFormOpen ? (
+        <div className="member-form-popout" role="dialog" aria-modal="true">
+          <div className="member-form-popout-backdrop" onClick={handleCloseForm} />
+          <form className="member-form-popout-content" onSubmit={handleAdd}>
+            <div className="member-form-popout-header">
+              <h4>Add user to campaign</h4>
+              <button
+                type="button"
+                className="member-form-popout-close"
+                onClick={handleCloseForm}
+                aria-label="Close add user form"
+              >
+                ×
+              </button>
+            </div>
+            <div className="form-grid cols-1">
+              <div className="form-group">
+                <label>User</label>
+                <select
+                  value={formState.user_id}
+                  onChange={(e) => setFormState((prev) => ({ ...prev, user_id: e.target.value }))}
+                  disabled={saving || availableUsers.length === 0}
+                >
+                  <option value="">Select user…</option>
+                  {availableUsers.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Role</label>
+                <select
+                  value={formState.role}
+                  onChange={(e) => setFormState((prev) => ({ ...prev, role: e.target.value }))}
+                  disabled={saving}
+                >
+                  {ROLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {availableUsers.length === 0 ? (
+              <p className="help-text">All registered users are already assigned.</p>
+            ) : null}
+            <div className="member-form-popout-actions">
+              <button type="button" className="btn cancel" onClick={handleCloseForm}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn submit"
+                disabled={saving || !formState.user_id}
+              >
+                {saving ? 'Saving…' : 'Add user'}
+              </button>
+            </div>
+          </form>
+        </div>
       ) : null}
-    </div>
+    </>
   )
 }
