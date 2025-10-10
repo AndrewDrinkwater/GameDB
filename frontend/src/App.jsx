@@ -13,6 +13,7 @@ import CharactersPage from './pages/CharactersPage.jsx'
 import UsersPage from './pages/UsersPage.jsx'
 import Login from './pages/Login.jsx'
 import EntityList from './pages/entities/EntityList.jsx'
+import EntityDetailPage from './pages/entities/EntityDetailPage.jsx'
 import EntityTypeList from './pages/entityTypes/EntityTypeList.jsx'
 import EntityTypeFields from './pages/entityTypes/EntityTypeFields.jsx'
 import CreateEntityType from './pages/entityTypes/CreateEntityType.jsx'
@@ -51,6 +52,7 @@ const router = createBrowserRouter(
           <Route path="all/:id" element={<CampaignsPage scope="all" />} />
         </Route>
         <Route path="entities" element={<EntityList />} />
+        <Route path="entities/:id" element={<EntityDetailPage />} />
         <Route path="entity-types">
           <Route index element={<EntityTypeList />} />
           <Route path="new" element={<CreateEntityType />} />

@@ -1395,6 +1395,17 @@ th {
   background: #f8fafc;
 }
 
+.entities-table .entity-name-link {
+  color: #1d4ed8;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.entities-table .entity-name-link:hover,
+.entities-table .entity-name-link:focus {
+  text-decoration: underline;
+}
+
 .entity-actions {
   display: flex;
   align-items: center;
