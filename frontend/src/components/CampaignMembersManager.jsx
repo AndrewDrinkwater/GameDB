@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { fetchUsers } from '../api/users'
+import { useCallback, useEffect, useState } from 'react'
 import {
-  addUserToCampaign,
   fetchAssignmentsByCampaign,
   removeUserFromCampaign,
   updateCampaignAssignment,
@@ -15,12 +13,8 @@ const ROLE_OPTIONS = [
 
 export default function CampaignMembersManager({ campaignId, canManage, onMembersChanged }) {
   const [members, setMembers] = useState([])
-  const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [formState, setFormState] = useState({ user_id: '', role: 'player' })
-  const [saving, setSaving] = useState(false)
-  const [isFormOpen, setIsFormOpen] = useState(false)
 
   const loadMembers = useCallback(async () => {
     if (!campaignId) return
@@ -37,77 +31,9 @@ export default function CampaignMembersManager({ campaignId, canManage, onMember
     }
   }, [campaignId])
 
-  const loadUsers = useCallback(async () => {
-    try {
-      const res = await fetchUsers()
-      const data = res?.data || []
-      setUsers(data)
-    } catch (err) {
-      console.error('Failed to load users', err)
-    }
-  }, [])
-
   useEffect(() => {
     loadMembers()
-    if (canManage) {
-      loadUsers()
-    }
-  }, [loadMembers, loadUsers, canManage])
-
-  const availableUsers = useMemo(() => {
-    if (!Array.isArray(users)) return []
-    const assignedIds = new Set(members.map((m) => m.user_id))
-    return users
-      .filter((user) => !assignedIds.has(user.id))
-      .map((user) => ({ value: user.id, label: user.username || user.email || user.id }))
-  }, [users, members])
-
-  const resetForm = useCallback(() => {
-    setFormState({ user_id: '', role: 'player' })
-  }, [])
-
-  const handleAdd = async (event) => {
-    event.preventDefault()
-    if (!formState.user_id) return
-    setSaving(true)
-    setError(null)
-    try {
-      const res = await addUserToCampaign({
-        campaign_id: campaignId,
-        user_id: formState.user_id,
-        role: formState.role,
-      })
-      const record = res?.data
-      if (record) {
-        setMembers((prev) => {
-          const existing = prev.find((item) => item.id === record.id)
-          const nextMembers = existing
-            ? prev.map((item) => (item.id === record.id ? record : item))
-            : [record, ...prev]
-
-          if (typeof onMembersChanged === 'function') {
-            onMembersChanged(nextMembers)
-          }
-
-          return nextMembers
-        })
-        resetForm()
-      }
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleOpenForm = () => {
-    setIsFormOpen(true)
-  }
-
-  const handleCloseForm = () => {
-    setIsFormOpen(false)
-    resetForm()
-  }
+  }, [loadMembers])
 
   const handleRoleChange = async (id, role) => {
     setError(null)
@@ -156,16 +82,6 @@ export default function CampaignMembersManager({ campaignId, canManage, onMember
       <div className="panel">
         <div className="panel-header">
           <h3>Campaign Members</h3>
-          {canManage ? (
-            <button
-              type="button"
-              className="btn submit"
-              onClick={handleOpenForm}
-              disabled={availableUsers.length === 0}
-            >
-              Add User
-            </button>
-          ) : null}
         </div>
 
         {error && <p className="error">{error}</p>}
@@ -218,74 +134,13 @@ export default function CampaignMembersManager({ campaignId, canManage, onMember
             </tbody>
           </table>
         )}
-        {canManage && availableUsers.length === 0 ? (
-          <p className="help-text">All registered users are already assigned.</p>
+        {canManage ? (
+          <p className="help-text">
+            Manage who can participate through the Players list. Update roles here to promote
+            Dungeon Masters or set observers.
+          </p>
         ) : null}
       </div>
-      {canManage && isFormOpen ? (
-        <div className="member-form-popout" role="dialog" aria-modal="true">
-          <div className="member-form-popout-backdrop" onClick={handleCloseForm} />
-          <form className="member-form-popout-content" onSubmit={handleAdd}>
-            <div className="member-form-popout-header">
-              <h4>Add user to campaign</h4>
-              <button
-                type="button"
-                className="member-form-popout-close"
-                onClick={handleCloseForm}
-                aria-label="Close add user form"
-              >
-                ×
-              </button>
-            </div>
-            <div className="form-grid cols-1">
-              <div className="form-group">
-                <label>User</label>
-                <select
-                  value={formState.user_id}
-                  onChange={(e) => setFormState((prev) => ({ ...prev, user_id: e.target.value }))}
-                  disabled={saving || availableUsers.length === 0}
-                >
-                  <option value="">Select user…</option>
-                  {availableUsers.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Role</label>
-                <select
-                  value={formState.role}
-                  onChange={(e) => setFormState((prev) => ({ ...prev, role: e.target.value }))}
-                  disabled={saving}
-                >
-                  {ROLE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            {availableUsers.length === 0 ? (
-              <p className="help-text">All registered users are already assigned.</p>
-            ) : null}
-            <div className="member-form-popout-actions">
-              <button type="button" className="btn cancel" onClick={handleCloseForm}>
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="btn submit"
-                disabled={saving || !formState.user_id}
-              >
-                {saving ? 'Saving…' : 'Add user'}
-              </button>
-            </div>
-          </form>
-        </div>
-      ) : null}
     </>
   )
 }

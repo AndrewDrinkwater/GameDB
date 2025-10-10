@@ -537,73 +537,51 @@ th {
   gap: 1.5rem;
 }
 
-.member-form-popout {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 400;
-  pointer-events: none;
+.campaign-tabs {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
 }
 
-.member-form-popout-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(2px);
-  pointer-events: auto;
+.campaign-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0.5rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #475569;
+  border-bottom: 3px solid transparent;
+  border-radius: 0.5rem 0.5rem 0 0;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
 }
 
-.member-form-popout-content {
-  position: relative;
+.campaign-tab:hover,
+.campaign-tab:focus-visible {
+  color: #1e3a8a;
+  background-color: rgba(59, 130, 246, 0.08);
+  outline: none;
+}
+
+.campaign-tab.is-active {
+  color: #1e40af;
+  border-color: #1d4ed8;
+  background-color: rgba(37, 99, 235, 0.12);
+}
+
+.campaign-tab-panel {
   background: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.2);
-  width: min(480px, 92vw);
-  padding: 1.75rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  padding: 1.5rem;
+}
+
+.campaign-membership {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  pointer-events: auto;
-  z-index: 1;
-}
-
-.member-form-popout-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.member-form-popout-header h4 {
-  margin: 0;
-  font-size: 1.1rem;
-  color: #0f172a;
-}
-
-.member-form-popout-close {
-  border: none;
-  background: none;
-  font-size: 1.5rem;
-  line-height: 1;
-  color: #64748b;
-  cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 6px;
-  transition: color 0.2s ease, background-color 0.2s ease;
-}
-
-.member-form-popout-close:hover,
-.member-form-popout-close:focus-visible {
-  color: #1e293b;
-  background: rgba(148, 163, 184, 0.2);
-}
-
-.member-form-popout-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
+  gap: 1.5rem;
 }
 
 .form-section {

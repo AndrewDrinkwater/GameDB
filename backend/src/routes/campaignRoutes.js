@@ -147,7 +147,21 @@ router.post('/', authMiddleware, async (req, res) => {
       created_by: req.user.id,
     }
 
-    const campaign = await Campaign.create(payload)
+    const campaign = await sequelize.transaction(async (transaction) => {
+      const created = await Campaign.create(payload, { transaction })
+
+      await UserCampaignRole.create(
+        {
+          campaign_id: created.id,
+          user_id: payload.created_by,
+          role: 'dm',
+        },
+        { transaction },
+      )
+
+      return created
+    })
+
     const withOwner = await Campaign.findByPk(campaign.id, { include: baseIncludes })
     res.status(201).json({ success: true, data: withOwner })
   } catch (err) {

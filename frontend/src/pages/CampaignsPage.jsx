@@ -24,7 +24,23 @@ export default function CampaignsPage({ scope = 'all' }) {
   const [viewMode, setViewMode] = useState('list')
   const [selectedCampaign, setSelectedCampaign] = useState(null)
   const [error, setError] = useState(null)
+  const [activeTab, setActiveTab] = useState('details')
   const basePath = useMemo(() => `/campaigns/${scope}`, [scope])
+
+  const normaliseCampaign = useCallback((item) => {
+    if (!item) return item
+
+    const players = Array.isArray(item.members)
+      ? item.members.filter((member) => member.role === 'player')
+      : []
+
+    return {
+      ...item,
+      ownerName: item.owner?.username || '—',
+      worldName: item.world?.name || '—',
+      player_ids: players.map((member) => member.user_id),
+    }
+  }, [])
 
   const loadCampaigns = useCallback(async () => {
     if (!token) return
@@ -33,25 +49,14 @@ export default function CampaignsPage({ scope = 'all' }) {
     try {
       const res = await fetchCampaigns()
       const data = res?.data || res || []
-      const normalised = data.map((item) => {
-        const players = Array.isArray(item.members)
-          ? item.members.filter((member) => member.role === 'player')
-          : []
-
-        return {
-          ...item,
-          ownerName: item.owner?.username || '—',
-          worldName: item.world?.name || '—',
-          player_ids: players.map((member) => member.user_id),
-        }
-      })
+      const normalised = data.map((item) => normaliseCampaign(item))
       setCampaigns(normalised)
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, normaliseCampaign])
 
   useEffect(() => {
     if (sessionReady && token) loadCampaigns()
@@ -60,6 +65,7 @@ export default function CampaignsPage({ scope = 'all' }) {
   useEffect(() => {
     setViewMode('list')
     setSelectedCampaign(null)
+    setActiveTab('details')
   }, [scope])
 
   useEffect(() => {
@@ -80,6 +86,10 @@ export default function CampaignsPage({ scope = 'all' }) {
     setSelectedCampaign(found)
     setViewMode(manageable ? 'edit' : 'view')
   }, [routeId, campaigns, navigate, basePath, loading, viewMode, user])
+
+  useEffect(() => {
+    setActiveTab('details')
+  }, [selectedCampaign?.id])
 
   const columns = useMemo(
     () => [
@@ -152,7 +162,8 @@ export default function CampaignsPage({ scope = 'all' }) {
     }
   }
 
-  const handleUpdate = async (data) => {
+  const handleUpdate = async (data, options = {}) => {
+    const { stayInEdit = false } = options
     if (!canManage(selectedCampaign)) {
       alert('You do not have permission to update this campaign.')
       return false
@@ -172,7 +183,21 @@ export default function CampaignsPage({ scope = 'all' }) {
     try {
       const res = await updateCampaign(selectedCampaign.id, payload)
       if (res.success) {
-        await loadCampaigns()
+        const updated = normaliseCampaign(res.data)
+
+        setCampaigns((prev) =>
+          prev.map((campaign) => (campaign.id === updated.id ? updated : campaign)),
+        )
+
+        setSelectedCampaign((prev) => {
+          if (!prev || prev.id !== updated.id) return prev
+          return updated
+        })
+
+        if (stayInEdit) {
+          return true
+        }
+
         setViewMode('list')
         setSelectedCampaign(null)
         navigate(basePath)
@@ -269,6 +294,60 @@ export default function CampaignsPage({ scope = 'all' }) {
     }
   }, [selectedCampaign])
 
+  const detailsSchema = useMemo(() => {
+    const schema = JSON.parse(JSON.stringify(editSchema))
+
+    if (Array.isArray(schema.fields)) {
+      schema.fields = schema.fields.filter((field) => field?.name !== 'player_ids')
+    } else if (Array.isArray(schema.sections)) {
+      schema.sections = schema.sections
+        .map((section) => ({
+          ...section,
+          fields: (section.fields || []).filter((field) => field?.name !== 'player_ids'),
+        }))
+        .filter((section) => section.fields && section.fields.length > 0)
+    }
+
+    schema.title = 'Campaign Details'
+    return schema
+  }, [editSchema])
+
+  const membershipSchema = useMemo(() => {
+    const schema = { title: 'Campaign Membership', fields: [] }
+
+    const extractPlayersField = (source) => {
+      if (!source) return null
+      if (Array.isArray(source.fields)) {
+        for (const field of source.fields) {
+          if (field?.name === 'player_ids') return field
+        }
+      }
+      return null
+    }
+
+    let playersField = null
+
+    if (Array.isArray(editSchema.fields)) {
+      playersField = extractPlayersField(editSchema)
+    } else if (Array.isArray(editSchema.sections)) {
+      for (const section of editSchema.sections) {
+        playersField = extractPlayersField(section)
+        if (playersField) break
+      }
+    }
+
+    if (playersField) {
+      schema.fields = [JSON.parse(JSON.stringify(playersField))]
+    }
+
+    return schema
+  }, [editSchema])
+
+  const membershipInitialData = useMemo(() => {
+    if (!editInitialData) return null
+    return { player_ids: editInitialData.player_ids ?? [] }
+  }, [editInitialData])
+
   const viewData = useMemo(() => {
     if (!selectedCampaign) return null
     const status = selectedCampaign.status || ''
@@ -304,18 +383,52 @@ export default function CampaignsPage({ scope = 'all' }) {
   if (viewMode === 'edit' && selectedCampaign && editInitialData)
     return (
       <div className="campaign-editor">
-        <FormRenderer
-          schema={editSchema}
-          initialData={editInitialData}
-          onSubmit={handleUpdate}
-          onDelete={handleDelete}
-          onCancel={handleCancel}
-        />
-        <CampaignMembersManager
-          campaignId={selectedCampaign.id}
-          canManage={canManage(selectedCampaign)}
-          onMembersChanged={(members) => handleMembersChanged(selectedCampaign.id, members)}
-        />
+        <div className="campaign-tabs" role="tablist" aria-label="Campaign editor tabs">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'details'}
+            className={`campaign-tab${activeTab === 'details' ? ' is-active' : ''}`}
+            onClick={() => setActiveTab('details')}
+          >
+            Details
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'membership'}
+            className={`campaign-tab${activeTab === 'membership' ? ' is-active' : ''}`}
+            onClick={() => setActiveTab('membership')}
+          >
+            Membership
+          </button>
+        </div>
+
+        <div className="campaign-tab-panel" role="tabpanel">
+          {activeTab === 'details' ? (
+            <FormRenderer
+              schema={detailsSchema}
+              initialData={editInitialData}
+              onSubmit={(data) => handleUpdate(data)}
+              onDelete={handleDelete}
+              onCancel={handleCancel}
+            />
+          ) : (
+            <div className="campaign-membership">
+              <FormRenderer
+                schema={membershipSchema}
+                initialData={membershipInitialData}
+                onSubmit={(data) => handleUpdate(data, { stayInEdit: true })}
+                onCancel={handleCancel}
+              />
+              <CampaignMembersManager
+                campaignId={selectedCampaign.id}
+                canManage={canManage(selectedCampaign)}
+                onMembersChanged={(members) => handleMembersChanged(selectedCampaign.id, members)}
+              />
+            </div>
+          )}
+        </div>
       </div>
     )
 
