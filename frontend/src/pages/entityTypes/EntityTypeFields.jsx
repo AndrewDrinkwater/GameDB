@@ -231,6 +231,28 @@ export default function EntityTypeFields() {
     return map
   }, [referenceTypes])
 
+  const availableReferenceTypes = useMemo(() => {
+    if (!Array.isArray(referenceTypes) || !referenceTypes.length) {
+      return []
+    }
+
+    if (!entityType?.world_id) {
+      return referenceTypes
+    }
+
+    return referenceTypes.filter((type) => {
+      if (!type) return false
+      if (!entityType.world_id) return true
+
+      const candidateWorldId = type.world_id ?? type.worldId ?? type.world?.id
+      if (candidateWorldId) {
+        return candidateWorldId === entityType.world_id
+      }
+
+      return true
+    })
+  }, [entityType, referenceTypes])
+
   const combinedError = typeError || fieldsError
 
   if (!sessionReady) {
@@ -445,7 +467,7 @@ export default function EntityTypeFields() {
             <div className="side-panel-content">
               <EntityTypeFieldForm
                 initialData={editingField}
-                referenceTypes={referenceTypes.filter((type) => type.id !== entityType?.id)}
+                referenceTypes={availableReferenceTypes}
                 onSubmit={handleSave}
                 onCancel={closePanel}
                 submitting={saving}
