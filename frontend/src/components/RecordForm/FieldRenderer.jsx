@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import ListCollector from '../ListCollector.jsx'
+import { normaliseListCollectorOption } from '../listCollectorUtils.js'
 import { getAuthToken } from '../../utils/authHelpers.js'
 
 export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) {
@@ -32,23 +34,25 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
 
       const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000'
       let endpoint = null
+      const searchParams = new URLSearchParams()
 
       switch (field.optionsSource) {
         case 'worlds':
-          endpoint = `${API_BASE}/api/worlds`
+          endpoint = '/api/worlds'
           break
         case 'campaigns':
-          endpoint = `${API_BASE}/api/campaigns`
+          endpoint = '/api/campaigns'
           break
         case 'entities':
-          endpoint = `${API_BASE}/api/entities`
+          endpoint = '/api/entities'
           break
         case 'users':
-          endpoint = `${API_BASE}/api/users`
+          endpoint = '/api/users'
           break
         case 'players': {
+          endpoint = '/api/users'
           const roles = field.roles || 'player,user'
-          endpoint = `${API_BASE}/api/users?roles=${encodeURIComponent(roles)}`
+          if (roles) searchParams.set('roles', roles)
           break
         }
         default:
@@ -56,6 +60,84 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
       }
 
       if (!endpoint) {
+        if (isMounted) {
+          setDynamicOptions([])
+          setOptionsLoaded(true)
+        }
+        return
+      }
+
+      const resolveUrl = () => {
+        try {
+          const base = new URL(API_BASE)
+          const url = endpoint.startsWith('http')
+            ? new URL(endpoint)
+            : new URL(endpoint, base)
+          searchParams.forEach((value, key) => {
+            if (value !== undefined && value !== null) {
+              url.searchParams.append(key, value)
+            }
+          })
+
+          const { optionsCriteria } = field
+          const appendCriteria = (criteria) => {
+            if (!criteria && criteria !== 0) return
+            if (typeof criteria === 'string') {
+              const params = new URLSearchParams(criteria)
+              params.forEach((val, key) => {
+                url.searchParams.append(key, val)
+              })
+              return
+            }
+            if (Array.isArray(criteria)) {
+              criteria.forEach((entry) => {
+                if (Array.isArray(entry) && entry.length >= 2) {
+                  const [key, value] = entry
+                  if (value === undefined || value === null) return
+                  if (Array.isArray(value)) {
+                    value.forEach((item) => {
+                      if (item !== undefined && item !== null) {
+                        url.searchParams.append(key, item)
+                      }
+                    })
+                  } else {
+                    url.searchParams.append(key, value)
+                  }
+                  return
+                }
+                if (typeof entry === 'object' && entry !== null) {
+                  appendCriteria(entry)
+                }
+              })
+              return
+            }
+            if (typeof criteria === 'object') {
+              Object.entries(criteria).forEach(([key, val]) => {
+                if (val === undefined || val === null) return
+                if (Array.isArray(val)) {
+                  val.forEach((item) => {
+                    if (item !== undefined && item !== null) {
+                      url.searchParams.append(key, item)
+                    }
+                  })
+                } else {
+                  url.searchParams.append(key, val)
+                }
+              })
+            }
+          }
+
+          appendCriteria(optionsCriteria)
+          return url
+        } catch (err) {
+          console.error('❌ Failed to construct options endpoint URL', err)
+          return null
+        }
+      }
+
+      const url = resolveUrl()
+
+      if (!url) {
         if (isMounted) {
           setDynamicOptions([])
           setOptionsLoaded(true)
@@ -75,7 +157,7 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
           return
         }
 
-        const res = await fetch(endpoint, {
+        const res = await fetch(url, {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
@@ -137,7 +219,14 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     return () => {
       isMounted = false
     }
-  }, [field.optionsSource, field.optionLabelKey, field.optionValueKey, field.roles])
+  }, [
+    field,
+    field.optionsSource,
+    field.optionLabelKey,
+    field.optionValueKey,
+    field.optionsCriteria,
+    field.roles,
+  ])
 
   if (!key) {
     console.warn('⚠️ Field without key/name skipped:', field)
@@ -157,7 +246,19 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
 
     if (type === 'multiselect') {
       if (Array.isArray(rawValue)) {
-        return rawValue.map((value) => String(value))
+        return rawValue
+          .map((value) => {
+            if (value === null || value === undefined) return null
+            if (typeof value === 'object') {
+              const valueKey = field.optionValueKey || 'id'
+              const extracted =
+                value?.[valueKey] ?? value?.id ?? value?.value ?? value?.key ?? null
+              if (extracted === null || extracted === undefined) return null
+              return String(extracted)
+            }
+            return String(value)
+          })
+          .filter((val) => val !== null && val !== undefined)
       }
       if (typeof rawValue === 'string' && rawValue.length > 0) {
         return rawValue.split(',').map((value) => value.trim()).filter(Boolean)
@@ -184,11 +285,6 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
 
   const handleChange = (e) => onChange?.(key, e.target.value)
   const handleCheck = (e) => onChange?.(key, e.target.checked)
-  const handleMultiChange = (e) => {
-    const selections = Array.from(e.target.selectedOptions).map((option) => option.value)
-    onChange?.(key, selections)
-  }
-
   const renderHelpText = (showEmptyNotice) => {
     const help = []
     if (field.helpText) {
@@ -263,22 +359,52 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
   }
 
   if (type === 'multiselect') {
-    const opts = [...(field.options || []), ...dynamicOptions]
+    const combinedOptions = [...(field.options || []), ...dynamicOptions]
+      .map((option, index) => {
+        const normalised = normaliseListCollectorOption(option)
+        if (normalised) return normalised
+
+        if (typeof option === 'object' && option !== null) {
+          const value =
+            option.value ?? option.id ?? option.key ?? option.slug ?? `opt-${index}`
+          const label =
+            option.label ??
+            option.name ??
+            option.title ??
+            option.username ??
+            option.email ??
+            value
+          if (value === undefined || value === null) return null
+          return { value: String(value), label: String(label) }
+        }
+
+        if (option === undefined || option === null) return null
+        const str = String(option)
+        return { value: str, label: str }
+      })
+      .filter(Boolean)
+
+    const optionMap = new Map()
+    const uniqueOptions = combinedOptions.filter((option) => {
+      const key = String(option.value)
+      if (optionMap.has(key)) return false
+      optionMap.set(key, option)
+      return true
+    })
+
     const values = Array.isArray(normalisedValue)
-      ? normalisedValue.map((val) => String(val))
+      ? normalisedValue.map((val) => String(val)).filter(Boolean)
       : []
-    const showEmptyNotice = optionsLoaded && field.optionsSource && opts.length === 0
+
+    const showEmptyNotice =
+      optionsLoaded && field.optionsSource && uniqueOptions.length === 0
 
     if (isReadOnly) {
       const labels = values
         .map((val) => {
-          const opt = opts.find((option) => {
-            if (!option) return false
-            if (typeof option === 'object') return String(option.value) === String(val)
-            return String(option) === String(val)
-          })
-          if (!opt) return null
-          return typeof opt === 'object' ? opt.label ?? opt.value : opt
+          const option = optionMap.get(String(val))
+          if (!option) return String(val)
+          return option.label ?? option.value ?? String(val)
         })
         .filter(Boolean)
 
@@ -298,24 +424,14 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     return (
       <div className="form-group">
         <label>{label}</label>
-        <div className="select-wrapper">
-          <select
-            multiple
-            value={values}
-            onChange={handleMultiChange}
-            disabled={showEmptyNotice}
-          >
-            {opts.map((opt, i) => {
-              const val = typeof opt === 'object' ? opt.value : opt
-              const text = typeof opt === 'object' ? opt.label : opt
-              return (
-                <option key={val || i} value={val}>
-                  {text}
-                </option>
-              )
-            })}
-          </select>
-        </div>
+        <ListCollector
+          selected={values}
+          options={uniqueOptions}
+          onChange={(selection) => onChange?.(key, selection)}
+          placeholder={field.placeholder || 'Search and select...'}
+          noOptionsMessage={field.noOptionsMessage || 'No options available.'}
+          loading={!optionsLoaded && !!field.optionsSource}
+        />
         {renderHelpText(showEmptyNotice)}
       </div>
     )
