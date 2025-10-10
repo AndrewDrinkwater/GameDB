@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   fetchCampaigns,
@@ -15,12 +16,15 @@ import baseEditSchema from '../components/RecordForm/formSchemas/campaign.edit.j
 import viewSchemaDefinition from '../components/RecordForm/formSchemas/campaign.view.json'
 
 export default function CampaignsPage({ scope = 'all' }) {
+  const navigate = useNavigate()
+  const { id: routeId } = useParams()
   const { user, token, sessionReady } = useAuth()
   const [campaigns, setCampaigns] = useState([])
   const [loading, setLoading] = useState(false)
   const [viewMode, setViewMode] = useState('list')
   const [selectedCampaign, setSelectedCampaign] = useState(null)
   const [error, setError] = useState(null)
+  const basePath = useMemo(() => `/campaigns/${scope}`, [scope])
 
   const loadCampaigns = useCallback(async () => {
     if (!token) return
@@ -52,6 +56,30 @@ export default function CampaignsPage({ scope = 'all' }) {
   useEffect(() => {
     if (sessionReady && token) loadCampaigns()
   }, [sessionReady, token, loadCampaigns])
+
+  useEffect(() => {
+    setViewMode('list')
+    setSelectedCampaign(null)
+  }, [scope])
+
+  useEffect(() => {
+    if (!routeId) {
+      if (viewMode !== 'new') setViewMode('list')
+      setSelectedCampaign(null)
+      return
+    }
+
+    const found = campaigns.find((campaign) => String(campaign.id) === routeId)
+    if (!found) {
+      if (!loading) navigate(basePath, { replace: true })
+      return
+    }
+
+    const manageable =
+      !!user && (user.role === 'system_admin' || found.created_by === user.id)
+    setSelectedCampaign(found)
+    setViewMode(manageable ? 'edit' : 'view')
+  }, [routeId, campaigns, navigate, basePath, loading, viewMode, user])
 
   const columns = useMemo(
     () => [
@@ -96,12 +124,25 @@ export default function CampaignsPage({ scope = 'all' }) {
     return schema
   }, [user])
 
-  const handleNew = () => setViewMode('new')
-  const handleCancel = () => { setViewMode('list'); setSelectedCampaign(null) }
+  const handleNew = () => {
+    navigate(basePath)
+    setViewMode('new')
+    setSelectedCampaign(null)
+  }
+  const handleCancel = () => {
+    setViewMode('list')
+    setSelectedCampaign(null)
+    navigate(basePath)
+  }
 
   const handleCreate = async (data) => {
     const res = await createCampaign(data)
-    if (res.success) { await loadCampaigns(); setViewMode('list') }
+    if (res.success) {
+      await loadCampaigns()
+      navigate(basePath)
+      setViewMode('list')
+      setSelectedCampaign(null)
+    }
   }
 
   const handleUpdate = async (data) => {
@@ -122,7 +163,12 @@ export default function CampaignsPage({ scope = 'all' }) {
     }
 
     const res = await updateCampaign(selectedCampaign.id, payload)
-    if (res.success) { await loadCampaigns(); setViewMode('list'); setSelectedCampaign(null) }
+    if (res.success) {
+      await loadCampaigns()
+      setViewMode('list')
+      setSelectedCampaign(null)
+      navigate(basePath)
+    }
   }
 
   const handleDelete = async (data) => {
@@ -140,13 +186,18 @@ export default function CampaignsPage({ scope = 'all' }) {
         await loadCampaigns()
         setViewMode('list')
         setSelectedCampaign(null)
+        navigate(basePath)
       }
     } catch (err) {
       alert(err.message)
     }
   }
 
-  const closeDetail = () => { setViewMode('list'); setSelectedCampaign(null) }
+  const closeDetail = () => {
+    setViewMode('list')
+    setSelectedCampaign(null)
+    navigate(basePath)
+  }
 
   const editInitialData = useMemo(() => {
     if (!selectedCampaign) return null
@@ -238,6 +289,7 @@ export default function CampaignsPage({ scope = 'all' }) {
       onRowClick={(row) => {
         setSelectedCampaign(row)
         setViewMode(canManage(row) ? 'edit' : 'view')
+        navigate(`${basePath}/${row.id}`)
       }}
     />
   )
