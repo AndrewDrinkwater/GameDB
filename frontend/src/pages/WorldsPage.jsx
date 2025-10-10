@@ -53,9 +53,12 @@ export default function WorldsPage() {
       if (res.success) {
         await loadWorlds()
         setCreating(false)
+        return true
       }
+      return false
     } catch (err) {
       alert(`Failed to create world: ${err.message}`)
+      return false
     }
   }
 

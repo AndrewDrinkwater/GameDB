@@ -42,19 +42,29 @@ export default function WorldDetailPage() {
         status: data?.status,
       }
       const res = await updateWorld(id, payload)
-      if (res.success) navigate('/worlds')
+      if (res.success) {
+        navigate('/worlds')
+        return true
+      }
+      return false
     } catch (err) {
       alert(`Failed to update world: ${err.message}`)
+      return false
     }
   }
 
   const handleDelete = async () => {
-    if (!confirm('Delete this world?')) return
+    if (!confirm('Delete this world?')) return false
     try {
       const res = await removeWorld(id)
-      if (res.success) navigate('/worlds')
+      if (res.success) {
+        navigate('/worlds')
+        return true
+      }
+      return false
     } catch (err) {
       alert(`Failed to delete world: ${err.message}`)
+      return false
     }
   }
 

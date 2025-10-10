@@ -136,19 +136,26 @@ export default function CampaignsPage({ scope = 'all' }) {
   }
 
   const handleCreate = async (data) => {
-    const res = await createCampaign(data)
-    if (res.success) {
-      await loadCampaigns()
-      navigate(basePath)
-      setViewMode('list')
-      setSelectedCampaign(null)
+    try {
+      const res = await createCampaign(data)
+      if (res.success) {
+        await loadCampaigns()
+        navigate(basePath)
+        setViewMode('list')
+        setSelectedCampaign(null)
+        return true
+      }
+      return false
+    } catch (err) {
+      alert(`Failed to create campaign: ${err.message}`)
+      return false
     }
   }
 
   const handleUpdate = async (data) => {
     if (!canManage(selectedCampaign)) {
       alert('You do not have permission to update this campaign.')
-      return
+      return false
     }
     const payload = { ...data }
 
@@ -162,24 +169,31 @@ export default function CampaignsPage({ scope = 'all' }) {
       }
     }
 
-    const res = await updateCampaign(selectedCampaign.id, payload)
-    if (res.success) {
-      await loadCampaigns()
-      setViewMode('list')
-      setSelectedCampaign(null)
-      navigate(basePath)
+    try {
+      const res = await updateCampaign(selectedCampaign.id, payload)
+      if (res.success) {
+        await loadCampaigns()
+        setViewMode('list')
+        setSelectedCampaign(null)
+        navigate(basePath)
+        return true
+      }
+      return false
+    } catch (err) {
+      alert(`Failed to update campaign: ${err.message}`)
+      return false
     }
   }
 
   const handleDelete = async (data) => {
     const target = data || selectedCampaign
     const targetId = target?.id
-    if (!targetId) return
+    if (!targetId) return false
     if (!canManage(target)) {
       alert('You do not have permission to delete this campaign.')
-      return
+      return false
     }
-    if (!confirm('Delete this campaign?')) return
+    if (!confirm('Delete this campaign?')) return false
     try {
       const res = await removeCampaign(targetId)
       if (res.success) {
@@ -187,9 +201,12 @@ export default function CampaignsPage({ scope = 'all' }) {
         setViewMode('list')
         setSelectedCampaign(null)
         navigate(basePath)
+        return true
       }
+      return false
     } catch (err) {
       alert(err.message)
+      return false
     }
   }
 

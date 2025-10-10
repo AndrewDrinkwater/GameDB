@@ -66,13 +66,15 @@ export default function UsersPage() {
       setViewMode('list')
       setSelectedUser(null)
       await loadUsers()
+      return true
     } catch (err) {
       alert(`Error creating user: ${err.message}`)
+      return false
     }
   }
 
   const handleUpdate = async (formData) => {
-    if (!selectedUser?.id) return
+    if (!selectedUser?.id) return false
 
     try {
       const payload = {
@@ -89,22 +91,26 @@ export default function UsersPage() {
       setViewMode('list')
       setSelectedUser(null)
       await loadUsers()
+      return true
     } catch (err) {
       alert(`Error updating user: ${err.message}`)
+      return false
     }
   }
 
   const handleDelete = async () => {
-    if (!selectedUser?.id) return
-    if (!confirm(`Delete user "${selectedUser.username}"?`)) return
+    if (!selectedUser?.id) return false
+    if (!confirm(`Delete user "${selectedUser.username}"?`)) return false
 
     try {
       await removeUser(selectedUser.id)
       setViewMode('list')
       setSelectedUser(null)
       await loadUsers()
+      return true
     } catch (err) {
       alert(`Error deleting user: ${err.message}`)
+      return false
     }
   }
 
