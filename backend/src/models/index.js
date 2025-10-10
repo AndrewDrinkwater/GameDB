@@ -14,6 +14,7 @@ import EntitySecretModel from './entitySecret.js'
 import EntitySecretPermissionModel from './entitySecretPermission.js'
 import EntityRelationshipTypeModel from './entityRelationshipType.js'
 import EntityRelationshipModel from './entityRelationship.js'
+import EntityTypeFieldModel from './entityTypeField.js'
 import UserCampaignRoleModel from './userCampaignRole.js'
 
 // Create Sequelize instance
@@ -33,6 +34,7 @@ export const EntitySecret = EntitySecretModel(sequelize, DataTypes)
 export const EntitySecretPermission = EntitySecretPermissionModel(sequelize, DataTypes)
 export const EntityRelationshipType = EntityRelationshipTypeModel(sequelize, DataTypes)
 export const EntityRelationship = EntityRelationshipModel(sequelize, DataTypes)
+export const EntityTypeField = EntityTypeFieldModel(sequelize, DataTypes)
 export const UserCampaignRole = UserCampaignRoleModel(sequelize, DataTypes)
 
 // --- Associations ---
@@ -40,7 +42,7 @@ if (User.associate) User.associate({ World, Campaign, Character, UserCampaignRol
 if (World.associate) World.associate({ User, Campaign, Entity })
 if (Campaign.associate) Campaign.associate({ World, Character, User, UserCampaignRole })
 if (Character.associate) Character.associate({ Campaign, User })
-if (EntityType.associate) EntityType.associate({ Entity })
+if (EntityType.associate) EntityType.associate({ Entity, EntityTypeField })
 if (Entity.associate)
   Entity.associate({
     World,
@@ -55,6 +57,7 @@ if (EntitySecretPermission.associate)
   EntitySecretPermission.associate({ EntitySecret, User })
 if (EntityRelationshipType.associate) EntityRelationshipType.associate({ EntityRelationship })
 if (EntityRelationship.associate) EntityRelationship.associate({ Entity, EntityRelationshipType })
+if (EntityTypeField.associate) EntityTypeField.associate({ EntityType })
 if (UserCampaignRole.associate) UserCampaignRole.associate({ User, Campaign })
 
 // --- Init DB ---
