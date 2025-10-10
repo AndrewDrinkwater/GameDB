@@ -46,17 +46,34 @@ router.get('/', authMiddleware, async (req, res) => {
     if (scope === 'my') {
       where.user_id = req.user.id
     } else if (scope === 'others') {
-      const myCharacters = await Character.findAll({
-        where: { user_id: req.user.id },
-        attributes: ['campaign_id'],
-        raw: true,
-      })
+      const [myCharacters, dmMemberships, ownedCampaigns] = await Promise.all([
+        Character.findAll({
+          where: { user_id: req.user.id },
+          attributes: ['campaign_id'],
+          raw: true,
+        }),
+        UserCampaignRole.findAll({
+          where: {
+            user_id: req.user.id,
+            role: { [Op.in]: ['dm'] },
+          },
+          attributes: ['campaign_id'],
+          raw: true,
+        }),
+        Campaign.findAll({
+          where: { created_by: req.user.id },
+          attributes: ['id'],
+          raw: true,
+        }),
+      ])
 
       const campaignIds = [
         ...new Set(
-          myCharacters
-            .map((c) => c.campaign_id)
-            .filter((id) => !!id)
+          [
+            ...myCharacters.map((c) => c.campaign_id),
+            ...dmMemberships.map((c) => c.campaign_id),
+            ...ownedCampaigns.map((c) => c.id),
+          ].filter((id) => !!id)
         ),
       ]
 
@@ -65,7 +82,10 @@ router.get('/', authMiddleware, async (req, res) => {
       }
 
       where.campaign_id = { [Op.in]: campaignIds }
-      where.user_id = { [Op.ne]: req.user.id }
+      where[Op.or] = [
+        { user_id: { [Op.ne]: req.user.id } },
+        { user_id: null },
+      ]
     } else if (scope === 'all') {
       if (req.user.role !== 'system_admin') {
         return res
