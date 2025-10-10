@@ -148,6 +148,23 @@ export default function CampaignsPage() {
 
   const closeDetail = () => { setViewMode('list'); setSelectedCampaign(null) }
 
+  const editInitialData = useMemo(() => {
+    if (!selectedCampaign) return null
+
+    const createdBy =
+      selectedCampaign.created_by ?? selectedCampaign.owner?.id ?? ''
+
+    const players = Array.isArray(selectedCampaign.members)
+      ? selectedCampaign.members.filter((member) => member.role === 'player')
+      : []
+
+    return {
+      ...selectedCampaign,
+      created_by: createdBy,
+      player_ids: players.map((member) => member.user_id),
+    }
+  }, [selectedCampaign])
+
   const viewData = useMemo(() => {
     if (!selectedCampaign) return null
     const status = selectedCampaign.status || ''
@@ -167,23 +184,6 @@ export default function CampaignsPage() {
 
   if (viewMode === 'new')
     return <FormRenderer schema={newSchema} initialData={{}} onSubmit={handleCreate} onCancel={handleCancel} />
-
-  const editInitialData = useMemo(() => {
-    if (!selectedCampaign) return null
-
-    const createdBy =
-      selectedCampaign.created_by ?? selectedCampaign.owner?.id ?? ''
-
-    const players = Array.isArray(selectedCampaign.members)
-      ? selectedCampaign.members.filter((member) => member.role === 'player')
-      : []
-
-    return {
-      ...selectedCampaign,
-      created_by: createdBy,
-      player_ids: players.map((member) => member.user_id),
-    }
-  }, [selectedCampaign])
 
   if (viewMode === 'edit' && selectedCampaign && editInitialData)
     return (
