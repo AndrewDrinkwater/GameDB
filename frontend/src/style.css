@@ -674,6 +674,135 @@ th {
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
 }
 
+/* List Collector */
+.list-collector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+}
+
+.list-collector.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.list-collector-input-wrapper {
+  position: relative;
+}
+
+.list-collector-input {
+  padding-right: 2.2rem;
+}
+
+.list-collector-input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.list-collector-icon {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.85rem;
+  color: #64748b;
+  pointer-events: none;
+}
+
+.list-collector-dropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  background: white;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12);
+  z-index: 20;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.list-collector-dropdown ul {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+}
+
+.list-collector-dropdown li {
+  margin: 0;
+}
+
+.list-collector-option {
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  text-align: left;
+  background: transparent;
+  border: none;
+  font-size: 0.95rem;
+  color: #1f2937;
+  cursor: pointer;
+  transition: background 0.15s ease-in-out;
+}
+
+.list-collector-option:hover,
+.list-collector-option:focus {
+  background: #eff6ff;
+  outline: none;
+}
+
+.list-collector-empty {
+  padding: 0.75rem 0.85rem;
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+.list-collector-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.list-collector-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  color: #0369a1;
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.85rem;
+}
+
+.list-collector-pill .pill-label {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pill-remove {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  transition: background 0.15s ease-in-out;
+}
+
+.pill-remove:hover,
+.pill-remove:focus {
+  background: rgba(7, 89, 133, 0.12);
+  outline: none;
+}
+
 /* Select dropdown arrow */
 .select-wrapper {
   position: relative;
