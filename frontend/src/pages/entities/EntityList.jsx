@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import { fetchWorlds } from '../../api/worlds.js'
 import {
@@ -344,7 +345,11 @@ export default function EntityList() {
                 const badgeClass = VISIBILITY_BADGES[visibility] || 'badge-hidden'
                 return (
                   <tr key={entity.id}>
-                    <td>{entity.name}</td>
+                    <td>
+                      <Link to={`/entities/${entity.id}`} className="entity-name-link">
+                        {entity.name}
+                      </Link>
+                    </td>
                     <td>{typeName}</td>
                     <td>
                       <span className={`visibility-badge ${badgeClass}`}>
