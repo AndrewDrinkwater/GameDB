@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Pin, ChevronDown } from 'lucide-react'
+import { Pin, ChevronDown, Database, Shapes, Link2, Lock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 
 export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
@@ -8,6 +8,7 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
   const { user } = useAuth()
   const [campaignsCollapsed, setCampaignsCollapsed] = useState(false)
   const [charactersCollapsed, setCharactersCollapsed] = useState(false)
+  const [entitiesCollapsed, setEntitiesCollapsed] = useState(false)
 
   const isActive = (path) =>
     location.pathname === path || location.pathname.startsWith(`${path}/`)
@@ -56,6 +57,49 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
               className={isActive('/campaigns/all') ? 'active' : ''}
             >
               All
+            </Link>
+          </div>
+        </div>
+
+        <div className={`nav-group ${entitiesCollapsed ? 'collapsed' : ''}`}>
+          <button
+            type="button"
+            className="nav-heading-btn"
+            onClick={() => setEntitiesCollapsed((prev) => !prev)}
+            aria-expanded={!entitiesCollapsed}
+            aria-controls="entities-nav"
+          >
+            <span className="nav-heading">Entities</span>
+            <ChevronDown
+              size={14}
+              className={`nav-heading-icon ${entitiesCollapsed ? 'collapsed' : ''}`}
+            />
+          </button>
+          <div id="entities-nav" className="nav-sub-links">
+            <Link to="/entities" className={isActive('/entities') ? 'active' : ''}>
+              <Database size={16} className="nav-icon" />
+              <span>All Entities</span>
+            </Link>
+            <Link
+              to="/entity-types"
+              className={isActive('/entity-types') ? 'active' : ''}
+            >
+              <Shapes size={16} className="nav-icon" />
+              <span>Entity Types</span>
+            </Link>
+            <Link
+              to="/entity-relationships"
+              className={isActive('/entity-relationships') ? 'active' : ''}
+            >
+              <Link2 size={16} className="nav-icon" />
+              <span>Relationships</span>
+            </Link>
+            <Link
+              to="/entity-secrets"
+              className={isActive('/entity-secrets') ? 'active' : ''}
+            >
+              <Lock size={16} className="nav-icon" />
+              <span>Secrets</span>
             </Link>
           </div>
         </div>

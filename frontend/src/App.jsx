@@ -12,6 +12,10 @@ import CampaignsPage from './pages/CampaignsPage.jsx'
 import CharactersPage from './pages/CharactersPage.jsx'
 import UsersPage from './pages/UsersPage.jsx'
 import Login from './pages/Login.jsx'
+import EntityList from './pages/entities/EntityList.jsx'
+import EntityTypeList from './pages/entityTypes/EntityTypeList.jsx'
+import EntityRelationshipList from './pages/relationships/EntityRelationshipList.jsx'
+import EntitySecretList from './pages/secrets/EntitySecretList.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 
 const router = createBrowserRouter(
@@ -44,6 +48,10 @@ const router = createBrowserRouter(
           <Route path="all" element={<CampaignsPage scope="all" />} />
           <Route path="all/:id" element={<CampaignsPage scope="all" />} />
         </Route>
+        <Route path="entities" element={<EntityList />} />
+        <Route path="entity-types" element={<EntityTypeList />} />
+        <Route path="entity-relationships" element={<EntityRelationshipList />} />
+        <Route path="entity-secrets" element={<EntitySecretList />} />
         <Route path="characters">
           <Route index element={<Navigate to="/characters/my" replace />} />
           <Route path="my" element={<CharactersPage scope="my" />} />
