@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/authMiddleware.js'
 import {
   createEntityType,
   deleteEntityType,
+  getEntityType,
   listEntityTypes,
   updateEntityType,
 } from '../controllers/entityTypeController.js'
@@ -17,9 +18,10 @@ router.use(authenticate)
 
 router.get('/', listEntityTypes)
 router.post('/', createEntityType)
-router.patch('/:id', updateEntityType)
-router.delete('/:id', deleteEntityType)
 router.get('/:id/fields', listEntityTypeFields)
 router.post('/:id/fields', createEntityTypeField)
+router.get('/:id', getEntityType)
+router.patch('/:id', updateEntityType)
+router.delete('/:id', deleteEntityType)
 
 export default router

@@ -15,6 +15,7 @@ import Login from './pages/Login.jsx'
 import EntityList from './pages/entities/EntityList.jsx'
 import EntityTypeList from './pages/entityTypes/EntityTypeList.jsx'
 import EntityTypeFields from './pages/entityTypes/EntityTypeFields.jsx'
+import CreateEntityType from './pages/entityTypes/CreateEntityType.jsx'
 import EntityRelationshipList from './pages/relationships/EntityRelationshipList.jsx'
 import EntitySecretList from './pages/secrets/EntitySecretList.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
@@ -50,8 +51,11 @@ const router = createBrowserRouter(
           <Route path="all/:id" element={<CampaignsPage scope="all" />} />
         </Route>
         <Route path="entities" element={<EntityList />} />
-        <Route path="entity-types" element={<EntityTypeList />} />
-        <Route path="entity-types/:id/fields" element={<EntityTypeFields />} />
+        <Route path="entity-types">
+          <Route index element={<EntityTypeList />} />
+          <Route path="new" element={<CreateEntityType />} />
+          <Route path=":id/fields" element={<EntityTypeFields />} />
+        </Route>
         <Route path="entity-relationships" element={<EntityRelationshipList />} />
         <Route path="entity-secrets" element={<EntitySecretList />} />
         <Route path="characters">

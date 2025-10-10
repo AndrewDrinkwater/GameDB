@@ -52,6 +52,19 @@ export default function EntityTypeFields() {
     return false
   }, [entityType, user])
 
+  const formatEnumOptions = (field) => {
+    if (!field) return '—'
+    const { options } = field
+    if (!options) return '—'
+    if (Array.isArray(options.choices) && options.choices.length > 0) {
+      return options.choices.join(', ')
+    }
+    if (typeof options === 'string' && options.trim()) {
+      return options
+    }
+    return '—'
+  }
+
   const showToast = useCallback((message, tone = 'info') => {
     setToast({ message, tone })
   }, [])
@@ -394,7 +407,7 @@ export default function EntityTypeFields() {
                   {field.data_type === 'enum' && (
                     <div>
                       <dt>Options</dt>
-                      <dd>{field.options || '—'}</dd>
+                      <dd>{formatEnumOptions(field)}</dd>
                     </div>
                   )}
                   {field.data_type === 'reference' && (
