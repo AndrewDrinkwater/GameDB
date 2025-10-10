@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Pencil, Plus, Trash2, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { List, Pencil, Plus, Trash2, X } from 'lucide-react'
 import {
   createEntityType,
   deleteEntityType,
@@ -12,6 +13,7 @@ import EntityTypeForm from './EntityTypeForm.jsx'
 const MANAGER_ROLES = new Set(['system_admin'])
 
 export default function EntityTypeList() {
+  const navigate = useNavigate()
   const { user, token, sessionReady } = useAuth()
   const [entityTypes, setEntityTypes] = useState([])
   const [loading, setLoading] = useState(false)
@@ -76,6 +78,11 @@ export default function EntityTypeList() {
     setEditingType(type)
     setFormError('')
     setPanelOpen(true)
+  }
+
+  const goToFields = (type) => {
+    if (!type?.id) return
+    navigate(`/entity-types/${type.id}/fields`)
   }
 
   const closePanel = () => {
@@ -202,7 +209,7 @@ export default function EntityTypeList() {
                 <th>Name</th>
                 <th>Description</th>
                 <th>Created</th>
-                {canManage && <th className="actions-column">Actions</th>}
+                <th className="actions-column">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -215,30 +222,40 @@ export default function EntityTypeList() {
                       {type.description ? type.description : '—'}
                     </td>
                     <td>{formatDate(createdAt)}</td>
-                    {canManage && (
-                      <td className="actions-column">
-                        <div className="entity-type-actions">
-                          <button
-                            type="button"
-                            className="icon-btn"
-                            title="Edit entity type"
-                            onClick={() => openEdit(type)}
-                            disabled={saving || deletingId === type.id}
-                          >
-                            <Pencil size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            className="icon-btn danger"
-                            title="Delete entity type"
-                            onClick={() => handleDelete(type)}
-                            disabled={deletingId === type.id || saving}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    )}
+                    <td className="actions-column">
+                      <div className="entity-type-actions">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          title="Manage fields"
+                          onClick={() => goToFields(type)}
+                        >
+                          <List size={16} />
+                        </button>
+                        {canManage && (
+                          <>
+                            <button
+                              type="button"
+                              className="icon-btn"
+                              title="Edit entity type"
+                              onClick={() => openEdit(type)}
+                              disabled={saving || deletingId === type.id}
+                            >
+                              <Pencil size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-btn danger"
+                              title="Delete entity type"
+                              onClick={() => handleDelete(type)}
+                              disabled={deletingId === type.id || saving}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 )
               })}
@@ -259,28 +276,38 @@ export default function EntityTypeList() {
               <div className="entity-type-card" key={`card-${type.id}`}>
                 <div className="card-header">
                   <h3>{type.name}</h3>
-                  {canManage && (
-                    <div className="entity-type-actions">
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        title="Edit entity type"
-                        onClick={() => openEdit(type)}
-                        disabled={saving || deletingId === type.id}
-                      >
-                        <Pencil size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-btn danger"
-                        title="Delete entity type"
-                        onClick={() => handleDelete(type)}
-                        disabled={deletingId === type.id || saving}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  )}
+                  <div className="entity-type-actions">
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      title="Manage fields"
+                      onClick={() => goToFields(type)}
+                    >
+                      <List size={16} />
+                    </button>
+                    {canManage && (
+                      <>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          title="Edit entity type"
+                          onClick={() => openEdit(type)}
+                          disabled={saving || deletingId === type.id}
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn danger"
+                          title="Delete entity type"
+                          onClick={() => handleDelete(type)}
+                          disabled={deletingId === type.id || saving}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
                 <p className="card-description">
                   {type.description ? type.description : 'No description'}
