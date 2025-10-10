@@ -12,30 +12,58 @@ export default (sequelize, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
       },
-      type: {
-        type: DataTypes.STRING(50),
+      created_by: {
+        type: DataTypes.UUID,
+        allowNull: false,
+      },
+      entity_type_id: {
+        type: DataTypes.UUID,
         allowNull: false,
       },
       name: {
         type: DataTypes.STRING(255),
         allowNull: false,
       },
-      description: DataTypes.TEXT,
+      description: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
       metadata: {
         type: DataTypes.JSONB,
+        allowNull: false,
         defaultValue: {},
       },
       visibility: {
-        type: DataTypes.ENUM('visible', 'hidden', 'partial'),
+        type: DataTypes.ENUM('hidden', 'visible', 'partial'),
+        allowNull: false,
         defaultValue: 'hidden',
       },
     },
     {
-      tableName: 'Entities',   // 👈 EXACT match to your migration
-      freezeTableName: true,   // 👈 prevents Sequelize from pluralising/lowercasing
+      tableName: 'entities',
+      underscored: true,
       timestamps: true,
     }
   )
+
+  Entity.associate = (models) => {
+    Entity.belongsTo(models.World, { foreignKey: 'world_id', as: 'world' })
+    Entity.belongsTo(models.User, { foreignKey: 'created_by', as: 'creator' })
+    if (models.EntityType) {
+      Entity.belongsTo(models.EntityType, { foreignKey: 'entity_type_id', as: 'entityType' })
+    }
+    if (models.EntitySecret) {
+      Entity.hasMany(models.EntitySecret, { foreignKey: 'entity_id', as: 'secrets', onDelete: 'CASCADE' })
+    }
+    if (models.Campaign) {
+      Entity.belongsToMany(models.Campaign, {
+        through: 'CampaignEntities',
+        foreignKey: 'entity_id',
+        otherKey: 'campaign_id',
+        as: 'campaigns',
+      })
+    }
+  }
 
   return Entity
 }

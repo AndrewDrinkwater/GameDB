@@ -14,7 +14,7 @@ export async function up(queryInterface, Sequelize) {
     entity_id: {
       type: Sequelize.UUID,
       allowNull: false,
-      references: { model: 'Entities', key: 'id' },
+      references: { model: 'entities', key: 'id' },
       onDelete: 'CASCADE',
     },
     visibility: {
