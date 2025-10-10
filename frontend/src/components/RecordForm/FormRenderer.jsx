@@ -41,8 +41,47 @@ export default function FormRenderer({
     return []
   }, [schema])
 
+  const assignNestedValue = (source, keyPath, value) => {
+    if (!keyPath || keyPath.length === 0) return source
+
+    const next = { ...(source || {}) }
+    let cursor = next
+
+    for (let index = 0; index < keyPath.length; index += 1) {
+      const keySegment = keyPath[index]
+      const isLast = index === keyPath.length - 1
+
+      if (isLast) {
+        cursor[keySegment] = value
+      } else {
+        const existing = cursor[keySegment]
+        const cloned =
+          existing && typeof existing === 'object' && !Array.isArray(existing)
+            ? { ...existing }
+            : {}
+        cursor[keySegment] = cloned
+        cursor = cloned
+      }
+    }
+
+    return next
+  }
+
   const handleChange = (key, value) => {
-    setFormData((prev) => ({ ...prev, [key]: value }))
+    if (!key || typeof key !== 'string') return
+
+    setFormData((prev) => {
+      if (!key.includes('.')) {
+        return { ...(prev || {}), [key]: value }
+      }
+
+      const segments = key.split('.').filter((segment) => segment.length > 0)
+      if (segments.length === 0) {
+        return { ...(prev || {}) }
+      }
+
+      return assignNestedValue(prev, segments, value)
+    })
   }
 
   const currentSignature = useMemo(

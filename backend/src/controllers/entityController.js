@@ -163,7 +163,7 @@ export const createWorldEntity = async (req, res) => {
     const fullEntity = await Entity.findByPk(entity.id, {
       include: [
         { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
-        { model: World, as: 'world', attributes: ['id', 'name'] },
+        { model: World, as: 'world', attributes: ['id', 'name', 'created_by'] },
       ],
     })
 
@@ -184,7 +184,7 @@ export const updateEntity = async (req, res) => {
     const entity = await Entity.findByPk(id, {
       include: [
         { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
-        { model: World, as: 'world', attributes: ['id', 'name'] },
+        { model: World, as: 'world', attributes: ['id', 'name', 'created_by'] },
       ],
     })
 
@@ -245,7 +245,7 @@ export const updateEntity = async (req, res) => {
     await entity.reload({
       include: [
         { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
-        { model: World, as: 'world', attributes: ['id', 'name'] },
+        { model: World, as: 'world', attributes: ['id', 'name', 'created_by'] },
       ],
     })
 
@@ -363,6 +363,19 @@ export const getEntityById = async (req, res) => {
       }
       return plain
     })
+
+    const canEdit = access.isOwner || access.isAdmin || isCreator
+    payload.permissions = {
+      canEdit,
+      canDelete: canEdit,
+      canManageSecrets: access.isOwner || access.isAdmin,
+    }
+    payload.access = {
+      isOwner: access.isOwner,
+      isAdmin: access.isAdmin,
+      isCreator,
+      hasAccess: access.hasAccess,
+    }
 
     res.json({ success: true, data: payload })
   } catch (error) {

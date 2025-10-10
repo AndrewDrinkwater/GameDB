@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import RecordView from '../../components/RecordForm/RecordView.jsx'
-import { getEntity } from '../../api/entities.js'
+import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
+import { getEntity, updateEntity } from '../../api/entities.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 
 const VISIBILITY_LABELS = {
@@ -9,6 +10,12 @@ const VISIBILITY_LABELS = {
   partial: 'Partial',
   visible: 'Visible',
 }
+
+const VISIBILITY_OPTIONS = [
+  { value: 'hidden', label: 'Hidden' },
+  { value: 'partial', label: 'Partial' },
+  { value: 'visible', label: 'Visible' },
+]
 
 const formatDateTime = (value) => {
   if (!value) return '—'
@@ -121,18 +128,36 @@ const normaliseMetadataValue = (field) => {
   }
 }
 
+const initialMetadataValue = (field) => {
+  const value = field?.value
+  if (value === null || value === undefined) {
+    if (field?.dataType === 'boolean') return false
+    return ''
+  }
+
+  if (field?.dataType === 'boolean') {
+    return Boolean(value)
+  }
+
+  return value
+}
+
 export default function EntityDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { token, sessionReady } = useAuth()
+  const { user, token, sessionReady } = useAuth()
   const [entity, setEntity] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [formError, setFormError] = useState('')
+  const [formMessage, setFormMessage] = useState('')
 
   const loadEntity = useCallback(async () => {
     if (!id) return
     setLoading(true)
     setError('')
+    setFormError('')
+    setFormMessage('')
     try {
       const response = await getEntity(id)
       const data = response?.data || response
@@ -164,7 +189,7 @@ export default function EntityDetailPage() {
       .filter(Boolean)
   }, [entity])
 
-  const metadataValues = useMemo(() => {
+  const metadataViewValues = useMemo(() => {
     if (!entity?.fields || entity.fields.length === 0) {
       return { __placeholder: 'No metadata defined for this entity type.' }
     }
@@ -176,15 +201,28 @@ export default function EntityDetailPage() {
     }, {})
   }, [entity])
 
+  const metadataInitialValues = useMemo(() => {
+    if (!entity?.fields || entity.fields.length === 0) {
+      return {}
+    }
+
+    return entity.fields.reduce((acc, field) => {
+      if (!field?.name) return acc
+      acc[field.name] = initialMetadataValue(field)
+      return acc
+    }, {})
+  }, [entity])
+
   const visibilityLabel = useMemo(() => {
     const key = (entity?.visibility || '').toLowerCase()
     return VISIBILITY_LABELS[key] || 'Hidden'
   }, [entity])
 
-  const coreData = useMemo(() => {
+  const createdAtValue = entity?.createdAt || entity?.created_at
+  const updatedAtValue = entity?.updatedAt || entity?.updated_at
+
+  const viewData = useMemo(() => {
     if (!entity) return null
-    const created = entity.createdAt || entity.created_at
-    const updated = entity.updatedAt || entity.updated_at
 
     return {
       name: entity.name || '—',
@@ -192,13 +230,39 @@ export default function EntityDetailPage() {
       typeName: entity.entityType?.name || entity.entity_type?.name || '—',
       visibilityLabel,
       worldName: entity.world?.name || entity.world_name || '—',
-      createdAt: formatDateTime(created),
-      updatedAt: formatDateTime(updated),
-      metadata: metadataValues,
+      createdAt: formatDateTime(createdAtValue),
+      updatedAt: formatDateTime(updatedAtValue),
+      metadata: metadataViewValues,
     }
-  }, [entity, visibilityLabel, metadataValues])
+  }, [
+    entity,
+    visibilityLabel,
+    metadataViewValues,
+    createdAtValue,
+    updatedAtValue,
+  ])
 
-  const schema = useMemo(() => {
+  const editInitialData = useMemo(() => {
+    if (!entity) return null
+
+    return {
+      name: entity.name || '',
+      description: entity.description || '',
+      visibility: entity.visibility || 'hidden',
+      entityTypeName: entity.entityType?.name || entity.entity_type?.name || '—',
+      worldName: entity.world?.name || entity.world_name || '—',
+      createdAt: formatDateTime(createdAtValue),
+      updatedAt: formatDateTime(updatedAtValue),
+      metadata: metadataInitialValues,
+    }
+  }, [
+    entity,
+    createdAtValue,
+    updatedAtValue,
+    metadataInitialValues,
+  ])
+
+  const viewSchema = useMemo(() => {
     const metadataSectionTitle = entity?.entityType?.name
       ? `${entity.entityType.name} Metadata`
       : 'Metadata'
@@ -246,20 +310,140 @@ export default function EntityDetailPage() {
     }
   }, [entity, metadataFields])
 
+  const editSchema = useMemo(() => {
+    const metadataSectionTitle = entity?.entityType?.name
+      ? `${entity.entityType.name} Metadata`
+      : 'Metadata'
+    const hasMetadataFields = metadataFields.length > 0
+
+    const sections = [
+      {
+        title: 'Core Details',
+        columns: 2,
+        fields: [
+          { key: 'name', label: 'Name', type: 'text' },
+          { key: 'entityTypeName', label: 'Type', type: 'readonly' },
+          {
+            key: 'visibility',
+            label: 'Visibility',
+            type: 'select',
+            options: VISIBILITY_OPTIONS,
+          },
+          { key: 'worldName', label: 'World', type: 'readonly' },
+          { key: 'createdAt', label: 'Created', type: 'readonly' },
+          { key: 'updatedAt', label: 'Updated', type: 'readonly' },
+        ],
+      },
+      {
+        title: 'Description',
+        columns: 1,
+        fields: [
+          { key: 'description', label: 'Description', type: 'textarea', rows: 4 },
+        ],
+      },
+      {
+        title: metadataSectionTitle,
+        columns: hasMetadataFields ? 2 : 1,
+        fields: hasMetadataFields
+          ? metadataFields
+          : [
+              {
+                key: 'metadata.__placeholder',
+                name: 'metadata.__placeholder',
+                label: 'Metadata',
+                type: 'readonly',
+              },
+            ],
+      },
+    ]
+
+    return {
+      title: 'Edit Entity',
+      sections,
+    }
+  }, [entity, metadataFields])
+
+  const canEdit = useMemo(() => {
+    if (entity?.permissions && typeof entity.permissions.canEdit === 'boolean') {
+      return entity.permissions.canEdit
+    }
+    if (!entity || !user) return false
+    if (user.role === 'system_admin') return true
+    if (entity.world?.created_by && entity.world.created_by === user.id) return true
+    if (entity.created_by && entity.created_by === user.id) return true
+    return false
+  }, [entity, user])
+
+  const handleUpdate = useCallback(
+    async (values) => {
+      if (!entity?.id) return false
+
+      setFormError('')
+      setFormMessage('')
+
+      try {
+        const payload = {
+          name: values?.name,
+          description: values?.description,
+          visibility: values?.visibility,
+          metadata: values?.metadata || {},
+        }
+
+        const response = await updateEntity(entity.id, payload)
+        const updated = response?.data || response
+        if (!updated) {
+          throw new Error('Failed to update entity')
+        }
+
+        setEntity(updated)
+        setFormMessage('Entity updated successfully.')
+        return true
+      } catch (err) {
+        console.error('❌ Failed to update entity', err)
+        setFormError(err.message || 'Failed to update entity')
+        return false
+      }
+    },
+    [entity?.id],
+  )
+
   if (!sessionReady) return <p>Restoring session...</p>
   if (!token) return <p>Authenticating...</p>
 
   if (loading) return <p>Loading entity...</p>
   if (error) return <div className="alert error">{error}</div>
-  if (!entity || !coreData) return <p>Entity not found</p>
+  if (!entity || !viewData) return <p>Entity not found</p>
+
+  if (!canEdit) {
+    return (
+      <RecordView
+        schema={viewSchema}
+        data={viewData}
+        onClose={() => navigate('/entities')}
+        closeLabel="Back to entities"
+        infoMessage="Entity details are read-only here. Only the world owner or a system admin can make changes."
+      />
+    )
+  }
 
   return (
-    <RecordView
-      schema={schema}
-      data={coreData}
-      onClose={() => navigate('/entities')}
-      closeLabel="Back to entities"
-      infoMessage="Entity details are read-only here. Use the Entities list to manage records."
-    />
+    <div className="entity-detail-edit">
+      {formMessage ? (
+        <div className="alert info" role="status">
+          {formMessage}
+        </div>
+      ) : null}
+      {formError ? (
+        <div className="alert error" role="alert">
+          {formError}
+        </div>
+      ) : null}
+      <FormRenderer
+        schema={editSchema}
+        initialData={editInitialData || {}}
+        onSubmit={handleUpdate}
+        onCancel={() => navigate('/entities')}
+      />
+    </div>
   )
 }
