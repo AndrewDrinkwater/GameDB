@@ -7,8 +7,15 @@
       "fields": [
         { "key": "name", "label": "Name", "type": "text" },
         { "key": "system", "label": "System", "type": "text" },
-        { "key": "genre", "label": "Genre", "type": "text" },
-        { "key": "status", "label": "Status", "type": "select", "options": ["Active", "Archived"] }
+        {
+          "key": "status",
+          "label": "Status",
+          "type": "select",
+          "options": [
+            { "value": "active", "label": "Active" },
+            { "value": "archived", "label": "Archived" }
+          ]
+        }
       ]
     },
     {
