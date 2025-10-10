@@ -34,17 +34,18 @@ export default (sequelize, DataTypes) => {
       tableName: 'entity_relationships',
       underscored: true,
       timestamps: true,
+      freezeTableName: true,
     }
   )
 
   EntityRelationship.associate = (models) => {
     EntityRelationship.belongsTo(models.Entity, {
       foreignKey: 'from_entity',
-      as: 'fromEntity',
+      as: 'from',
     })
     EntityRelationship.belongsTo(models.Entity, {
       foreignKey: 'to_entity',
-      as: 'toEntity',
+      as: 'to',
     })
     if (models.EntityRelationshipType) {
       EntityRelationship.belongsTo(models.EntityRelationshipType, {

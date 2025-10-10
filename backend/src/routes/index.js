@@ -8,7 +8,8 @@ import worldRoutes from './worldRoutes.js'
 // New routes
 import campaignRoutes from './campaignRoutes.js'
 import characterRoutes from './characterRoutes.js'
-import entityRoutes from './entityRoutes.js'
+import entitiesRoute from './entities.js'
+import entityTypeRoutes from './entityTypes.js'
 import userCampaignRoleRoutes from './userCampaignRoleRoutes.js'
 import relationshipRoutes from './relationshipRoutes.js'
 import userRoutes from './userRoutes.js' // ✅ add this
@@ -22,7 +23,8 @@ router.use('/auth', authRoutes)
 router.use('/worlds', worldRoutes)
 router.use('/campaigns', campaignRoutes)
 router.use('/characters', characterRoutes)
-router.use('/entities', entityRoutes)
+router.use('/entity-types', entityTypeRoutes)
+router.use('/entities', entitiesRoute)
 router.use('/user-campaign-roles', userCampaignRoleRoutes)
 router.use('/relationships', relationshipRoutes)
 router.use('/users', userRoutes) // ✅ add this

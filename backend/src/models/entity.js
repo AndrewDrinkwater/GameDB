@@ -43,17 +43,20 @@ export default (sequelize, DataTypes) => {
       tableName: 'entities',
       underscored: true,
       timestamps: true,
+      freezeTableName: true,
     }
   )
 
   Entity.associate = (models) => {
-    Entity.belongsTo(models.World, { foreignKey: 'world_id', as: 'world' })
+    Entity.belongsTo(models.EntityType, { foreignKey: 'entity_type_id', as: 'entityType' })
     Entity.belongsTo(models.User, { foreignKey: 'created_by', as: 'creator' })
-    if (models.EntityType) {
-      Entity.belongsTo(models.EntityType, { foreignKey: 'entity_type_id', as: 'entityType' })
-    }
+    Entity.belongsTo(models.World, { foreignKey: 'world_id', as: 'world' })
     if (models.EntitySecret) {
-      Entity.hasMany(models.EntitySecret, { foreignKey: 'entity_id', as: 'secrets', onDelete: 'CASCADE' })
+      Entity.hasMany(models.EntitySecret, {
+        foreignKey: 'entity_id',
+        as: 'secrets',
+        onDelete: 'CASCADE',
+      })
     }
     if (models.Campaign) {
       Entity.belongsToMany(models.Campaign, {
