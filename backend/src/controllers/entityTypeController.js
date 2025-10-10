@@ -13,6 +13,21 @@ export const listEntityTypes = async (req, res) => {
   }
 }
 
+export const getEntityType = async (req, res) => {
+  try {
+    const { id } = req.params
+    const entityType = await EntityType.findByPk(id)
+
+    if (!entityType) {
+      return res.status(404).json({ success: false, message: 'Entity type not found' })
+    }
+
+    return res.json({ success: true, data: entityType })
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message })
+  }
+}
+
 export const createEntityType = async (req, res) => {
   try {
     const canManage = await ensureManageAccess(req.user)

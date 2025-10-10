@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { List, Pencil, Plus, Trash2, X } from 'lucide-react'
-import {
-  createEntityType,
-  deleteEntityType,
-  getEntityTypes,
-  updateEntityType,
-} from '../../api/entityTypes.js'
+import { deleteEntityType, getEntityTypes, updateEntityType } from '../../api/entityTypes.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import EntityTypeForm from './EntityTypeForm.jsx'
 
@@ -68,9 +63,7 @@ export default function EntityTypeList() {
 
   const openCreate = () => {
     if (!canManage) return
-    setEditingType(null)
-    setFormError('')
-    setPanelOpen(true)
+    navigate('/entity-types/new')
   }
 
   const openEdit = (type) => {
@@ -92,16 +85,15 @@ export default function EntityTypeList() {
   }
 
   const handleSave = async (values) => {
+    if (!editingType?.id) {
+      setFormError('No entity type selected for editing.')
+      return false
+    }
     try {
       setSaving(true)
       setFormError('')
-      if (editingType?.id) {
-        await updateEntityType(editingType.id, values)
-        showToast('Entity type updated', 'success')
-      } else {
-        await createEntityType(values)
-        showToast('Entity type created', 'success')
-      }
+      await updateEntityType(editingType.id, values)
+      showToast('Entity type updated', 'success')
       closePanel()
       await loadEntityTypes()
     } catch (err) {

@@ -22,7 +22,7 @@ export default function EntityTypeFieldForm({
     label: '',
     data_type: 'text',
     required: false,
-    options: '',
+    enumChoices: '',
     reference_type_id: '',
     reference_filter: '',
   })
@@ -35,13 +35,19 @@ export default function EntityTypeFieldForm({
         label: '',
         data_type: 'text',
         required: false,
-        options: '',
+        enumChoices: '',
         reference_type_id: '',
         reference_filter: '',
       })
       setLocalError('')
       return
     }
+
+    const enumChoices = Array.isArray(initialData.options?.choices)
+      ? initialData.options.choices.join(', ')
+      : typeof initialData.options === 'string'
+        ? initialData.options
+        : ''
 
     const filterValue = initialData.reference_filter
       ? typeof initialData.reference_filter === 'string'
@@ -54,7 +60,7 @@ export default function EntityTypeFieldForm({
       label: initialData.label || '',
       data_type: initialData.data_type || 'text',
       required: Boolean(initialData.required),
-      options: initialData.options || '',
+      enumChoices,
       reference_type_id: initialData.reference_type_id || '',
       reference_filter: filterValue,
     })
@@ -133,13 +139,19 @@ export default function EntityTypeFieldForm({
     }
 
     if (isEnum) {
-      payload.options = values.options
+      const choices = values.enumChoices
         .split(',')
         .map((option) => option.trim())
         .filter(Boolean)
-        .join(', ')
+
+      if (!choices.length) {
+        setLocalError('Enum options are required for enum fields.')
+        return
+      }
+
+      payload.options = { choices }
     } else {
-      payload.options = ''
+      payload.options = {}
     }
 
     if (isReference) {
@@ -226,8 +238,8 @@ export default function EntityTypeFieldForm({
             <label htmlFor="entity-field-options">Enum Options *</label>
             <textarea
               id="entity-field-options"
-              value={values.options}
-              onChange={handleChange('options')}
+              value={values.enumChoices}
+              onChange={handleChange('enumChoices')}
               placeholder="Comma separated values, e.g. Lawful Good, Neutral, Chaotic Evil"
               rows={3}
               disabled={submitting}

@@ -1,0 +1,18 @@
+{
+  "title": "Create Entity Type",
+  "sections": [
+    {
+      "title": "Details",
+      "columns": 1,
+      "fields": [
+        { "key": "name", "label": "Name", "type": "text", "placeholder": "e.g. Faction" },
+        {
+          "key": "description",
+          "label": "Description",
+          "type": "textarea",
+          "placeholder": "Optional description for this entity type"
+        }
+      ]
+    }
+  ]
+}
