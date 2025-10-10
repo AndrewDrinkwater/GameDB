@@ -257,6 +257,36 @@ export const updateEntity = async (req, res) => {
   }
 }
 
+export const deleteEntity = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { user } = req
+
+    const entity = await Entity.findByPk(id)
+
+    if (!entity) {
+      return res.status(404).json({ success: false, message: 'Entity not found' })
+    }
+
+    const access = await checkWorldAccess(entity.world_id, user)
+    const isCreator = isEntityCreator(entity, user)
+
+    if (!access.world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    if (!access.isOwner && !access.isAdmin && !isCreator) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    await entity.destroy()
+
+    return res.json({ success: true, message: 'Entity deleted' })
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message })
+  }
+}
+
 export const getEntityById = async (req, res) => {
   try {
     const { user } = req
