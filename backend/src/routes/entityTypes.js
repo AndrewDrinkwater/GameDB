@@ -1,6 +1,11 @@
 import { Router } from 'express'
 import { authenticate } from '../middleware/authMiddleware.js'
-import { listEntityTypes } from '../controllers/entityTypeController.js'
+import {
+  createEntityType,
+  deleteEntityType,
+  listEntityTypes,
+  updateEntityType,
+} from '../controllers/entityTypeController.js'
 import {
   createEntityTypeField,
   listEntityTypeFields,
@@ -11,6 +16,9 @@ const router = Router()
 router.use(authenticate)
 
 router.get('/', listEntityTypes)
+router.post('/', createEntityType)
+router.patch('/:id', updateEntityType)
+router.delete('/:id', deleteEntityType)
 router.get('/:id/fields', listEntityTypeFields)
 router.post('/:id/fields', createEntityTypeField)
 
