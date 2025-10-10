@@ -52,6 +52,14 @@ export default (sequelize, DataTypes) => {
         onDelete: 'CASCADE',
       })
     }
+
+    if (models.Entity) {
+      World.hasMany(models.Entity, {
+        foreignKey: 'world_id',
+        as: 'entities',
+        onDelete: 'CASCADE',
+      })
+    }
   }
 
   return World
