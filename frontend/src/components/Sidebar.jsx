@@ -9,6 +9,9 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
   const [campaignsCollapsed, setCampaignsCollapsed] = useState(false)
   const [charactersCollapsed, setCharactersCollapsed] = useState(false)
 
+  const isActive = (path) =>
+    location.pathname === path || location.pathname.startsWith(`${path}/`)
+
   return (
     <aside className={`sidebar ${open ? 'open' : 'closed'}`}>
       <div className="sidebar-header">
@@ -23,10 +26,7 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
       </div>
 
       <nav className="nav-links" onClick={!pinned ? onClose : undefined}>
-        <Link
-          to="/worlds"
-          className={location.pathname === '/worlds' ? 'active' : ''}
-        >
+        <Link to="/worlds" className={isActive('/worlds') ? 'active' : ''}>
           Worlds
         </Link>
 
@@ -47,13 +47,13 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
           <div id="campaigns-nav" className="nav-sub-links">
             <Link
               to="/campaigns/my"
-              className={location.pathname === '/campaigns/my' ? 'active' : ''}
+              className={isActive('/campaigns/my') ? 'active' : ''}
             >
               My Campaigns
             </Link>
             <Link
               to="/campaigns/all"
-              className={location.pathname === '/campaigns/all' ? 'active' : ''}
+              className={isActive('/campaigns/all') ? 'active' : ''}
             >
               All
             </Link>
@@ -77,13 +77,13 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
           <div id="characters-nav" className="nav-sub-links">
             <Link
               to="/characters/my"
-              className={location.pathname === '/characters/my' ? 'active' : ''}
+              className={isActive('/characters/my') ? 'active' : ''}
             >
               My Characters
             </Link>
             <Link
               to="/characters/others"
-              className={location.pathname === '/characters/others' ? 'active' : ''}
+              className={isActive('/characters/others') ? 'active' : ''}
             >
               Other Characters
             </Link>
@@ -91,9 +91,7 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
               <Link
                 to="/characters/all"
                 className={
-                  location.pathname === '/characters/all'
-                    ? 'active admin-link'
-                    : 'admin-link'
+                  isActive('/characters/all') ? 'active admin-link' : 'admin-link'
                 }
               >
                 All Characters
@@ -106,7 +104,9 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
         {user?.role === 'system_admin' && (
           <Link
             to="/users"
-            className={location.pathname === '/users' ? 'active admin-link' : 'admin-link'}
+            className={
+              location.pathname === '/users' ? 'active admin-link' : 'admin-link'
+            }
             title="User Management (Admin Only)"
           >
             Users

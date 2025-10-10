@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   fetchCharacters,
@@ -42,6 +42,7 @@ const toPayload = (formData = {}) => {
 
 export default function CharactersPage({ scope = 'my' }) {
   const navigate = useNavigate()
+  const { id: routeId } = useParams()
   const { token, sessionReady, user } = useAuth()
   const [characters, setCharacters] = useState([])
   const [loading, setLoading] = useState(false)
@@ -49,6 +50,7 @@ export default function CharactersPage({ scope = 'my' }) {
   const [viewMode, setViewMode] = useState('list')
   const [selectedCharacter, setSelectedCharacter] = useState(null)
   const [editingId, setEditingId] = useState(null)
+  const basePath = useMemo(() => `/characters/${scope}`, [scope])
 
   const title = useMemo(() => {
     switch (scope) {
@@ -76,6 +78,31 @@ export default function CharactersPage({ scope = 'my' }) {
     setSelectedCharacter(null)
     setEditingId(null)
   }, [scope])
+
+  useEffect(() => {
+    if (!routeId) {
+      if (viewMode !== 'new') setViewMode('list')
+      setSelectedCharacter(null)
+      setEditingId(null)
+      return
+    }
+
+    const found = characters.find((character) => String(character.id) === routeId)
+    if (!found) {
+      if (!loading) navigate(basePath, { replace: true })
+      return
+    }
+
+    const canEdit = found.isOwned || user?.role === 'system_admin'
+    if (!canEdit) {
+      navigate(basePath, { replace: true })
+      return
+    }
+
+    setSelectedCharacter(found.formValues || mapToFormValues(found))
+    setEditingId(found.id)
+    setViewMode('edit')
+  }, [routeId, characters, user, navigate, basePath, loading, viewMode])
 
   const loadCharacters = useCallback(async () => {
     if (!token) return
@@ -118,6 +145,7 @@ export default function CharactersPage({ scope = 'my' }) {
 
   const handleNew = () => {
     if (!canCreate) return
+    navigate(basePath)
     setViewMode('new')
     setSelectedCharacter(null)
     setEditingId(null)
@@ -127,6 +155,7 @@ export default function CharactersPage({ scope = 'my' }) {
     setViewMode('list')
     setSelectedCharacter(null)
     setEditingId(null)
+    navigate(basePath)
   }
 
   const handleCreate = async (formData) => {
@@ -134,6 +163,7 @@ export default function CharactersPage({ scope = 'my' }) {
       await createCharacter(toPayload(formData))
       setViewMode('list')
       setSelectedCharacter(null)
+      navigate(basePath)
       await loadCharacters()
     } catch (err) {
       alert(`Error creating character: ${err.message}`)
@@ -147,6 +177,7 @@ export default function CharactersPage({ scope = 'my' }) {
       setViewMode('list')
       setSelectedCharacter(null)
       setEditingId(null)
+      navigate(basePath)
       await loadCharacters()
     } catch (err) {
       alert(`Error updating character: ${err.message}`)
@@ -161,6 +192,7 @@ export default function CharactersPage({ scope = 'my' }) {
       setViewMode('list')
       setSelectedCharacter(null)
       setEditingId(null)
+      navigate(basePath)
       await loadCharacters()
     } catch (err) {
       alert(`Error deleting character: ${err.message}`)
@@ -215,6 +247,7 @@ export default function CharactersPage({ scope = 'my' }) {
       onRowClick={(row) => {
         const isOwner = row.isOwned || user?.role === 'system_admin'
         if (!isOwner) return
+        navigate(`${basePath}/${row.id}`)
         setSelectedCharacter(row.formValues || mapToFormValues(row))
         setEditingId(row.id)
         setViewMode('edit')

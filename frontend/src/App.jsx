@@ -37,13 +37,18 @@ export default function App() {
             <Route path="campaigns">
               <Route index element={<Navigate to="/campaigns/my" replace />} />
               <Route path="my" element={<CampaignsPage scope="my" />} />
+              <Route path="my/:id" element={<CampaignsPage scope="my" />} />
               <Route path="all" element={<CampaignsPage scope="all" />} />
+              <Route path="all/:id" element={<CampaignsPage scope="all" />} />
             </Route>
             <Route path="characters">
               <Route index element={<Navigate to="/characters/my" replace />} />
               <Route path="my" element={<CharactersPage scope="my" />} />
+              <Route path="my/:id" element={<CharactersPage scope="my" />} />
               <Route path="others" element={<CharactersPage scope="others" />} />
+              <Route path="others/:id" element={<CharactersPage scope="others" />} />
               <Route path="all" element={<CharactersPage scope="all" />} />
+              <Route path="all/:id" element={<CharactersPage scope="all" />} />
             </Route>
 
             {/* Admin-only route */}
