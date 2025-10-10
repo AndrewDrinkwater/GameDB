@@ -51,16 +51,30 @@ export const getWorlds = async (req, res) => {
 }
 
 // Create a new world
+const normaliseStatus = (raw) => {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  const allowed = ['active', 'archived']
+  const value = String(raw).toLowerCase()
+  return allowed.includes(value) ? value : null
+}
+
 export const createWorld = async (req, res) => {
   try {
-    const { name, description } = req.body
+    const { name, description, system, status } = req.body
     if (!name) {
       return res.status(400).json({ success: false, message: 'Name is required' })
+    }
+
+    const normalisedStatus = normaliseStatus(status)
+    if (normalisedStatus === null) {
+      return res.status(400).json({ success: false, message: 'Invalid status value' })
     }
 
     const world = await World.create({
       name,
       description,
+      system,
+      ...(normalisedStatus ? { status: normalisedStatus } : {}),
       created_by: req.user.id,
     })
 
@@ -103,8 +117,19 @@ export const updateWorld = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorised to edit this world' })
     }
 
-    const { name, description, system, genre } = req.body
-    await world.update({ name, description, system, genre })
+    const { name, description, system, status } = req.body
+    const normalisedStatus = normaliseStatus(status)
+    if (normalisedStatus === null) {
+      return res.status(400).json({ success: false, message: 'Invalid status value' })
+    }
+
+    const updates = {}
+    if (name !== undefined) updates.name = name
+    if (description !== undefined) updates.description = description
+    if (system !== undefined) updates.system = system
+    if (normalisedStatus !== undefined) updates.status = normalisedStatus
+
+    await world.update(updates)
 
     res.json({ success: true, data: world })
   } catch (err) {

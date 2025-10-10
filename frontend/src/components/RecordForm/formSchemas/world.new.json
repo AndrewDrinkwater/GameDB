@@ -6,8 +6,7 @@
       "columns": 2,
       "fields": [
         { "key": "name", "label": "Name", "type": "text" },
-        { "key": "system", "label": "System", "type": "text" },
-        { "key": "genre", "label": "Genre", "type": "text" }
+        { "key": "system", "label": "System", "type": "text" }
       ]
     },
     {
