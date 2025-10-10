@@ -35,12 +35,17 @@ export function AuthProvider({ children }) {
 
   // --- Persist session to localStorage
   useEffect(() => {
+    // ⏳ Skip persistence logic until the initial session restoration completes.
+    // Otherwise the first render (when token/user are still null) would immediately
+    // wipe the stored session, causing API requests on reloads to miss the token.
+    if (!sessionReady) return
+
     if (token && user) {
       localStorage.setItem('gamedb_session', JSON.stringify({ user, token }))
     } else {
       localStorage.removeItem('gamedb_session')
     }
-  }, [token, user])
+  }, [token, user, sessionReady])
 
   // --- Login
   const login = async (username, password) => {
