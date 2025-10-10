@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
   const location = useLocation()
   const { user } = useAuth()
+  const [campaignsCollapsed, setCampaignsCollapsed] = useState(false)
   const [charactersCollapsed, setCharactersCollapsed] = useState(false)
 
   return (
@@ -29,12 +30,35 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
           Worlds
         </Link>
 
-        <Link
-          to="/campaigns"
-          className={location.pathname === '/campaigns' ? 'active' : ''}
-        >
-          Campaigns
-        </Link>
+        <div className={`nav-group ${campaignsCollapsed ? 'collapsed' : ''}`}>
+          <button
+            type="button"
+            className="nav-heading-btn"
+            onClick={() => setCampaignsCollapsed((prev) => !prev)}
+            aria-expanded={!campaignsCollapsed}
+            aria-controls="campaigns-nav"
+          >
+            <span className="nav-heading">Campaigns</span>
+            <ChevronDown
+              size={14}
+              className={`nav-heading-icon ${campaignsCollapsed ? 'collapsed' : ''}`}
+            />
+          </button>
+          <div id="campaigns-nav" className="nav-sub-links">
+            <Link
+              to="/campaigns/my"
+              className={location.pathname === '/campaigns/my' ? 'active' : ''}
+            >
+              My Campaigns
+            </Link>
+            <Link
+              to="/campaigns/all"
+              className={location.pathname === '/campaigns/all' ? 'active' : ''}
+            >
+              All
+            </Link>
+          </div>
+        </div>
 
         <div className={`nav-group ${charactersCollapsed ? 'collapsed' : ''}`}>
           <button

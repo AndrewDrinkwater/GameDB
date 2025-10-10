@@ -33,8 +33,12 @@ export default function App() {
             <Route path="worlds" element={<WorldsPage />} />
             <Route path="worlds/:id" element={<WorldDetailPage />} />
 
-            {/* Other routes */}
-            <Route path="campaigns" element={<CampaignsPage />} />
+            {/* Campaign routes */}
+            <Route path="campaigns">
+              <Route index element={<Navigate to="/campaigns/my" replace />} />
+              <Route path="my" element={<CampaignsPage scope="my" />} />
+              <Route path="all" element={<CampaignsPage scope="all" />} />
+            </Route>
             <Route path="characters">
               <Route index element={<Navigate to="/characters/my" replace />} />
               <Route path="my" element={<CharactersPage scope="my" />} />
