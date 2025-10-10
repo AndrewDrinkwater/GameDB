@@ -307,6 +307,8 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     field.optionValueKey,
     field.optionsCriteria,
     field.roles,
+    data?.world_id,
+    data?.worldId,
   ])
 
   if (!key) {
