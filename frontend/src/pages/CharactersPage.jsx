@@ -165,13 +165,15 @@ export default function CharactersPage({ scope = 'my' }) {
       setSelectedCharacter(null)
       navigate(basePath)
       await loadCharacters()
+      return true
     } catch (err) {
       alert(`Error creating character: ${err.message}`)
+      return false
     }
   }
 
   const handleUpdate = async (formData) => {
-    if (!editingId) return
+    if (!editingId) return false
     try {
       await updateCharacter(editingId, toPayload(formData))
       setViewMode('list')
@@ -179,14 +181,16 @@ export default function CharactersPage({ scope = 'my' }) {
       setEditingId(null)
       navigate(basePath)
       await loadCharacters()
+      return true
     } catch (err) {
       alert(`Error updating character: ${err.message}`)
+      return false
     }
   }
 
   const handleDelete = async () => {
-    if (!editingId) return
-    if (!confirm('Delete this character?')) return
+    if (!editingId) return false
+    if (!confirm('Delete this character?')) return false
     try {
       await removeCharacter(editingId)
       setViewMode('list')
@@ -194,8 +198,10 @@ export default function CharactersPage({ scope = 'my' }) {
       setEditingId(null)
       navigate(basePath)
       await loadCharacters()
+      return true
     } catch (err) {
       alert(`Error deleting character: ${err.message}`)
+      return false
     }
   }
 

@@ -1,5 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import FieldRenderer from './FieldRenderer'
+import useUnsavedChangesPrompt, {
+  UNSAVED_CHANGES_MESSAGE,
+} from '../../hooks/useUnsavedChangesPrompt'
 
 /**
  * Backwards-compatible form renderer.
@@ -14,7 +17,18 @@ export default function FormRenderer({
   onCancel,
   onDelete, // optional
 }) {
-  const [formData, setFormData] = useState(() => ({ ...initialData }))
+  const [formData, setFormData] = useState(() =>
+    initialData ? { ...initialData } : {},
+  )
+  const [initialSignature, setInitialSignature] = useState(() =>
+    JSON.stringify(initialData ?? {}),
+  )
+
+  useEffect(() => {
+    const nextData = initialData ? { ...initialData } : {}
+    setFormData(nextData)
+    setInitialSignature(JSON.stringify(initialData ?? {}))
+  }, [initialData])
 
   // Normalize schema to sections so both shapes work
   const sections = useMemo(() => {
@@ -28,12 +42,69 @@ export default function FormRenderer({
   }, [schema])
 
   const handleChange = (key, value) => {
-    setFormData(prev => ({ ...prev, [key]: value }))
+    setFormData((prev) => ({ ...prev, [key]: value }))
   }
 
-  const handleSubmit = (e) => {
+  const currentSignature = useMemo(
+    () => JSON.stringify(formData ?? {}),
+    [formData],
+  )
+
+  const isDirty = useMemo(
+    () => currentSignature !== initialSignature,
+    [currentSignature, initialSignature],
+  )
+
+  const bypassRef = useRef(false)
+
+  useEffect(() => {
+    if (!isDirty) {
+      bypassRef.current = false
+    }
+  }, [isDirty])
+
+  useUnsavedChangesPrompt(isDirty, undefined, bypassRef)
+
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    onSubmit(formData)
+    if (!onSubmit) return
+
+    try {
+      const result = await onSubmit(formData)
+      if (result) {
+        setInitialSignature(currentSignature)
+        bypassRef.current = true
+      }
+    } catch (err) {
+      console.error('Failed to submit form:', err)
+    }
+  }
+
+  const handleCancelClick = () => {
+    if (!onCancel) return
+
+    if (
+      !isDirty ||
+      window.confirm(UNSAVED_CHANGES_MESSAGE)
+    ) {
+      setInitialSignature(currentSignature)
+      bypassRef.current = true
+      onCancel()
+    }
+  }
+
+  const handleDeleteClick = async () => {
+    if (!onDelete) return
+
+    try {
+      const result = await onDelete(formData)
+      if (result) {
+        setInitialSignature(currentSignature)
+        bypassRef.current = true
+      }
+    } catch (err) {
+      console.error('Failed to delete record:', err)
+    }
   }
 
   return (
@@ -68,14 +139,14 @@ export default function FormRenderer({
           <button
             type="button"
             className="btn delete"
-            onClick={() => onDelete(formData)}
+            onClick={handleDeleteClick}
           >
             {schema?.deleteLabel || 'Delete'}
           </button>
         )}
 
         <div className="right-actions">
-          <button type="button" className="btn cancel" onClick={onCancel}>
+          <button type="button" className="btn cancel" onClick={handleCancelClick}>
             Cancel
           </button>
           <button type="submit" className="btn submit">
