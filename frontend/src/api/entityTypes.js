@@ -9,3 +9,5 @@ export const getEntityType = (id) => api.get(`/entity-types/${id}`)
 export const updateEntityType = (id, data) => api.patch(`/entity-types/${id}`, data)
 
 export const deleteEntityType = (id) => api.delete(`/entity-types/${id}`)
+
+export const getWorldEntityTypeUsage = (worldId) => api.get(`/worlds/${worldId}/entity-types`)

@@ -1,15 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react'
-import { fetchWorlds } from '../../api/worlds.js'
-import {
-  deleteEntity,
-  getWorldEntities,
-} from '../../api/entities.js'
+import { deleteEntity, getWorldEntities } from '../../api/entities.js'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import EntityForm from './EntityForm.jsx'
-
-const WORLD_STORAGE_KEY = 'gamedb_active_world'
 
 const VISIBILITY_BADGES = {
   visible: 'badge-visible',
@@ -18,13 +13,12 @@ const VISIBILITY_BADGES = {
 }
 
 const MANAGER_ROLES = new Set(['system_admin'])
+const FILTER_PARAM = 'entityType'
 
 export default function EntityList() {
   const { user, token, sessionReady } = useAuth()
-  const [worlds, setWorlds] = useState([])
-  const [selectedWorldId, setSelectedWorldId] = useState('')
-  const [loadingWorlds, setLoadingWorlds] = useState(false)
-  const [worldError, setWorldError] = useState('')
+  const { selectedCampaign } = useCampaignContext()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [entities, setEntities] = useState([])
   const [loadingEntities, setLoadingEntities] = useState(false)
@@ -35,17 +29,10 @@ export default function EntityList() {
   const [deletingId, setDeletingId] = useState('')
   const [toast, setToast] = useState(null)
 
-  useEffect(() => {
-    if (!sessionReady) return
-    try {
-      const stored = localStorage.getItem(WORLD_STORAGE_KEY)
-      if (stored) {
-        setSelectedWorldId(stored)
-      }
-    } catch (err) {
-      console.warn('⚠️ Unable to read stored world selection', err)
-    }
-  }, [sessionReady])
+  const worldId = selectedCampaign?.world?.id ?? ''
+  const selectedFilter = searchParams.get(FILTER_PARAM) ?? ''
+
+  const previousWorldIdRef = useRef(worldId)
 
   const showToast = useCallback((message, tone = 'info') => {
     setToast({ message, tone })
@@ -57,146 +44,101 @@ export default function EntityList() {
     return () => clearTimeout(timer)
   }, [toast])
 
-  const loadWorlds = useCallback(async () => {
-    if (!token) return
-    setLoadingWorlds(true)
-    setWorldError('')
-    try {
-      const response = await fetchWorlds()
-      const list = Array.isArray(response)
-        ? response
-        : Array.isArray(response?.data)
-          ? response.data
-          : []
-      setWorlds(list)
-    } catch (err) {
-      console.error('❌ Failed to load worlds', err)
-      setWorldError(err.message || 'Failed to load worlds')
-      setWorlds([])
-    } finally {
-      setLoadingWorlds(false)
-    }
-  }, [token])
+  const membershipRole = useMemo(() => {
+    if (!selectedCampaign || !user) return ''
+    const member = selectedCampaign.members?.find((entry) => entry.user_id === user.id)
+    return member?.role || ''
+  }, [selectedCampaign, user])
 
-  useEffect(() => {
-    if (sessionReady && token) {
-      loadWorlds()
-    }
-  }, [sessionReady, token, loadWorlds])
+  const isWorldOwner = useMemo(() => {
+    if (!selectedCampaign || !user) return false
+    const ownerId = selectedCampaign.world?.created_by
+    return ownerId ? ownerId === user.id : false
+  }, [selectedCampaign, user])
 
-  useEffect(() => {
-    try {
-      if (!selectedWorldId) {
-        localStorage.removeItem(WORLD_STORAGE_KEY)
-        return
-      }
-      localStorage.setItem(WORLD_STORAGE_KEY, selectedWorldId)
-    } catch (err) {
-      console.warn('⚠️ Unable to persist selected world', err)
-    }
-  }, [selectedWorldId])
-
-  useEffect(() => {
-    if (worlds.length === 0) {
-      setEntities([])
-      if (selectedWorldId) {
-        setSelectedWorldId('')
-      }
-      return
-    }
-
-    if (!selectedWorldId) {
-      setSelectedWorldId(worlds[0].id)
-      return
-    }
-
-    const exists = worlds.some((world) => world.id === selectedWorldId)
-    if (!exists) {
-      setSelectedWorldId(worlds[0].id)
-    }
-  }, [worlds, selectedWorldId])
+  const canManage = useMemo(() => {
+    if (!selectedCampaign || !user) return false
+    if (MANAGER_ROLES.has(user.role)) return true
+    if (membershipRole === 'dm') return true
+    if (isWorldOwner) return true
+    return false
+  }, [selectedCampaign, user, membershipRole, isWorldOwner])
 
   const loadEntities = useCallback(
-    async (worldId) => {
-      if (!worldId || !token) return
+    async (targetWorldId) => {
+      const worldToFetch = targetWorldId ?? worldId
+      if (!worldToFetch || !token) {
+        setEntities([])
+        return []
+      }
+
       setLoadingEntities(true)
       setEntitiesError('')
+
       try {
-        const response = await getWorldEntities(worldId)
+        const response = await getWorldEntities(worldToFetch)
         const list = Array.isArray(response)
           ? response
           : Array.isArray(response?.data)
             ? response.data
             : []
         setEntities(list)
+        return list
       } catch (err) {
         console.error('❌ Failed to load entities', err)
         setEntitiesError(err.message || 'Failed to load entities')
         setEntities([])
+        return []
       } finally {
         setLoadingEntities(false)
       }
     },
-    [token],
+    [token, worldId],
   )
 
   useEffect(() => {
-    if (!selectedWorldId || !token) {
+    if (!worldId || !token) {
       setEntities([])
       return
     }
-    loadEntities(selectedWorldId)
-  }, [selectedWorldId, token, loadEntities])
-
-  const previousWorldIdRef = useRef(selectedWorldId)
+    loadEntities(worldId)
+  }, [worldId, token, loadEntities])
 
   useEffect(() => {
-    if (previousWorldIdRef.current !== selectedWorldId) {
+    if (previousWorldIdRef.current !== worldId) {
       if (panelOpen) {
         setPanelOpen(false)
         setEditingEntityId(null)
       }
-      previousWorldIdRef.current = selectedWorldId
+      setEntitiesError('')
+      setToast(null)
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete(FILTER_PARAM)
+        return next
+      })
+      previousWorldIdRef.current = worldId
     }
-  }, [selectedWorldId, panelOpen])
+  }, [worldId, panelOpen, setSearchParams])
 
-  const selectedWorld = useMemo(
-    () => worlds.find((world) => world.id === selectedWorldId) || null,
-    [worlds, selectedWorldId],
-  )
-
-  const canManage = useMemo(() => {
-    if (!selectedWorld || !user) return false
-    if (MANAGER_ROLES.has(user.role)) return true
-    return selectedWorld.created_by === user.id
-  }, [selectedWorld, user])
-
-  const formatDate = (value) => {
-    if (!value) return '—'
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return '—'
-    return date.toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
+  const filteredEntities = useMemo(() => {
+    if (!selectedFilter) return entities
+    return entities.filter((entity) => {
+      const typeId =
+        entity.entity_type_id || entity.entityType?.id || entity.entity_type?.id || ''
+      return typeId === selectedFilter
     })
-  }
+  }, [entities, selectedFilter])
 
-  const handleWorldChange = (event) => {
-    setSelectedWorldId(event.target.value)
-  }
-
-  const openCreate = () => {
-    if (!canManage || !selectedWorldId) return
-    setEditingEntityId(null)
-    setPanelOpen(true)
-  }
-
-  const openEdit = (entity) => {
-    if (!canManage) return
-    setEditingEntityId(entity.id)
-    setPanelOpen(true)
-  }
+  const activeTypeName = useMemo(() => {
+    if (!selectedFilter) return ''
+    const match = entities.find((entity) => {
+      const typeId =
+        entity.entity_type_id || entity.entityType?.id || entity.entity_type?.id || ''
+      return typeId === selectedFilter
+    })
+    return match?.entityType?.name || match?.entity_type?.name || ''
+  }, [entities, selectedFilter])
 
   const closePanel = () => {
     setPanelOpen(false)
@@ -205,7 +147,8 @@ export default function EntityList() {
 
   const handleFormSaved = async (mode) => {
     closePanel()
-    await loadEntities(selectedWorldId)
+    if (!worldId) return
+    await loadEntities(worldId)
     showToast(mode === 'create' ? 'Entity created' : 'Entity updated', 'success')
   }
 
@@ -220,7 +163,9 @@ export default function EntityList() {
       setDeletingId(entity.id)
       await deleteEntity(entity.id)
       showToast('Entity deleted', 'success')
-      await loadEntities(selectedWorldId)
+      if (worldId) {
+        await loadEntities(worldId)
+      }
     } catch (err) {
       console.error('❌ Failed to delete entity', err)
       showToast(err.message || 'Failed to delete entity', 'error')
@@ -230,48 +175,80 @@ export default function EntityList() {
   }
 
   const handleRefresh = () => {
-    if (!selectedWorldId) return
-    loadEntities(selectedWorldId)
+    if (!worldId) return
+    loadEntities(worldId)
   }
+
+  const openCreate = () => {
+    if (!canManage || !worldId) return
+    setEditingEntityId(null)
+    setPanelOpen(true)
+  }
+
+  const openEdit = (entity) => {
+    if (!canManage) return
+    setEditingEntityId(entity.id)
+    setPanelOpen(true)
+  }
+
+  const formatDate = (value) => {
+    if (!value) return '—'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return '—'
+    return date.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  }
+
+  const clearFilter = useCallback(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete(FILTER_PARAM)
+      return next
+    })
+  }, [setSearchParams])
 
   if (!sessionReady) return <p>Restoring session...</p>
   if (!token) return <p>Authenticating...</p>
 
-  const hasWorlds = worlds.length > 0
-  const hasEntities = entities.length > 0
+  const hasEntities = filteredEntities.length > 0
+  const filterActive = Boolean(selectedFilter)
 
   return (
     <section className="entities-page">
       <div className="entities-header">
         <div>
           <h1>Entities</h1>
-          <p className="entities-subtitle">All entities in this world</p>
+          {selectedCampaign ? (
+            <p className="entities-subtitle">
+              {selectedCampaign.name}
+              {selectedCampaign.world?.name ? ` · ${selectedCampaign.world.name}` : ''}
+            </p>
+          ) : (
+            <p className="entities-subtitle">
+              Select a campaign from the header to choose a world context.
+            </p>
+          )}
+          {filterActive && (
+            <div className="entities-filter-chip">
+              <span>
+                Showing {activeTypeName || 'selected type'}
+              </span>
+              <button type="button" className="link-btn" onClick={clearFilter}>
+                Clear
+              </button>
+            </div>
+          )}
         </div>
         <div className="entities-controls">
-          <div className="world-select">
-            <label htmlFor="world-picker" className="sr-only">
-              Select world
-            </label>
-            <select
-              id="world-picker"
-              value={selectedWorldId}
-              onChange={handleWorldChange}
-              disabled={loadingWorlds || !hasWorlds}
-            >
-              {!hasWorlds && <option value="">No accessible worlds</option>}
-              {worlds.map((world) => (
-                <option key={world.id} value={world.id}>
-                  {world.name}
-                </option>
-              ))}
-            </select>
-          </div>
           <button
             type="button"
             className="icon-btn"
             title="Refresh entities"
             onClick={handleRefresh}
-            disabled={!selectedWorldId || loadingEntities}
+            disabled={!worldId || loadingEntities}
           >
             <RotateCcw size={16} />
           </button>
@@ -279,33 +256,17 @@ export default function EntityList() {
             type="button"
             className="btn submit"
             onClick={openCreate}
-            disabled={!canManage || !selectedWorldId || loadingEntities}
+            disabled={!canManage || !worldId || loadingEntities}
           >
             <Plus size={18} /> Add Entity
           </button>
         </div>
       </div>
 
-      {worldError && (
-        <div className="alert error" role="alert">
-          {worldError}
-        </div>
-      )}
-
-      {loadingWorlds && !hasWorlds && (
-        <div className="empty-state">Loading worlds...</div>
-      )}
-
-      {!loadingWorlds && !hasWorlds && (
-        <div className="empty-state">
-          You do not have access to any worlds yet.
-        </div>
-      )}
-
-      {selectedWorld && !canManage && (
+      {selectedCampaign && !canManage && (
         <div className="alert info" role="status">
-          You can view the entities that are shared with you, but only the world owner
-          or a system administrator can create or edit them.
+          You can view the entities that are shared with you, but only the world owner,
+          a campaign DM, or a system administrator can create or edit them.
         </div>
       )}
 
@@ -323,8 +284,8 @@ export default function EntityList() {
 
       {loadingEntities ? (
         <div className="empty-state">Loading entities...</div>
-      ) : !selectedWorldId ? (
-        <div className="empty-state">Select a world to view its entities.</div>
+      ) : !worldId ? (
+        <div className="empty-state">Select a campaign to view its entities.</div>
       ) : hasEntities ? (
         <div className="entities-table-wrapper">
           <table className="entities-table">
@@ -338,7 +299,7 @@ export default function EntityList() {
               </tr>
             </thead>
             <tbody>
-              {entities.map((entity) => {
+              {filteredEntities.map((entity) => {
                 const createdAt = entity.createdAt || entity.created_at
                 const typeName = entity.entityType?.name || entity.entity_type?.name || '—'
                 const visibility = entity.visibility || 'hidden'
@@ -389,11 +350,20 @@ export default function EntityList() {
         </div>
       ) : (
         <div className="empty-state">
-          <p className="empty-title">No entities yet.</p>
-          {canManage ? (
-            <p>
-              Click <strong>Add Entity</strong> to create your first entity.
-            </p>
+          {filterActive ? (
+            <>
+              <p className="empty-title">No entities of this type yet.</p>
+              <button type="button" className="btn secondary" onClick={clearFilter}>
+                View all entities
+              </button>
+            </>
+          ) : canManage ? (
+            <>
+              <p className="empty-title">No entities yet.</p>
+              <p>
+                Click <strong>Add Entity</strong> to create your first entity.
+              </p>
+            </>
           ) : (
             <p>Nothing to show right now.</p>
           )}
@@ -416,7 +386,7 @@ export default function EntityList() {
             </div>
             <div className="side-panel-content">
               <EntityForm
-                worldId={selectedWorldId}
+                worldId={worldId}
                 entityId={editingEntityId}
                 onCancel={closePanel}
                 onSaved={handleFormSaved}

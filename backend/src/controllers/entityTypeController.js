@@ -1,4 +1,5 @@
-import { Entity, EntityType } from '../models/index.js'
+import { Entity, EntityType, sequelize } from '../models/index.js'
+import { checkWorldAccess } from '../middleware/worldAccess.js'
 
 const isSystemAdmin = (user) => user?.role === 'system_admin'
 
@@ -132,6 +133,59 @@ export const deleteEntityType = async (req, res) => {
     await entityType.destroy()
 
     return res.json({ success: true, message: 'Entity type deleted' })
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+export const listWorldEntityTypesWithEntities = async (req, res) => {
+  try {
+    const { world, user } = req
+
+    if (!world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    const access = req.worldAccess ?? (await checkWorldAccess(world.id, user))
+    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const usage = await Entity.findAll({
+      where: { world_id: world.id },
+      attributes: [
+        'entity_type_id',
+        [sequelize.fn('COUNT', sequelize.col('entity_type_id')), 'entityCount'],
+      ],
+      group: ['entity_type_id'],
+      raw: true,
+    })
+
+    const usageMap = new Map()
+    usage.forEach((row) => {
+      const typeId = row.entity_type_id
+      const count = Number(row.entityCount ?? row.count ?? 0)
+      if (!typeId || count <= 0) return
+      usageMap.set(typeId, count)
+    })
+
+    if (usageMap.size === 0) {
+      return res.json({ success: true, data: [] })
+    }
+
+    const types = await EntityType.findAll({
+      where: { id: [...usageMap.keys()] },
+      order: [['name', 'ASC']],
+    })
+
+    const data = types.map((type) => ({
+      id: type.id,
+      name: type.name,
+      description: type.description,
+      entityCount: usageMap.get(type.id) ?? 0,
+    }))
+
+    return res.json({ success: true, data })
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message })
   }

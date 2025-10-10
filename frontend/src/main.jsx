@@ -4,11 +4,14 @@ import './index.css'
 import App from './App.jsx'
 import './style.css'
 import { AuthProvider } from './context/AuthContext.jsx'
+import { CampaignProvider } from './context/CampaignContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <AuthProvider>
-      <App />
+      <CampaignProvider>
+        <App />
+      </CampaignProvider>
     </AuthProvider>
   </StrictMode>,
 )
