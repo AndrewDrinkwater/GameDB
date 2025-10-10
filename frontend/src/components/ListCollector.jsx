@@ -86,7 +86,7 @@ export default function ListCollector({
     const next = [...selectedSet, option.value]
     updateSelection(next)
     setQuery('')
-    setIsOpen(true)
+    setIsOpen(false)
   }
 
   const handleRemove = (value) => {
