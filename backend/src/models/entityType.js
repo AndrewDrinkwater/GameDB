@@ -27,6 +27,14 @@ export default (sequelize, DataTypes) => {
 
   EntityType.associate = (models) => {
     EntityType.hasMany(models.Entity, { foreignKey: 'entity_type_id', as: 'entities' })
+    if (models.EntityTypeField) {
+      EntityType.hasMany(models.EntityTypeField, {
+        foreignKey: 'entity_type_id',
+        as: 'fields',
+        onDelete: 'CASCADE',
+        hooks: true,
+      })
+    }
   }
 
   return EntityType

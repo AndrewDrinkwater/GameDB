@@ -4,14 +4,70 @@ import {
   EntitySecret,
   EntitySecretPermission,
   EntityType,
+  EntityTypeField,
   World,
 } from '../models/index.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
+import {
+  applyFieldDefaults,
+  coerceValueForField,
+  validateEntityMetadata,
+} from '../utils/entityMetadataValidator.js'
 
 const VISIBILITY_VALUES = new Set(['hidden', 'visible', 'partial'])
 const PUBLIC_VISIBILITY = ['visible', 'partial']
 
 const isEntityCreator = (entity, user) => entity?.created_by === user?.id
+
+const FIELD_ORDER = [
+  ['sort_order', 'ASC'],
+  ['name', 'ASC'],
+]
+
+const fetchEntityTypeFields = async (entityTypeId) => {
+  const records = await EntityTypeField.findAll({
+    where: { entity_type_id: entityTypeId },
+    order: FIELD_ORDER,
+  })
+  return records.map((record) => record.get({ plain: true }))
+}
+
+const prepareEntityMetadata = async (entityTypeId, metadataSource, fieldsCache) => {
+  const fields = fieldsCache ?? (await fetchEntityTypeFields(entityTypeId))
+  const source = metadataSource ?? {}
+  const metadataWithDefaults = applyFieldDefaults(fields, source)
+  const metadataForValidation = { ...source, ...metadataWithDefaults }
+  await validateEntityMetadata(entityTypeId, metadataForValidation, { EntityTypeField }, fields)
+  return { metadata: metadataWithDefaults, fields }
+}
+
+const buildEntityPayload = async (entityInstance, fieldsCache) => {
+  const plain = entityInstance.get({ plain: true })
+  const { metadata, fields } = await prepareEntityMetadata(
+    plain.entity_type_id,
+    plain.metadata,
+    fieldsCache
+  )
+
+  plain.metadata = metadata
+  plain.fields = fields.map((field) => ({
+    id: field.id,
+    name: field.name,
+    label: field.label || field.name,
+    dataType: field.data_type,
+    required: field.required,
+    options: field.options || {},
+    defaultValue:
+      field.default_value !== undefined && field.default_value !== null
+        ? coerceValueForField(field.default_value, field, { isDefault: true })
+        : null,
+    sortOrder: field.sort_order,
+    value:
+      metadata[field.name] !== undefined ? metadata[field.name] : null,
+  }))
+
+  return plain
+}
 
 const normaliseMetadata = (metadata) => {
   if (metadata === undefined) return undefined
@@ -70,19 +126,29 @@ export const createWorldEntity = async (req, res) => {
         .json({ success: false, message: 'name and entity_type_id are required' })
     }
 
+    const entityType = await EntityType.findByPk(entityTypeId)
+    if (!entityType) {
+      return res.status(404).json({ success: false, message: 'Entity type not found' })
+    }
+
     const resolvedVisibility = visibility ?? 'hidden'
     if (!VISIBILITY_VALUES.has(resolvedVisibility)) {
       return res.status(400).json({ success: false, message: 'Invalid visibility value' })
     }
 
-    let metadataToPersist = metadata ?? {}
+    let metadataInput = {}
     if (metadata !== undefined) {
       const normalised = normaliseMetadata(metadata)
       if (normalised === null) {
         return res.status(400).json({ success: false, message: 'metadata must be an object' })
       }
-      metadataToPersist = normalised ?? {}
+      metadataInput = normalised ?? {}
     }
+
+    const { metadata: metadataToPersist, fields } = await prepareEntityMetadata(
+      entityTypeId,
+      metadataInput
+    )
 
     const entity = await Entity.create({
       name,
@@ -101,7 +167,91 @@ export const createWorldEntity = async (req, res) => {
       ],
     })
 
-    res.status(201).json({ success: true, data: fullEntity })
+    const payload = await buildEntityPayload(fullEntity, fields)
+
+    res.status(201).json({ success: true, data: payload })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+export const updateEntity = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { name, description, visibility, metadata } = req.body
+    const { user } = req
+
+    const entity = await Entity.findByPk(id, {
+      include: [
+        { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
+        { model: World, as: 'world', attributes: ['id', 'name'] },
+      ],
+    })
+
+    if (!entity) {
+      return res.status(404).json({ success: false, message: 'Entity not found' })
+    }
+
+    const access = await checkWorldAccess(entity.world_id, user)
+    const isCreator = isEntityCreator(entity, user)
+
+    if (!access.world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    if (!access.isOwner && !access.isAdmin && !isCreator) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const updates = {}
+
+    if (name !== undefined) {
+      if (!name) {
+        return res.status(400).json({ success: false, message: 'name cannot be empty' })
+      }
+      updates.name = name
+    }
+
+    if (description !== undefined) {
+      updates.description = description
+    }
+
+    if (visibility !== undefined) {
+      if (!VISIBILITY_VALUES.has(visibility)) {
+        return res.status(400).json({ success: false, message: 'Invalid visibility value' })
+      }
+      updates.visibility = visibility
+    }
+
+    const existingMetadata = entity.metadata ?? {}
+    let metadataSource = { ...existingMetadata }
+
+    if (metadata !== undefined) {
+      const normalised = normaliseMetadata(metadata)
+      if (normalised === null) {
+        return res.status(400).json({ success: false, message: 'metadata must be an object' })
+      }
+      metadataSource = { ...metadataSource, ...normalised }
+    }
+
+    const { metadata: metadataToPersist, fields } = await prepareEntityMetadata(
+      entity.entity_type_id,
+      metadataSource
+    )
+
+    updates.metadata = metadataToPersist
+
+    await entity.update(updates)
+    await entity.reload({
+      include: [
+        { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
+        { model: World, as: 'world', attributes: ['id', 'name'] },
+      ],
+    })
+
+    const payload = await buildEntityPayload(entity, fields)
+
+    res.json({ success: true, data: payload })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }
@@ -175,7 +325,7 @@ export const getEntityById = async (req, res) => {
       })
     }
 
-    const payload = entity.get({ plain: true })
+    const payload = await buildEntityPayload(entity)
     payload.secrets = secrets.map((secret) => {
       const plain = secret.get({ plain: true })
       if (!access.isOwner && !access.isAdmin) {
