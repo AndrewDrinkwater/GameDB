@@ -35,6 +35,74 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
       const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000'
       let endpoint = null
       const searchParams = new URLSearchParams()
+      let criteriaOverride = null
+
+      const extractWorldId = (criteria) => {
+        if (criteria === undefined || criteria === null) return null
+        if (typeof criteria === 'string') {
+          const params = new URLSearchParams(criteria)
+          return params.get('world_id') || params.get('worldId')
+        }
+        if (Array.isArray(criteria)) {
+          for (const entry of criteria) {
+            if (Array.isArray(entry) && entry.length >= 2) {
+              const [key, value] = entry
+              if (key === 'world_id' || key === 'worldId') return value
+            } else if (entry && typeof entry === 'object') {
+              const nested = extractWorldId(entry)
+              if (nested) return nested
+            }
+          }
+          return null
+        }
+        if (typeof criteria === 'object') {
+          return criteria.world_id || criteria.worldId || null
+        }
+        return null
+      }
+
+      const sanitiseEntityCriteria = (criteria) => {
+        if (criteria === undefined || criteria === null) return null
+        if (typeof criteria === 'string') {
+          const params = new URLSearchParams(criteria)
+          params.delete('world_id')
+          params.delete('worldId')
+          const serialised = params.toString()
+          return serialised ? serialised : null
+        }
+        if (Array.isArray(criteria)) {
+          const filtered = criteria
+            .map((entry) => {
+              if (Array.isArray(entry) && entry.length >= 2) {
+                const [key, value] = entry
+                if (key === 'world_id' || key === 'worldId') return null
+                return [key, value]
+              }
+              if (entry && typeof entry === 'object') {
+                const sanitised = sanitiseEntityCriteria(entry)
+                if (!sanitised) return null
+                return sanitised
+              }
+              return entry
+            })
+            .filter((entry) => {
+              if (entry === null || entry === undefined) return false
+              if (Array.isArray(entry)) return true
+              if (typeof entry === 'object') {
+                return Object.keys(entry).length > 0
+              }
+              return true
+            })
+          return filtered.length > 0 ? filtered : null
+        }
+        if (typeof criteria === 'object') {
+          const clone = { ...criteria }
+          delete clone.world_id
+          delete clone.worldId
+          return Object.keys(clone).length > 0 ? clone : null
+        }
+        return criteria
+      }
 
       switch (field.optionsSource) {
         case 'worlds':
@@ -43,9 +111,22 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
         case 'campaigns':
           endpoint = '/api/campaigns'
           break
-        case 'entities':
-          endpoint = '/api/entities'
+        case 'entities': {
+          const criteriaWorldId = extractWorldId(field.optionsCriteria)
+          const fallbackWorldId =
+            field.worldId || field.world_id || data?.world_id || data?.worldId || null
+          const worldId = criteriaWorldId || fallbackWorldId
+
+          if (!worldId) {
+            console.warn('⚠️ Unable to resolve world id for entity options')
+            endpoint = null
+            break
+          }
+
+          endpoint = `/api/worlds/${worldId}/entities`
+          criteriaOverride = sanitiseEntityCriteria(field.optionsCriteria)
           break
+        }
         case 'users':
           endpoint = '/api/users'
           break
@@ -79,7 +160,7 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
             }
           })
 
-          const { optionsCriteria } = field
+          const criteria = criteriaOverride ?? field.optionsCriteria
           const appendCriteria = (criteria) => {
             if (!criteria && criteria !== 0) return
             if (typeof criteria === 'string') {
@@ -127,7 +208,7 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
             }
           }
 
-          appendCriteria(optionsCriteria)
+          appendCriteria(criteria)
           return url
         } catch (err) {
           console.error('❌ Failed to construct options endpoint URL', err)

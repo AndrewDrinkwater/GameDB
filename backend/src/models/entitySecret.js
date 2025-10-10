@@ -35,6 +35,14 @@ export default (sequelize, DataTypes) => {
   EntitySecret.associate = (models) => {
     EntitySecret.belongsTo(models.Entity, { foreignKey: 'entity_id', as: 'entity' })
     EntitySecret.belongsTo(models.User, { foreignKey: 'created_by', as: 'creator' })
+
+    if (models.EntitySecretPermission) {
+      EntitySecret.hasMany(models.EntitySecretPermission, {
+        foreignKey: 'secret_id',
+        as: 'permissions',
+        onDelete: 'CASCADE',
+      })
+    }
   }
 
   return EntitySecret

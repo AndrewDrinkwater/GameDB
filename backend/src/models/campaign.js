@@ -24,15 +24,6 @@ export default (sequelize, DataTypes) => {
   Campaign.associate = (models) => {
     Campaign.belongsTo(models.World, { foreignKey: 'world_id', as: 'world' })
     Campaign.hasMany(models.Character, { foreignKey: 'campaign_id', as: 'characters' })
-    if (models.Entity) {
-      Campaign.belongsToMany(models.Entity, {
-        through: 'CampaignEntities',
-        foreignKey: 'campaign_id',
-        otherKey: 'entity_id',
-        as: 'entities',
-      })
-    }
-
     if (models.User) {
       Campaign.belongsTo(models.User, { foreignKey: 'created_by', as: 'owner' })
     }
