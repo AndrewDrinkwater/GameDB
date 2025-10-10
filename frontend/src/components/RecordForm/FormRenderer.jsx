@@ -69,13 +69,16 @@ export default function FormRenderer({
     e.preventDefault()
     if (!onSubmit) return
 
+    bypassRef.current = true
     try {
       const result = await onSubmit(formData)
-      if (result) {
+      if (result !== false) {
         setInitialSignature(currentSignature)
-        bypassRef.current = true
+      } else {
+        bypassRef.current = false
       }
     } catch (err) {
+      bypassRef.current = false
       console.error('Failed to submit form:', err)
     }
   }
