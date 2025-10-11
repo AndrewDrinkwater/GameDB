@@ -29,6 +29,28 @@ const buildRulePayload = (relationshipTypeId, role, ids) =>
     role,
   }))
 
+const findExistingTypeByName = async (worldId, name) => {
+  if (!worldId || !name) return null
+
+  const trimmedName = name.trim()
+  if (!trimmedName) return null
+
+  const lowerName = trimmedName.toLowerCase()
+
+  return EntityRelationshipType.findOne({
+    where: {
+      world_id: worldId,
+      [Op.and]: [
+        sequelize.where(
+          sequelize.fn('LOWER', sequelize.col('name')),
+          lowerName,
+        ),
+      ],
+    },
+    attributes: ['id', 'name', 'world_id'],
+  })
+}
+
 const mapType = (typeInstance) => {
   if (!typeInstance) return null
   const plain = typeInstance.get({ plain: true })
@@ -178,6 +200,12 @@ const validateInput = async ({
     return { error: 'One or more selected entity types were not found' }
   }
 
+  const existingType = await findExistingTypeByName(world.id, trimmedName)
+
+  if (existingType) {
+    return { error: 'A relationship type with this name already exists in the selected world' }
+  }
+
   return {
     values: {
       name: trimmedName,
@@ -185,8 +213,8 @@ const validateInput = async ({
       toName: trimmedToName,
       description: description ?? null,
       worldId: world.id,
-      fromIds,
-      toIds,
+      fromIds: [...new Set(fromIds)],
+      toIds: [...new Set(toIds)],
     },
   }
 }
@@ -241,9 +269,26 @@ export const createRelationshipType = async (req, res) => {
     res.status(201).json({ success: true, data: mapType(instance) })
   } catch (error) {
     if (error.name === 'SequelizeUniqueConstraintError') {
-      return res
-        .status(409)
-        .json({ success: false, message: 'A relationship type with this name already exists' })
+      const constraint = error?.parent?.constraint || ''
+
+      if (constraint === 'uniq_relationship_type_entity_type_role') {
+        return res.status(400).json({
+          success: false,
+          message: 'Each entity type can only be selected once for a given direction.',
+        })
+      }
+
+      if (constraint === 'uniq_relationship_types_world_name') {
+        return res.status(409).json({
+          success: false,
+          message: 'A relationship type with this name already exists in the selected world',
+        })
+      }
+
+      return res.status(409).json({
+        success: false,
+        message: 'A relationship type with this name already exists',
+      })
     }
     res.status(500).json({ success: false, message: error.message })
   }
