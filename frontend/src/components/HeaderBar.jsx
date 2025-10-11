@@ -40,9 +40,11 @@ export default function HeaderBar({ onMenuToggle }) {
   }, [campaigns, error, loading, selectedCampaign])
 
   const getRoleLabel = (campaign) => {
-    if (!campaign?.members || !user) return ''
-    const membership = campaign.members.find((member) => member.user_id === user.id)
-    if (!membership) return ''
+    if (!user) return ''
+    const membership = campaign?.members?.find((member) => member.user_id === user.id)
+    if (!membership) {
+      return user.role === 'system_admin' ? 'System Admin' : ''
+    }
     if (membership.role === 'dm') return 'DM'
     if (membership.role === 'player') return 'Player'
     return membership.role || ''
