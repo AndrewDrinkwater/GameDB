@@ -29,6 +29,8 @@ export default function EntityList() {
   const [deletingId, setDeletingId] = useState('')
   const [toast, setToast] = useState(null)
 
+  const currentSearch = searchParams.toString()
+
   const worldId = selectedCampaign?.world?.id ?? ''
   const selectedFilter = searchParams.get(FILTER_PARAM) ?? ''
 
@@ -307,7 +309,15 @@ export default function EntityList() {
                 return (
                   <tr key={entity.id}>
                     <td>
-                      <Link to={`/entities/${entity.id}`} className="entity-name-link">
+                      <Link
+                        to={`/entities/${entity.id}`}
+                        state={{
+                          fromEntities: {
+                            search: currentSearch,
+                          },
+                        }}
+                        className="entity-name-link"
+                      >
                         {entity.name}
                       </Link>
                     </td>

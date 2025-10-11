@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
-import RecordView from '../../components/RecordForm/RecordView.jsx'
+import FieldRenderer from '../../components/RecordForm/FieldRenderer.jsx'
+import TabNav from '../../components/TabNav.jsx'
+import EntityHeader from '../../components/entities/EntityHeader.jsx'
 import { getEntity, updateEntity } from '../../api/entities.js'
 import { getEntityRelationships } from '../../api/entityRelationships.js'
 import { useAuth } from '../../context/AuthContext.jsx'
@@ -149,6 +151,7 @@ const initialMetadataValue = (field) => {
 export default function EntityDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, token, sessionReady } = useAuth()
   const [entity, setEntity] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -161,6 +164,71 @@ export default function EntityDetailPage() {
   const [relationshipsLoading, setRelationshipsLoading] = useState(false)
   const [showRelationshipForm, setShowRelationshipForm] = useState(false)
   const [relationshipPerspective, setRelationshipPerspective] = useState('source')
+  const fromEntitiesSearch = location.state?.fromEntities?.search || ''
+
+  const backUrl = useMemo(() => {
+    if (!fromEntitiesSearch) return '/entities'
+    return fromEntitiesSearch.startsWith('?')
+      ? `/entities${fromEntitiesSearch}`
+      : `/entities?${fromEntitiesSearch}`
+  }, [fromEntitiesSearch])
+
+  const handleBack = useCallback(() => {
+    navigate(backUrl)
+  }, [navigate, backUrl])
+
+  const tabItems = useMemo(
+    () => [
+      { id: 'dossier', label: 'Dossier' },
+      { id: 'relationships', label: 'Relationships' },
+      { id: 'access', label: 'Access' },
+      { id: 'system', label: 'System' },
+    ],
+    [],
+  )
+
+  const renderSchemaSections = useCallback((schema, data, prefix) => {
+    if (!schema) return null
+    const sections = Array.isArray(schema.sections) ? schema.sections : []
+    return sections.map((section, index) => {
+      const sectionKey = `${prefix || 'section'}-${section.title || index}`
+      const columnCount = Number.isFinite(section.columns)
+        ? Math.max(1, Number(section.columns))
+        : 1
+      const fields = Array.isArray(section.fields) ? section.fields : []
+
+      return (
+        <section key={sectionKey} className="entity-card">
+          {section.title ? <h2 className="entity-card-title">{section.title}</h2> : null}
+          <div
+            className="entity-field-grid"
+            style={{ '--entity-field-columns': columnCount }}
+          >
+            {fields.length > 0 ? (
+              fields.map((field, fieldIndex) => {
+                const fieldKey =
+                  field?.key ||
+                  field?.name ||
+                  field?.field ||
+                  `${sectionKey}-field-${fieldIndex}`
+
+                return (
+                  <FieldRenderer
+                    key={fieldKey}
+                    field={{ ...field }}
+                    data={data}
+                    mode="view"
+                  />
+                )
+              })
+            ) : (
+              <p className="entity-empty-state">No fields available.</p>
+            )}
+          </div>
+        </section>
+      )
+    })
+  }, [])
 
   const loadEntity = useCallback(async () => {
     if (!id) return
@@ -365,7 +433,7 @@ export default function EntityDetailPage() {
     }
   }, [metadataFields, metadataSectionTitle])
 
-  const viewSchema = useMemo(() => {
+  const dossierSchema = useMemo(() => {
     const metadataSectionFields = metadataFields.length > 0
       ? metadataFields
       : [
@@ -408,9 +476,9 @@ export default function EntityDetailPage() {
 
   const accessSchema = useMemo(
     () => ({
-      title: 'Access',
       sections: [
         {
+          title: 'Access',
           columns: 1,
           fields: [{ key: 'visibilityLabel', label: 'Visibility', type: 'readonly' }],
         },
@@ -421,9 +489,9 @@ export default function EntityDetailPage() {
 
   const systemSchema = useMemo(
     () => ({
-      title: 'System',
       sections: [
         {
+          title: 'System',
           columns: 2,
           fields: [
             { key: 'worldName', label: 'World', type: 'readonly' },
@@ -448,6 +516,12 @@ export default function EntityDetailPage() {
     if (entity.created_by && entity.created_by === user.id) return true
     return false
   }, [entity, user])
+
+  const handleEditToggle = useCallback(() => {
+    if (!canEdit) return
+    setFormError('')
+    setIsEditing((prev) => !prev)
+  }, [canEdit])
 
   const handleUpdate = useCallback(
     async (values) => {
@@ -584,146 +658,126 @@ export default function EntityDetailPage() {
 
   return (
     <div className="entity-detail-page">
-      <div className="entity-detail-topbar">
-        <div className="entity-detail-header">
-          <button className="btn secondary" type="button" onClick={() => navigate('/entities')}>
-            Back to entities
-          </button>
-          <div className="entity-detail-title">
-            <h1>{entity.name}</h1>
-            {canEdit && !isEditing && (
-              <button className="btn" type="button" onClick={() => setIsEditing(true)}>
-                Edit entity
-              </button>
-            )}
-          </div>
+      <div className="entity-detail-shell">
+        <div className="entity-detail-topbar">
+          <EntityHeader
+            name={entity.name}
+            onBack={handleBack}
+            canEdit={canEdit}
+            isEditing={isEditing}
+            onToggleEdit={handleEditToggle}
+          />
+          <TabNav tabs={tabItems} activeTab={activeTab} onChange={setActiveTab} />
         </div>
 
-        <div className="entity-tabs" role="tablist">
-          <button
-            type="button"
-            className={`entity-tab ${activeTab === 'dossier' ? 'is-active' : ''}`}
-            onClick={() => setActiveTab('dossier')}
-            role="tab"
-            aria-selected={activeTab === 'dossier'}
-          >
-            Dossier
-          </button>
-          <button
-            type="button"
-            className={`entity-tab ${activeTab === 'relationships' ? 'is-active' : ''}`}
-            onClick={() => setActiveTab('relationships')}
-            role="tab"
-            aria-selected={activeTab === 'relationships'}
-          >
-            Relationships
-          </button>
-          <button
-            type="button"
-            className={`entity-tab ${activeTab === 'access' ? 'is-active' : ''}`}
-            onClick={() => setActiveTab('access')}
-            role="tab"
-            aria-selected={activeTab === 'access'}
-          >
-            Access
-          </button>
-          <button
-            type="button"
-            className={`entity-tab ${activeTab === 'system' ? 'is-active' : ''}`}
-            onClick={() => setActiveTab('system')}
-            role="tab"
-            aria-selected={activeTab === 'system'}
-          >
-            System
-          </button>
-        </div>
-      </div>
-
-      <div className="entity-tab-panel" role="tabpanel">
+        <div className="entity-detail-body" role="tabpanel">
           {activeTab === 'dossier' && (
             <div className="entity-tab-content">
               {formError ? (
-                <div className="alert error" role="alert">
-                  {formError}
-                </div>
+                <section className="entity-card">
+                  <div className="alert error" role="alert">
+                    {formError}
+                  </div>
+                </section>
               ) : null}
 
               {isEditing && canEdit ? (
-                <FormRenderer
-                  schema={editSchema}
-                  initialData={editInitialData || {}}
-                  onSubmit={handleUpdate}
-                  onCancel={() => setIsEditing(false)}
-                />
+                <section className="entity-card entity-card--form">
+                  <FormRenderer
+                    schema={editSchema}
+                    initialData={editInitialData || {}}
+                    onSubmit={handleUpdate}
+                    onCancel={() => setIsEditing(false)}
+                  />
+                </section>
               ) : (
-                <RecordView schema={viewSchema} data={viewData} />
+                renderSchemaSections(dossierSchema, viewData, 'dossier')
               )}
             </div>
           )}
 
           {activeTab === 'relationships' && (
             <div className="entity-tab-content">
-              <div className="entity-section-header">
-                <h2>Relationships</h2>
-                {canEdit && (
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => setShowRelationshipForm(true)}
-                  >
-                    Add relationship
-                  </button>
-                )}
-              </div>
-              <div className="entity-relationships-toggle">
-                <p>{relationshipsToggleLabel}</p>
-                <button
-                  type="button"
-                  className="btn secondary"
-                  onClick={() =>
-                    setRelationshipPerspective((prev) =>
-                      prev === 'source' ? 'target' : 'source',
-                    )
-                  }
-                >
-                  {relationshipsToggleActionLabel}
-                </button>
-              </div>
-              {relationshipsLoading ? (
-                <p>Loading relationships...</p>
-              ) : relationshipsError ? (
-                <div className="alert error" role="alert">
-                  {relationshipsError}
+              <section className="entity-card">
+                <div className="entity-card-header">
+                  <h2 className="entity-card-title">Relationships</h2>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => setShowRelationshipForm(true)}
+                    >
+                      Add relationship
+                    </button>
+                  )}
                 </div>
-              ) : relationshipsToDisplay.length === 0 ? (
-                <p className="entity-empty-state">{relationshipsEmptyMessage}</p>
-              ) : (
-                <div className="entity-relationships-table-wrapper">
-                  <table className="entity-relationships-table">
-                    <thead>
-                      <tr>
-                        <th>Relationship Type</th>
-                        <th>{relationshipPerspective === 'source' ? 'Destination' : 'Source'}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {relationshipsToDisplay.map((relationship) => (
-                        <tr key={relationship.id}>
-                          <td>{relationship.typeName}</td>
-                          <td>
-                            {relationshipPerspective === 'source'
-                              ? relationship.toName
-                              : relationship.fromName}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="entity-card-body">
+                  <div className="entity-relationships-toggle">
+                    <p>{relationshipsToggleLabel}</p>
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      onClick={() =>
+                        setRelationshipPerspective((prev) =>
+                          prev === 'source' ? 'target' : 'source',
+                        )
+                      }
+                    >
+                      {relationshipsToggleActionLabel}
+                    </button>
+                  </div>
+
+                  {relationshipsLoading ? (
+                    <p>Loading relationships...</p>
+                  ) : relationshipsError ? (
+                    <div className="alert error" role="alert">
+                      {relationshipsError}
+                    </div>
+                  ) : relationshipsToDisplay.length === 0 ? (
+                    <p className="entity-empty-state">{relationshipsEmptyMessage}</p>
+                  ) : (
+                    <div className="entity-relationships-table-wrapper">
+                      <table className="entity-relationships-table">
+                        <thead>
+                          <tr>
+                            <th>Relationship Type</th>
+                            <th>
+                              {relationshipPerspective === 'source'
+                                ? 'Destination'
+                                : 'Source'}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {relationshipsToDisplay.map((relationship) => (
+                            <tr key={relationship.id}>
+                              <td>{relationship.typeName}</td>
+                              <td>
+                                {relationshipPerspective === 'source'
+                                  ? relationship.toName
+                                  : relationship.fromName}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
-              )}
+              </section>
 
               {showRelationshipForm && canEdit && (
-                <div className="entity-relationship-form-panel">
+                <section className="entity-card entity-card--form">
+                  <div className="entity-card-header entity-card-header--subtle">
+                    <h3 className="entity-card-title">Add relationship</h3>
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      onClick={() => setShowRelationshipForm(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
                   <EntityRelationshipForm
                     worldId={worldId}
                     onCancel={() => setShowRelationshipForm(false)}
@@ -731,23 +785,24 @@ export default function EntityDetailPage() {
                     defaultFromEntityId={entity.id}
                     lockFromEntity
                   />
-                </div>
+                </section>
               )}
             </div>
           )}
 
           {activeTab === 'access' && (
             <div className="entity-tab-content">
-              <RecordView schema={accessSchema} data={viewData} />
+              {renderSchemaSections(accessSchema, viewData, 'access')}
             </div>
           )}
 
           {activeTab === 'system' && (
             <div className="entity-tab-content">
-              <RecordView schema={systemSchema} data={viewData} />
+              {renderSchemaSections(systemSchema, viewData, 'system')}
             </div>
           )}
         </div>
+      </div>
     </div>
   )
 }
