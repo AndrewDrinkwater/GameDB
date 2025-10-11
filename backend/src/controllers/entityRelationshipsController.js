@@ -311,13 +311,21 @@ export async function createRelationship(req, res) {
 
     normalisedContext.__direction = 'forward'
 
-    const relationship = await EntityRelationship.create({
-      from_entity: fromEntityIdValue,
-      to_entity: toEntityIdValue,
-      relationship_type_id: relationshipTypeIdValue,
-      bidirectional,
-      context: normalisedContext,
-    })
+      console.log('🧩 Final relationship payload:', {
+        fromEntityIdValue,
+        toEntityIdValue,
+        relationshipTypeIdValue,
+        bidirectional,
+        typeofBidirectional: typeof bidirectional,
+      })
+
+      const relationship = await EntityRelationship.create({
+        from_entity: fromEntityIdValue,
+        to_entity: toEntityIdValue,
+        relationship_type_id: relationshipTypeIdValue,
+        bidirectional: typeof bidirectional === 'boolean' ? bidirectional : false,
+        context: normalisedContext ?? {},
+      })
 
     await ensureBidirectionalLink(relationship)
 
