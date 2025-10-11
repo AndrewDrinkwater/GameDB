@@ -35,6 +35,22 @@ export default (sequelize, DataTypes) => {
         hooks: true,
       })
     }
+
+    if (models.EntityRelationshipTypeEntityType) {
+      EntityType.hasMany(models.EntityRelationshipTypeEntityType, {
+        foreignKey: 'entity_type_id',
+        as: 'relationshipTypeRules',
+        onDelete: 'CASCADE',
+        hooks: true,
+      })
+
+      EntityType.belongsToMany(models.EntityRelationshipType, {
+        through: models.EntityRelationshipTypeEntityType,
+        foreignKey: 'entity_type_id',
+        otherKey: 'relationship_type_id',
+        as: 'relationshipTypes',
+      })
+    }
   }
 
   return EntityType

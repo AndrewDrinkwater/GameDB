@@ -233,6 +233,17 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
                 <span>Entity Types</span>
               </Link>
             )}
+            {user?.role === 'system_admin' && (
+              <Link
+                to="/relationship-types"
+                className={`nav-entity-link ${
+                  isActive('/relationship-types') ? 'active' : ''
+                }`}
+              >
+                <Link2 size={16} className="nav-icon" />
+                <span>Relationship Types</span>
+              </Link>
+            )}
             <Link
               to="/entity-relationships"
               className={`nav-entity-link ${isActive('/entity-relationships') ? 'active' : ''}`}
