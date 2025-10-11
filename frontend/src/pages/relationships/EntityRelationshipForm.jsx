@@ -103,7 +103,7 @@ export default function EntityRelationshipForm({
     fromEntityId: '',
     toEntityId: '',
     relationshipTypeId: '',
-    bidirectional: false,
+    bidirectional: true,
   })
   const [contextPairs, setContextPairs] = useState(() => {
     pairIdRef.current = 0
@@ -209,6 +209,36 @@ export default function EntityRelationshipForm({
     return candidate ? String(candidate) : ''
   }
 
+  const selectedFromEntity = useMemo(() => {
+    if (!values.fromEntityId) return null
+    return entities.find((entity) => String(entity.id) === String(values.fromEntityId)) || null
+  }, [entities, values.fromEntityId])
+
+  const selectedFromEntityTypeId = useMemo(
+    () => resolveEntityTypeId(selectedFromEntity),
+    [selectedFromEntity],
+  )
+
+  const availableRelationshipTypes = useMemo(() => {
+    if (!selectedFromEntityTypeId) return relationshipTypes
+
+    const matchesSelectedType = (entry) => {
+      if (!entry) return false
+      const entryId =
+        entry.id ??
+        entry.entity_type_id ??
+        entry.entityTypeId ??
+        entry.entityType?.id ??
+        ''
+      if (!entryId) return false
+      return String(entryId) === String(selectedFromEntityTypeId)
+    }
+
+    return relationshipTypes.filter((type) =>
+      Array.isArray(type?.from_entity_types) && type.from_entity_types.some(matchesSelectedType),
+    )
+  }, [relationshipTypes, selectedFromEntityTypeId])
+
   const activeRelationshipType = useMemo(() => {
     if (!values.relationshipTypeId) return null
     return relationshipTypes.find(
@@ -254,13 +284,13 @@ export default function EntityRelationshipForm({
 
   useEffect(() => {
     if (!values.relationshipTypeId) return
-    const exists = relationshipTypes.some(
+    const exists = availableRelationshipTypes.some(
       (type) => String(type.id) === String(values.relationshipTypeId),
     )
     if (!exists) {
       setValues((prev) => ({ ...prev, relationshipTypeId: '' }))
     }
-  }, [relationshipTypes, values.relationshipTypeId])
+  }, [availableRelationshipTypes, values.relationshipTypeId])
 
   useEffect(() => {
     if (!values.fromEntityId) return
@@ -333,7 +363,7 @@ export default function EntityRelationshipForm({
         fromEntityId: '',
         toEntityId: '',
         relationshipTypeId: '',
-        bidirectional: false,
+        bidirectional: true,
       })
       setContextPairs([generatePair()])
       setDirection('forward')
@@ -492,6 +522,8 @@ export default function EntityRelationshipForm({
   }
 
   const isBusy = loadingEntities || loadingTypes || loadingRelationship
+  const noAvailableTypes =
+    Boolean(selectedFromEntityTypeId) && availableRelationshipTypes.length === 0
 
   return (
     <form className="entity-form relationship-form" onSubmit={handleSubmit}>
@@ -525,6 +557,36 @@ export default function EntityRelationshipForm({
         </div>
 
         <div className="form-group">
+          <label htmlFor="relationship-type">Relationship Type *</label>
+          <select
+            id="relationship-type"
+            value={values.relationshipTypeId}
+            onChange={handleValueChange('relationshipTypeId')}
+            disabled={saving || isBusy || !availableRelationshipTypes.length}
+            required
+          >
+            <option value="">Select type...</option>
+            {availableRelationshipTypes.map((type) => {
+              const fromLabel = type.from_name || type.fromName || type.name
+              const toLabel = type.to_name || type.toName || type.name
+              const directionalSummary = fromLabel === toLabel ? fromLabel : `${fromLabel} → ${toLabel}`
+              return (
+                <option key={type.id} value={type.id}>
+                  {type.name} · {directionalSummary}
+                </option>
+              )
+            })}
+          </select>
+          {noAvailableTypes && (
+            <p className="field-hint">
+              No relationship types allow the selected entity as a source.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="form-two-column">
+        <div className="form-group">
           <label htmlFor="relationship-to-entity">To Entity *</label>
           <select
             id="relationship-to-entity"
@@ -549,31 +611,6 @@ export default function EntityRelationshipForm({
           {activeRelationshipType && allowedToTypeIds.length > 0 && filteredToEntities.length === 0 && (
             <p className="field-hint">No entities match the allowed target types.</p>
           )}
-        </div>
-      </div>
-
-      <div className="form-two-column">
-        <div className="form-group">
-          <label htmlFor="relationship-type">Relationship Type *</label>
-          <select
-            id="relationship-type"
-            value={values.relationshipTypeId}
-            onChange={handleValueChange('relationshipTypeId')}
-            disabled={saving || isBusy}
-            required
-          >
-            <option value="">Select type...</option>
-            {relationshipTypes.map((type) => {
-              const fromLabel = type.from_name || type.fromName || type.name
-              const toLabel = type.to_name || type.toName || type.name
-              const directionalSummary = fromLabel === toLabel ? fromLabel : `${fromLabel} → ${toLabel}`
-              return (
-                <option key={type.id} value={type.id}>
-                  {type.name} · {directionalSummary}
-                </option>
-              )
-            })}
-          </select>
         </div>
 
         <div className="form-group checkbox">
