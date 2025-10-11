@@ -4,6 +4,7 @@ import {
   deleteRelationship,
   getRelationshipTypes,
   getRelationshipsByEntity,
+  listRelationships,
 } from '../controllers/entityRelationshipsController.js'
 import {
   authenticate,
@@ -14,6 +15,7 @@ const router = express.Router()
 
 router.use(authenticate)
 
+router.get('/', requireRole('dm', 'system_admin'), listRelationships)
 router.get('/types', requireRole('dm', 'system_admin'), getRelationshipTypes)
 router.post('/', requireRole('dm', 'system_admin'), createRelationship)
 router.get('/entity/:id', requireRole('dm', 'system_admin'), getRelationshipsByEntity)
