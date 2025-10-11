@@ -51,6 +51,8 @@ export default function EntityRelationshipForm({
   onSaved,
 }) {
   const isEditMode = Boolean(relationshipId)
+  const showEntityHelperHints = isEditMode
+  const showContextEditor = isEditMode
   const pairIdRef = useRef(0)
 
   const generatePair = useCallback(
@@ -544,10 +546,10 @@ export default function EntityRelationshipForm({
               </option>
             ))}
           </select>
-          {effectiveFromLabel && (
+          {showEntityHelperHints && effectiveFromLabel && (
             <p className="field-hint">Displayed label: {effectiveFromLabel}</p>
           )}
-          {activeRelationshipType && fromTypeSummary && (
+          {showEntityHelperHints && activeRelationshipType && fromTypeSummary && (
             <p className="field-hint">Allowed types: {fromTypeSummary}</p>
           )}
           {activeRelationshipType && allowedFromTypeIds.length > 0 &&
@@ -602,10 +604,10 @@ export default function EntityRelationshipForm({
               </option>
             ))}
           </select>
-          {effectiveToLabel && (
+          {showEntityHelperHints && effectiveToLabel && (
             <p className="field-hint">Displayed label: {effectiveToLabel}</p>
           )}
-          {activeRelationshipType && toTypeSummary && (
+          {showEntityHelperHints && activeRelationshipType && toTypeSummary && (
             <p className="field-hint">Allowed targets: {toTypeSummary}</p>
           )}
           {activeRelationshipType && allowedToTypeIds.length > 0 && filteredToEntities.length === 0 && (
@@ -627,63 +629,65 @@ export default function EntityRelationshipForm({
         </div>
       </div>
 
-      <div className="metadata-editor">
-        <div className="metadata-header">
-          <h3>Context {hasContext ? '' : '(optional)'}</h3>
-          <button
-            type="button"
-            className="btn neutral"
-            onClick={handleAddPair}
-            disabled={saving || isBusy}
-          >
-            Add field
-          </button>
-        </div>
+      {showContextEditor && (
+        <div className="metadata-editor">
+          <div className="metadata-header">
+            <h3>Context {hasContext ? '' : '(optional)'}</h3>
+            <button
+              type="button"
+              className="btn neutral"
+              onClick={handleAddPair}
+              disabled={saving || isBusy}
+            >
+              Add field
+            </button>
+          </div>
 
-        <div className="metadata-list">
-          {contextPairs.map((pair, index) => (
-            <div className="metadata-row" key={pair.id}>
-              <div className="form-group">
-                <label htmlFor={`context-key-${pair.id}`} className="sr-only">
-                  Context key {index + 1}
-                </label>
-                <input
-                  id={`context-key-${pair.id}`}
-                  type="text"
-                  placeholder="Key"
-                  value={pair.key}
-                  onChange={handleContextChange(pair.id, 'key')}
-                  disabled={saving || isBusy}
-                />
+          <div className="metadata-list">
+            {contextPairs.map((pair, index) => (
+              <div className="metadata-row" key={pair.id}>
+                <div className="form-group">
+                  <label htmlFor={`context-key-${pair.id}`} className="sr-only">
+                    Context key {index + 1}
+                  </label>
+                  <input
+                    id={`context-key-${pair.id}`}
+                    type="text"
+                    placeholder="Key"
+                    value={pair.key}
+                    onChange={handleContextChange(pair.id, 'key')}
+                    disabled={saving || isBusy}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor={`context-value-${pair.id}`} className="sr-only">
+                    Context value {index + 1}
+                  </label>
+                  <input
+                    id={`context-value-${pair.id}`}
+                    type="text"
+                    placeholder="Value"
+                    value={pair.value}
+                    onChange={handleContextChange(pair.id, 'value')}
+                    disabled={saving || isBusy}
+                  />
+                </div>
+                <div className="metadata-actions">
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => handleRemovePair(pair.id)}
+                    disabled={saving || isBusy || contextPairs.length === 1}
+                    title="Remove field"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
-              <div className="form-group">
-                <label htmlFor={`context-value-${pair.id}`} className="sr-only">
-                  Context value {index + 1}
-                </label>
-                <input
-                  id={`context-value-${pair.id}`}
-                  type="text"
-                  placeholder="Value"
-                  value={pair.value}
-                  onChange={handleContextChange(pair.id, 'value')}
-                  disabled={saving || isBusy}
-                />
-              </div>
-              <div className="metadata-actions">
-                <button
-                  type="button"
-                  className="icon-btn"
-                  onClick={() => handleRemovePair(pair.id)}
-                  disabled={saving || isBusy || contextPairs.length === 1}
-                  title="Remove field"
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {isBusy && (
         <div className="form-loading" role="status">
