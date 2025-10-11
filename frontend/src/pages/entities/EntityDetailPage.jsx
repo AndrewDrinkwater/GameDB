@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
+import RecordView from '../../components/RecordForm/RecordView.jsx'
 import { getEntity, updateEntity } from '../../api/entities.js'
 import { getEntityRelationships } from '../../api/entityRelationships.js'
 import { useAuth } from '../../context/AuthContext.jsx'
@@ -159,6 +160,7 @@ export default function EntityDetailPage() {
   const [relationshipsError, setRelationshipsError] = useState('')
   const [relationshipsLoading, setRelationshipsLoading] = useState(false)
   const [showRelationshipForm, setShowRelationshipForm] = useState(false)
+  const [relationshipPerspective, setRelationshipPerspective] = useState('source')
 
   const loadEntity = useCallback(async () => {
     if (!id) return
@@ -250,6 +252,10 @@ export default function EntityDetailPage() {
     setIsEditing(false)
   }, [entity?.id])
 
+  useEffect(() => {
+    setRelationshipPerspective('source')
+  }, [entity?.id])
+
   const visibilityLabel = useMemo(() => {
     const key = (entity?.visibility || '').toLowerCase()
     return VISIBILITY_LABELS[key] || 'Hidden'
@@ -305,10 +311,11 @@ export default function EntityDetailPage() {
     metadataInitialValues,
   ])
 
+  const metadataSectionTitle = entity?.entityType?.name
+    ? `${entity.entityType.name} Metadata`
+    : 'Metadata'
+
   const editSchema = useMemo(() => {
-    const metadataSectionTitle = entity?.entityType?.name
-      ? `${entity.entityType.name} Metadata`
-      : 'Metadata'
     const hasMetadataFields = metadataFields.length > 0
 
     const sections = [
@@ -356,7 +363,80 @@ export default function EntityDetailPage() {
       title: 'Edit Entity',
       sections,
     }
-  }, [entity, metadataFields])
+  }, [metadataFields, metadataSectionTitle])
+
+  const viewSchema = useMemo(() => {
+    const metadataSectionFields = metadataFields.length > 0
+      ? metadataFields
+      : [
+          {
+            key: 'metadata.__placeholder',
+            name: 'metadata.__placeholder',
+            label: 'Metadata',
+            type: 'readonly',
+          },
+        ]
+
+    return {
+      title: 'Entity Overview',
+      sections: [
+        {
+          title: 'Summary',
+          columns: 2,
+          fields: [
+            { key: 'name', label: 'Name', type: 'readonly' },
+            { key: 'typeName', label: 'Type', type: 'readonly' },
+            { key: 'visibilityLabel', label: 'Visibility', type: 'readonly' },
+            { key: 'worldName', label: 'World', type: 'readonly' },
+          ],
+        },
+        {
+          title: 'Description',
+          columns: 1,
+          fields: [
+            { key: 'description', label: 'Description', type: 'textarea', rows: 4 },
+          ],
+        },
+        {
+          title: metadataSectionTitle,
+          columns: metadataFields.length > 0 ? 2 : 1,
+          fields: metadataSectionFields,
+        },
+      ],
+    }
+  }, [metadataFields, metadataSectionTitle])
+
+  const accessSchema = useMemo(
+    () => ({
+      title: 'Access',
+      sections: [
+        {
+          columns: 1,
+          fields: [{ key: 'visibilityLabel', label: 'Visibility', type: 'readonly' }],
+        },
+      ],
+    }),
+    [],
+  )
+
+  const systemSchema = useMemo(
+    () => ({
+      title: 'System',
+      sections: [
+        {
+          columns: 2,
+          fields: [
+            { key: 'worldName', label: 'World', type: 'readonly' },
+            { key: 'createdAt', label: 'Created', type: 'readonly' },
+            { key: 'createdBy', label: 'Created by', type: 'readonly' },
+            { key: 'updatedAt', label: 'Updated', type: 'readonly' },
+            { key: 'updatedBy', label: 'Updated by', type: 'readonly' },
+          ],
+        },
+      ],
+    }),
+    [],
+  )
 
   const canEdit = useMemo(() => {
     if (entity?.permissions && typeof entity.permissions.canEdit === 'boolean') {
@@ -423,7 +503,19 @@ export default function EntityDetailPage() {
       return {
         id: relationship.id,
         typeName: type?.name || '—',
+        fromId:
+          relationship.from_entity_id ||
+          relationship.fromEntityId ||
+          relationship.from_id ||
+          fromEntity?.id ||
+          null,
         fromName: fromEntity?.name || '—',
+        toId:
+          relationship.to_entity_id ||
+          relationship.toEntityId ||
+          relationship.to_id ||
+          toEntity?.id ||
+          null,
         toName: toEntity?.name || '—',
         direction: context.__direction === 'reverse' ? 'reverse' : 'forward',
         bidirectional: Boolean(relationship.bidirectional),
@@ -431,25 +523,57 @@ export default function EntityDetailPage() {
     })
   }, [relationships])
 
+  const relationshipsByPerspective = useMemo(() => {
+    const entityId = entity?.id
+    if (!entityId) {
+      return { source: [], target: [] }
+    }
+
+    const entityIdString = String(entityId)
+    const source = normalisedRelationships.filter((relationship) => {
+      if (!relationship.fromId) return false
+      return String(relationship.fromId) === entityIdString
+    })
+
+    const target = normalisedRelationships.filter((relationship) => {
+      if (!relationship.toId) return false
+      return String(relationship.toId) === entityIdString
+    })
+
+    return { source, target }
+  }, [entity?.id, normalisedRelationships])
+
+  const relationshipsToDisplay = useMemo(
+    () => relationshipsByPerspective[relationshipPerspective] || [],
+    [relationshipsByPerspective, relationshipPerspective],
+  )
+
+  const relationshipsToggleLabel = useMemo(() => {
+    const name = entity?.name || 'this entity'
+    return relationshipPerspective === 'source'
+      ? `Showing relationships where ${name} is the source.`
+      : `Showing relationships where ${name} is the target.`
+  }, [entity?.name, relationshipPerspective])
+
+  const relationshipsToggleActionLabel = useMemo(
+    () =>
+      relationshipPerspective === 'source'
+        ? 'Show incoming relationships'
+        : 'Show outgoing relationships',
+    [relationshipPerspective],
+  )
+
+  const relationshipsEmptyMessage = useMemo(() => {
+    const name = entity?.name || 'this entity'
+    return relationshipPerspective === 'source'
+      ? `No relationships found where ${name} is the source.`
+      : `No relationships found where ${name} is the target.`
+  }, [entity?.name, relationshipPerspective])
+
   const handleRelationshipCreated = useCallback(() => {
     setShowRelationshipForm(false)
     loadRelationships()
   }, [loadRelationships])
-
-  const formatMetadataValue = useCallback((field, value) => {
-    if (value === null || value === undefined || value === '') return '—'
-    if (field?.type === 'boolean') {
-      return value ? 'Yes' : 'No'
-    }
-    if (typeof value === 'object') {
-      try {
-        return JSON.stringify(value)
-      } catch {
-        return String(value)
-      }
-    }
-    return String(value)
-  }, [])
 
   if (!sessionReady) return <p>Restoring session...</p>
   if (!token) return <p>Authenticating...</p>
@@ -460,25 +584,25 @@ export default function EntityDetailPage() {
 
   return (
     <div className="entity-detail-page">
-      <div className="entity-detail-header">
-        <button className="btn secondary" type="button" onClick={() => navigate('/entities')}>
-          Back to entities
-        </button>
-        <div className="entity-detail-title">
-          <h1>{entity.name}</h1>
-          {canEdit && !isEditing && (
-            <button className="btn" type="button" onClick={() => setIsEditing(true)}>
-              Edit entity
-            </button>
-          )}
+      <div className="entity-detail-topbar">
+        <div className="entity-detail-header">
+          <button className="btn secondary" type="button" onClick={() => navigate('/entities')}>
+            Back to entities
+          </button>
+          <div className="entity-detail-title">
+            <h1>{entity.name}</h1>
+            {canEdit && !isEditing && (
+              <button className="btn" type="button" onClick={() => setIsEditing(true)}>
+                Edit entity
+              </button>
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className="entity-tabs">
-        <div className="entity-tab-list" role="tablist">
+        <div className="entity-tabs" role="tablist">
           <button
             type="button"
-            className={`entity-tab ${activeTab === 'dossier' ? 'active' : ''}`}
+            className={`entity-tab ${activeTab === 'dossier' ? 'is-active' : ''}`}
             onClick={() => setActiveTab('dossier')}
             role="tab"
             aria-selected={activeTab === 'dossier'}
@@ -487,7 +611,7 @@ export default function EntityDetailPage() {
           </button>
           <button
             type="button"
-            className={`entity-tab ${activeTab === 'relationships' ? 'active' : ''}`}
+            className={`entity-tab ${activeTab === 'relationships' ? 'is-active' : ''}`}
             onClick={() => setActiveTab('relationships')}
             role="tab"
             aria-selected={activeTab === 'relationships'}
@@ -496,7 +620,7 @@ export default function EntityDetailPage() {
           </button>
           <button
             type="button"
-            className={`entity-tab ${activeTab === 'access' ? 'active' : ''}`}
+            className={`entity-tab ${activeTab === 'access' ? 'is-active' : ''}`}
             onClick={() => setActiveTab('access')}
             role="tab"
             aria-selected={activeTab === 'access'}
@@ -505,7 +629,7 @@ export default function EntityDetailPage() {
           </button>
           <button
             type="button"
-            className={`entity-tab ${activeTab === 'system' ? 'active' : ''}`}
+            className={`entity-tab ${activeTab === 'system' ? 'is-active' : ''}`}
             onClick={() => setActiveTab('system')}
             role="tab"
             aria-selected={activeTab === 'system'}
@@ -513,8 +637,9 @@ export default function EntityDetailPage() {
             System
           </button>
         </div>
+      </div>
 
-        <div className="entity-tab-panel" role="tabpanel">
+      <div className="entity-tab-panel" role="tabpanel">
           {activeTab === 'dossier' && (
             <div className="entity-tab-content">
               {formError ? (
@@ -531,67 +656,7 @@ export default function EntityDetailPage() {
                   onCancel={() => setIsEditing(false)}
                 />
               ) : (
-                <>
-                  <section className="entity-section">
-                    <div className="entity-section-header">
-                      <h2>Summary</h2>
-                      {canEdit && !isEditing && (
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => setIsEditing(true)}
-                        >
-                          Edit entity
-                        </button>
-                      )}
-                    </div>
-                    <div className="entity-summary-grid">
-                      <div className="entity-field">
-                        <span className="entity-field-label">Name</span>
-                        <span className="entity-field-value">{viewData.name}</span>
-                      </div>
-                      <div className="entity-field">
-                        <span className="entity-field-label">Type</span>
-                        <span className="entity-field-value">{viewData.typeName}</span>
-                      </div>
-                      <div className="entity-field entity-description">
-                        <span className="entity-field-label">Description</span>
-                        <span className="entity-field-value">
-                          {viewData.description ? viewData.description : '—'}
-                        </span>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section className="entity-section">
-                    <div className="entity-section-header">
-                      <h2>Details</h2>
-                    </div>
-                    {metadataFields.length === 0 ? (
-                      <p className="entity-empty-state">
-                        No metadata defined for this entity type.
-                      </p>
-                    ) : (
-                      <div className="entity-metadata-grid">
-                        {metadataFields.map((field) => {
-                          const key = field.metadataField || field.name
-                          const value =
-                            key && metadataViewValues
-                              ? metadataViewValues[key] ?? metadataViewValues[field.name]
-                              : undefined
-                          return (
-                            <div key={field.key} className="entity-field">
-                              <span className="entity-field-label">{field.label}</span>
-                              <span className="entity-field-value">
-                                {formatMetadataValue(field, value)}
-                              </span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </section>
-                </>
+                <RecordView schema={viewSchema} data={viewData} />
               )}
             </div>
           )}
@@ -610,36 +675,46 @@ export default function EntityDetailPage() {
                   </button>
                 )}
               </div>
+              <div className="entity-relationships-toggle">
+                <p>{relationshipsToggleLabel}</p>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() =>
+                    setRelationshipPerspective((prev) =>
+                      prev === 'source' ? 'target' : 'source',
+                    )
+                  }
+                >
+                  {relationshipsToggleActionLabel}
+                </button>
+              </div>
               {relationshipsLoading ? (
                 <p>Loading relationships...</p>
               ) : relationshipsError ? (
                 <div className="alert error" role="alert">
                   {relationshipsError}
                 </div>
-              ) : normalisedRelationships.length === 0 ? (
-                <p className="entity-empty-state">No relationships found for this entity.</p>
+              ) : relationshipsToDisplay.length === 0 ? (
+                <p className="entity-empty-state">{relationshipsEmptyMessage}</p>
               ) : (
                 <div className="entity-relationships-table-wrapper">
                   <table className="entity-relationships-table">
                     <thead>
                       <tr>
                         <th>Relationship Type</th>
-                        <th>From</th>
-                        <th>To</th>
-                        <th>Direction</th>
-                        <th>Bidirectional</th>
+                        <th>{relationshipPerspective === 'source' ? 'Destination' : 'Source'}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {normalisedRelationships.map((relationship) => (
+                      {relationshipsToDisplay.map((relationship) => (
                         <tr key={relationship.id}>
                           <td>{relationship.typeName}</td>
-                          <td>{relationship.fromName}</td>
-                          <td>{relationship.toName}</td>
-                          <td className="entity-relationships-direction">
-                            {relationship.direction === 'reverse' ? 'Reverse' : 'Forward'}
+                          <td>
+                            {relationshipPerspective === 'source'
+                              ? relationship.toName
+                              : relationship.fromName}
                           </td>
-                          <td>{relationship.bidirectional ? 'Yes' : 'No'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -663,53 +738,16 @@ export default function EntityDetailPage() {
 
           {activeTab === 'access' && (
             <div className="entity-tab-content">
-              <section className="entity-section">
-                <div className="entity-section-header">
-                  <h2>Access</h2>
-                </div>
-                <div className="entity-summary-grid">
-                  <div className="entity-field">
-                    <span className="entity-field-label">Visibility</span>
-                    <span className="entity-field-value">{viewData.visibilityLabel}</span>
-                  </div>
-                </div>
-              </section>
+              <RecordView schema={accessSchema} data={viewData} />
             </div>
           )}
 
           {activeTab === 'system' && (
             <div className="entity-tab-content">
-              <section className="entity-section">
-                <div className="entity-section-header">
-                  <h2>System</h2>
-                </div>
-                <div className="entity-summary-grid">
-                  <div className="entity-field">
-                    <span className="entity-field-label">World</span>
-                    <span className="entity-field-value">{viewData.worldName}</span>
-                  </div>
-                  <div className="entity-field">
-                    <span className="entity-field-label">Created</span>
-                    <span className="entity-field-value">{viewData.createdAt}</span>
-                  </div>
-                  <div className="entity-field">
-                    <span className="entity-field-label">Created by</span>
-                    <span className="entity-field-value">{viewData.createdBy}</span>
-                  </div>
-                  <div className="entity-field">
-                    <span className="entity-field-label">Updated</span>
-                    <span className="entity-field-value">{viewData.updatedAt}</span>
-                  </div>
-                  <div className="entity-field">
-                    <span className="entity-field-label">Updated by</span>
-                    <span className="entity-field-value">{viewData.updatedBy || '—'}</span>
-                  </div>
-                </div>
-              </section>
+              <RecordView schema={systemSchema} data={viewData} />
             </div>
           )}
         </div>
-      </div>
     </div>
   )
 }
