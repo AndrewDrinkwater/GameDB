@@ -6,6 +6,7 @@ import {
   EntityRelationshipTypeEntityType,
 } from '../models/index.js'
 import { ensureBidirectionalLink } from '../utils/relationshipHelpers.js'
+import { checkWorldAccess } from '../middleware/worldAccess.js'
 
 const mapEntitySummary = (entityInstance) => {
   if (!entityInstance) return null
@@ -61,6 +62,9 @@ const buildRuleSets = (typeInstance) => {
   }
 }
 
+const hasPrivilegedRelationshipRole = (user) =>
+  user?.role === 'system_admin' || user?.role === 'dm'
+
 const mapRelationship = (relationshipInstance) => {
   if (!relationshipInstance) return null
 
@@ -88,8 +92,19 @@ export async function getRelationshipTypes(req, res) {
     const { worldId } = req.query ?? {}
     const where = {}
 
-    if (worldId) {
-      where[Op.or] = [{ world_id: null }, { world_id: worldId }]
+    const trimmedWorldId = typeof worldId === 'string' ? worldId.trim() : ''
+
+    if (trimmedWorldId) {
+      if (!hasPrivilegedRelationshipRole(req.user)) {
+        const access = await checkWorldAccess(trimmedWorldId, req.user)
+        if (!access.isOwner && !access.isAdmin) {
+          return res.status(403).json({ error: 'Forbidden' })
+        }
+      }
+
+      where[Op.or] = [{ world_id: null }, { world_id: trimmedWorldId }]
+    } else if (!hasPrivilegedRelationshipRole(req.user)) {
+      return res.status(403).json({ error: 'Forbidden' })
     }
 
     const types = await EntityRelationshipType.findAll({
@@ -118,6 +133,13 @@ export async function listRelationships(req, res) {
 
     if (!trimmedWorldId) {
       return res.status(400).json({ error: 'worldId query parameter is required' })
+    }
+
+    if (!hasPrivilegedRelationshipRole(req.user)) {
+      const access = await checkWorldAccess(trimmedWorldId, req.user)
+      if (!access.isOwner && !access.isAdmin) {
+        return res.status(403).json({ error: 'Forbidden' })
+      }
     }
 
     const relationships = await EntityRelationship.findAll({
@@ -206,6 +228,13 @@ export async function createRelationship(req, res) {
       return res.status(400).json({ error: 'Entities must belong to the same world' })
     }
 
+    if (!hasPrivilegedRelationshipRole(req.user)) {
+      const access = await checkWorldAccess(from.world_id, req.user)
+      if (!access.isOwner && !access.isAdmin) {
+        return res.status(403).json({ error: 'Forbidden' })
+      }
+    }
+
     if (relationshipType.world_id && relationshipType.world_id !== from.world_id) {
       return res.status(400).json({
         error: 'Relationship type cannot be used outside of its world context',
@@ -253,6 +282,19 @@ export async function createRelationship(req, res) {
 export async function getRelationshipsByEntity(req, res) {
   try {
     const entityId = req.params.id
+    const entity = await Entity.findByPk(entityId, { attributes: ['id', 'world_id'] })
+
+    if (!entity) {
+      return res.status(404).json({ error: 'Entity not found' })
+    }
+
+    if (!hasPrivilegedRelationshipRole(req.user)) {
+      const access = await checkWorldAccess(entity.world_id, req.user)
+      if (!access.isOwner && !access.isAdmin) {
+        return res.status(403).json({ error: 'Forbidden' })
+      }
+    }
+
     const relationships = await EntityRelationship.findAll({
       where: {
         [Op.or]: [{ from_entity: entityId }, { to_entity: entityId }],
@@ -273,10 +315,28 @@ export async function getRelationshipsByEntity(req, res) {
 
 export async function deleteRelationship(req, res) {
   try {
-    const relationship = await EntityRelationship.findByPk(req.params.id)
+    const relationship = await EntityRelationship.findByPk(req.params.id, {
+      include: [
+        { model: Entity, as: 'from', attributes: ['id', 'world_id'] },
+        { model: Entity, as: 'to', attributes: ['id', 'world_id'] },
+      ],
+    })
 
     if (!relationship) {
       return res.status(404).json({ error: 'Not found' })
+    }
+
+    if (!hasPrivilegedRelationshipRole(req.user)) {
+      const relationshipWorldId = relationship.from?.world_id ?? relationship.to?.world_id
+
+      if (!relationshipWorldId) {
+        return res.status(400).json({ error: 'Unable to determine relationship world' })
+      }
+
+      const access = await checkWorldAccess(relationshipWorldId, req.user)
+      if (!access.isOwner && !access.isAdmin) {
+        return res.status(403).json({ error: 'Forbidden' })
+      }
     }
 
     await relationship.destroy()
