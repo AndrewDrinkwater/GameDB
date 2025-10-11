@@ -7,6 +7,22 @@ const CampaignContext = createContext(null)
 const STORAGE_KEY = 'gamedb_campaign_context'
 const ELIGIBLE_ROLES = new Set(['dm', 'player'])
 
+const filterCampaignsForUser = (campaigns, user) => {
+  if (!Array.isArray(campaigns)) return []
+  if (!user) return []
+  if (user.role === 'system_admin') {
+    return campaigns
+  }
+
+  return campaigns.filter(
+    (campaign) =>
+      Array.isArray(campaign?.members) &&
+      campaign.members.some(
+        (member) => member?.user_id === user.id && ELIGIBLE_ROLES.has(member?.role),
+      ),
+  )
+}
+
 export function CampaignProvider({ children }) {
   const { user, sessionReady } = useAuth()
   const [campaigns, setCampaigns] = useState([])
@@ -62,12 +78,7 @@ export function CampaignProvider({ children }) {
           ? response
           : []
 
-      const eligible = list.filter((campaign) =>
-        Array.isArray(campaign?.members) &&
-        campaign.members.some(
-          (member) => member?.user_id === user.id && ELIGIBLE_ROLES.has(member?.role),
-        ),
-      )
+      const eligible = filterCampaignsForUser(list, user)
 
       setCampaigns(eligible)
 
