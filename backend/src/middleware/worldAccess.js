@@ -2,59 +2,85 @@ import { Campaign, Character, Entity, UserCampaignRole, World } from '../models/
 
 const isSystemAdmin = (user) => user?.role === 'system_admin'
 
+const normaliseWorldId = (value) => {
+  if (value === undefined || value === null) return ''
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'object') {
+    if ('id' in value && value.id !== undefined && value.id !== null) {
+      return normaliseWorldId(value.id)
+    }
+    return ''
+  }
+  return String(value)
+}
+
 export const checkWorldAccess = async (worldId, user) => {
-  const userId = user?.id
-  const world = await World.findByPk(worldId, { attributes: ['id', 'created_by', 'name'] })
   const admin = isSystemAdmin(user)
+  const baseResult = { world: null, hasAccess: false, isOwner: false, isAdmin: admin }
+  const normalisedWorldId = normaliseWorldId(worldId)
 
-  if (!world) {
-    return { world: null, hasAccess: false, isOwner: false, isAdmin: admin }
+  if (!normalisedWorldId) {
+    return baseResult
   }
 
-  if (admin) {
-    return { world, hasAccess: true, isOwner: false, isAdmin: true }
+  try {
+    const world = await World.findByPk(normalisedWorldId, {
+      attributes: ['id', 'created_by', 'name'],
+    })
+
+    if (!world) {
+      return baseResult
+    }
+
+    if (admin) {
+      return { world, hasAccess: true, isOwner: false, isAdmin: true }
+    }
+
+    const userId = user?.id
+    if (!userId) {
+      return { ...baseResult, world, isAdmin: false }
+    }
+
+    const isOwner = world.created_by === userId
+    if (isOwner) {
+      return { world, hasAccess: true, isOwner: true, isAdmin: false }
+    }
+
+    const [campaignRoleCount, characterCount, entityCount] = await Promise.all([
+      UserCampaignRole.count({
+        where: { user_id: userId },
+        include: [
+          {
+            model: Campaign,
+            as: 'campaign',
+            required: true,
+            where: { world_id: normalisedWorldId },
+            attributes: [],
+          },
+        ],
+      }),
+      Character.count({
+        where: { user_id: userId },
+        include: [
+          {
+            model: Campaign,
+            as: 'campaign',
+            required: true,
+            where: { world_id: normalisedWorldId },
+            attributes: [],
+          },
+        ],
+      }),
+      Entity.count({ where: { world_id: normalisedWorldId, created_by: userId } }),
+    ])
+
+    const hasAccess = campaignRoleCount > 0 || characterCount > 0 || entityCount > 0
+
+    return { world, hasAccess, isOwner: false, isAdmin: false }
+  } catch (error) {
+    console.error(`Failed to check world access for ${normalisedWorldId}`, error)
+    return baseResult
   }
-
-  if (!userId) {
-    return { world, hasAccess: false, isOwner: false, isAdmin: false }
-  }
-
-  const isOwner = world.created_by === userId
-  if (isOwner) {
-    return { world, hasAccess: true, isOwner: true, isAdmin: false }
-  }
-
-  const [campaignRoleCount, characterCount, entityCount] = await Promise.all([
-    UserCampaignRole.count({
-      where: { user_id: userId },
-      include: [
-        {
-          model: Campaign,
-          as: 'campaign',
-          required: true,
-          where: { world_id: worldId },
-          attributes: [],
-        },
-      ],
-    }),
-    Character.count({
-      where: { user_id: userId },
-      include: [
-        {
-          model: Campaign,
-          as: 'campaign',
-          required: true,
-          where: { world_id: worldId },
-          attributes: [],
-        },
-      ],
-    }),
-    Entity.count({ where: { world_id: worldId, created_by: userId } }),
-  ])
-
-  const hasAccess = campaignRoleCount > 0 || characterCount > 0 || entityCount > 0
-
-  return { world, hasAccess, isOwner: false, isAdmin: false }
 }
 
 export const ensureWorldAccess = async (req, res, next) => {
