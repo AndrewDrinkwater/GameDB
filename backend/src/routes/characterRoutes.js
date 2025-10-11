@@ -86,6 +86,50 @@ router.get('/', authMiddleware, async (req, res) => {
         { user_id: { [Op.ne]: req.user.id } },
         { user_id: null },
       ]
+    } else if (scope === 'companions') {
+      const campaignId = req.query.campaign_id
+
+      if (!campaignId) {
+        return res
+          .status(400)
+          .json({ success: false, message: 'Campaign is required to view companions' })
+      }
+
+      const membership = await UserCampaignRole.findOne({
+        where: {
+          campaign_id: campaignId,
+          user_id: req.user.id,
+          role: 'player',
+        },
+        raw: true,
+      })
+
+      if (!membership) {
+        return res
+          .status(403)
+          .json({ success: false, message: 'You must be a player in this campaign' })
+      }
+
+      const campaignPlayers = await UserCampaignRole.findAll({
+        where: { campaign_id: campaignId, role: 'player' },
+        attributes: ['user_id'],
+        raw: true,
+      })
+
+      const playerIds = [
+        ...new Set(
+          campaignPlayers
+            .map((member) => member?.user_id)
+            .filter((id) => id && String(id) !== String(req.user.id)),
+        ),
+      ]
+
+      if (playerIds.length === 0) {
+        return res.json({ success: true, data: [] })
+      }
+
+      where.campaign_id = campaignId
+      where.user_id = { [Op.in]: playerIds }
     } else if (scope === 'all') {
       if (req.user.role !== 'system_admin') {
         return res

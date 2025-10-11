@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useCampaignContext } from '../context/CampaignContext.jsx'
 import {
   fetchCharacters,
   createCharacter,
@@ -44,6 +45,7 @@ export default function CharactersPage({ scope = 'my' }) {
   const navigate = useNavigate()
   const { id: routeId } = useParams()
   const { token, sessionReady, user } = useAuth()
+  const { selectedCampaign, selectedCampaignId } = useCampaignContext()
   const [characters, setCharacters] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -52,18 +54,31 @@ export default function CharactersPage({ scope = 'my' }) {
   const [editingId, setEditingId] = useState(null)
   const basePath = useMemo(() => `/characters/${scope}`, [scope])
 
+  const isPlayerInSelectedCampaign = useMemo(() => {
+    if (!selectedCampaign || !Array.isArray(selectedCampaign.members)) return false
+    if (!user?.id) return false
+
+    return selectedCampaign.members.some(
+      (member) => member?.user_id === user.id && member?.role === 'player',
+    )
+  }, [selectedCampaign, user])
+
   const title = useMemo(() => {
     switch (scope) {
       case 'my':
         return 'My Characters'
       case 'others':
-        return 'Other Characters'
+        return 'All Characters'
       case 'all':
         return 'All Characters'
+      case 'companions':
+        return selectedCampaign?.name
+          ? `My Companions – ${selectedCampaign.name}`
+          : 'My Companions'
       default:
         return 'Characters'
     }
-  }, [scope])
+  }, [scope, selectedCampaign])
 
   const canCreate = scope === 'my' || user?.role === 'system_admin'
 
@@ -107,10 +122,31 @@ export default function CharactersPage({ scope = 'my' }) {
   const loadCharacters = useCallback(async () => {
     if (!token) return
     if (scope === 'all' && user && user.role !== 'system_admin') return
+
+    if (scope === 'companions') {
+      if (!selectedCampaignId) {
+        setCharacters([])
+        setError('Select a campaign to view your companions.')
+        return
+      }
+
+      if (!isPlayerInSelectedCampaign) {
+        setCharacters([])
+        setError('You must be a player in the selected campaign to view companions.')
+        return
+      }
+    }
+
     setLoading(true)
     setError(null)
     try {
-      const res = await fetchCharacters({ scope })
+      const params = { scope }
+
+      if (scope === 'companions') {
+        params.campaign_id = selectedCampaignId
+      }
+
+      const res = await fetchCharacters(params)
       const list = (res?.data || res || []).map((item) => ({
         ...item,
         playerName: item.player?.username || '',
@@ -126,7 +162,13 @@ export default function CharactersPage({ scope = 'my' }) {
     } finally {
       setLoading(false)
     }
-  }, [token, scope, user])
+  }, [
+    token,
+    scope,
+    user,
+    selectedCampaignId,
+    isPlayerInSelectedCampaign,
+  ])
 
   useEffect(() => {
     if (sessionReady && token) loadCharacters()
@@ -208,7 +250,7 @@ export default function CharactersPage({ scope = 'my' }) {
   if (!sessionReady) return <p>Restoring session...</p>
   if (!token) return <p>Authenticating...</p>
   if (loading) return <p>Loading characters...</p>
-  if (error) return <p className="error">Error: {error}</p>
+  if (error) return <p className="error">{error}</p>
 
   if (viewMode === 'new') {
     return (
