@@ -16,6 +16,7 @@ export default function FormRenderer({
   onSubmit,
   onCancel,
   onDelete, // optional
+  showUpdateAction = true,
 }) {
   const [formData, setFormData] = useState(() =>
     initialData ? { ...initialData } : {},
@@ -23,11 +24,16 @@ export default function FormRenderer({
   const [initialSignature, setInitialSignature] = useState(() =>
     JSON.stringify(initialData ?? {}),
   )
+  const [statusMessage, setStatusMessage] = useState('')
+  const [statusType, setStatusType] = useState('success')
+  const [submittingAction, setSubmittingAction] = useState(null)
 
   useEffect(() => {
     const nextData = initialData ? { ...initialData } : {}
     setFormData(nextData)
     setInitialSignature(JSON.stringify(initialData ?? {}))
+    setStatusMessage('')
+    setStatusType('success')
   }, [initialData])
 
   // Normalize schema to sections so both shapes work
@@ -102,24 +108,65 @@ export default function FormRenderer({
     }
   }, [isDirty])
 
+  useEffect(() => {
+    if (isDirty && statusMessage) {
+      setStatusMessage('')
+      setStatusType('success')
+    }
+  }, [isDirty, statusMessage])
+
   useUnsavedChangesPrompt(isDirty, undefined, bypassRef)
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const handleActionSubmit = async (options = {}) => {
     if (!onSubmit) return
 
+    const actionType = options?.stayOnPage ? 'update' : 'save'
+    const nextSignature = JSON.stringify(formData ?? {})
+
+    setSubmittingAction(actionType)
+    setStatusType('success')
+    if (!options?.stayOnPage) {
+      setStatusMessage('')
+    }
+
     bypassRef.current = true
+
     try {
-      const result = await onSubmit(formData)
-      if (result !== false) {
-        setInitialSignature(currentSignature)
-      } else {
+      const result = await onSubmit(formData, options)
+      if (result === false) {
+        bypassRef.current = false
+        return
+      }
+
+      const payload =
+        result && typeof result === 'object' && !Array.isArray(result) ? result : {}
+
+      setInitialSignature(nextSignature)
+
+      if (options?.stayOnPage) {
+        const message =
+          typeof result === 'string'
+            ? result
+            : payload.message || schema?.updateSuccessMessage || 'Changes updated successfully.'
+
+        const variant = payload.status === 'error' ? 'error' : 'success'
+        setStatusType(variant)
+        setStatusMessage(message)
         bypassRef.current = false
       }
     } catch (err) {
-      bypassRef.current = false
       console.error('Failed to submit form:', err)
+      setStatusType('error')
+      setStatusMessage(err.message || 'Failed to save changes.')
+      bypassRef.current = false
+    } finally {
+      setSubmittingAction(null)
     }
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    await handleActionSubmit({ stayOnPage: false })
   }
 
   const handleCancelClick = () => {
@@ -176,23 +223,55 @@ export default function FormRenderer({
         </div>
       ))}
 
-      <div className="form-actions">
-        {onDelete && (
-          <button
-            type="button"
-            className="btn delete"
-            onClick={handleDeleteClick}
-          >
-            {schema?.deleteLabel || 'Delete'}
-          </button>
-        )}
+      {statusMessage ? (
+        <div
+          className={`form-feedback ${statusType}`}
+          role={statusType === 'error' ? 'alert' : 'status'}
+        >
+          {statusMessage}
+        </div>
+      ) : null}
+
+      <div className="form-actions sticky-actions" role="toolbar">
+        <div className="left-actions">
+          {onDelete ? (
+            <button
+              type="button"
+              className="btn delete"
+              onClick={handleDeleteClick}
+              disabled={submittingAction !== null}
+            >
+              {schema?.deleteLabel || 'Delete'}
+            </button>
+          ) : null}
+        </div>
 
         <div className="right-actions">
-          <button type="button" className="btn cancel" onClick={handleCancelClick}>
-            Cancel
+          <button
+            type="button"
+            className="btn cancel"
+            onClick={handleCancelClick}
+            disabled={submittingAction !== null}
+          >
+            {schema?.cancelLabel || 'Cancel'}
           </button>
-          <button type="submit" className="btn submit">
-            Save
+          {showUpdateAction ? (
+            <button
+              type="button"
+              className="btn neutral"
+              onClick={() => handleActionSubmit({ stayOnPage: true })}
+              disabled={submittingAction === 'update'}
+            >
+              {schema?.updateLabel || 'Update'}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="btn submit"
+            onClick={() => handleActionSubmit({ stayOnPage: false })}
+            disabled={submittingAction === 'save'}
+          >
+            {schema?.saveLabel || 'Save'}
           </button>
         </div>
       </div>

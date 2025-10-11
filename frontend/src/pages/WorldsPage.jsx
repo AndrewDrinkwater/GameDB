@@ -75,6 +75,7 @@ export default function WorldsPage() {
         initialData={{}}
         onSubmit={handleCreate}
         onCancel={handleCancel}
+        showUpdateAction={false}
       />
     )
   }

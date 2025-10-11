@@ -163,7 +163,7 @@ export default function CampaignsPage({ scope = 'all' }) {
   }
 
   const handleUpdate = async (data, options = {}) => {
-    const { stayInEdit = false } = options
+    const { stayOnPage = false } = options
     if (!canManage(selectedCampaign)) {
       alert('You do not have permission to update this campaign.')
       return false
@@ -194,8 +194,8 @@ export default function CampaignsPage({ scope = 'all' }) {
           return updated
         })
 
-        if (stayInEdit) {
-          return true
+        if (stayOnPage) {
+          return { message: 'Campaign updated successfully.' }
         }
 
         setViewMode('list')
@@ -378,7 +378,15 @@ export default function CampaignsPage({ scope = 'all' }) {
   if (error) return <p className="error">Error: {error}</p>
 
   if (viewMode === 'new')
-    return <FormRenderer schema={newSchema} initialData={{}} onSubmit={handleCreate} onCancel={handleCancel} />
+    return (
+      <FormRenderer
+        schema={newSchema}
+        initialData={{}}
+        onSubmit={handleCreate}
+        onCancel={handleCancel}
+        showUpdateAction={false}
+      />
+    )
 
   if (viewMode === 'edit' && selectedCampaign && editInitialData)
     return (
@@ -409,7 +417,7 @@ export default function CampaignsPage({ scope = 'all' }) {
             <FormRenderer
               schema={detailsSchema}
               initialData={editInitialData}
-              onSubmit={(data) => handleUpdate(data)}
+              onSubmit={handleUpdate}
               onDelete={handleDelete}
               onCancel={handleCancel}
             />
@@ -418,7 +426,7 @@ export default function CampaignsPage({ scope = 'all' }) {
               <FormRenderer
                 schema={membershipSchema}
                 initialData={membershipInitialData}
-                onSubmit={(data) => handleUpdate(data, { stayInEdit: true })}
+                onSubmit={handleUpdate}
                 onCancel={handleCancel}
               />
               <CampaignMembersManager

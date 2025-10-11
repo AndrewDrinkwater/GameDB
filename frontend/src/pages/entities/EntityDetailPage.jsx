@@ -150,14 +150,12 @@ export default function EntityDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
-  const [formMessage, setFormMessage] = useState('')
 
   const loadEntity = useCallback(async () => {
     if (!id) return
     setLoading(true)
     setError('')
     setFormError('')
-    setFormMessage('')
     try {
       const response = await getEntity(id)
       const data = response?.data || response
@@ -375,11 +373,10 @@ export default function EntityDetailPage() {
   }, [entity, user])
 
   const handleUpdate = useCallback(
-    async (values) => {
+    async (values, options = {}) => {
       if (!entity?.id) return false
 
       setFormError('')
-      setFormMessage('')
 
       try {
         const payload = {
@@ -396,7 +393,12 @@ export default function EntityDetailPage() {
         }
 
         setEntity(updated)
-        setFormMessage('Entity updated successfully.')
+
+        if (options?.stayOnPage) {
+          return { message: 'Entity updated successfully.' }
+        }
+
+        navigate('/entities')
         return true
       } catch (err) {
         console.error('❌ Failed to update entity', err)
@@ -404,7 +406,7 @@ export default function EntityDetailPage() {
         return false
       }
     },
-    [entity?.id],
+    [entity?.id, navigate],
   )
 
   if (!sessionReady) return <p>Restoring session...</p>
@@ -428,11 +430,6 @@ export default function EntityDetailPage() {
 
   return (
     <div className="entity-detail-edit">
-      {formMessage ? (
-        <div className="alert info" role="status">
-          {formMessage}
-        </div>
-      ) : null}
       {formError ? (
         <div className="alert error" role="alert">
           {formError}

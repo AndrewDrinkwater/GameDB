@@ -33,7 +33,8 @@ export default function WorldDetailPage() {
     if (sessionReady && token) loadWorld()
   }, [sessionReady, token, loadWorld])
 
-  const handleUpdate = async (data) => {
+  const handleUpdate = async (data, options = {}) => {
+    const { stayOnPage = false } = options
     try {
       const payload = {
         name: data?.name,
@@ -43,6 +44,13 @@ export default function WorldDetailPage() {
       }
       const res = await updateWorld(id, payload)
       if (res.success) {
+        const updatedWorld = res.data || { ...world, ...payload }
+        setWorld(updatedWorld)
+
+        if (stayOnPage) {
+          return { message: 'World updated successfully.' }
+        }
+
         navigate('/worlds')
         return true
       }
