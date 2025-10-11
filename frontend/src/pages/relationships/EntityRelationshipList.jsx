@@ -228,6 +228,15 @@ export default function EntityRelationshipList() {
     return map
   }, [relationshipTypes])
 
+  const getDirectionFromContext = (context) => {
+    if (!context) return ''
+    if (typeof context === 'object' && context !== null && !Array.isArray(context)) {
+      const value = context.__direction || context.direction
+      return value ? String(value) : ''
+    }
+    return ''
+  }
+
   const normalisedRelationships = useMemo(
     () =>
       relationships.map((relationship) => {
@@ -249,12 +258,35 @@ export default function EntityRelationshipList() {
           relationship.relationshipType?.id ||
           relationship.relationship_type?.id ||
           ''
-        const typeName =
-          relationship.relationshipType?.name ||
-          relationship.relationship_type?.name ||
+        const typeSource =
+          relationship.relationshipType ||
+          relationship.relationship_type ||
+          relationshipTypeMap.get(String(relationshipTypeId)) ||
+          {}
+
+        const baseName =
+          typeSource.name ||
           relationship.relationshipTypeName ||
           relationshipTypeMap.get(String(relationshipTypeId))?.name ||
           ''
+
+        const fromName =
+          typeSource.from_name ||
+          typeSource.fromName ||
+          relationshipTypeMap.get(String(relationshipTypeId))?.from_name ||
+          relationshipTypeMap.get(String(relationshipTypeId))?.fromName ||
+          baseName
+
+        const toName =
+          typeSource.to_name ||
+          typeSource.toName ||
+          relationshipTypeMap.get(String(relationshipTypeId))?.to_name ||
+          relationshipTypeMap.get(String(relationshipTypeId))?.toName ||
+          baseName
+
+        const direction = getDirectionFromContext(relationship.context)
+
+        const typeName = direction === 'reverse' ? toName : fromName
         const bidirectional = Boolean(
           relationship.bidirectional ??
             relationship.is_bidirectional ??
@@ -268,6 +300,9 @@ export default function EntityRelationshipList() {
           toEntityId: toEntityId ? String(toEntityId) : '',
           relationshipTypeId: relationshipTypeId ? String(relationshipTypeId) : '',
           typeName,
+          direction,
+          typeFromName: fromName,
+          typeToName: toName,
           bidirectional,
           fromEntityName:
             relationship.fromEntity?.name ||

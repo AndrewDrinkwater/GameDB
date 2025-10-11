@@ -51,6 +51,8 @@ const mapType = (typeInstance) => {
   return {
     id: plain.id,
     name: plain.name,
+    from_name: plain.from_name,
+    to_name: plain.to_name,
     description: plain.description,
     world_id: plain.world_id,
     created_at: plain.created_at,
@@ -123,6 +125,8 @@ export const getRelationshipType = async (req, res) => {
 
 const validateInput = async ({
   name,
+  fromName,
+  toName,
   description,
   worldId,
   fromEntityTypeIds,
@@ -131,6 +135,16 @@ const validateInput = async ({
   const trimmedName = typeof name === 'string' ? name.trim() : ''
   if (!trimmedName) {
     return { error: 'name is required' }
+  }
+
+  const trimmedFromName = typeof fromName === 'string' ? fromName.trim() : ''
+  if (!trimmedFromName) {
+    return { error: 'from_name is required' }
+  }
+
+  const trimmedToName = typeof toName === 'string' ? toName.trim() : ''
+  if (!trimmedToName) {
+    return { error: 'to_name is required' }
   }
 
   const trimmedWorldId = typeof worldId === 'string' ? worldId.trim() : String(worldId ?? '').trim()
@@ -167,6 +181,8 @@ const validateInput = async ({
   return {
     values: {
       name: trimmedName,
+      fromName: trimmedFromName,
+      toName: trimmedToName,
       description: description ?? null,
       worldId: world.id,
       fromIds,
@@ -183,6 +199,8 @@ export const createRelationshipType = async (req, res) => {
 
     const { values, error } = await validateInput({
       name: req.body?.name,
+      fromName: req.body?.from_name ?? req.body?.fromName,
+      toName: req.body?.to_name ?? req.body?.toName,
       description: req.body?.description,
       worldId: req.body?.world_id ?? req.body?.worldId,
       fromEntityTypeIds:
@@ -198,6 +216,8 @@ export const createRelationshipType = async (req, res) => {
       const relationshipType = await EntityRelationshipType.create(
         {
           name: values.name,
+          from_name: values.fromName,
+          to_name: values.toName,
           description: values.description,
           world_id: values.worldId,
         },
@@ -243,6 +263,8 @@ export const updateRelationshipType = async (req, res) => {
 
     const { values, error } = await validateInput({
       name: req.body?.name ?? relationshipType.name,
+      fromName: req.body?.from_name ?? req.body?.fromName ?? relationshipType.from_name,
+      toName: req.body?.to_name ?? req.body?.toName ?? relationshipType.to_name,
       description: req.body?.description ?? relationshipType.description,
       worldId: req.body?.world_id ?? req.body?.worldId ?? relationshipType.world_id,
       fromEntityTypeIds:
@@ -259,6 +281,8 @@ export const updateRelationshipType = async (req, res) => {
         await relationshipType.update(
           {
             name: values.name,
+            from_name: values.fromName,
+            to_name: values.toName,
             description: values.description,
             world_id: values.worldId,
           },
