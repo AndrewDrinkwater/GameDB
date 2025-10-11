@@ -559,6 +559,25 @@ export default function EntityDetailPage() {
 
   const normalisedRelationships = useMemo(() => {
     if (!Array.isArray(relationships)) return []
+    const normaliseRelationshipEntityId = (value) => {
+      if (value === undefined || value === null) return ''
+      if (typeof value === 'string' || typeof value === 'number') {
+        const trimmed = String(value).trim()
+        return trimmed
+      }
+      if (typeof value === 'object') {
+        if (value.id !== undefined && value.id !== null) {
+          return String(value.id)
+        }
+        if (value.entity_id !== undefined && value.entity_id !== null) {
+          return String(value.entity_id)
+        }
+        if (value.entityId !== undefined && value.entityId !== null) {
+          return String(value.entityId)
+        }
+      }
+      return ''
+    }
     return relationships.map((relationship) => {
       const type =
         relationship.relationshipType ||
@@ -566,9 +585,9 @@ export default function EntityDetailPage() {
         relationship.type ||
         {}
       const fromEntity =
-        relationship.from_entity || relationship.fromEntity || relationship.from || {}
+        relationship.fromEntity || relationship.from || relationship.from_entity || {}
       const toEntity =
-        relationship.to_entity || relationship.toEntity || relationship.to || {}
+        relationship.toEntity || relationship.to || relationship.to_entity || {}
       const context =
         (relationship.context && typeof relationship.context === 'object'
           ? relationship.context
@@ -578,17 +597,25 @@ export default function EntityDetailPage() {
         id: relationship.id,
         typeName: type?.name || '—',
         fromId:
-          relationship.from_entity_id ||
-          relationship.fromEntityId ||
-          relationship.from_id ||
-          fromEntity?.id ||
+          normaliseRelationshipEntityId(
+            relationship.from_entity_id ??
+              relationship.fromEntityId ??
+              relationship.from_id ??
+              relationship.from_entity ??
+              relationship.fromEntity,
+          ) ||
+          normaliseRelationshipEntityId(fromEntity) ||
           null,
         fromName: fromEntity?.name || '—',
         toId:
-          relationship.to_entity_id ||
-          relationship.toEntityId ||
-          relationship.to_id ||
-          toEntity?.id ||
+          normaliseRelationshipEntityId(
+            relationship.to_entity_id ??
+              relationship.toEntityId ??
+              relationship.to_id ??
+              relationship.to_entity ??
+              relationship.toEntity,
+          ) ||
+          normaliseRelationshipEntityId(toEntity) ||
           null,
         toName: toEntity?.name || '—',
         direction: context.__direction === 'reverse' ? 'reverse' : 'forward',
