@@ -3,7 +3,7 @@ import ListCollector from '../../components/ListCollector.jsx'
 
 const normaliseIdList = (list) => {
   if (!Array.isArray(list)) return []
-  return [...new Set(list.map((value) => (value ? String(value) : '')).filter(Boolean))]
+  return [...new Set(list.map((v) => (v ? String(v) : '')).filter(Boolean))]
 }
 
 const deriveInitialValues = (source = {}) => ({
@@ -13,10 +13,10 @@ const deriveInitialValues = (source = {}) => ({
   description: source?.description || '',
   worldId: source?.world?.id || source?.world_id || '',
   fromEntityTypeIds: normaliseIdList(
-    (source?.from_entity_types || []).map((entry) => entry?.id || entry?.entity_type_id),
+    (source?.from_entity_types || []).map((entry) => entry?.id || entry?.entity_type_id)
   ),
   toEntityTypeIds: normaliseIdList(
-    (source?.to_entity_types || []).map((entry) => entry?.id || entry?.entity_type_id),
+    (source?.to_entity_types || []).map((entry) => entry?.id || entry?.entity_type_id)
   ),
 })
 
@@ -24,7 +24,7 @@ const listsMatch = (a = [], b = []) => {
   if (a.length !== b.length) return false
   const sortedA = [...a].sort()
   const sortedB = [...b].sort()
-  return sortedA.every((value, index) => value === sortedB[index])
+  return sortedA.every((v, i) => v === sortedB[i])
 }
 
 export default function RelationshipTypeForm({
@@ -62,8 +62,8 @@ export default function RelationshipTypeForm({
     )
   }, [initialSnapshot, values])
 
-  const handleChange = (field) => (event) => {
-    const { value } = event.target
+  const handleChange = (field) => (e) => {
+    const { value } = e.target
     setValues((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -78,35 +78,14 @@ export default function RelationshipTypeForm({
     const trimmedFromName = values.fromName.trim()
     const trimmedToName = values.toName.trim()
 
-    if (!trimmedName) {
-      setLocalError('Name is required.')
-      return
-    }
-
-    if (!trimmedFromName) {
-      setLocalError('Provide a label for the source direction.')
-      return
-    }
-
-    if (!trimmedToName) {
-      setLocalError('Provide a label for the target direction.')
-      return
-    }
-
-    if (!values.worldId) {
-      setLocalError('Select a world for this relationship type.')
-      return
-    }
-
-    if (!values.fromEntityTypeIds.length) {
-      setLocalError('Select at least one allowed source entity type.')
-      return
-    }
-
-    if (!values.toEntityTypeIds.length) {
-      setLocalError('Select at least one allowed target entity type.')
-      return
-    }
+    if (!trimmedName) return setLocalError('Name is required.')
+    if (!trimmedFromName) return setLocalError('Provide a label for the source direction.')
+    if (!trimmedToName) return setLocalError('Provide a label for the target direction.')
+    if (!values.worldId) return setLocalError('Select a world for this relationship type.')
+    if (!values.fromEntityTypeIds.length)
+      return setLocalError('Select at least one allowed source entity type.')
+    if (!values.toEntityTypeIds.length)
+      return setLocalError('Select at least one allowed target entity type.')
 
     setLocalError('')
 
@@ -115,16 +94,14 @@ export default function RelationshipTypeForm({
       from_name: trimmedFromName,
       to_name: trimmedToName,
       description: values.description?.trim() || '',
-      world_id: values.worldId,
+      world_id: values.worldId, // ✅ Only send snake_case to backend
       from_entity_type_ids: values.fromEntityTypeIds,
       to_entity_type_ids: values.toEntityTypeIds,
     }
 
     try {
       const result = await onSubmit?.(payload)
-      if (result === false) {
-        return
-      }
+      if (result === false) return
     } catch (err) {
       setLocalError(err.message || 'Failed to save relationship type')
     }
@@ -213,9 +190,6 @@ export default function RelationshipTypeForm({
           loading={optionsLoading}
           noOptionsMessage="No entity types available."
         />
-        {entityTypes.length === 0 && !optionsLoading && (
-          <p className="field-hint">Define entity types before creating relationships.</p>
-        )}
       </div>
 
       <div className="form-group">
@@ -229,16 +203,9 @@ export default function RelationshipTypeForm({
           loading={optionsLoading}
           noOptionsMessage="No entity types available."
         />
-        {entityTypes.length === 0 && !optionsLoading && (
-          <p className="field-hint">Define entity types before creating relationships.</p>
-        )}
       </div>
 
-      {localError && (
-        <div className="form-error" role="alert">
-          {localError}
-        </div>
-      )}
+      {localError && <div className="form-error">{localError}</div>}
 
       <div className="form-actions">
         <button type="button" className="btn cancel" onClick={onCancel} disabled={saving}>

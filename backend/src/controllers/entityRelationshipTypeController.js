@@ -29,22 +29,17 @@ const buildRulePayload = (relationshipTypeId, role, ids) =>
     role,
   }))
 
-const findExistingTypeByName = async (worldId, name) => {
-  if (!worldId || !name) return null
+const findExistingTypeByName = async (world_id, name) => {
+  if (!world_id || !name) return null
 
-  const trimmedName = name.trim()
-  if (!trimmedName) return null
-
-  const lowerName = trimmedName.toLowerCase()
+  const trimmed = name.trim().toLowerCase()
+  if (!trimmed) return null
 
   return EntityRelationshipType.findOne({
     where: {
-      world_id: worldId,
+      world_id,
       [Op.and]: [
-        sequelize.where(
-          sequelize.fn('LOWER', sequelize.col('name')),
-          lowerName,
-        ),
+        sequelize.where(sequelize.fn('LOWER', sequelize.col('name')), trimmed),
       ],
     },
     attributes: ['id', 'name', 'world_id'],
@@ -63,11 +58,8 @@ const mapType = (typeInstance) => {
     const entry = rule.entityType
       ? { id: rule.entityType.id, name: rule.entityType.name }
       : { id: rule.entity_type_id }
-    if (rule.role === 'to') {
-      toTypes.push(entry)
-    } else {
-      fromTypes.push(entry)
-    }
+    if (rule.role === 'to') toTypes.push(entry)
+    else fromTypes.push(entry)
   })
 
   return {
@@ -79,9 +71,7 @@ const mapType = (typeInstance) => {
     world_id: plain.world_id,
     created_at: plain.created_at,
     updated_at: plain.updated_at,
-    world: plain.world
-      ? { id: plain.world.id, name: plain.world.name }
-      : null,
+    world: plain.world ? { id: plain.world.id, name: plain.world.name } : null,
     from_entity_types: fromTypes,
     to_entity_types: toTypes,
   }
@@ -134,7 +124,6 @@ export const getRelationshipType = async (req, res) => {
     }
 
     const instance = await fetchRelationshipType(req.params.id)
-
     if (!instance) {
       return res.status(404).json({ success: false, message: 'Relationship type not found' })
     }
@@ -150,58 +139,40 @@ const validateInput = async ({
   fromName,
   toName,
   description,
-  worldId,
+  world_id,
   fromEntityTypeIds,
   toEntityTypeIds,
 }) => {
   const trimmedName = typeof name === 'string' ? name.trim() : ''
-  if (!trimmedName) {
-    return { error: 'name is required' }
-  }
+  if (!trimmedName) return { error: 'name is required' }
 
   const trimmedFromName = typeof fromName === 'string' ? fromName.trim() : ''
-  if (!trimmedFromName) {
-    return { error: 'from_name is required' }
-  }
+  if (!trimmedFromName) return { error: 'from_name is required' }
 
   const trimmedToName = typeof toName === 'string' ? toName.trim() : ''
-  if (!trimmedToName) {
-    return { error: 'to_name is required' }
-  }
+  if (!trimmedToName) return { error: 'to_name is required' }
 
-  const trimmedWorldId = typeof worldId === 'string' ? worldId.trim() : String(worldId ?? '').trim()
-  if (!trimmedWorldId) {
-    return { error: 'world_id is required' }
-  }
+  const resolvedWorldId = typeof world_id === 'string' ? world_id.trim() : ''
+  if (!resolvedWorldId) return { error: 'world_id is required' }
 
   const fromIds = normaliseIds(fromEntityTypeIds)
   const toIds = normaliseIds(toEntityTypeIds)
+  if (!fromIds.length) return { error: 'At least one source entity type must be selected' }
+  if (!toIds.length) return { error: 'At least one target entity type must be selected' }
 
-  if (!fromIds.length) {
-    return { error: 'At least one source entity type must be selected' }
-  }
-
-  if (!toIds.length) {
-    return { error: 'At least one target entity type must be selected' }
-  }
-
-  const world = await World.findByPk(trimmedWorldId)
-  if (!world) {
-    return { error: 'World not found' }
-  }
+  const world = await World.findByPk(resolvedWorldId)
+  if (!world) return { error: 'World not found' }
 
   const combinedIds = [...new Set([...fromIds, ...toIds])]
   const entityTypes = await EntityType.findAll({
     where: { id: { [Op.in]: combinedIds } },
     attributes: ['id', 'name'],
   })
-
   if (entityTypes.length !== combinedIds.length) {
     return { error: 'One or more selected entity types were not found' }
   }
 
-  const existingType = await findExistingTypeByName(world.id, trimmedName)
-
+  const existingType = await findExistingTypeByName(resolvedWorldId, trimmedName)
   if (existingType) {
     return { error: 'A relationship type with this name already exists in the selected world' }
   }
@@ -212,9 +183,9 @@ const validateInput = async ({
       fromName: trimmedFromName,
       toName: trimmedToName,
       description: description ?? null,
-      worldId: world.id,
-      fromIds: [...new Set(fromIds)],
-      toIds: [...new Set(toIds)],
+      world_id: resolvedWorldId,
+      fromIds,
+      toIds,
     },
   }
 }
@@ -225,20 +196,27 @@ export const createRelationshipType = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
+    const resolvedWorldId = req.body?.world_id ?? req.body?.worldId
+
     const { values, error } = await validateInput({
       name: req.body?.name,
       fromName: req.body?.from_name ?? req.body?.fromName,
       toName: req.body?.to_name ?? req.body?.toName,
       description: req.body?.description,
-      worldId: req.body?.world_id ?? req.body?.worldId,
+      world_id: resolvedWorldId,
       fromEntityTypeIds:
         req.body?.from_entity_type_ids ?? req.body?.fromEntityTypeIds ?? [],
-      toEntityTypeIds: req.body?.to_entity_type_ids ?? req.body?.toEntityTypeIds ?? [],
+      toEntityTypeIds:
+        req.body?.to_entity_type_ids ?? req.body?.toEntityTypeIds ?? [],
     })
 
-    if (error) {
-      return res.status(400).json({ success: false, message: error })
-    }
+    if (error) return res.status(400).json({ success: false, message: error })
+
+    console.log('🧩 Incoming relationshipType payload:', {
+      name: values.name,
+      world_id: values.world_id,
+      user: req.user?.id,
+    })
 
     const result = await sequelize.transaction(async (transaction) => {
       const relationshipType = await EntityRelationshipType.create(
@@ -247,9 +225,9 @@ export const createRelationshipType = async (req, res) => {
           from_name: values.fromName,
           to_name: values.toName,
           description: values.description,
-          world_id: values.worldId,
+          world_id: values.world_id,
         },
-        { transaction },
+        { transaction }
       )
 
       const rules = [
@@ -257,38 +235,22 @@ export const createRelationshipType = async (req, res) => {
         ...buildRulePayload(relationshipType.id, 'to', values.toIds),
       ]
 
-      await EntityRelationshipTypeEntityType.bulkCreate(rules, {
-        transaction,
-      })
+      await EntityRelationshipTypeEntityType.bulkCreate(rules, { transaction })
 
       return relationshipType
     })
 
     const instance = await fetchRelationshipType(result.id)
-
     res.status(201).json({ success: true, data: mapType(instance) })
   } catch (error) {
     if (error.name === 'SequelizeUniqueConstraintError') {
       const constraint = error?.parent?.constraint || ''
-
-      if (constraint === 'uniq_relationship_type_entity_type_role') {
-        return res.status(400).json({
-          success: false,
-          message: 'Each entity type can only be selected once for a given direction.',
-        })
-      }
-
       if (constraint === 'uniq_relationship_types_world_name') {
         return res.status(409).json({
           success: false,
           message: 'A relationship type with this name already exists in the selected world',
         })
       }
-
-      return res.status(409).json({
-        success: false,
-        message: 'A relationship type with this name already exists',
-      })
     }
     res.status(500).json({ success: false, message: error.message })
   }
@@ -301,62 +263,52 @@ export const updateRelationshipType = async (req, res) => {
     }
 
     const relationshipType = await EntityRelationshipType.findByPk(req.params.id)
-
     if (!relationshipType) {
       return res.status(404).json({ success: false, message: 'Relationship type not found' })
     }
+
+    const resolvedWorldId = req.body?.world_id ?? req.body?.worldId ?? relationshipType.world_id
 
     const { values, error } = await validateInput({
       name: req.body?.name ?? relationshipType.name,
       fromName: req.body?.from_name ?? req.body?.fromName ?? relationshipType.from_name,
       toName: req.body?.to_name ?? req.body?.toName ?? relationshipType.to_name,
       description: req.body?.description ?? relationshipType.description,
-      worldId: req.body?.world_id ?? req.body?.worldId ?? relationshipType.world_id,
+      world_id: resolvedWorldId,
       fromEntityTypeIds:
         req.body?.from_entity_type_ids ?? req.body?.fromEntityTypeIds ?? [],
-      toEntityTypeIds: req.body?.to_entity_type_ids ?? req.body?.toEntityTypeIds ?? [],
+      toEntityTypeIds:
+        req.body?.to_entity_type_ids ?? req.body?.toEntityTypeIds ?? [],
     })
 
-    if (error) {
-      return res.status(400).json({ success: false, message: error })
-    }
+    if (error) return res.status(400).json({ success: false, message: error })
 
-    try {
-      await sequelize.transaction(async (transaction) => {
-        await relationshipType.update(
-          {
-            name: values.name,
-            from_name: values.fromName,
-            to_name: values.toName,
-            description: values.description,
-            world_id: values.worldId,
-          },
-          { transaction },
-        )
+    await sequelize.transaction(async (transaction) => {
+      await relationshipType.update(
+        {
+          name: values.name,
+          from_name: values.fromName,
+          to_name: values.toName,
+          description: values.description,
+          world_id: values.world_id,
+        },
+        { transaction }
+      )
 
-        await EntityRelationshipTypeEntityType.destroy({
-          where: { relationship_type_id: relationshipType.id },
-          transaction,
-        })
-
-        const rules = [
-          ...buildRulePayload(relationshipType.id, 'from', values.fromIds),
-          ...buildRulePayload(relationshipType.id, 'to', values.toIds),
-        ]
-
-        await EntityRelationshipTypeEntityType.bulkCreate(rules, { transaction })
+      await EntityRelationshipTypeEntityType.destroy({
+        where: { relationship_type_id: relationshipType.id },
+        transaction,
       })
-    } catch (err) {
-      if (err.name === 'SequelizeUniqueConstraintError') {
-        return res
-          .status(409)
-          .json({ success: false, message: 'A relationship type with this name already exists' })
-      }
-      throw err
-    }
+
+      const rules = [
+        ...buildRulePayload(relationshipType.id, 'from', values.fromIds),
+        ...buildRulePayload(relationshipType.id, 'to', values.toIds),
+      ]
+
+      await EntityRelationshipTypeEntityType.bulkCreate(rules, { transaction })
+    })
 
     const instance = await fetchRelationshipType(relationshipType.id)
-
     res.json({ success: true, data: mapType(instance) })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
@@ -370,7 +322,6 @@ export const deleteRelationshipType = async (req, res) => {
     }
 
     const relationshipType = await EntityRelationshipType.findByPk(req.params.id)
-
     if (!relationshipType) {
       return res.status(404).json({ success: false, message: 'Relationship type not found' })
     }
@@ -387,7 +338,6 @@ export const deleteRelationshipType = async (req, res) => {
     }
 
     await relationshipType.destroy()
-
     res.json({ success: true, message: 'Relationship type deleted' })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })

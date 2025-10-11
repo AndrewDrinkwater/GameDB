@@ -1,4 +1,6 @@
+// src/migrations/20251010_create_entities.js
 export async function up(queryInterface, Sequelize) {
+  // 1. entity_types
   await queryInterface.createTable('entity_types', {
     id: {
       type: Sequelize.UUID,
@@ -24,8 +26,9 @@ export async function up(queryInterface, Sequelize) {
       allowNull: false,
       defaultValue: Sequelize.literal('NOW()'),
     },
-  })
+  });
 
+  // 2. entities
   await queryInterface.createTable('entities', {
     id: {
       type: Sequelize.UUID,
@@ -79,8 +82,9 @@ export async function up(queryInterface, Sequelize) {
       allowNull: false,
       defaultValue: Sequelize.literal('NOW()'),
     },
-  })
+  });
 
+  // 3. entity_secrets
   await queryInterface.createTable('entity_secrets', {
     id: {
       type: Sequelize.UUID,
@@ -117,17 +121,38 @@ export async function up(queryInterface, Sequelize) {
       allowNull: false,
       defaultValue: Sequelize.literal('NOW()'),
     },
-  })
+  });
 
-  await queryInterface.addIndex('entities', ['world_id'], { name: 'idx_entities_world' })
-  await queryInterface.addIndex('entities', ['entity_type_id'], { name: 'idx_entities_type' })
+  // 4. Indexes (safe check)
+  await queryInterface.sequelize.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'idx_entities_world' AND n.nspname = 'public'
+      ) THEN
+        CREATE INDEX idx_entities_world ON "entities" ("world_id");
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'idx_entities_type' AND n.nspname = 'public'
+      ) THEN
+        CREATE INDEX idx_entities_type ON "entities" ("entity_type_id");
+      END IF;
+    END;
+    $$;
+  `);
 }
 
 export async function down(queryInterface) {
-  await queryInterface.removeIndex('entities', 'idx_entities_type')
-  await queryInterface.removeIndex('entities', 'idx_entities_world')
-  await queryInterface.dropTable('entity_secrets')
-  await queryInterface.dropTable('entities')
-  await queryInterface.dropTable('entity_types')
-  await queryInterface.sequelize.query('DROP TYPE IF EXISTS "enum_entities_visibility";')
+  // Drop safely in correct order
+  await queryInterface.removeIndex('entities', 'idx_entities_type').catch(() => {});
+  await queryInterface.removeIndex('entities', 'idx_entities_world').catch(() => {});
+  await queryInterface.dropTable('entity_secrets').catch(() => {});
+  await queryInterface.dropTable('entities').catch(() => {});
+  await queryInterface.dropTable('entity_types').catch(() => {});
+  await queryInterface.sequelize.query('DROP TYPE IF EXISTS "enum_entities_visibility";');
 }

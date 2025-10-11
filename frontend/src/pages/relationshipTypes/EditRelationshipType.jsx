@@ -63,9 +63,7 @@ export default function EditRelationshipType() {
     try {
       const response = await getRelationshipType(id)
       const data = response?.data ?? response
-      if (!data) {
-        throw new Error('Relationship type not found')
-      }
+      if (!data) throw new Error('Relationship type not found')
       setInitialValues(data)
     } catch (err) {
       console.error('❌ Failed to load relationship type', err)
@@ -82,13 +80,8 @@ export default function EditRelationshipType() {
     loadRecord()
   }, [sessionReady, token, loadOptions, loadRecord])
 
-  if (!sessionReady) {
-    return <p>Restoring session...</p>
-  }
-
-  if (!token) {
-    return <p>Authenticating...</p>
-  }
+  if (!sessionReady) return <p>Restoring session...</p>
+  if (!token) return <p>Authenticating...</p>
 
   if (!canManage) {
     return (
@@ -102,19 +95,31 @@ export default function EditRelationshipType() {
     )
   }
 
-  const handleCancel = () => {
-    navigate('/relationship-types')
-  }
+  const handleCancel = () => navigate('/relationship-types')
 
   const handleSubmit = async (payload) => {
-    if (saving || !id) {
-      return false
-    }
+    if (saving || !id) return false
 
     setFormError('')
     setSaving(true)
+
     try {
-      const response = await updateRelationshipType(id, payload)
+      // ✅ Ensure world_id is always present
+      const finalPayload = {
+        ...payload,
+        world_id:
+          payload.world_id ||
+          payload.worldId ||
+          payload.selectedWorldId ||
+          payload.world?.id ||
+          initialValues?.world_id,
+      }
+
+      if (!finalPayload.world_id) {
+        throw new Error('A world must be selected before saving changes')
+      }
+
+      const response = await updateRelationshipType(id, finalPayload)
       const updated = response?.data ?? response
 
       if (!updated || !updated.id) {
@@ -122,15 +127,12 @@ export default function EditRelationshipType() {
       }
 
       navigate('/relationship-types', {
-        state: {
-          toast: { message: 'Relationship type updated', tone: 'success' },
-        },
+        state: { toast: { message: 'Relationship type updated', tone: 'success' } },
       })
       return true
     } catch (err) {
       console.error('❌ Failed to update relationship type', err)
-      const message = err.message || 'Failed to update relationship type'
-      setFormError(message)
+      setFormError(err.message || 'Failed to update relationship type')
       return false
     } finally {
       setSaving(false)
@@ -141,9 +143,7 @@ export default function EditRelationshipType() {
     return (
       <section className="page relationship-type-form-page">
         <h1>Edit Relationship Type</h1>
-        <div className="form-status" role="status">
-          Loading relationship type...
-        </div>
+        <div className="form-status">Loading relationship type...</div>
       </section>
     )
   }
@@ -152,9 +152,7 @@ export default function EditRelationshipType() {
     return (
       <section className="page relationship-type-form-page">
         <h1>Edit Relationship Type</h1>
-        <div className="alert error" role="alert">
-          {recordError || 'Relationship type not found.'}
-        </div>
+        <div className="alert error">{recordError || 'Relationship type not found.'}</div>
         <button type="button" className="btn cancel" onClick={() => navigate('/relationship-types')}>
           Back to Relationship Types
         </button>
@@ -169,11 +167,7 @@ export default function EditRelationshipType() {
         Update the directional labels or allowed entity types for this relationship.
       </p>
 
-      {optionsError && (
-        <div className="alert error" role="alert">
-          {optionsError}
-        </div>
-      )}
+      {optionsError && <div className="alert error">{optionsError}</div>}
 
       <RelationshipTypeForm
         initialValues={initialValues}

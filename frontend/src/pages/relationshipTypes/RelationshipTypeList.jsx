@@ -19,10 +19,7 @@ const formatDate = (value) => {
 
 const buildTypeNames = (list = []) => {
   if (!Array.isArray(list) || list.length === 0) return '—'
-  return list
-    .map((entry) => entry?.name || entry?.label || 'Unknown')
-    .filter(Boolean)
-    .join(', ')
+  return list.map((entry) => entry?.name || entry?.label || 'Unknown').filter(Boolean).join(', ')
 }
 
 const buildDirectionSummary = (type) => {
@@ -42,10 +39,7 @@ export default function RelationshipTypeList() {
   const [toast, setToast] = useState(null)
   const [deletingId, setDeletingId] = useState('')
 
-  const canManage = useMemo(
-    () => (user?.role ? MANAGER_ROLES.has(user.role) : false),
-    [user?.role],
-  )
+  const canManage = useMemo(() => (user?.role ? MANAGER_ROLES.has(user.role) : false), [user?.role])
 
   useEffect(() => {
     if (!toast) return undefined
@@ -112,9 +106,7 @@ export default function RelationshipTypeList() {
 
   const handleDelete = async (type) => {
     if (!canManage || !type?.id) return
-    const confirmed = window.confirm(
-      `Delete relationship type "${type.name}"? This action cannot be undone.`,
-    )
+    const confirmed = window.confirm(`Delete relationship type "${type.name}"? This cannot be undone.`)
     if (!confirmed) return
 
     try {
@@ -130,13 +122,8 @@ export default function RelationshipTypeList() {
     }
   }
 
-  if (!sessionReady) {
-    return <p>Restoring session...</p>
-  }
-
-  if (!token) {
-    return <p>Authenticating...</p>
-  }
+  if (!sessionReady) return <p>Restoring session...</p>
+  if (!token) return <p>Authenticating...</p>
 
   if (!canManage) {
     return (
@@ -144,9 +131,7 @@ export default function RelationshipTypeList() {
         <div className="entity-types-header">
           <h1>Relationship Types</h1>
         </div>
-        <div className="alert info" role="status">
-          Only system administrators can manage relationship types.
-        </div>
+        <div className="alert info">Only system administrators can manage relationship types.</div>
       </section>
     )
   }
@@ -160,13 +145,7 @@ export default function RelationshipTypeList() {
         </div>
 
         <div className="entity-types-actions">
-          <button
-            type="button"
-            className="icon-btn"
-            title="Refresh relationship types"
-            onClick={handleRefresh}
-            disabled={loading}
-          >
+          <button type="button" className="icon-btn" title="Refresh" onClick={handleRefresh} disabled={loading}>
             <RotateCcw size={16} />
           </button>
           <button type="button" className="btn submit" onClick={openCreate} disabled={loading}>
@@ -175,17 +154,8 @@ export default function RelationshipTypeList() {
         </div>
       </div>
 
-      {toast && (
-        <div className={`toast-banner ${toast.tone}`} role="status">
-          {toast.message}
-        </div>
-      )}
-
-      {error && (
-        <div className="alert error" role="alert">
-          {error}
-        </div>
-      )}
+      {toast && <div className={`toast-banner ${toast.tone}`}>{toast.message}</div>}
+      {error && <div className="alert error">{error}</div>}
 
       <div className="entity-types-table-wrapper">
         {loading ? (
@@ -217,26 +187,22 @@ export default function RelationshipTypeList() {
                     <td>{buildTypeNames(type.to_entity_types)}</td>
                     <td>{formatDate(createdAt)}</td>
                     <td className="actions-column">
-                      <div className="entity-type-actions">
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          title="Edit relationship type"
-                          onClick={() => openEdit(type)}
-                          disabled={loading || deletingId === type.id}
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-btn danger"
-                          title="Delete relationship type"
-                          onClick={() => handleDelete(type)}
-                          disabled={deletingId === type.id}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+                      <button
+                        className="icon-btn"
+                        title="Edit"
+                        onClick={() => openEdit(type)}
+                        disabled={loading || deletingId === type.id}
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        className="icon-btn danger"
+                        title="Delete"
+                        onClick={() => handleDelete(type)}
+                        disabled={deletingId === type.id}
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </td>
                   </tr>
                 )

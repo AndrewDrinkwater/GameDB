@@ -57,39 +57,46 @@ export default function CreateRelationshipType() {
     loadOptions()
   }, [sessionReady, token, loadOptions])
 
-  if (!sessionReady) {
-    return <p>Restoring session...</p>
-  }
-
-  if (!token) {
-    return <p>Authenticating...</p>
-  }
+  if (!sessionReady) return <p>Restoring session...</p>
+  if (!token) return <p>Authenticating...</p>
 
   if (!canManage) {
     return (
       <section className="page relationship-type-form-page limited-access">
         <h1>Create Relationship Type</h1>
         <p>Only system administrators can create relationship types.</p>
-        <button type="button" className="btn cancel" onClick={() => navigate('/relationship-types')}>
+        <button
+          type="button"
+          className="btn cancel"
+          onClick={() => navigate('/relationship-types')}
+        >
           Back to Relationship Types
         </button>
       </section>
     )
   }
 
-  const handleCancel = () => {
-    navigate('/relationship-types')
-  }
+  const handleCancel = () => navigate('/relationship-types')
 
   const handleSubmit = async (payload) => {
-    if (saving) {
-      return false
-    }
-
+    if (saving) return false
     setFormError('')
     setSaving(true)
+
     try {
-      const response = await createRelationshipType(payload)
+      // ✅ Build clean, backend-ready payload
+      const finalPayload = {
+        ...payload,
+        world_id: payload.world_id ?? payload.worldId ?? payload.world?.id ?? '',
+      }
+
+      if (!finalPayload.world_id) {
+        throw new Error('A world must be selected before creating a relationship type')
+      }
+
+      console.log('🧩 Final payload being sent:', finalPayload)
+
+      const response = await createRelationshipType(finalPayload)
       const created = response?.data ?? response
 
       if (!created || !created.id) {
@@ -97,15 +104,12 @@ export default function CreateRelationshipType() {
       }
 
       navigate('/relationship-types', {
-        state: {
-          toast: { message: 'Relationship type created', tone: 'success' },
-        },
+        state: { toast: { message: 'Relationship type created', tone: 'success' } },
       })
       return true
     } catch (err) {
       console.error('❌ Failed to create relationship type', err)
-      const message = err.message || 'Failed to create relationship type'
-      setFormError(message)
+      setFormError(err.message || 'Failed to create relationship type')
       return false
     } finally {
       setSaving(false)
@@ -119,11 +123,7 @@ export default function CreateRelationshipType() {
         Define the directional names and allowed entity types for this relationship.
       </p>
 
-      {optionsError && (
-        <div className="alert error" role="alert">
-          {optionsError}
-        </div>
-      )}
+      {optionsError && <div className="alert error">{optionsError}</div>}
 
       <RelationshipTypeForm
         initialValues={{}}

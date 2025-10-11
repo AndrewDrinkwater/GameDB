@@ -1,5 +1,6 @@
 // src/migrations/20251011_create_entity_relationships.js
 export async function up(queryInterface, Sequelize) {
+  // 1. Relationship Types Table
   await queryInterface.createTable('entity_relationship_types', {
     id: {
       type: Sequelize.UUID,
@@ -25,8 +26,9 @@ export async function up(queryInterface, Sequelize) {
       allowNull: false,
       defaultValue: Sequelize.literal('NOW()'),
     },
-  })
+  });
 
+  // 2. Relationships Table
   await queryInterface.createTable('entity_relationships', {
     id: {
       type: Sequelize.UUID,
@@ -72,15 +74,36 @@ export async function up(queryInterface, Sequelize) {
       allowNull: false,
       defaultValue: Sequelize.literal('NOW()'),
     },
-  })
+  });
 
-  await queryInterface.addIndex('entity_relationships', ['from_entity'], { name: 'idx_entity_relationships_from' })
-  await queryInterface.addIndex('entity_relationships', ['to_entity'], { name: 'idx_entity_relationships_to' })
+  // 3. Safe Index Creation
+  await queryInterface.sequelize.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'idx_entity_relationships_from' AND n.nspname = 'public'
+      ) THEN
+        CREATE INDEX idx_entity_relationships_from ON "entity_relationships" ("from_entity");
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'idx_entity_relationships_to' AND n.nspname = 'public'
+      ) THEN
+        CREATE INDEX idx_entity_relationships_to ON "entity_relationships" ("to_entity");
+      END IF;
+    END;
+    $$;
+  `);
 }
 
 export async function down(queryInterface) {
-  await queryInterface.removeIndex('entity_relationships', 'idx_entity_relationships_to')
-  await queryInterface.removeIndex('entity_relationships', 'idx_entity_relationships_from')
-  await queryInterface.dropTable('entity_relationships')
-  await queryInterface.dropTable('entity_relationship_types')
+  // Safe removal in order
+  await queryInterface.removeIndex('entity_relationships', 'idx_entity_relationships_to').catch(() => {});
+  await queryInterface.removeIndex('entity_relationships', 'idx_entity_relationships_from').catch(() => {});
+  await queryInterface.dropTable('entity_relationships').catch(() => {});
+  await queryInterface.dropTable('entity_relationship_types').catch(() => {});
 }

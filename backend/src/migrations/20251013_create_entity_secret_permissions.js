@@ -32,19 +32,39 @@ export async function up(queryInterface, Sequelize) {
       allowNull: false,
       defaultValue: Sequelize.literal('NOW()'),
     },
-  })
+  });
 
-  await queryInterface.addConstraint('entity_secret_permissions', {
-    fields: ['secret_id', 'user_id'],
-    type: 'unique',
-    name: 'entity_secret_permissions_unique_secret_user',
-  })
+  // Safe constraint creation
+  await queryInterface.sequelize.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'entity_secret_permissions_unique_secret_user'
+      ) THEN
+        ALTER TABLE "entity_secret_permissions"
+        ADD CONSTRAINT "entity_secret_permissions_unique_secret_user"
+        UNIQUE ("secret_id", "user_id");
+      END IF;
+    END;
+    $$;
+  `);
 }
 
 export async function down(queryInterface) {
-  await queryInterface.removeConstraint(
-    'entity_secret_permissions',
-    'entity_secret_permissions_unique_secret_user'
-  )
-  await queryInterface.dropTable('entity_secret_permissions')
+  await queryInterface.sequelize.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'entity_secret_permissions_unique_secret_user'
+      ) THEN
+        ALTER TABLE "entity_secret_permissions"
+        DROP CONSTRAINT "entity_secret_permissions_unique_secret_user";
+      END IF;
+    END;
+    $$;
+  `);
+
+  await queryInterface.dropTable('entity_secret_permissions');
 }

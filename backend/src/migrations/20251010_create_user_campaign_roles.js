@@ -26,16 +26,24 @@ export async function up(queryInterface, Sequelize) {
       type: Sequelize.DATE,
       defaultValue: Sequelize.literal('NOW()'),
     },
-  })
+  });
 
-  // Add unique constraint for user+campaign combo
-  await queryInterface.addConstraint('UserCampaignRoles', {
-    fields: ['user_id', 'campaign_id'],
-    type: 'unique',
-    name: 'unique_user_campaign_role',
-  })
+  // Add unique constraint for user+campaign combo, only if it doesn't already exist
+  await queryInterface.sequelize.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'unique_user_campaign_role'
+      ) THEN
+        ALTER TABLE "UserCampaignRoles"
+        ADD CONSTRAINT "unique_user_campaign_role"
+        UNIQUE ("user_id", "campaign_id");
+      END IF;
+    END;
+    $$;
+  `);
 }
 
 export async function down(queryInterface) {
-  await queryInterface.dropTable('UserCampaignRoles')
+  await queryInterface.dropTable('UserCampaignRoles');
 }
