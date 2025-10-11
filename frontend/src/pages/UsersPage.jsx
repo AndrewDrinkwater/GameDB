@@ -73,7 +73,8 @@ export default function UsersPage() {
     }
   }
 
-  const handleUpdate = async (formData) => {
+  const handleUpdate = async (formData, options = {}) => {
+    const { stayOnPage = false } = options
     if (!selectedUser?.id) return false
 
     try {
@@ -87,10 +88,18 @@ export default function UsersPage() {
         payload.password = formData.password
       }
 
-      await updateUser(selectedUser.id, payload)
+      const response = await updateUser(selectedUser.id, payload)
+      const updatedUser = response?.data || { ...selectedUser, ...payload }
+
+      await loadUsers()
+
+      if (stayOnPage) {
+        setSelectedUser(updatedUser)
+        return { message: 'User updated successfully.' }
+      }
+
       setViewMode('list')
       setSelectedUser(null)
-      await loadUsers()
       return true
     } catch (err) {
       alert(`Error updating user: ${err.message}`)
@@ -127,6 +136,7 @@ export default function UsersPage() {
         initialData={{}}
         onSubmit={handleCreate}
         onCancel={handleCancel}
+        showUpdateAction={false}
       />
     )
   }

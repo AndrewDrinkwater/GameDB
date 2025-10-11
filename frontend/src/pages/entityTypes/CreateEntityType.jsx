@@ -77,7 +77,13 @@ export default function CreateEntityType() {
           Saving entity type...
         </div>
       )}
-      <FormRenderer schema={newSchema} initialData={{}} onSubmit={handleSubmit} onCancel={handleCancel} />
+      <FormRenderer
+        schema={newSchema}
+        initialData={{}}
+        onSubmit={handleSubmit}
+        onCancel={handleCancel}
+        showUpdateAction={false}
+      />
     </section>
   )
 }

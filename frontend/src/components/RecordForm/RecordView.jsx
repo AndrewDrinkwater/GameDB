@@ -47,10 +47,13 @@ export default function RecordView({
       {infoMessage ? <p className="record-info">{infoMessage}</p> : null}
 
       {onClose ? (
-        <div className="form-actions view-actions">
-          <button type="button" className="btn" onClick={onClose}>
-            {closeLabel}
-          </button>
+        <div className="form-actions sticky-actions view-actions" role="toolbar">
+          <div className="left-actions" aria-hidden="true" />
+          <div className="right-actions">
+            <button type="button" className="btn cancel" onClick={onClose}>
+              {closeLabel}
+            </button>
+          </div>
         </div>
       ) : null}
     </div>

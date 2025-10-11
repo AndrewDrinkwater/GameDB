@@ -214,15 +214,28 @@ export default function CharactersPage({ scope = 'my' }) {
     }
   }
 
-  const handleUpdate = async (formData) => {
+  const handleUpdate = async (formData, options = {}) => {
+    const { stayOnPage = false } = options
     if (!editingId) return false
     try {
-      await updateCharacter(editingId, toPayload(formData))
+      const response = await updateCharacter(editingId, toPayload(formData))
+      const updatedRecord = response?.data || response || { id: editingId }
+
+      await loadCharacters()
+
+      if (stayOnPage) {
+        const nextValues =
+          updatedRecord && typeof updatedRecord === 'object'
+            ? mapToFormValues(updatedRecord)
+            : mapToFormValues({ ...formData, id: editingId })
+        setSelectedCharacter(nextValues)
+        return { message: 'Character updated successfully.' }
+      }
+
       setViewMode('list')
       setSelectedCharacter(null)
       setEditingId(null)
       navigate(basePath)
-      await loadCharacters()
       return true
     } catch (err) {
       alert(`Error updating character: ${err.message}`)
@@ -264,6 +277,7 @@ export default function CharactersPage({ scope = 'my' }) {
         }}
         onSubmit={handleCreate}
         onCancel={handleCancel}
+        showUpdateAction={false}
       />
     )
   }
