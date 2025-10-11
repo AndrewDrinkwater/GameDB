@@ -43,6 +43,15 @@ const prepareEntityMetadata = async (entityTypeId, metadataSource, fieldsCache) 
 
 const buildEntityPayload = async (entityInstance, fieldsCache) => {
   const plain = entityInstance.get({ plain: true })
+
+  if (plain.creator) {
+    const creator = plain.creator
+    plain.creator = {
+      id: creator.id,
+      username: creator.username,
+      email: creator.email,
+    }
+  }
   const { metadata, fields } = await prepareEntityMetadata(
     plain.entity_type_id,
     plain.metadata,
@@ -164,6 +173,7 @@ export const createWorldEntity = async (req, res) => {
       include: [
         { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
         { model: World, as: 'world', attributes: ['id', 'name', 'created_by'] },
+        { association: 'creator', attributes: ['id', 'username', 'email'] },
       ],
     })
 
@@ -246,6 +256,7 @@ export const updateEntity = async (req, res) => {
       include: [
         { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
         { model: World, as: 'world', attributes: ['id', 'name', 'created_by'] },
+        { association: 'creator', attributes: ['id', 'username', 'email'] },
       ],
     })
 
@@ -296,6 +307,7 @@ export const getEntityById = async (req, res) => {
       include: [
         { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
         { model: World, as: 'world', attributes: ['id', 'name'] },
+        { association: 'creator', attributes: ['id', 'username', 'email'] },
       ],
     })
 

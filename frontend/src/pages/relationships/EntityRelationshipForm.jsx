@@ -49,6 +49,8 @@ export default function EntityRelationshipForm({
   relationshipId,
   onCancel,
   onSaved,
+  defaultFromEntityId,
+  lockFromEntity = false,
 }) {
   const isEditMode = Boolean(relationshipId)
   const showEntityHelperHints = isEditMode
@@ -102,7 +104,7 @@ export default function EntityRelationshipForm({
   const [entities, setEntities] = useState([])
   const [relationshipTypes, setRelationshipTypes] = useState([])
   const [values, setValues] = useState({
-    fromEntityId: '',
+    fromEntityId: defaultFromEntityId ? String(defaultFromEntityId) : '',
     toEntityId: '',
     relationshipTypeId: '',
     bidirectional: true,
@@ -362,7 +364,7 @@ export default function EntityRelationshipForm({
     const resetForm = () => {
       pairIdRef.current = 0
       setValues({
-        fromEntityId: '',
+        fromEntityId: defaultFromEntityId ? String(defaultFromEntityId) : '',
         toEntityId: '',
         relationshipTypeId: '',
         bidirectional: true,
@@ -442,7 +444,17 @@ export default function EntityRelationshipForm({
     normalisePairsFromContext,
     generatePair,
     resolveDirection,
+    defaultFromEntityId,
   ])
+
+  useEffect(() => {
+    if (!defaultFromEntityId || isEditMode) return
+    const nextValue = String(defaultFromEntityId)
+    setValues((prev) => {
+      if (prev.fromEntityId === nextValue) return prev
+      return { ...prev, fromEntityId: nextValue }
+    })
+  }, [defaultFromEntityId, isEditMode])
 
   const handleValueChange = (field) => (event) => {
     const { value } = event.target
@@ -536,7 +548,12 @@ export default function EntityRelationshipForm({
             id="relationship-from-entity"
             value={values.fromEntityId}
             onChange={handleValueChange('fromEntityId')}
-            disabled={saving || isBusy || !filteredFromEntities.length}
+            disabled={
+              saving ||
+              isBusy ||
+              lockFromEntity ||
+              !filteredFromEntities.length
+            }
             required
           >
             <option value="">Select entity...</option>
@@ -546,6 +563,11 @@ export default function EntityRelationshipForm({
               </option>
             ))}
           </select>
+          {lockFromEntity && (
+            <p className="field-hint">
+              The source entity is locked for this relationship.
+            </p>
+          )}
           {showEntityHelperHints && effectiveFromLabel && (
             <p className="field-hint">Displayed label: {effectiveFromLabel}</p>
           )}
