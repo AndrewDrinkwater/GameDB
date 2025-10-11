@@ -223,7 +223,7 @@ export async function createRelationship(req, res) {
       toEntityId,
       relationship_type_id,
       relationship_type,
-      relationshipType,
+      relationshipType: relationshipTypeBody,
       relationshipTypeId,
       bidirectional,
       context,
@@ -234,7 +234,7 @@ export async function createRelationship(req, res) {
     )
     const toEntityIdValue = normaliseId(to_entity ?? to_entity_id ?? toEntity ?? toEntityId)
     const relationshipTypeIdValue = normaliseId(
-      relationship_type_id ?? relationship_type ?? relationshipType ?? relationshipTypeId,
+      relationship_type_id ?? relationship_type ?? relationshipTypeBody ?? relationshipTypeId,
     )
 
     if (!fromEntityIdValue || !toEntityIdValue || !relationshipTypeIdValue) {
