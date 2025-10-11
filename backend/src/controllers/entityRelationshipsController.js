@@ -8,6 +8,18 @@ import {
 import { ensureBidirectionalLink } from '../utils/relationshipHelpers.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
 
+const normaliseId = (value) => {
+  if (value === undefined || value === null) return ''
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'object') {
+    if ('id' in value && value.id !== undefined && value.id !== null) {
+      return normaliseId(value.id)
+    }
+    return ''
+  }
+  return String(value)
+}
+
 const mapEntitySummary = (entityInstance) => {
   if (!entityInstance) return null
 
@@ -57,8 +69,16 @@ const mapRelationshipType = (typeInstance) => {
 const buildRuleSets = (typeInstance) => {
   const mapped = mapRelationshipType(typeInstance)
   return {
-    allowedFrom: new Set(mapped.from_entity_types.map((entry) => entry.id)),
-    allowedTo: new Set(mapped.to_entity_types.map((entry) => entry.id)),
+    allowedFrom: new Set(
+      mapped.from_entity_types
+        .map((entry) => normaliseId(entry.id))
+        .filter((id) => id !== ''),
+    ),
+    allowedTo: new Set(
+      mapped.to_entity_types
+        .map((entry) => normaliseId(entry.id))
+        .filter((id) => id !== ''),
+    ),
   }
 }
 
@@ -192,17 +212,40 @@ export async function listRelationships(req, res) {
 
 export async function createRelationship(req, res) {
   try {
-    const { from_entity, to_entity, relationship_type_id, bidirectional, context } = req.body
+    const {
+      from_entity,
+      from_entity_id,
+      fromEntity,
+      fromEntityId,
+      to_entity,
+      to_entity_id,
+      toEntity,
+      toEntityId,
+      relationship_type_id,
+      relationship_type,
+      relationshipType,
+      relationshipTypeId,
+      bidirectional,
+      context,
+    } = req.body
 
-    if (!from_entity || !to_entity || !relationship_type_id) {
+    const fromEntityIdValue = normaliseId(
+      from_entity ?? from_entity_id ?? fromEntity ?? fromEntityId,
+    )
+    const toEntityIdValue = normaliseId(to_entity ?? to_entity_id ?? toEntity ?? toEntityId)
+    const relationshipTypeIdValue = normaliseId(
+      relationship_type_id ?? relationship_type ?? relationshipType ?? relationshipTypeId,
+    )
+
+    if (!fromEntityIdValue || !toEntityIdValue || !relationshipTypeIdValue) {
       return res.status(400).json({ error: 'from_entity, to_entity and relationship_type_id are required' })
     }
 
-    if (from_entity === to_entity) {
+    if (fromEntityIdValue === toEntityIdValue) {
       return res.status(400).json({ error: 'An entity cannot relate to itself.' })
     }
 
-    const relationshipType = await EntityRelationshipType.findByPk(relationship_type_id, {
+    const relationshipType = await EntityRelationshipType.findByPk(relationshipTypeIdValue, {
       include: [
         {
           model: EntityRelationshipTypeEntityType,
@@ -216,26 +259,30 @@ export async function createRelationship(req, res) {
     }
 
     const [from, to] = await Promise.all([
-      Entity.findByPk(from_entity),
-      Entity.findByPk(to_entity),
+      Entity.findByPk(fromEntityIdValue),
+      Entity.findByPk(toEntityIdValue),
     ])
 
     if (!from || !to) {
       return res.status(404).json({ error: 'One or both entities not found' })
     }
 
-    if (from.world_id !== to.world_id) {
+    const fromWorldId = normaliseId(from.world_id)
+    const toWorldId = normaliseId(to.world_id)
+
+    if (fromWorldId && toWorldId && fromWorldId !== toWorldId) {
       return res.status(400).json({ error: 'Entities must belong to the same world' })
     }
 
     if (!hasPrivilegedRelationshipRole(req.user)) {
-      const access = await checkWorldAccess(from.world_id, req.user)
+      const access = await checkWorldAccess(fromWorldId, req.user)
       if (!access.isOwner && !access.isAdmin) {
         return res.status(403).json({ error: 'Forbidden' })
       }
     }
 
-    if (relationshipType.world_id && relationshipType.world_id !== from.world_id) {
+    const relationshipTypeWorldId = normaliseId(relationshipType.world_id)
+    if (relationshipTypeWorldId && relationshipTypeWorldId !== fromWorldId) {
       return res.status(400).json({
         error: 'Relationship type cannot be used outside of its world context',
       })
@@ -243,13 +290,15 @@ export async function createRelationship(req, res) {
 
     const { allowedFrom, allowedTo } = buildRuleSets(relationshipType)
 
-    if (allowedFrom.size && !allowedFrom.has(from.entity_type_id)) {
+    const fromTypeId = normaliseId(from.entity_type_id)
+    if (allowedFrom.size && !allowedFrom.has(fromTypeId)) {
       return res
         .status(400)
         .json({ error: 'Selected source entity type is not permitted for this relationship type' })
     }
 
-    if (allowedTo.size && !allowedTo.has(to.entity_type_id)) {
+    const toTypeId = normaliseId(to.entity_type_id)
+    if (allowedTo.size && !allowedTo.has(toTypeId)) {
       return res
         .status(400)
         .json({ error: 'Selected target entity type is not permitted for this relationship type' })
@@ -263,9 +312,9 @@ export async function createRelationship(req, res) {
     normalisedContext.__direction = 'forward'
 
     const relationship = await EntityRelationship.create({
-      from_entity,
-      to_entity,
-      relationship_type_id,
+      from_entity: fromEntityIdValue,
+      to_entity: toEntityIdValue,
+      relationship_type_id: relationshipTypeIdValue,
       bidirectional,
       context: normalisedContext,
     })
