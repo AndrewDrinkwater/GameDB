@@ -44,6 +44,47 @@ const coerceContextValue = (value) => {
   return value
 }
 
+const getEntityTypeEntriesForRole = (type, role) => {
+  if (!type) return []
+
+  const rawList =
+    role === 'from'
+      ? type?.from_entity_types ?? type?.fromEntityTypes ?? type?.fromTypes ?? []
+      : type?.to_entity_types ?? type?.toEntityTypes ?? type?.toTypes ?? []
+
+  if (!Array.isArray(rawList)) return []
+
+  return rawList
+}
+
+const resolveRuleId = (entry) => {
+  if (!entry) return ''
+
+  if (typeof entry === 'string' || typeof entry === 'number') {
+    const trimmed = String(entry).trim()
+    return trimmed
+  }
+
+  if (typeof entry === 'object') {
+    if (entry.id !== undefined && entry.id !== null) return String(entry.id)
+    if (entry.entity_type_id !== undefined && entry.entity_type_id !== null)
+      return String(entry.entity_type_id)
+    if (entry.entityTypeId !== undefined && entry.entityTypeId !== null)
+      return String(entry.entityTypeId)
+    if (entry.entityType?.id !== undefined && entry.entityType?.id !== null)
+      return String(entry.entityType.id)
+    if (entry.entity_type?.id !== undefined && entry.entity_type?.id !== null)
+      return String(entry.entity_type.id)
+  }
+
+  return ''
+}
+
+const getEntityTypeIdsForRole = (type, role) =>
+  getEntityTypeEntriesForRole(type, role)
+    .map((entry) => resolveRuleId(entry))
+    .filter((value) => value !== '')
+
 export default function EntityRelationshipForm({
   worldId,
   relationshipId,
@@ -224,23 +265,21 @@ export default function EntityRelationshipForm({
   )
 
   const availableRelationshipTypes = useMemo(() => {
+    if (!relationshipTypes?.length) return []
     if (!selectedFromEntityTypeId) return relationshipTypes
 
-    const matchesSelectedType = (entry) => {
-      if (!entry) return false
-      const entryId =
-        entry.id ??
-        entry.entity_type_id ??
-        entry.entityTypeId ??
-        entry.entityType?.id ??
-        ''
-      if (!entryId) return false
-      return String(entryId) === String(selectedFromEntityTypeId)
-    }
+    const selectedId = String(selectedFromEntityTypeId)
 
-    return relationshipTypes.filter((type) =>
-      Array.isArray(type?.from_entity_types) && type.from_entity_types.some(matchesSelectedType),
-    )
+    return relationshipTypes.filter((type) => {
+      const sourceIds = getEntityTypeIdsForRole(type, 'from')
+      const targetIds = getEntityTypeIdsForRole(type, 'to')
+
+      if (sourceIds.length === 0 && targetIds.length === 0) {
+        return true
+      }
+
+      return sourceIds.includes(selectedId) || targetIds.includes(selectedId)
+    })
   }, [relationshipTypes, selectedFromEntityTypeId])
 
   const activeRelationshipType = useMemo(() => {
@@ -252,26 +291,14 @@ export default function EntityRelationshipForm({
 
   const allowedFromTypeIds = useMemo(() => {
     if (!activeRelationshipType) return []
-    const sourceList =
-      direction === 'reverse'
-        ? activeRelationshipType.to_entity_types
-        : activeRelationshipType.from_entity_types
-    if (!sourceList?.length) return []
-    return sourceList
-      .map((entry) => (entry?.id ? String(entry.id) : ''))
-      .filter(Boolean)
+    const role = direction === 'reverse' ? 'to' : 'from'
+    return getEntityTypeIdsForRole(activeRelationshipType, role)
   }, [activeRelationshipType, direction])
 
   const allowedToTypeIds = useMemo(() => {
     if (!activeRelationshipType) return []
-    const targetList =
-      direction === 'reverse'
-        ? activeRelationshipType.from_entity_types
-        : activeRelationshipType.to_entity_types
-    if (!targetList?.length) return []
-    return targetList
-      .map((entry) => (entry?.id ? String(entry.id) : ''))
-      .filter(Boolean)
+    const role = direction === 'reverse' ? 'from' : 'to'
+    return getEntityTypeIdsForRole(activeRelationshipType, role)
   }, [activeRelationshipType, direction])
 
   const filteredFromEntities = useMemo(() => {
@@ -295,6 +322,45 @@ export default function EntityRelationshipForm({
       setValues((prev) => ({ ...prev, relationshipTypeId: '' }))
     }
   }, [availableRelationshipTypes, values.relationshipTypeId])
+
+  useEffect(() => {
+    if (!values.relationshipTypeId || !selectedFromEntityTypeId) return
+
+    const selectedId = String(selectedFromEntityTypeId)
+    const activeType = relationshipTypes.find(
+      (type) => String(type.id) === String(values.relationshipTypeId),
+    )
+    if (!activeType) return
+
+    const sourceIds = getEntityTypeIdsForRole(activeType, 'from')
+    const targetIds = getEntityTypeIdsForRole(activeType, 'to')
+
+    const allowsSource = sourceIds.includes(selectedId)
+    const allowsTarget = targetIds.includes(selectedId)
+
+    if (allowsSource && allowsTarget) return
+
+    if (allowsSource && direction !== 'forward') {
+      setDirection('forward')
+      return
+    }
+
+    if (!allowsSource && allowsTarget) {
+      if (direction !== 'reverse') {
+        setDirection('reverse')
+      }
+      return
+    }
+
+    if (!allowsSource && !allowsTarget) {
+      setValues((prev) => ({ ...prev, relationshipTypeId: '' }))
+    }
+  }, [
+    values.relationshipTypeId,
+    selectedFromEntityTypeId,
+    relationshipTypes,
+    direction,
+  ])
 
   useEffect(() => {
     if (!values.fromEntityId) return
@@ -322,22 +388,22 @@ export default function EntityRelationshipForm({
 
   const fromTypeSummary = useMemo(() => {
     if (!activeRelationshipType) return ''
-    const sourceList =
-      direction === 'reverse'
-        ? activeRelationshipType.to_entity_types
-        : activeRelationshipType.from_entity_types
-    if (!sourceList?.length) return ''
-    return sourceList.map((entry) => entry?.name || 'Unknown type').join(', ')
+    const role = direction === 'reverse' ? 'to' : 'from'
+    const sourceList = getEntityTypeEntriesForRole(activeRelationshipType, role)
+    if (!sourceList.length) return ''
+    return sourceList
+      .map((entry) => entry?.name || entry?.entityType?.name || entry?.entity_type?.name || 'Unknown type')
+      .join(', ')
   }, [activeRelationshipType, direction])
 
   const toTypeSummary = useMemo(() => {
     if (!activeRelationshipType) return ''
-    const targetList =
-      direction === 'reverse'
-        ? activeRelationshipType.from_entity_types
-        : activeRelationshipType.to_entity_types
-    if (!targetList?.length) return ''
-    return targetList.map((entry) => entry?.name || 'Unknown type').join(', ')
+    const role = direction === 'reverse' ? 'from' : 'to'
+    const targetList = getEntityTypeEntriesForRole(activeRelationshipType, role)
+    if (!targetList.length) return ''
+    return targetList
+      .map((entry) => entry?.name || entry?.entityType?.name || entry?.entity_type?.name || 'Unknown type')
+      .join(', ')
   }, [activeRelationshipType, direction])
 
   const effectiveFromLabel = useMemo(() => {
@@ -603,7 +669,7 @@ export default function EntityRelationshipForm({
           </select>
           {noAvailableTypes && (
             <p className="field-hint">
-              No relationship types allow the selected entity as a source.
+              No relationship types include the selected entity type.
             </p>
           )}
         </div>
