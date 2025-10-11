@@ -7,6 +7,22 @@ import {
 } from '../models/index.js'
 import { ensureBidirectionalLink } from '../utils/relationshipHelpers.js'
 
+const mapEntitySummary = (entityInstance) => {
+  if (!entityInstance) return null
+
+  const plain = entityInstance.get({ plain: true })
+
+  return {
+    id: plain.id,
+    name: plain.name,
+    world_id: plain.world_id,
+    entity_type_id: plain.entity_type_id,
+    entityType: plain.entityType
+      ? { id: plain.entityType.id, name: plain.entityType.name }
+      : null,
+  }
+}
+
 const mapRelationshipType = (typeInstance) => {
   const plain = typeInstance.get({ plain: true })
   const rules = Array.isArray(plain.entityTypeRules) ? plain.entityTypeRules : []
@@ -45,6 +61,28 @@ const buildRuleSets = (typeInstance) => {
   }
 }
 
+const mapRelationship = (relationshipInstance) => {
+  if (!relationshipInstance) return null
+
+  const plain = relationshipInstance.get({ plain: true })
+
+  return {
+    id: plain.id,
+    from_entity_id: plain.from_entity,
+    to_entity_id: plain.to_entity,
+    relationship_type_id: plain.relationship_type_id,
+    bidirectional: plain.bidirectional,
+    context: plain.context,
+    created_at: plain.created_at,
+    updated_at: plain.updated_at,
+    relationshipType: plain.relationshipType
+      ? mapRelationshipType(relationshipInstance.relationshipType)
+      : null,
+    from_entity: relationshipInstance.from ? mapEntitySummary(relationshipInstance.from) : null,
+    to_entity: relationshipInstance.to ? mapEntitySummary(relationshipInstance.to) : null,
+  }
+}
+
 export async function getRelationshipTypes(req, res) {
   try {
     const { worldId } = req.query ?? {}
@@ -70,6 +108,63 @@ export async function getRelationshipTypes(req, res) {
   } catch (err) {
     console.error('Failed to load relationship types', err)
     res.status(500).json({ error: 'Failed to load relationship types' })
+  }
+}
+
+export async function listRelationships(req, res) {
+  try {
+    const { worldId } = req.query ?? {}
+    const trimmedWorldId = typeof worldId === 'string' ? worldId.trim() : ''
+
+    if (!trimmedWorldId) {
+      return res.status(400).json({ error: 'worldId query parameter is required' })
+    }
+
+    const relationships = await EntityRelationship.findAll({
+      where: {
+        [Op.or]: [{ '$from.world_id$': trimmedWorldId }, { '$to.world_id$': trimmedWorldId }],
+      },
+      include: [
+        {
+          model: EntityRelationshipType,
+          as: 'relationshipType',
+          include: [
+            {
+              model: EntityRelationshipTypeEntityType,
+              as: 'entityTypeRules',
+              include: [{ association: 'entityType', attributes: ['id', 'name'] }],
+            },
+          ],
+        },
+        {
+          model: Entity,
+          as: 'from',
+          include: [{ association: 'entityType', attributes: ['id', 'name'] }],
+        },
+        {
+          model: Entity,
+          as: 'to',
+          include: [{ association: 'entityType', attributes: ['id', 'name'] }],
+        },
+      ],
+      order: [['created_at', 'DESC']],
+    })
+
+    const filtered = relationships.filter((relationship) => {
+      const fromWorld = relationship.from?.world_id
+      const toWorld = relationship.to?.world_id
+
+      if (fromWorld && toWorld) {
+        return fromWorld === trimmedWorldId && toWorld === trimmedWorldId
+      }
+
+      return fromWorld === trimmedWorldId || toWorld === trimmedWorldId
+    })
+
+    res.json({ success: true, data: filtered.map(mapRelationship) })
+  } catch (err) {
+    console.error('Failed to load relationships', err)
+    res.status(500).json({ error: 'Failed to load relationships' })
   }
 }
 
