@@ -14,12 +14,21 @@ export async function ensureBidirectionalLink(relationship) {
   })
 
   if (!existingReverse) {
+    const baseContext =
+      relationship.context &&
+      typeof relationship.context === 'object' &&
+      !Array.isArray(relationship.context)
+        ? { ...relationship.context }
+        : {}
+
+    baseContext.__direction = 'reverse'
+
     await EntityRelationship.create({
       from_entity: to_entity,
       to_entity: from_entity,
       relationship_type_id,
       bidirectional: true,
-      context: relationship.context || {},
+      context: baseContext,
     })
   }
 }

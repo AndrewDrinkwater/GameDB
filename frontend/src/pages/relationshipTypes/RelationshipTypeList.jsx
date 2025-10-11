@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { List, Pencil, Plus, Trash2, X } from 'lucide-react'
-import { getRelationshipTypes, createRelationshipType, updateRelationshipType, deleteRelationshipType } from '../../api/entityRelationshipTypes.js'
-import { getEntityTypes } from '../../api/entityTypes.js'
-import { fetchWorlds } from '../../api/worlds.js'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { deleteRelationshipType, getRelationshipTypes } from '../../api/entityRelationshipTypes.js'
 import { useAuth } from '../../context/AuthContext.jsx'
-import RelationshipTypeForm from './RelationshipTypeForm.jsx'
 
 const MANAGER_ROLES = new Set(['system_admin'])
 
@@ -27,21 +25,22 @@ const buildTypeNames = (list = []) => {
     .join(', ')
 }
 
+const buildDirectionSummary = (type) => {
+  if (!type) return '—'
+  const from = type.from_name || type.fromName || type.name || '—'
+  const to = type.to_name || type.toName || type.name || '—'
+  return `${from} → ${to}`
+}
+
 export default function RelationshipTypeList() {
+  const navigate = useNavigate()
+  const location = useLocation()
   const { user, token, sessionReady } = useAuth()
   const [relationshipTypes, setRelationshipTypes] = useState([])
-  const [entityTypes, setEntityTypes] = useState([])
-  const [worlds, setWorlds] = useState([])
   const [loading, setLoading] = useState(false)
-  const [loadingOptions, setLoadingOptions] = useState(false)
   const [error, setError] = useState('')
   const [toast, setToast] = useState(null)
-  const [panelOpen, setPanelOpen] = useState(false)
-  const [panelMode, setPanelMode] = useState('create')
-  const [editingType, setEditingType] = useState(null)
-  const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState('')
-  const [formError, setFormError] = useState('')
 
   const canManage = useMemo(
     () => (user?.role ? MANAGER_ROLES.has(user.role) : false),
@@ -58,37 +57,17 @@ export default function RelationshipTypeList() {
     setToast({ message, tone })
   }, [])
 
-  const loadOptions = useCallback(async () => {
-    setLoadingOptions(true)
-    try {
-      const [typesResponse, worldsResponse] = await Promise.all([
-        getEntityTypes(),
-        fetchWorlds(),
-      ])
+  const clearLocationToast = useCallback(() => {
+    navigate(location.pathname, { replace: true, state: {} })
+  }, [location.pathname, navigate])
 
-      const typeList = Array.isArray(typesResponse?.data)
-        ? typesResponse.data
-        : Array.isArray(typesResponse)
-          ? typesResponse
-          : []
-
-      const worldList = Array.isArray(worldsResponse?.data)
-        ? worldsResponse.data
-        : Array.isArray(worldsResponse)
-          ? worldsResponse
-          : []
-
-      setEntityTypes(typeList)
-      setWorlds(worldList)
-    } catch (err) {
-      console.error('❌ Failed to load relationship type options', err)
-      setEntityTypes([])
-      setWorlds([])
-      showToast(err.message || 'Failed to load supporting data', 'error')
-    } finally {
-      setLoadingOptions(false)
+  useEffect(() => {
+    if (location.state?.toast) {
+      const { message, tone } = location.state.toast
+      showToast(message, tone)
+      clearLocationToast()
     }
-  }, [showToast])
+  }, [location.state, showToast, clearLocationToast])
 
   const loadRelationshipTypes = useCallback(async () => {
     if (!token) return
@@ -113,60 +92,22 @@ export default function RelationshipTypeList() {
 
   useEffect(() => {
     if (!sessionReady || !token) return
-    loadOptions()
     loadRelationshipTypes()
-  }, [sessionReady, token, loadOptions, loadRelationshipTypes])
+  }, [sessionReady, token, loadRelationshipTypes])
+
+  const handleRefresh = () => {
+    if (!token || loading) return
+    loadRelationshipTypes()
+  }
 
   const openCreate = () => {
     if (!canManage) return
-    setPanelMode('create')
-    setEditingType(null)
-    setFormError('')
-    setPanelOpen(true)
+    navigate('/relationship-types/new')
   }
 
   const openEdit = (type) => {
-    if (!canManage) return
-    setPanelMode('edit')
-    setEditingType(type)
-    setFormError('')
-    setPanelOpen(true)
-  }
-
-  const closePanel = () => {
-    setPanelOpen(false)
-    setEditingType(null)
-    setFormError('')
-  }
-
-  const handleSubmit = async (payload) => {
-    if (!canManage) return false
-
-    try {
-      setSaving(true)
-      setFormError('')
-
-      if (panelMode === 'edit' && editingType?.id) {
-        await updateRelationshipType(editingType.id, payload)
-        showToast('Relationship type updated', 'success')
-      } else {
-        await createRelationshipType(payload)
-        showToast('Relationship type created', 'success')
-      }
-
-      closePanel()
-      await loadRelationshipTypes()
-    } catch (err) {
-      console.error('❌ Failed to save relationship type', err)
-      const message = err.message || 'Failed to save relationship type'
-      setFormError(message)
-      showToast(message, 'error')
-      return false
-    } finally {
-      setSaving(false)
-    }
-
-    return true
+    if (!canManage || !type?.id) return
+    navigate(`/relationship-types/${type.id}/edit`)
   }
 
   const handleDelete = async (type) => {
@@ -180,9 +121,6 @@ export default function RelationshipTypeList() {
       setDeletingId(type.id)
       await deleteRelationshipType(type.id)
       showToast('Relationship type deleted', 'success')
-      if (editingType?.id === type.id) {
-        closePanel()
-      }
       await loadRelationshipTypes()
     } catch (err) {
       console.error('❌ Failed to delete relationship type', err)
@@ -202,7 +140,7 @@ export default function RelationshipTypeList() {
 
   if (!canManage) {
     return (
-      <section className="entity-types-page">
+      <section className="entity-types-page relationship-types-page">
         <div className="entity-types-header">
           <h1>Relationship Types</h1>
         </div>
@@ -221,14 +159,20 @@ export default function RelationshipTypeList() {
           <p className="entity-types-subtitle">{relationshipTypes.length} types defined</p>
         </div>
 
-        <button
-          type="button"
-          className="btn submit"
-          onClick={openCreate}
-          disabled={saving || deletingId || loadingOptions}
-        >
-          <Plus size={18} /> Add Relationship Type
-        </button>
+        <div className="entity-types-actions">
+          <button
+            type="button"
+            className="icon-btn"
+            title="Refresh relationship types"
+            onClick={handleRefresh}
+            disabled={loading}
+          >
+            <RotateCcw size={16} />
+          </button>
+          <button type="button" className="btn submit" onClick={openCreate} disabled={loading}>
+            <Plus size={18} /> Add Relationship Type
+          </button>
+        </div>
       </div>
 
       {toast && (
@@ -243,12 +187,6 @@ export default function RelationshipTypeList() {
         </div>
       )}
 
-      {loadingOptions && (
-        <div className="alert info" role="status">
-          Loading worlds and entity types…
-        </div>
-      )}
-
       <div className="entity-types-table-wrapper">
         {loading ? (
           <div className="empty-state">Loading relationship types...</div>
@@ -259,6 +197,7 @@ export default function RelationshipTypeList() {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Directional Labels</th>
                 <th>World</th>
                 <th>Allowed Sources</th>
                 <th>Allowed Targets</th>
@@ -272,6 +211,7 @@ export default function RelationshipTypeList() {
                 return (
                   <tr key={type.id}>
                     <td>{type.name}</td>
+                    <td>{buildDirectionSummary(type)}</td>
                     <td>{type.world?.name || '—'}</td>
                     <td>{buildTypeNames(type.from_entity_types)}</td>
                     <td>{buildTypeNames(type.to_entity_types)}</td>
@@ -283,7 +223,7 @@ export default function RelationshipTypeList() {
                           className="icon-btn"
                           title="Edit relationship type"
                           onClick={() => openEdit(type)}
-                          disabled={saving || deletingId === type.id}
+                          disabled={loading || deletingId === type.id}
                         >
                           <Pencil size={16} />
                         </button>
@@ -292,7 +232,7 @@ export default function RelationshipTypeList() {
                           className="icon-btn danger"
                           title="Delete relationship type"
                           onClick={() => handleDelete(type)}
-                          disabled={deletingId === type.id || saving}
+                          disabled={deletingId === type.id}
                         >
                           <Trash2 size={16} />
                         </button>
@@ -304,30 +244,6 @@ export default function RelationshipTypeList() {
             </tbody>
           </table>
         )}
-      </div>
-
-      <div className={`entity-type-panel ${panelOpen ? 'open' : ''}`}>
-        <div className="entity-type-panel-header">
-          <div className="panel-heading">
-            <List size={18} />
-            <h2>{panelMode === 'edit' ? 'Edit Relationship Type' : 'New Relationship Type'}</h2>
-          </div>
-          <button type="button" className="icon-btn" onClick={closePanel}>
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="entity-type-panel-body">
-          <RelationshipTypeForm
-            initialValues={panelMode === 'edit' ? editingType : {}}
-            entityTypes={entityTypes}
-            worlds={worlds}
-            saving={saving}
-            errorMessage={formError}
-            onSubmit={handleSubmit}
-            onCancel={closePanel}
-          />
-        </div>
       </div>
     </section>
   )

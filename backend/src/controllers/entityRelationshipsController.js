@@ -28,6 +28,8 @@ const mapRelationshipType = (typeInstance) => {
   return {
     id: plain.id,
     name: plain.name,
+    from_name: plain.from_name,
+    to_name: plain.to_name,
     description: plain.description,
     world_id: plain.world_id,
     from_entity_types: fromTypes,
@@ -129,12 +131,19 @@ export async function createRelationship(req, res) {
         .json({ error: 'Selected target entity type is not permitted for this relationship type' })
     }
 
+    const normalisedContext =
+      context && typeof context === 'object' && !Array.isArray(context)
+        ? { ...context }
+        : {}
+
+    normalisedContext.__direction = 'forward'
+
     const relationship = await EntityRelationship.create({
       from_entity,
       to_entity,
       relationship_type_id,
       bidirectional,
-      context: context || {},
+      context: normalisedContext,
     })
 
     await ensureBidirectionalLink(relationship)

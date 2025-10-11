@@ -11,6 +11,14 @@ export default (sequelize, DataTypes) => {
         type: DataTypes.STRING(100),
         allowNull: false,
       },
+      from_name: {
+        type: DataTypes.STRING(150),
+        allowNull: false,
+      },
+      to_name: {
+        type: DataTypes.STRING(150),
+        allowNull: false,
+      },
       description: {
         type: DataTypes.TEXT,
         allowNull: true,

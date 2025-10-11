@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import ListCollector from '../../components/ListCollector.jsx'
 
 const normaliseIdList = (list) => {
   if (!Array.isArray(list)) return []
@@ -7,6 +8,8 @@ const normaliseIdList = (list) => {
 
 const deriveInitialValues = (source = {}) => ({
   name: source?.name || '',
+  fromName: source?.from_name || source?.fromName || '',
+  toName: source?.to_name || source?.toName || '',
   description: source?.description || '',
   worldId: source?.world?.id || source?.world_id || '',
   fromEntityTypeIds: normaliseIdList(
@@ -29,6 +32,7 @@ export default function RelationshipTypeForm({
   entityTypes = [],
   worlds = [],
   saving = false,
+  optionsLoading = false,
   errorMessage = '',
   onSubmit,
   onCancel,
@@ -49,6 +53,8 @@ export default function RelationshipTypeForm({
   const isDirty = useMemo(() => {
     return (
       values.name !== initialSnapshot.name ||
+      values.fromName !== initialSnapshot.fromName ||
+      values.toName !== initialSnapshot.toName ||
       values.description !== initialSnapshot.description ||
       values.worldId !== initialSnapshot.worldId ||
       !listsMatch(values.fromEntityTypeIds, initialSnapshot.fromEntityTypeIds) ||
@@ -61,22 +67,29 @@ export default function RelationshipTypeForm({
     setValues((prev) => ({ ...prev, [field]: value }))
   }
 
-  const toggleEntityType = (field, id) => {
-    setValues((prev) => {
-      const list = prev[field] || []
-      const stringId = String(id)
-      const exists = list.includes(stringId)
-      const next = exists ? list.filter((item) => item !== stringId) : [...list, stringId]
-      return { ...prev, [field]: next }
-    })
+  const handleListChange = (field) => (nextValues = []) => {
+    const normalised = Array.isArray(nextValues) ? nextValues : []
+    setValues((prev) => ({ ...prev, [field]: normalised }))
   }
 
   const handleSubmit = async (event) => {
     event.preventDefault()
     const trimmedName = values.name.trim()
+    const trimmedFromName = values.fromName.trim()
+    const trimmedToName = values.toName.trim()
 
     if (!trimmedName) {
       setLocalError('Name is required.')
+      return
+    }
+
+    if (!trimmedFromName) {
+      setLocalError('Provide a label for the source direction.')
+      return
+    }
+
+    if (!trimmedToName) {
+      setLocalError('Provide a label for the target direction.')
       return
     }
 
@@ -99,6 +112,8 @@ export default function RelationshipTypeForm({
 
     const payload = {
       name: trimmedName,
+      from_name: trimmedFromName,
+      to_name: trimmedToName,
       description: values.description?.trim() || '',
       world_id: values.worldId,
       from_entity_type_ids: values.fromEntityTypeIds,
@@ -125,9 +140,35 @@ export default function RelationshipTypeForm({
           value={values.name}
           onChange={handleChange('name')}
           placeholder="e.g. Enemy"
-          disabled={saving}
+          disabled={saving || optionsLoading}
           autoFocus
         />
+      </div>
+
+      <div className="form-two-column">
+        <div className="form-group">
+          <label htmlFor="relationship-type-from-name">Source relationship label *</label>
+          <input
+            id="relationship-type-from-name"
+            type="text"
+            value={values.fromName}
+            onChange={handleChange('fromName')}
+            placeholder="e.g. Parent of"
+            disabled={saving || optionsLoading}
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="relationship-type-to-name">Target relationship label *</label>
+          <input
+            id="relationship-type-to-name"
+            type="text"
+            value={values.toName}
+            onChange={handleChange('toName')}
+            placeholder="e.g. Child of"
+            disabled={saving || optionsLoading}
+          />
+        </div>
       </div>
 
       <div className="form-group">
@@ -138,7 +179,7 @@ export default function RelationshipTypeForm({
           onChange={handleChange('description')}
           placeholder="Optional description"
           rows={4}
-          disabled={saving}
+          disabled={saving || optionsLoading}
           className="textarea-field"
         />
       </div>
@@ -149,7 +190,7 @@ export default function RelationshipTypeForm({
           id="relationship-type-world"
           value={values.worldId}
           onChange={handleChange('worldId')}
-          disabled={saving}
+          disabled={saving || optionsLoading}
           required
         >
           <option value="">Select world...</option>
@@ -162,53 +203,35 @@ export default function RelationshipTypeForm({
       </div>
 
       <div className="form-group">
-        <label>Allowed source entity types *</label>
-        <div className="checkbox-grid">
-          {entityTypes.length === 0 ? (
-            <p className="field-hint">No entity types available.</p>
-          ) : (
-            entityTypes.map((type) => {
-              const stringId = String(type.id)
-              const checked = values.fromEntityTypeIds.includes(stringId)
-              return (
-                <label key={`from-${type.id}`} className="checkbox-control">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={saving}
-                    onChange={() => toggleEntityType('fromEntityTypeIds', stringId)}
-                  />
-                  <span>{type.name}</span>
-                </label>
-              )
-            })
-          )}
-        </div>
+        <label htmlFor="relationship-type-from-entities">Allowed source entity types *</label>
+        <ListCollector
+          selected={values.fromEntityTypeIds}
+          options={entityTypes}
+          onChange={handleListChange('fromEntityTypeIds')}
+          placeholder="Search entity types..."
+          disabled={saving || optionsLoading}
+          loading={optionsLoading}
+          noOptionsMessage="No entity types available."
+        />
+        {entityTypes.length === 0 && !optionsLoading && (
+          <p className="field-hint">Define entity types before creating relationships.</p>
+        )}
       </div>
 
       <div className="form-group">
-        <label>Allowed target entity types *</label>
-        <div className="checkbox-grid">
-          {entityTypes.length === 0 ? (
-            <p className="field-hint">No entity types available.</p>
-          ) : (
-            entityTypes.map((type) => {
-              const stringId = String(type.id)
-              const checked = values.toEntityTypeIds.includes(stringId)
-              return (
-                <label key={`to-${type.id}`} className="checkbox-control">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={saving}
-                    onChange={() => toggleEntityType('toEntityTypeIds', stringId)}
-                  />
-                  <span>{type.name}</span>
-                </label>
-              )
-            })
-          )}
-        </div>
+        <label htmlFor="relationship-type-to-entities">Allowed target entity types *</label>
+        <ListCollector
+          selected={values.toEntityTypeIds}
+          options={entityTypes}
+          onChange={handleListChange('toEntityTypeIds')}
+          placeholder="Search entity types..."
+          disabled={saving || optionsLoading}
+          loading={optionsLoading}
+          noOptionsMessage="No entity types available."
+        />
+        {entityTypes.length === 0 && !optionsLoading && (
+          <p className="field-hint">Define entity types before creating relationships.</p>
+        )}
       </div>
 
       {localError && (
@@ -221,7 +244,11 @@ export default function RelationshipTypeForm({
         <button type="button" className="btn cancel" onClick={onCancel} disabled={saving}>
           Cancel
         </button>
-        <button type="submit" className="btn submit" disabled={saving || !isDirty}>
+        <button
+          type="submit"
+          className="btn submit"
+          disabled={saving || optionsLoading || !isDirty}
+        >
           {saving ? 'Saving...' : 'Save'}
         </button>
       </div>

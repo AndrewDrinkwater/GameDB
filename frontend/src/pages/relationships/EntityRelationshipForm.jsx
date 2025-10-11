@@ -69,6 +69,14 @@ export default function EntityRelationshipForm({
     [generatePair],
   )
 
+  const resolveDirection = useCallback((context) => {
+    if (!context || typeof context !== 'object' || Array.isArray(context)) {
+      return ''
+    }
+    const value = context.__direction || context.direction
+    return value ? String(value) : ''
+  }, [])
+
   const normalisePairsFromContext = useCallback(
     (context) => {
       pairIdRef.current = 0
@@ -76,7 +84,10 @@ export default function EntityRelationshipForm({
         return [generatePair()]
       }
 
-      const entries = Object.entries(context)
+      const entries = Object.entries(context).filter(([key]) => {
+        if (typeof key !== 'string') return true
+        return !key.startsWith('__')
+      })
       if (entries.length === 0) {
         return [generatePair()]
       }
@@ -98,6 +109,7 @@ export default function EntityRelationshipForm({
     pairIdRef.current = 0
     return [generatePair()]
   })
+  const [direction, setDirection] = useState('forward')
   const [loadingEntities, setLoadingEntities] = useState(false)
   const [loadingTypes, setLoadingTypes] = useState(false)
   const [loadingRelationship, setLoadingRelationship] = useState(false)
@@ -205,18 +217,28 @@ export default function EntityRelationshipForm({
   }, [relationshipTypes, values.relationshipTypeId])
 
   const allowedFromTypeIds = useMemo(() => {
-    if (!activeRelationshipType?.from_entity_types?.length) return []
-    return activeRelationshipType.from_entity_types
+    if (!activeRelationshipType) return []
+    const sourceList =
+      direction === 'reverse'
+        ? activeRelationshipType.to_entity_types
+        : activeRelationshipType.from_entity_types
+    if (!sourceList?.length) return []
+    return sourceList
       .map((entry) => (entry?.id ? String(entry.id) : ''))
       .filter(Boolean)
-  }, [activeRelationshipType])
+  }, [activeRelationshipType, direction])
 
   const allowedToTypeIds = useMemo(() => {
-    if (!activeRelationshipType?.to_entity_types?.length) return []
-    return activeRelationshipType.to_entity_types
+    if (!activeRelationshipType) return []
+    const targetList =
+      direction === 'reverse'
+        ? activeRelationshipType.from_entity_types
+        : activeRelationshipType.to_entity_types
+    if (!targetList?.length) return []
+    return targetList
       .map((entry) => (entry?.id ? String(entry.id) : ''))
       .filter(Boolean)
-  }, [activeRelationshipType])
+  }, [activeRelationshipType, direction])
 
   const filteredFromEntities = useMemo(() => {
     if (!allowedFromTypeIds.length) return entities
@@ -265,18 +287,42 @@ export default function EntityRelationshipForm({
   }, [allowedToTypeIds, entities, values.toEntityId])
 
   const fromTypeSummary = useMemo(() => {
-    if (!activeRelationshipType?.from_entity_types?.length) return ''
-    return activeRelationshipType.from_entity_types
-      .map((entry) => entry?.name || 'Unknown type')
-      .join(', ')
-  }, [activeRelationshipType])
+    if (!activeRelationshipType) return ''
+    const sourceList =
+      direction === 'reverse'
+        ? activeRelationshipType.to_entity_types
+        : activeRelationshipType.from_entity_types
+    if (!sourceList?.length) return ''
+    return sourceList.map((entry) => entry?.name || 'Unknown type').join(', ')
+  }, [activeRelationshipType, direction])
 
   const toTypeSummary = useMemo(() => {
-    if (!activeRelationshipType?.to_entity_types?.length) return ''
-    return activeRelationshipType.to_entity_types
-      .map((entry) => entry?.name || 'Unknown type')
-      .join(', ')
-  }, [activeRelationshipType])
+    if (!activeRelationshipType) return ''
+    const targetList =
+      direction === 'reverse'
+        ? activeRelationshipType.from_entity_types
+        : activeRelationshipType.to_entity_types
+    if (!targetList?.length) return ''
+    return targetList.map((entry) => entry?.name || 'Unknown type').join(', ')
+  }, [activeRelationshipType, direction])
+
+  const effectiveFromLabel = useMemo(() => {
+    if (!activeRelationshipType) return ''
+    const label =
+      direction === 'reverse'
+        ? activeRelationshipType.to_name || activeRelationshipType.toName
+        : activeRelationshipType.from_name || activeRelationshipType.fromName
+    return label || ''
+  }, [activeRelationshipType, direction])
+
+  const effectiveToLabel = useMemo(() => {
+    if (!activeRelationshipType) return ''
+    const label =
+      direction === 'reverse'
+        ? activeRelationshipType.from_name || activeRelationshipType.fromName
+        : activeRelationshipType.to_name || activeRelationshipType.toName
+    return label || ''
+  }, [activeRelationshipType, direction])
 
   useEffect(() => {
     let cancelled = false
@@ -290,6 +336,7 @@ export default function EntityRelationshipForm({
         bidirectional: false,
       })
       setContextPairs([generatePair()])
+      setDirection('forward')
       setError('')
     }
 
@@ -338,6 +385,7 @@ export default function EntityRelationshipForm({
             relationshipTypeId: relationshipTypeId ? String(relationshipTypeId) : '',
             bidirectional,
           })
+          setDirection(resolveDirection(data.context) || 'forward')
           setContextPairs(ensureAtLeastOnePair(normalisePairsFromContext(data.context)))
         }
       } catch (err) {
@@ -355,7 +403,14 @@ export default function EntityRelationshipForm({
     return () => {
       cancelled = true
     }
-  }, [relationshipId, isEditMode, ensureAtLeastOnePair, normalisePairsFromContext, generatePair])
+  }, [
+    relationshipId,
+    isEditMode,
+    ensureAtLeastOnePair,
+    normalisePairsFromContext,
+    generatePair,
+    resolveDirection,
+  ])
 
   const handleValueChange = (field) => (event) => {
     const { value } = event.target
@@ -406,8 +461,10 @@ export default function EntityRelationshipForm({
     contextPairs.forEach(({ key, value }) => {
       const trimmedKey = key.trim()
       if (!trimmedKey) return
+      if (trimmedKey.startsWith('__')) return
       contextPayload[trimmedKey] = coerceContextValue(value)
     })
+    contextPayload.__direction = direction || 'forward'
 
     const payload = {
       world_id: worldId,
@@ -455,6 +512,9 @@ export default function EntityRelationshipForm({
               </option>
             ))}
           </select>
+          {effectiveFromLabel && (
+            <p className="field-hint">Displayed label: {effectiveFromLabel}</p>
+          )}
           {activeRelationshipType && fromTypeSummary && (
             <p className="field-hint">Allowed types: {fromTypeSummary}</p>
           )}
@@ -480,6 +540,9 @@ export default function EntityRelationshipForm({
               </option>
             ))}
           </select>
+          {effectiveToLabel && (
+            <p className="field-hint">Displayed label: {effectiveToLabel}</p>
+          )}
           {activeRelationshipType && toTypeSummary && (
             <p className="field-hint">Allowed targets: {toTypeSummary}</p>
           )}
@@ -500,11 +563,16 @@ export default function EntityRelationshipForm({
             required
           >
             <option value="">Select type...</option>
-            {relationshipTypes.map((type) => (
-              <option key={type.id} value={type.id}>
-                {type.name}
-              </option>
-            ))}
+            {relationshipTypes.map((type) => {
+              const fromLabel = type.from_name || type.fromName || type.name
+              const toLabel = type.to_name || type.toName || type.name
+              const directionalSummary = fromLabel === toLabel ? fromLabel : `${fromLabel} → ${toLabel}`
+              return (
+                <option key={type.id} value={type.id}>
+                  {type.name} · {directionalSummary}
+                </option>
+              )
+            })}
           </select>
         </div>
 
