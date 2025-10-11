@@ -3,15 +3,68 @@ import {
   Entity,
   EntityRelationship,
   EntityRelationshipType,
+  EntityRelationshipTypeEntityType,
 } from '../models/index.js'
 import { ensureBidirectionalLink } from '../utils/relationshipHelpers.js'
 
+const mapRelationshipType = (typeInstance) => {
+  const plain = typeInstance.get({ plain: true })
+  const rules = Array.isArray(plain.entityTypeRules) ? plain.entityTypeRules : []
+  const fromTypes = []
+  const toTypes = []
+
+  rules.forEach((rule) => {
+    if (!rule) return
+    const entry = rule.entityType
+      ? { id: rule.entityType.id, name: rule.entityType.name }
+      : { id: rule.entity_type_id }
+    if (rule.role === 'to') {
+      toTypes.push(entry)
+    } else {
+      fromTypes.push(entry)
+    }
+  })
+
+  return {
+    id: plain.id,
+    name: plain.name,
+    description: plain.description,
+    world_id: plain.world_id,
+    from_entity_types: fromTypes,
+    to_entity_types: toTypes,
+  }
+}
+
+const buildRuleSets = (typeInstance) => {
+  const mapped = mapRelationshipType(typeInstance)
+  return {
+    allowedFrom: new Set(mapped.from_entity_types.map((entry) => entry.id)),
+    allowedTo: new Set(mapped.to_entity_types.map((entry) => entry.id)),
+  }
+}
+
 export async function getRelationshipTypes(req, res) {
   try {
+    const { worldId } = req.query ?? {}
+    const where = {}
+
+    if (worldId) {
+      where[Op.or] = [{ world_id: null }, { world_id: worldId }]
+    }
+
     const types = await EntityRelationshipType.findAll({
+      where,
       order: [['name', 'ASC']],
+      include: [
+        {
+          model: EntityRelationshipTypeEntityType,
+          as: 'entityTypeRules',
+          include: [{ association: 'entityType', attributes: ['id', 'name'] }],
+        },
+      ],
     })
-    res.json(types)
+
+    res.json({ success: true, data: types.map(mapRelationshipType) })
   } catch (err) {
     console.error('Failed to load relationship types', err)
     res.status(500).json({ error: 'Failed to load relationship types' })
@@ -30,7 +83,15 @@ export async function createRelationship(req, res) {
       return res.status(400).json({ error: 'An entity cannot relate to itself.' })
     }
 
-    const relationshipType = await EntityRelationshipType.findByPk(relationship_type_id)
+    const relationshipType = await EntityRelationshipType.findByPk(relationship_type_id, {
+      include: [
+        {
+          model: EntityRelationshipTypeEntityType,
+          as: 'entityTypeRules',
+          attributes: ['entity_type_id', 'role'],
+        },
+      ],
+    })
     if (!relationshipType) {
       return res.status(404).json({ error: 'Relationship type not found' })
     }
@@ -46,6 +107,26 @@ export async function createRelationship(req, res) {
 
     if (from.world_id !== to.world_id) {
       return res.status(400).json({ error: 'Entities must belong to the same world' })
+    }
+
+    if (relationshipType.world_id && relationshipType.world_id !== from.world_id) {
+      return res.status(400).json({
+        error: 'Relationship type cannot be used outside of its world context',
+      })
+    }
+
+    const { allowedFrom, allowedTo } = buildRuleSets(relationshipType)
+
+    if (allowedFrom.size && !allowedFrom.has(from.entity_type_id)) {
+      return res
+        .status(400)
+        .json({ error: 'Selected source entity type is not permitted for this relationship type' })
+    }
+
+    if (allowedTo.size && !allowedTo.has(to.entity_type_id)) {
+      return res
+        .status(400)
+        .json({ error: 'Selected target entity type is not permitted for this relationship type' })
     }
 
     const relationship = await EntityRelationship.create({

@@ -14,6 +14,7 @@ import entityTypeFieldRoutes from './entityTypeFieldRoutes.js'
 import userCampaignRoleRoutes from './userCampaignRoleRoutes.js'
 import entityRelationshipsRoutes from './entityRelationships.js'
 import userRoutes from './userRoutes.js' // ✅ add this
+import entityRelationshipTypeRoutes from './entityRelationshipTypeRoutes.js'
 
 const router = Router()
 
@@ -29,6 +30,7 @@ router.use('/entity-type-fields', entityTypeFieldRoutes)
 router.use('/entities', entitiesRoute)
 router.use('/user-campaign-roles', userCampaignRoleRoutes)
 router.use('/entity-relationships', entityRelationshipsRoutes)
+router.use('/entity-relationship-types', entityRelationshipTypeRoutes)
 router.use('/users', userRoutes) // ✅ add this
 
 export default router

@@ -18,6 +18,7 @@ import EntityTypeList from './pages/entityTypes/EntityTypeList.jsx'
 import EntityTypeFields from './pages/entityTypes/EntityTypeFields.jsx'
 import CreateEntityType from './pages/entityTypes/CreateEntityType.jsx'
 import EntityRelationshipList from './pages/relationships/EntityRelationshipList.jsx'
+import RelationshipTypeList from './pages/relationshipTypes/RelationshipTypeList.jsx'
 import EntitySecretList from './pages/secrets/EntitySecretList.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 
@@ -58,6 +59,7 @@ const router = createBrowserRouter(
           <Route path="new" element={<CreateEntityType />} />
           <Route path=":id/fields" element={<EntityTypeFields />} />
         </Route>
+        <Route path="relationship-types" element={<RelationshipTypeList />} />
         <Route path="entity-relationships" element={<EntityRelationshipList />} />
         <Route path="entity-secrets" element={<EntitySecretList />} />
         <Route path="characters">

@@ -150,10 +150,16 @@ export default function EntityRelationshipForm({
   useEffect(() => {
     let cancelled = false
 
+    if (!worldId) {
+      setRelationshipTypes([])
+      setLoadingTypes(false)
+      return () => {}
+    }
+
     const loadTypes = async () => {
       setLoadingTypes(true)
       try {
-        const response = await getRelationshipTypes()
+        const response = await getRelationshipTypes({ worldId })
         const list = Array.isArray(response)
           ? response
           : Array.isArray(response?.data)
@@ -178,7 +184,99 @@ export default function EntityRelationshipForm({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [worldId])
+
+  const resolveEntityTypeId = (entity) => {
+    if (!entity) return ''
+    const candidate =
+      entity.entity_type_id ??
+      entity.entityTypeId ??
+      entity.entityType?.id ??
+      entity.entity_type?.id ??
+      ''
+    return candidate ? String(candidate) : ''
+  }
+
+  const activeRelationshipType = useMemo(() => {
+    if (!values.relationshipTypeId) return null
+    return relationshipTypes.find(
+      (type) => String(type.id) === String(values.relationshipTypeId),
+    )
+  }, [relationshipTypes, values.relationshipTypeId])
+
+  const allowedFromTypeIds = useMemo(() => {
+    if (!activeRelationshipType?.from_entity_types?.length) return []
+    return activeRelationshipType.from_entity_types
+      .map((entry) => (entry?.id ? String(entry.id) : ''))
+      .filter(Boolean)
+  }, [activeRelationshipType])
+
+  const allowedToTypeIds = useMemo(() => {
+    if (!activeRelationshipType?.to_entity_types?.length) return []
+    return activeRelationshipType.to_entity_types
+      .map((entry) => (entry?.id ? String(entry.id) : ''))
+      .filter(Boolean)
+  }, [activeRelationshipType])
+
+  const filteredFromEntities = useMemo(() => {
+    if (!allowedFromTypeIds.length) return entities
+    const allowedSet = new Set(allowedFromTypeIds)
+    return entities.filter((entity) => allowedSet.has(resolveEntityTypeId(entity)))
+  }, [entities, allowedFromTypeIds])
+
+  const filteredToEntities = useMemo(() => {
+    if (!allowedToTypeIds.length) return entities
+    const allowedSet = new Set(allowedToTypeIds)
+    return entities.filter((entity) => allowedSet.has(resolveEntityTypeId(entity)))
+  }, [entities, allowedToTypeIds])
+
+  useEffect(() => {
+    if (!values.relationshipTypeId) return
+    const exists = relationshipTypes.some(
+      (type) => String(type.id) === String(values.relationshipTypeId),
+    )
+    if (!exists) {
+      setValues((prev) => ({ ...prev, relationshipTypeId: '' }))
+    }
+  }, [relationshipTypes, values.relationshipTypeId])
+
+  useEffect(() => {
+    if (!values.fromEntityId) return
+    if (!allowedFromTypeIds.length) return
+    const allowedSet = new Set(allowedFromTypeIds)
+    const selected = entities.find((entity) => String(entity.id) === String(values.fromEntityId))
+    if (!selected) return
+    const entityTypeId = resolveEntityTypeId(selected)
+    if (!entityTypeId || !allowedSet.has(entityTypeId)) {
+      setValues((prev) => ({ ...prev, fromEntityId: '' }))
+    }
+  }, [allowedFromTypeIds, entities, values.fromEntityId])
+
+  useEffect(() => {
+    if (!values.toEntityId) return
+    if (!allowedToTypeIds.length) return
+    const allowedSet = new Set(allowedToTypeIds)
+    const selected = entities.find((entity) => String(entity.id) === String(values.toEntityId))
+    if (!selected) return
+    const entityTypeId = resolveEntityTypeId(selected)
+    if (!entityTypeId || !allowedSet.has(entityTypeId)) {
+      setValues((prev) => ({ ...prev, toEntityId: '' }))
+    }
+  }, [allowedToTypeIds, entities, values.toEntityId])
+
+  const fromTypeSummary = useMemo(() => {
+    if (!activeRelationshipType?.from_entity_types?.length) return ''
+    return activeRelationshipType.from_entity_types
+      .map((entry) => entry?.name || 'Unknown type')
+      .join(', ')
+  }, [activeRelationshipType])
+
+  const toTypeSummary = useMemo(() => {
+    if (!activeRelationshipType?.to_entity_types?.length) return ''
+    return activeRelationshipType.to_entity_types
+      .map((entry) => entry?.name || 'Unknown type')
+      .join(', ')
+  }, [activeRelationshipType])
 
   useEffect(() => {
     let cancelled = false
@@ -347,16 +445,23 @@ export default function EntityRelationshipForm({
             id="relationship-from-entity"
             value={values.fromEntityId}
             onChange={handleValueChange('fromEntityId')}
-            disabled={saving || isBusy}
+            disabled={saving || isBusy || !filteredFromEntities.length}
             required
           >
             <option value="">Select entity...</option>
-            {entities.map((entity) => (
+            {filteredFromEntities.map((entity) => (
               <option key={entity.id} value={entity.id}>
                 {entity.name}
               </option>
             ))}
           </select>
+          {activeRelationshipType && fromTypeSummary && (
+            <p className="field-hint">Allowed types: {fromTypeSummary}</p>
+          )}
+          {activeRelationshipType && allowedFromTypeIds.length > 0 &&
+            filteredFromEntities.length === 0 && (
+              <p className="field-hint">No entities match the allowed source types.</p>
+            )}
         </div>
 
         <div className="form-group">
@@ -365,16 +470,22 @@ export default function EntityRelationshipForm({
             id="relationship-to-entity"
             value={values.toEntityId}
             onChange={handleValueChange('toEntityId')}
-            disabled={saving || isBusy}
+            disabled={saving || isBusy || !filteredToEntities.length}
             required
           >
             <option value="">Select entity...</option>
-            {entities.map((entity) => (
+            {filteredToEntities.map((entity) => (
               <option key={entity.id} value={entity.id}>
                 {entity.name}
               </option>
             ))}
           </select>
+          {activeRelationshipType && toTypeSummary && (
+            <p className="field-hint">Allowed targets: {toTypeSummary}</p>
+          )}
+          {activeRelationshipType && allowedToTypeIds.length > 0 && filteredToEntities.length === 0 && (
+            <p className="field-hint">No entities match the allowed target types.</p>
+          )}
         </div>
       </div>
 

@@ -10,10 +10,13 @@ export default (sequelize, DataTypes) => {
       name: {
         type: DataTypes.STRING(100),
         allowNull: false,
-        unique: true,
       },
       description: {
         type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      world_id: {
+        type: DataTypes.UUID,
         allowNull: true,
       },
     },
@@ -30,6 +33,29 @@ export default (sequelize, DataTypes) => {
       foreignKey: 'relationship_type_id',
       as: 'relationships',
     })
+
+    if (models.World) {
+      EntityRelationshipType.belongsTo(models.World, {
+        foreignKey: 'world_id',
+        as: 'world',
+      })
+    }
+
+    if (models.EntityRelationshipTypeEntityType) {
+      EntityRelationshipType.hasMany(models.EntityRelationshipTypeEntityType, {
+        foreignKey: 'relationship_type_id',
+        as: 'entityTypeRules',
+        onDelete: 'CASCADE',
+        hooks: true,
+      })
+
+      EntityRelationshipType.belongsToMany(models.EntityType, {
+        through: models.EntityRelationshipTypeEntityType,
+        foreignKey: 'relationship_type_id',
+        otherKey: 'entity_type_id',
+        as: 'entityTypes',
+      })
+    }
   }
 
   return EntityRelationshipType

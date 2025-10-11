@@ -16,6 +16,7 @@ import EntityRelationshipTypeModel from './entityRelationshipType.js'
 import EntityRelationshipModel from './entityRelationship.js'
 import EntityTypeFieldModel from './entityTypeField.js'
 import UserCampaignRoleModel from './userCampaignRole.js'
+import EntityRelationshipTypeEntityTypeModel from './entityRelationshipTypeEntityType.js'
 
 // Create Sequelize instance
 export const sequelize = new Sequelize(process.env.DATABASE_URL, {
@@ -36,6 +37,8 @@ export const EntityRelationshipType = EntityRelationshipTypeModel(sequelize, Dat
 export const EntityRelationship = EntityRelationshipModel(sequelize, DataTypes)
 export const EntityTypeField = EntityTypeFieldModel(sequelize, DataTypes)
 export const UserCampaignRole = UserCampaignRoleModel(sequelize, DataTypes)
+export const EntityRelationshipTypeEntityType =
+  EntityRelationshipTypeEntityTypeModel(sequelize, DataTypes)
 
 // --- Associations ---
 if (User.associate) User.associate({ World, Campaign, Character, UserCampaignRole })
@@ -55,9 +58,21 @@ if (EntitySecret.associate)
   EntitySecret.associate({ Entity, User, EntitySecretPermission })
 if (EntitySecretPermission.associate)
   EntitySecretPermission.associate({ EntitySecret, User })
-if (EntityRelationshipType.associate) EntityRelationshipType.associate({ EntityRelationship })
-if (EntityRelationship.associate) EntityRelationship.associate({ Entity, EntityRelationshipType })
+if (EntityRelationshipType.associate)
+  EntityRelationshipType.associate({
+    EntityRelationship,
+    World,
+    EntityRelationshipTypeEntityType,
+    EntityType,
+  })
+if (EntityRelationship.associate)
+  EntityRelationship.associate({ Entity, EntityRelationshipType })
 if (EntityTypeField.associate) EntityTypeField.associate({ EntityType })
+if (EntityRelationshipTypeEntityType.associate)
+  EntityRelationshipTypeEntityType.associate({
+    EntityRelationshipType,
+    EntityType,
+  })
 if (UserCampaignRole.associate) UserCampaignRole.associate({ User, Campaign })
 
 // --- Init DB ---
@@ -82,5 +97,6 @@ export default {
   EntitySecretPermission,
   EntityRelationshipType,
   EntityRelationship,
+  EntityRelationshipTypeEntityType,
   UserCampaignRole,
 }

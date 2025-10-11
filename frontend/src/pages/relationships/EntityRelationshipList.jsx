@@ -111,28 +111,36 @@ export default function EntityRelationshipList() {
     setEntityLookup((prev) => ({ ...prev, ...additions }))
   }, [])
 
-  const loadRelationshipTypes = useCallback(async () => {
-    setLoadingTypes(true)
-    try {
-      const response = await getRelationshipTypes()
-      const list = Array.isArray(response)
-        ? response
-        : Array.isArray(response?.data)
-          ? response.data
-          : []
-      setRelationshipTypes(list)
-    } catch (err) {
-      console.error('❌ Failed to load relationship types', err)
-      showToast(err.message || 'Failed to load relationship types', 'error')
-      setRelationshipTypes([])
-    } finally {
-      setLoadingTypes(false)
-    }
-  }, [showToast])
+  const loadRelationshipTypes = useCallback(
+    async (targetWorldId) => {
+      const params = targetWorldId ? { worldId: targetWorldId } : {}
+      setLoadingTypes(true)
+      try {
+        const response = await getRelationshipTypes(params)
+        const list = Array.isArray(response)
+          ? response
+          : Array.isArray(response?.data)
+            ? response.data
+            : []
+        setRelationshipTypes(list)
+      } catch (err) {
+        console.error('❌ Failed to load relationship types', err)
+        showToast(err.message || 'Failed to load relationship types', 'error')
+        setRelationshipTypes([])
+      } finally {
+        setLoadingTypes(false)
+      }
+    },
+    [showToast],
+  )
 
   useEffect(() => {
-    loadRelationshipTypes()
-  }, [loadRelationshipTypes])
+    if (!worldId) {
+      setRelationshipTypes([])
+      return
+    }
+    loadRelationshipTypes(worldId)
+  }, [loadRelationshipTypes, worldId])
 
   const loadRelationships = useCallback(
     async (targetWorldId) => {

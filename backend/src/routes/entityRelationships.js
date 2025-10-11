@@ -14,9 +14,9 @@ const router = express.Router()
 
 router.use(authenticate)
 
-router.get('/types', requireRole('dm'), getRelationshipTypes)
-router.post('/', requireRole('dm'), createRelationship)
-router.get('/entity/:id', requireRole('dm'), getRelationshipsByEntity)
-router.delete('/:id', requireRole('dm'), deleteRelationship)
+router.get('/types', requireRole('dm', 'system_admin'), getRelationshipTypes)
+router.post('/', requireRole('dm', 'system_admin'), createRelationship)
+router.get('/entity/:id', requireRole('dm', 'system_admin'), getRelationshipsByEntity)
+router.delete('/:id', requireRole('dm', 'system_admin'), deleteRelationship)
 
 export default router
