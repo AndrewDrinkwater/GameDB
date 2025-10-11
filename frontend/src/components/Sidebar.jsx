@@ -24,6 +24,15 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
 
   const campaignWorldId = selectedCampaign?.world?.id ?? ''
 
+  const isPlayerInSelectedCampaign = useMemo(() => {
+    if (!selectedCampaign || !Array.isArray(selectedCampaign.members)) return false
+    if (!user?.id) return false
+
+    return selectedCampaign.members.some(
+      (member) => member?.user_id === user.id && member?.role === 'player',
+    )
+  }, [selectedCampaign, user])
+
   useEffect(() => {
     let cancelled = false
 
@@ -261,11 +270,19 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
             <Link to="/characters/my" className={isActive('/characters/my') ? 'active' : ''}>
               My Characters
             </Link>
+            {selectedCampaignId && isPlayerInSelectedCampaign && (
+              <Link
+                to="/characters/companions"
+                className={isActive('/characters/companions') ? 'active' : ''}
+              >
+                My Companions
+              </Link>
+            )}
             <Link
               to="/characters/others"
               className={isActive('/characters/others') ? 'active' : ''}
             >
-              Other Characters
+              All Characters
             </Link>
             {user?.role === 'system_admin' && (
               <Link

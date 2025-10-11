@@ -127,6 +127,7 @@ export function CampaignProvider({ children }) {
   return <CampaignContext.Provider value={contextValue}>{children}</CampaignContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useCampaignContext() {
   const context = useContext(CampaignContext)
   if (!context) {

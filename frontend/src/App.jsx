@@ -66,6 +66,8 @@ const router = createBrowserRouter(
           <Route path="my/:id" element={<CharactersPage scope="my" />} />
           <Route path="others" element={<CharactersPage scope="others" />} />
           <Route path="others/:id" element={<CharactersPage scope="others" />} />
+          <Route path="companions" element={<CharactersPage scope="companions" />} />
+          <Route path="companions/:id" element={<CharactersPage scope="companions" />} />
           <Route path="all" element={<CharactersPage scope="all" />} />
           <Route path="all/:id" element={<CharactersPage scope="all" />} />
         </Route>
