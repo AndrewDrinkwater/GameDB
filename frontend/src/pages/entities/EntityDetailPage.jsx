@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
 import FieldRenderer from '../../components/RecordForm/FieldRenderer.jsx'
 import TabNav from '../../components/TabNav.jsx'
@@ -593,9 +593,20 @@ export default function EntityDetailPage() {
           ? relationship.context
           : {}) || {}
 
+      const direction = context.__direction === 'reverse' ? 'reverse' : 'forward'
+      const baseTypeName = type?.name || '—'
+      const typeFromName = type?.from_name || type?.fromName || baseTypeName
+      const typeToName = type?.to_name || type?.toName || baseTypeName
+      const effectiveFromLabel = direction === 'reverse' ? typeToName : typeFromName
+      const effectiveToLabel = direction === 'reverse' ? typeFromName : typeToName
+
       return {
         id: relationship.id,
-        typeName: type?.name || '—',
+        typeName: baseTypeName,
+        typeFromName,
+        typeToName,
+        effectiveFromLabel,
+        effectiveToLabel,
         fromId:
           normaliseRelationshipEntityId(
             relationship.from_entity_id ??
@@ -618,7 +629,7 @@ export default function EntityDetailPage() {
           normaliseRelationshipEntityId(toEntity) ||
           null,
         toName: toEntity?.name || '—',
-        direction: context.__direction === 'reverse' ? 'reverse' : 'forward',
+        direction,
         bidirectional: Boolean(relationship.bidirectional),
       }
     })
@@ -767,25 +778,58 @@ export default function EntityDetailPage() {
                       <table className="entity-relationships-table">
                         <thead>
                           <tr>
-                            <th>Relationship Type</th>
-                            <th>
-                              {relationshipPerspective === 'source'
-                                ? 'Destination'
-                                : 'Source'}
-                            </th>
+                            <th>Relationship</th>
+                            <th>Type</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {relationshipsToDisplay.map((relationship) => (
-                            <tr key={relationship.id}>
-                              <td>{relationship.typeName}</td>
-                              <td>
-                                {relationshipPerspective === 'source'
-                                  ? relationship.toName
-                                  : relationship.fromName}
-                              </td>
-                            </tr>
-                          ))}
+                          {relationshipsToDisplay.map((relationship) => {
+                            const entityName = entity?.name || 'This entity'
+                            const isSourcePerspective = relationshipPerspective === 'source'
+                            const relatedEntityId = isSourcePerspective
+                              ? relationship.toId
+                              : relationship.fromId
+                            const relatedEntityName = isSourcePerspective
+                              ? relationship.toName
+                              : relationship.fromName
+                            const directionalLabel = isSourcePerspective
+                              ? relationship.effectiveToLabel
+                              : relationship.effectiveFromLabel
+
+                            const renderRelatedEntity = () => {
+                              if (!relatedEntityId) {
+                                return <span>{relatedEntityName || '—'}</span>
+                              }
+                              return (
+                                <Link
+                                  to={`/entities/${relatedEntityId}`}
+                                  className="entity-relationship-link"
+                                >
+                                  {relatedEntityName || '—'}
+                                </Link>
+                              )
+                            }
+
+                            return (
+                              <tr key={relationship.id}>
+                                <td>
+                                  {isSourcePerspective ? (
+                                    <>
+                                      <span className="entity-relationship-primary">{entityName}</span>{' '}
+                                      {directionalLabel}{' '}
+                                      {renderRelatedEntity()}
+                                    </>
+                                  ) : (
+                                    <>
+                                      {renderRelatedEntity()} {directionalLabel}{' '}
+                                      <span className="entity-relationship-primary">{entityName}</span>
+                                    </>
+                                  )}
+                                </td>
+                                <td>{relationship.typeName}</td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
