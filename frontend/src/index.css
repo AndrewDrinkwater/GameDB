@@ -4,7 +4,7 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
+  color-scheme: light;
   color: #0f172a;
   background-color: #f8fafc;
 
@@ -32,6 +32,19 @@ body {
   display: block;
 }
 
+body.theme-dark {
+  background: #0b1120;
+  color: #e2e8f0;
+  color-scheme: dark;
+}
+
+body.theme-dark a {
+  color: #60a5fa;
+}
+body.theme-dark a:hover {
+  color: #93c5fd;
+}
+
 h1, h2, h3, h4, h5 {
   margin: 0;
   font-weight: 600;
@@ -55,6 +68,14 @@ button:hover {
 button:focus,
 button:focus-visible {
   outline: 3px solid #93c5fd;
+}
+
+body.theme-dark button {
+  background-color: #334155;
+  color: #f8fafc;
+}
+body.theme-dark button:hover {
+  background-color: #475569;
 }
 
 @media (prefers-color-scheme: dark) {

@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { User, Menu, LogOut } from 'lucide-react'
+import { User, Menu, LogOut, Moon, Sun } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
+import { useTheme } from '../context/ThemeContext.jsx'
 
 export default function HeaderBar({ onMenuToggle }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef(null)
   const { user, logout } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const {
     campaigns,
     selectedCampaignId,
@@ -112,7 +114,11 @@ export default function HeaderBar({ onMenuToggle }) {
               <br />
               <small>{user?.role || ''}</small>
             </div>
-            <button onClick={logout}>
+            <button className="dropdown-action" onClick={toggleTheme}>
+              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            </button>
+            <button className="dropdown-action logout" onClick={logout}>
               <LogOut size={16} />
               Logout
             </button>
