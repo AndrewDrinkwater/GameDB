@@ -789,8 +789,12 @@ export default function EntityDetailPage() {
                               ? relationship.toName
                               : relationship.fromName
                             const relationshipLabel = isSourcePerspective
-                              ? relationship.typeFromName || relationship.typeName
-                              : relationship.typeToName || relationship.typeName
+                              ? relationship.effectiveFromLabel ||
+                                relationship.typeFromName ||
+                                relationship.typeName
+                              : relationship.effectiveToLabel ||
+                                relationship.typeToName ||
+                                relationship.typeName
 
                             const renderEntityName = () => (
                               <span className="entity-relationship-primary">{entityName}</span>
