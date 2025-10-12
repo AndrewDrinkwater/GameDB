@@ -11,3 +11,8 @@ export const updateEntityType = (id, data) => api.patch(`/entity-types/${id}`, d
 export const deleteEntityType = (id) => api.delete(`/entity-types/${id}`)
 
 export const getWorldEntityTypeUsage = (worldId) => api.get(`/worlds/${worldId}/entity-types`)
+
+export const getEntityTypeListColumns = (id) => api.get(`/entity-types/${id}/list-columns`)
+
+export const updateEntityTypeListColumns = (id, data) =>
+  api.patch(`/entity-types/${id}/list-columns`, data)

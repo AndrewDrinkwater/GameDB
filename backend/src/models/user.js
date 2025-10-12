@@ -39,6 +39,15 @@ export default (sequelize) => {
     if (models.UserCampaignRole) {
       User.hasMany(models.UserCampaignRole, { foreignKey: 'user_id', as: 'campaignRoles' })
     }
+
+    if (models.EntityListPreference) {
+      User.hasMany(models.EntityListPreference, {
+        foreignKey: 'user_id',
+        as: 'entityListPreferences',
+        onDelete: 'CASCADE',
+        hooks: true,
+      })
+    }
   }
 
   return User

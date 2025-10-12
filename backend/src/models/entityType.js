@@ -36,6 +36,15 @@ export default (sequelize, DataTypes) => {
       })
     }
 
+    if (models.EntityListPreference) {
+      EntityType.hasMany(models.EntityListPreference, {
+        foreignKey: 'entity_type_id',
+        as: 'listPreferences',
+        onDelete: 'CASCADE',
+        hooks: true,
+      })
+    }
+
     if (models.EntityRelationshipTypeEntityType) {
       EntityType.hasMany(models.EntityRelationshipTypeEntityType, {
         foreignKey: 'entity_type_id',
