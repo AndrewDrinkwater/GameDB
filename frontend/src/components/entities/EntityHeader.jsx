@@ -31,7 +31,11 @@ export default function EntityHeader({
       </div>
       <div className="entity-header-right">
         {canEdit ? (
-          <button type="button" className="btn" onClick={handleEditClick}>
+          <button
+            type="button"
+            className={`btn ${isEditing ? 'cancel' : 'submit'}`}
+            onClick={handleEditClick}
+          >
             {isEditing ? 'Cancel editing' : 'Edit entity'}
           </button>
         ) : null}
