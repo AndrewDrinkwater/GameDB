@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
 import FieldRenderer from '../../components/RecordForm/FieldRenderer.jsx'
 import TabNav from '../../components/TabNav.jsx'
+import DrawerPanel from '../../components/DrawerPanel.jsx'
 import EntityHeader from '../../components/entities/EntityHeader.jsx'
 import { getEntity, updateEntity } from '../../api/entities.js'
 import { getEntityRelationships } from '../../api/entityRelationships.js'
@@ -170,6 +171,7 @@ export default function EntityDetailPage() {
   const [relationshipsLoading, setRelationshipsLoading] = useState(false)
   const [showRelationshipForm, setShowRelationshipForm] = useState(false)
   const [relationshipPerspective, setRelationshipPerspective] = useState('source')
+  const [toast, setToast] = useState(null)
   const fromEntitiesSearch = location.state?.fromEntities?.search || ''
 
   const backUrl = useMemo(() => {
@@ -235,6 +237,12 @@ export default function EntityDetailPage() {
       )
     })
   }, [])
+
+  useEffect(() => {
+    if (!toast) return undefined
+    const timer = setTimeout(() => setToast(null), 4000)
+    return () => clearTimeout(timer)
+  }, [toast])
 
   const loadEntity = useCallback(async () => {
     if (!id) return
@@ -682,10 +690,40 @@ export default function EntityDetailPage() {
       : `No relationships found where ${name} is the target.`
   }, [entity?.name, relationshipPerspective])
 
-  const handleRelationshipCreated = useCallback(() => {
-    setShowRelationshipForm(false)
-    loadRelationships()
-  }, [loadRelationships])
+  const handleRelationshipCreated = useCallback(
+    (mode, relationship) => {
+      setShowRelationshipForm(false)
+      loadRelationships()
+
+      if (!mode) return
+
+      if (mode === 'create' && relationship) {
+        const fromName =
+          relationship?.from_entity?.name ||
+          relationship?.from?.name ||
+          relationship?.fromName ||
+          'Source'
+        const toName =
+          relationship?.to_entity?.name ||
+          relationship?.to?.name ||
+          relationship?.toName ||
+          'Target'
+        const typeName =
+          relationship?.relationshipType?.name ||
+          relationship?.typeName ||
+          'relationship'
+
+        setToast({
+          message: `Added ${fromName} → ${toName} (${typeName}).`,
+          tone: 'success',
+          link: { to: '/entity-relationships', label: 'View relationship' },
+        })
+      } else if (mode === 'edit') {
+        setToast({ message: 'Relationship updated.', tone: 'success' })
+      }
+    },
+    [loadRelationships],
+  )
 
   if (!sessionReady) return <p>Restoring session...</p>
   if (!token) return <p>Authenticating...</p>
@@ -696,6 +734,22 @@ export default function EntityDetailPage() {
 
   return (
     <div className="entity-detail-page">
+      <DrawerPanel
+        isOpen={showRelationshipForm}
+        onClose={() => setShowRelationshipForm(false)}
+        title="Add relationship"
+        description="Link this entity to others without leaving the page."
+        size="lg"
+      >
+        <EntityRelationshipForm
+          worldId={worldId}
+          onCancel={() => setShowRelationshipForm(false)}
+          onSaved={handleRelationshipCreated}
+          defaultFromEntityId={entity?.id}
+          lockFromEntity
+        />
+      </DrawerPanel>
+
       <div className="entity-detail-topbar">
         <div className="entity-detail-topbar-inner">
           <EntityHeader
@@ -737,6 +791,16 @@ export default function EntityDetailPage() {
 
           {activeTab === 'relationships' && (
             <div className="entity-tab-content">
+              {toast && (
+                <div className={`toast-banner ${toast.tone}`} role="status">
+                  <span>{toast.message}</span>
+                  {toast.link ? (
+                    <Link to={toast.link.to} className="toast-banner-link">
+                      {toast.link.label}
+                    </Link>
+                  ) : null}
+                </div>
+              )}
               <section className="entity-card">
                 <div className="entity-card-header">
                   <h2 className="entity-card-title">Relationships</h2>
@@ -828,28 +892,6 @@ export default function EntityDetailPage() {
                   )}
                 </div>
               </section>
-
-              {showRelationshipForm && canEdit && (
-                <section className="entity-card entity-card--form">
-                  <div className="entity-card-header entity-card-header--subtle">
-                    <h3 className="entity-card-title">Add relationship</h3>
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      onClick={() => setShowRelationshipForm(false)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                  <EntityRelationshipForm
-                    worldId={worldId}
-                    onCancel={() => setShowRelationshipForm(false)}
-                    onSaved={handleRelationshipCreated}
-                    defaultFromEntityId={entity.id}
-                    lockFromEntity
-                  />
-                </section>
-              )}
             </div>
           )}
 

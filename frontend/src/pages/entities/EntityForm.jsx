@@ -12,6 +12,8 @@ const VISIBILITY_OPTIONS = [
   { value: 'visible', label: 'Visible' },
 ]
 
+const ADVANCED_SECTION_KEY = 'entity-form-advanced-open'
+
 const normaliseValueForInput = (value) => {
   if (value === null || value === undefined) return ''
   if (typeof value === 'object') {
@@ -76,6 +78,16 @@ export default function EntityForm({
   const [metadataPairs, setMetadataPairs] = useState(() => {
     pairIdRef.current = 0
     return [generatePair()]
+  })
+  const [showAdvanced, setShowAdvanced] = useState(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      const stored = window.sessionStorage?.getItem(ADVANCED_SECTION_KEY)
+      return stored === 'true'
+    } catch (err) {
+      console.warn('⚠️ Unable to read advanced options preference', err)
+      return false
+    }
   })
 
   const hasMetadata = useMemo(
@@ -218,6 +230,20 @@ export default function EntityForm({
     setMetadataPairs((prev) => ensureAtLeastOnePair(prev.filter((pair) => pair.id !== id)))
   }
 
+  const handleToggleAdvanced = useCallback(() => {
+    setShowAdvanced((prev) => {
+      const next = !prev
+      try {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage?.setItem(ADVANCED_SECTION_KEY, next ? 'true' : 'false')
+        }
+      } catch (err) {
+        console.warn('⚠️ Unable to persist advanced options preference', err)
+      }
+      return next
+    })
+  }, [])
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (!worldId) {
@@ -346,62 +372,83 @@ export default function EntityForm({
             </div>
           </div>
 
-          <div className="metadata-editor">
-            <div className="metadata-header">
-              <h3>Metadata {hasMetadata ? '' : '(optional)'}</h3>
-              <button
-                type="button"
-                className="btn neutral"
-                onClick={handleAddPair}
-                disabled={saving}
-              >
-                Add field
-              </button>
-            </div>
+          <div className="advanced-options">
+            <button
+              type="button"
+              className="advanced-options-toggle"
+              onClick={handleToggleAdvanced}
+              aria-expanded={showAdvanced}
+            >
+              <span>Advanced options</span>
+              {hasMetadata ? (
+                <span className="advanced-indicator">Metadata added</span>
+              ) : null}
+              <span className="advanced-chevron" aria-hidden="true">
+                {showAdvanced ? '▴' : '▾'}
+              </span>
+            </button>
 
-            <div className="metadata-list">
-              {metadataPairs.map((pair, index) => (
-                <div className="metadata-row" key={pair.id}>
-                  <div className="form-group">
-                    <label htmlFor={`metadata-key-${pair.id}`} className="sr-only">
-                      Metadata key {index + 1}
-                    </label>
-                    <input
-                      id={`metadata-key-${pair.id}`}
-                      type="text"
-                      placeholder="Key"
-                      value={pair.key}
-                      onChange={handleMetadataChange(pair.id, 'key')}
-                      disabled={saving}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor={`metadata-value-${pair.id}`} className="sr-only">
-                      Metadata value {index + 1}
-                    </label>
-                    <input
-                      id={`metadata-value-${pair.id}`}
-                      type="text"
-                      placeholder="Value"
-                      value={pair.value}
-                      onChange={handleMetadataChange(pair.id, 'value')}
-                      disabled={saving}
-                    />
-                  </div>
-                  <div className="metadata-actions">
+            {showAdvanced && (
+              <div className="advanced-options-body">
+                <div className="metadata-editor">
+                  <div className="metadata-header">
+                    <h3>Metadata {hasMetadata ? '' : '(optional)'}</h3>
                     <button
                       type="button"
-                      className="icon-btn"
-                      onClick={() => handleRemovePair(pair.id)}
-                      disabled={saving || metadataPairs.length === 1}
-                      title="Remove field"
+                      className="btn neutral"
+                      onClick={handleAddPair}
+                      disabled={saving}
                     >
-                      ×
+                      Add field
                     </button>
                   </div>
+
+                  <div className="metadata-list">
+                    {metadataPairs.map((pair, index) => (
+                      <div className="metadata-row" key={pair.id}>
+                        <div className="form-group">
+                          <label htmlFor={`metadata-key-${pair.id}`} className="sr-only">
+                            Metadata key {index + 1}
+                          </label>
+                          <input
+                            id={`metadata-key-${pair.id}`}
+                            type="text"
+                            placeholder="Key"
+                            value={pair.key}
+                            onChange={handleMetadataChange(pair.id, 'key')}
+                            disabled={saving}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label htmlFor={`metadata-value-${pair.id}`} className="sr-only">
+                            Metadata value {index + 1}
+                          </label>
+                          <input
+                            id={`metadata-value-${pair.id}`}
+                            type="text"
+                            placeholder="Value"
+                            value={pair.value}
+                            onChange={handleMetadataChange(pair.id, 'value')}
+                            disabled={saving}
+                          />
+                        </div>
+                        <div className="metadata-actions">
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            onClick={() => handleRemovePair(pair.id)}
+                            disabled={saving || metadataPairs.length === 1}
+                            title="Remove field"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         </>
       )}
