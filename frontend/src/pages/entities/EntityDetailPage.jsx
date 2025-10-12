@@ -792,6 +792,10 @@ export default function EntityDetailPage() {
                               ? relationship.typeFromName || relationship.typeName
                               : relationship.typeToName || relationship.typeName
 
+                            const renderEntityName = () => (
+                              <span className="entity-relationship-primary">{entityName}</span>
+                            )
+
                             const renderRelatedEntity = () => {
                               if (!relatedEntityId) {
                                 return <span>{relatedEntityName || '—'}</span>
@@ -809,9 +813,19 @@ export default function EntityDetailPage() {
                             return (
                               <tr key={relationship.id}>
                                 <td>
-                                  <span className="entity-relationship-primary">{entityName}</span>{' '}
-                                  {relationshipLabel || '—'}{' '}
-                                  {renderRelatedEntity()}
+                                  {isSourcePerspective ? (
+                                    <>
+                                      {renderEntityName()}{' '}
+                                      {relationshipLabel || '—'}{' '}
+                                      {renderRelatedEntity()}
+                                    </>
+                                  ) : (
+                                    <>
+                                      {renderRelatedEntity()}{' '}
+                                      {relationshipLabel || '—'}{' '}
+                                      {renderEntityName()}
+                                    </>
+                                  )}
                                 </td>
                                 <td>{relationship.typeName}</td>
                               </tr>
