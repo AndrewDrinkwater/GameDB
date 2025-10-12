@@ -390,10 +390,26 @@ export default function EntityRelationshipList() {
     setEditingRelationshipId(null)
   }
 
-  const handleFormSaved = async (mode) => {
+  const handleFormSaved = async (mode, relationship) => {
     closePanel()
     if (!worldId) return
     await loadRelationships(worldId)
+    if (mode === 'create' && relationship) {
+      const fromLabel = getEntityLabel(
+        relationship.from_entity_id,
+        relationship?.from_entity?.name,
+        relationship?.from_entity?.entityType?.name || relationship?.from_entity?.entity_type?.name,
+      )
+      const toLabel = getEntityLabel(
+        relationship.to_entity_id,
+        relationship?.to_entity?.name,
+        relationship?.to_entity?.entityType?.name || relationship?.to_entity?.entity_type?.name,
+      )
+      const typeName = relationship?.relationshipType?.name || 'relationship'
+      showToast(`Added ${fromLabel} → ${toLabel} (${typeName}).`, 'success')
+      return
+    }
+
     showToast(mode === 'create' ? 'Relationship created' : 'Relationship updated', 'success')
   }
 

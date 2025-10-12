@@ -291,17 +291,39 @@ export async function createRelationship(req, res) {
     const { allowedFrom, allowedTo } = buildRuleSets(relationshipType)
 
     const fromTypeId = normaliseId(from.entity_type_id)
-    if (allowedFrom.size && !allowedFrom.has(fromTypeId)) {
-      return res
-        .status(400)
-        .json({ error: 'Selected source entity type is not permitted for this relationship type' })
+    const toTypeId = normaliseId(to.entity_type_id)
+
+    const fromAllowedAsSource = !allowedFrom.size || allowedFrom.has(fromTypeId)
+    const fromAllowedAsTarget = !allowedTo.size || allowedTo.has(fromTypeId)
+    const toAllowedAsSource = !allowedFrom.size || allowedFrom.has(toTypeId)
+    const toAllowedAsTarget = !allowedTo.size || allowedTo.has(toTypeId)
+
+    let direction = 'forward'
+    let sourceEntity = from
+    let targetEntity = to
+    let sourceEntityId = fromEntityIdValue
+    let targetEntityId = toEntityIdValue
+
+    if (!fromAllowedAsSource && fromAllowedAsTarget && toAllowedAsSource) {
+      direction = 'reverse'
+      sourceEntity = to
+      targetEntity = from
+      sourceEntityId = toEntityIdValue
+      targetEntityId = fromEntityIdValue
     }
 
-    const toTypeId = normaliseId(to.entity_type_id)
-    if (allowedTo.size && !allowedTo.has(toTypeId)) {
-      return res
-        .status(400)
-        .json({ error: 'Selected target entity type is not permitted for this relationship type' })
+    const resolvedSourceTypeId = normaliseId(sourceEntity.entity_type_id)
+    if (allowedFrom.size && !allowedFrom.has(resolvedSourceTypeId)) {
+      return res.status(400).json({
+        error: 'Selected source entity type is not permitted for this relationship type',
+      })
+    }
+
+    const resolvedTargetTypeId = normaliseId(targetEntity.entity_type_id)
+    if (allowedTo.size && !allowedTo.has(resolvedTargetTypeId)) {
+      return res.status(400).json({
+        error: 'Selected target entity type is not permitted for this relationship type',
+      })
     }
 
     const normalisedContext =
@@ -309,27 +331,65 @@ export async function createRelationship(req, res) {
         ? { ...context }
         : {}
 
-    normalisedContext.__direction = 'forward'
+    normalisedContext.__direction = direction
 
-      console.log('🧩 Final relationship payload:', {
-        fromEntityIdValue,
-        toEntityIdValue,
-        relationshipTypeIdValue,
-        bidirectional,
-        typeofBidirectional: typeof bidirectional,
-      })
-
-      const relationship = await EntityRelationship.create({
-        from_entity: fromEntityIdValue,
-        to_entity: toEntityIdValue,
+    const existingRelationship = await EntityRelationship.findOne({
+      where: {
+        from_entity: sourceEntityId,
+        to_entity: targetEntityId,
         relationship_type_id: relationshipTypeIdValue,
-        bidirectional: typeof bidirectional === 'boolean' ? bidirectional : false,
-        context: normalisedContext ?? {},
+      },
+    })
+
+    if (existingRelationship) {
+      return res.status(409).json({
+        error: 'A relationship between these entities already exists for the selected type.',
       })
+    }
+
+    const existingInverse = await EntityRelationship.findOne({
+      where: {
+        from_entity: targetEntityId,
+        to_entity: sourceEntityId,
+        relationship_type_id: relationshipTypeIdValue,
+      },
+    })
+
+    if (existingInverse) {
+      return res.status(409).json({
+        error: 'An inverse relationship for these entities already exists for this type.',
+      })
+    }
+
+    const relationship = await EntityRelationship.create({
+      from_entity: sourceEntityId,
+      to_entity: targetEntityId,
+      relationship_type_id: relationshipTypeIdValue,
+      bidirectional: typeof bidirectional === 'boolean' ? bidirectional : false,
+      context: normalisedContext ?? {},
+    })
 
     await ensureBidirectionalLink(relationship)
 
-    res.status(201).json({ success: true, data: relationship })
+    await relationship.reload({
+      include: [
+        {
+          model: EntityRelationshipType,
+          as: 'relationshipType',
+          include: [
+            {
+              model: EntityRelationshipTypeEntityType,
+              as: 'entityTypeRules',
+              include: [{ association: 'entityType', attributes: ['id', 'name'] }],
+            },
+          ],
+        },
+        { model: Entity, as: 'from', include: [{ association: 'entityType', attributes: ['id', 'name'] }] },
+        { model: Entity, as: 'to', include: [{ association: 'entityType', attributes: ['id', 'name'] }] },
+      ],
+    })
+
+    res.status(201).json({ success: true, data: mapRelationship(relationship) })
   } catch (err) {
     console.error('Failed to create relationship', err)
     res.status(500).json({ error: 'Failed to create relationship' })
