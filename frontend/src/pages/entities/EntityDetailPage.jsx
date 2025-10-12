@@ -399,9 +399,6 @@ export default function EntityDetailPage() {
             type: 'select',
             options: VISIBILITY_OPTIONS,
           },
-          { key: 'worldName', label: 'World', type: 'readonly' },
-          { key: 'createdAt', label: 'Created', type: 'readonly' },
-          { key: 'updatedAt', label: 'Updated', type: 'readonly' },
         ],
       },
       {
@@ -455,7 +452,6 @@ export default function EntityDetailPage() {
             { key: 'name', label: 'Name', type: 'readonly' },
             { key: 'typeName', label: 'Type', type: 'readonly' },
             { key: 'visibilityLabel', label: 'Visibility', type: 'readonly' },
-            { key: 'worldName', label: 'World', type: 'readonly' },
           ],
         },
         {
@@ -792,9 +788,13 @@ export default function EntityDetailPage() {
                             const relatedEntityName = isSourcePerspective
                               ? relationship.toName
                               : relationship.fromName
-                            const directionalLabel = isSourcePerspective
-                              ? relationship.effectiveToLabel
-                              : relationship.effectiveFromLabel
+                            const relationshipLabel = isSourcePerspective
+                              ? relationship.typeFromName || relationship.typeName
+                              : relationship.typeToName || relationship.typeName
+
+                            const renderEntityName = () => (
+                              <span className="entity-relationship-primary">{entityName}</span>
+                            )
 
                             const renderRelatedEntity = () => {
                               if (!relatedEntityId) {
@@ -815,14 +815,15 @@ export default function EntityDetailPage() {
                                 <td>
                                   {isSourcePerspective ? (
                                     <>
-                                      <span className="entity-relationship-primary">{entityName}</span>{' '}
-                                      {directionalLabel}{' '}
+                                      {renderEntityName()}{' '}
+                                      {relationshipLabel || '—'}{' '}
                                       {renderRelatedEntity()}
                                     </>
                                   ) : (
                                     <>
-                                      {renderRelatedEntity()} {directionalLabel}{' '}
-                                      <span className="entity-relationship-primary">{entityName}</span>
+                                      {renderRelatedEntity()}{' '}
+                                      {relationshipLabel || '—'}{' '}
+                                      {renderEntityName()}
                                     </>
                                   )}
                                 </td>
