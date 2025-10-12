@@ -171,8 +171,8 @@ function InlineEntityCreator({
         entity_type_id: entityTypeId,
         visibility: values.visibility || DEFAULT_VISIBILITY,
       })
-      const data = response?.data || response
-      if (!data) {
+      const data = response?.data?.data ?? response?.data ?? response
+      if (!data || data.id === undefined || data.id === null) {
         throw new Error('Failed to create entity')
       }
       onCreated?.(data)
