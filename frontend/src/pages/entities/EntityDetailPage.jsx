@@ -789,11 +789,11 @@ export default function EntityDetailPage() {
                               ? relationship.toName
                               : relationship.fromName
                             const relationshipLabel = isSourcePerspective
-                              ? relationship.effectiveFromLabel ||
-                                relationship.typeFromName ||
-                                relationship.typeName
-                              : relationship.effectiveToLabel ||
+                              ? relationship.effectiveToLabel ||
                                 relationship.typeToName ||
+                                relationship.typeName
+                              : relationship.effectiveFromLabel ||
+                                relationship.typeFromName ||
                                 relationship.typeName
 
                             const renderEntityName = () => (
