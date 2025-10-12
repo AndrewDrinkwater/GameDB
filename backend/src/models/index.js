@@ -17,6 +17,7 @@ import EntityRelationshipModel from './entityRelationship.js'
 import EntityTypeFieldModel from './entityTypeField.js'
 import UserCampaignRoleModel from './userCampaignRole.js'
 import EntityRelationshipTypeEntityTypeModel from './entityRelationshipTypeEntityType.js'
+import EntityListPreferenceModel from './entityListPreference.js'
 
 // Create Sequelize instance
 export const sequelize = new Sequelize(process.env.DATABASE_URL, {
@@ -39,6 +40,7 @@ export const EntityTypeField = EntityTypeFieldModel(sequelize, DataTypes)
 export const UserCampaignRole = UserCampaignRoleModel(sequelize, DataTypes)
 export const EntityRelationshipTypeEntityType =
   EntityRelationshipTypeEntityTypeModel(sequelize, DataTypes)
+export const EntityListPreference = EntityListPreferenceModel(sequelize, DataTypes)
 
 // --- Associations ---
 if (User.associate) User.associate({ World, Campaign, Character, UserCampaignRole })
@@ -74,6 +76,8 @@ if (EntityRelationshipTypeEntityType.associate)
     EntityType,
   })
 if (UserCampaignRole.associate) UserCampaignRole.associate({ User, Campaign })
+if (EntityListPreference.associate)
+  EntityListPreference.associate({ EntityType, User })
 
 // --- Init DB ---
 export async function initDB() {
@@ -99,4 +103,5 @@ export default {
   EntityRelationship,
   EntityRelationshipTypeEntityType,
   UserCampaignRole,
+  EntityListPreference,
 }

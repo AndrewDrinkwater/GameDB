@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react'
+import { Pencil, Plus, RotateCcw, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { deleteEntity, getWorldEntities } from '../../api/entities.js'
+import {
+  getEntityTypeListColumns,
+  updateEntityTypeListColumns,
+} from '../../api/entityTypes.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import EntityForm from './EntityForm.jsx'
@@ -14,6 +18,82 @@ const VISIBILITY_BADGES = {
 
 const MANAGER_ROLES = new Set(['system_admin'])
 const FILTER_PARAM = 'entityType'
+
+const DEFAULT_COLUMN_KEYS = ['name', 'type', 'visibility', 'createdAt']
+
+const DEFAULT_CORE_COLUMN_OPTIONS = [
+  { key: 'name', label: 'Name', type: 'core' },
+  { key: 'type', label: 'Type', type: 'core' },
+  { key: 'visibility', label: 'Visibility', type: 'core' },
+  { key: 'createdAt', label: 'Created', type: 'core' },
+  { key: 'description', label: 'Description', type: 'core' },
+]
+
+const COLUMN_SCOPE_USER = 'user'
+const COLUMN_SCOPE_SYSTEM = 'system'
+
+const listsMatch = (a = [], b = []) => {
+  if (a.length !== b.length) return false
+  return a.every((value, index) => value === b[index])
+}
+
+const sanitiseColumnSelection = (columns, fallbackList, allowedKeys) => {
+  const allowed = new Set(allowedKeys)
+  const cleaned = []
+
+  if (Array.isArray(columns)) {
+    columns.forEach((value) => {
+      if (typeof value !== 'string') return
+      const trimmed = value.trim()
+      if (!trimmed || !allowed.has(trimmed)) return
+      if (!cleaned.includes(trimmed)) {
+        cleaned.push(trimmed)
+      }
+    })
+  }
+
+  if (cleaned.length > 0) {
+    return cleaned
+  }
+
+  const fallback = Array.isArray(fallbackList)
+    ? fallbackList.filter((value) => typeof value === 'string' && allowed.has(value))
+    : []
+
+  if (fallback.length > 0) {
+    return [...fallback]
+  }
+
+  if (allowed.size > 0) {
+    return [allowed.values().next().value]
+  }
+
+  return []
+}
+
+const formatMetadataValue = (value) => {
+  if (value === null || value === undefined) return '—'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '—'
+  if (value instanceof Date) return value.toLocaleDateString()
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '—'
+    return value
+      .filter((item) => item !== null && item !== undefined && String(item).trim() !== '')
+      .map((item) => (typeof item === 'string' ? item.trim() : String(item)))
+      .join(', ')
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch (err) {
+      console.warn('⚠️ Failed to stringify metadata value', err)
+      return '—'
+    }
+  }
+  const text = String(value).trim()
+  return text || '—'
+}
 
 export default function EntityList() {
   const { user, token, sessionReady } = useAuth()
@@ -28,11 +108,24 @@ export default function EntityList() {
   const [editingEntityId, setEditingEntityId] = useState(null)
   const [deletingId, setDeletingId] = useState('')
   const [toast, setToast] = useState(null)
+  const [columnOptions, setColumnOptions] = useState(null)
+  const [columnsLoading, setColumnsLoading] = useState(false)
+  const [columnsError, setColumnsError] = useState('')
+  const [userColumnPreference, setUserColumnPreference] = useState(null)
+  const [systemColumnDefault, setSystemColumnDefault] = useState(null)
+  const [selectedColumnKeys, setSelectedColumnKeys] = useState(() => [
+    ...DEFAULT_COLUMN_KEYS,
+  ])
+  const [draftColumnKeys, setDraftColumnKeys] = useState(() => [...DEFAULT_COLUMN_KEYS])
+  const [columnMenuOpen, setColumnMenuOpen] = useState(false)
+  const [columnSelectionError, setColumnSelectionError] = useState('')
+  const [columnsSavingScope, setColumnsSavingScope] = useState('')
 
   const currentSearch = searchParams.toString()
 
   const worldId = selectedCampaign?.world?.id ?? ''
   const selectedFilter = searchParams.get(FILTER_PARAM) ?? ''
+  const filterActive = Boolean(selectedFilter)
 
   const previousWorldIdRef = useRef(worldId)
 
@@ -65,6 +158,8 @@ export default function EntityList() {
     if (isWorldOwner) return true
     return false
   }, [selectedCampaign, user, membershipRole, isWorldOwner])
+
+  const isSystemAdmin = user?.role === 'system_admin'
 
   const loadEntities = useCallback(
     async (targetWorldId) => {
@@ -123,6 +218,137 @@ export default function EntityList() {
     }
   }, [worldId, panelOpen, setSearchParams])
 
+  useEffect(() => {
+    setColumnMenuOpen(false)
+    setColumnSelectionError('')
+
+    if (!selectedFilter || !token || !sessionReady) {
+      setColumnOptions(null)
+      setColumnsError('')
+      setUserColumnPreference(null)
+      setSystemColumnDefault(null)
+      setSelectedColumnKeys([...DEFAULT_COLUMN_KEYS])
+      setDraftColumnKeys([...DEFAULT_COLUMN_KEYS])
+      setColumnsLoading(false)
+      return
+    }
+
+    let isCancelled = false
+
+    const loadColumnOptions = async () => {
+      setColumnsLoading(true)
+      setColumnsError('')
+      try {
+        const response = await getEntityTypeListColumns(selectedFilter)
+        if (isCancelled) return
+
+        const payload = response?.data ?? response ?? {}
+        const data = payload.data ?? payload
+
+        const coreListSource = Array.isArray(data.coreColumns) && data.coreColumns.length
+          ? data.coreColumns
+          : DEFAULT_CORE_COLUMN_OPTIONS
+
+        const defaultCoreMap = new Map(
+          DEFAULT_CORE_COLUMN_OPTIONS.map((column) => [column.key, column]),
+        )
+
+        const resolvedCore = coreListSource.map((column) => {
+          const fallback = defaultCoreMap.get(column.key) ?? {}
+          return {
+            ...fallback,
+            ...column,
+            type: 'core',
+            label: column.label || fallback.label || column.key,
+          }
+        })
+
+        const missingCore = DEFAULT_CORE_COLUMN_OPTIONS.filter(
+          (column) => !resolvedCore.some((entry) => entry.key === column.key),
+        )
+
+        const coreColumns = [...resolvedCore, ...missingCore]
+
+        const metadataSource = Array.isArray(data.metadataColumns) ? data.metadataColumns : []
+        const metadataColumns = metadataSource
+          .filter((column) => typeof column?.key === 'string')
+          .map((column) => ({
+            key: column.key,
+            name: column.name || column.key.replace(/^metadata\./, ''),
+            label: column.label || column.name || column.key.replace(/^metadata\./, ''),
+            dataType: column.dataType || column.data_type || '',
+            required: Boolean(column.required),
+          }))
+          .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
+
+        const allowedKeys = new Set([
+          ...coreColumns.map((column) => column.key),
+          ...metadataColumns.map((column) => column.key),
+        ])
+        DEFAULT_COLUMN_KEYS.forEach((key) => allowedKeys.add(key))
+
+        const fallbackColumns = sanitiseColumnSelection(
+          DEFAULT_COLUMN_KEYS,
+          DEFAULT_COLUMN_KEYS,
+          allowedKeys,
+        )
+
+        const systemSource = data.systemDefault?.columns
+        const systemColumns = Array.isArray(systemSource) && systemSource.length
+          ? sanitiseColumnSelection(systemSource, fallbackColumns, allowedKeys)
+          : [...fallbackColumns]
+
+        const userSource = data.userPreference?.columns
+        const hasUserPreference = Array.isArray(userSource) && userSource.length > 0
+        const userColumns = hasUserPreference
+          ? sanitiseColumnSelection(userSource, systemColumns, allowedKeys)
+          : []
+
+        const effectiveSelection =
+          hasUserPreference && userColumns.length ? userColumns : systemColumns
+
+        setColumnOptions({ coreColumns, metadataColumns })
+        setSystemColumnDefault(
+          systemColumns.length
+            ? {
+                columns: [...systemColumns],
+                updatedAt: data.systemDefault?.updatedAt ?? null,
+              }
+            : null,
+        )
+        setUserColumnPreference(
+          hasUserPreference && userColumns.length
+            ? {
+                columns: [...userColumns],
+                updatedAt: data.userPreference?.updatedAt ?? null,
+              }
+            : null,
+        )
+        setSelectedColumnKeys([...effectiveSelection])
+        setDraftColumnKeys([...effectiveSelection])
+      } catch (err) {
+        if (isCancelled) return
+        console.error('❌ Failed to load column configuration', err)
+        setColumnsError(err.message || 'Failed to load column configuration')
+        setColumnOptions(null)
+        setUserColumnPreference(null)
+        setSystemColumnDefault(null)
+        setSelectedColumnKeys([...DEFAULT_COLUMN_KEYS])
+        setDraftColumnKeys([...DEFAULT_COLUMN_KEYS])
+      } finally {
+        if (!isCancelled) {
+          setColumnsLoading(false)
+        }
+      }
+    }
+
+    loadColumnOptions()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [selectedFilter, token, sessionReady])
+
   const filteredEntities = useMemo(() => {
     if (!selectedFilter) return entities
     return entities.filter((entity) => {
@@ -141,6 +367,209 @@ export default function EntityList() {
     })
     return match?.entityType?.name || match?.entity_type?.name || ''
   }, [entities, selectedFilter])
+
+  const coreColumnOptions = useMemo(() => {
+    const source = columnOptions?.coreColumns ?? DEFAULT_CORE_COLUMN_OPTIONS
+    return source.map((column) => ({
+      ...column,
+      type: column.type ?? 'core',
+      label: column.label || column.key,
+    }))
+  }, [columnOptions])
+
+  const metadataColumnOptions = useMemo(() => {
+    const source = columnOptions?.metadataColumns ?? []
+    return source.map((column) => ({
+      ...column,
+      type: 'metadata',
+      label: column.label || column.name || column.key,
+    }))
+  }, [columnOptions])
+
+  const availableColumnMap = useMemo(() => {
+    const map = new Map()
+    coreColumnOptions.forEach((column) => {
+      map.set(column.key, { ...column, type: column.type ?? 'core' })
+    })
+    metadataColumnOptions.forEach((column) => {
+      map.set(column.key, { ...column, type: 'metadata' })
+    })
+    return map
+  }, [coreColumnOptions, metadataColumnOptions])
+
+  const allowedColumnKeys = useMemo(
+    () => Array.from(availableColumnMap.keys()),
+    [availableColumnMap],
+  )
+
+  const fallbackColumns = useMemo(() => {
+    const base = DEFAULT_COLUMN_KEYS.filter((key) => availableColumnMap.has(key))
+    if (base.length > 0) return base
+    if (allowedColumnKeys.length > 0) return [allowedColumnKeys[0]]
+    return [...DEFAULT_COLUMN_KEYS]
+  }, [allowedColumnKeys, availableColumnMap])
+
+  useEffect(() => {
+    if (!selectedFilter) return
+    setSelectedColumnKeys((prev) => {
+      const filtered = prev.filter((key) => availableColumnMap.has(key))
+      if (filtered.length > 0) return filtered
+      return fallbackColumns
+    })
+  }, [selectedFilter, availableColumnMap, fallbackColumns])
+
+  useEffect(() => {
+    setDraftColumnKeys([...selectedColumnKeys])
+  }, [selectedColumnKeys])
+
+  const visibleColumnDefs = useMemo(() => {
+    const keys = selectedFilter ? selectedColumnKeys : DEFAULT_COLUMN_KEYS
+    const resolved = keys
+      .map((key) => availableColumnMap.get(key))
+      .filter(Boolean)
+    if (resolved.length > 0) return resolved
+    return fallbackColumns.map((key) => availableColumnMap.get(key)).filter(Boolean)
+  }, [selectedFilter, selectedColumnKeys, availableColumnMap, fallbackColumns])
+
+  const systemBaselineColumns = systemColumnDefault?.columns ?? fallbackColumns
+  const userBaselineColumns = userColumnPreference?.columns ?? systemBaselineColumns
+
+  const isUserDirty =
+    Boolean(selectedFilter) && !listsMatch(draftColumnKeys, userBaselineColumns)
+  const isSystemDirty =
+    Boolean(selectedFilter) && !listsMatch(draftColumnKeys, systemBaselineColumns)
+
+  const isSavingUserColumns = columnsSavingScope === COLUMN_SCOPE_USER
+  const isSavingSystemColumns = columnsSavingScope === COLUMN_SCOPE_SYSTEM
+  const draftMatchesSystem = listsMatch(draftColumnKeys, systemBaselineColumns)
+  const draftMatchesFallback = listsMatch(draftColumnKeys, fallbackColumns)
+  const hasSystemDefault = Boolean(systemColumnDefault)
+
+  const handleResetToBaseline = () => {
+    setDraftColumnKeys([...fallbackColumns])
+    setColumnSelectionError('')
+  }
+
+  const handleUseSystemDefault = () => {
+    setDraftColumnKeys([...systemBaselineColumns])
+    setColumnSelectionError('')
+  }
+
+  const handleToggleColumn = (key) => {
+    if (!selectedFilter) return
+    setDraftColumnKeys((prev) => {
+      if (prev.includes(key)) {
+        if (prev.length === 1) {
+          setColumnSelectionError('You must keep at least one column selected.')
+          return prev
+        }
+        setColumnSelectionError('')
+        return prev.filter((value) => value !== key)
+      }
+      if (!availableColumnMap.has(key)) return prev
+      setColumnSelectionError('')
+      return [...prev, key]
+    })
+  }
+
+  const handleOpenColumnMenu = () => {
+    if (!selectedFilter) return
+    setColumnSelectionError('')
+    setColumnMenuOpen((prev) => {
+      const next = !prev
+      if (!prev && next) {
+        setDraftColumnKeys([...selectedColumnKeys])
+      }
+      return next
+    })
+  }
+
+  const handleSaveColumns = async (scope) => {
+    if (!selectedFilter) return
+    if (draftColumnKeys.length === 0) {
+      setColumnSelectionError('Please select at least one column.')
+      return
+    }
+
+    setColumnsSavingScope(scope)
+    setColumnSelectionError('')
+
+    try {
+      await updateEntityTypeListColumns(selectedFilter, {
+        scope,
+        columns: draftColumnKeys,
+      })
+
+      if (scope === COLUMN_SCOPE_USER) {
+        setUserColumnPreference({
+          columns: [...draftColumnKeys],
+          updatedAt: new Date().toISOString(),
+        })
+        setSelectedColumnKeys([...draftColumnKeys])
+        setColumnMenuOpen(false)
+        showToast('Column preference saved', 'success')
+      } else {
+        setSystemColumnDefault({
+          columns: [...draftColumnKeys],
+          updatedAt: new Date().toISOString(),
+        })
+        setSelectedColumnKeys([...draftColumnKeys])
+        showToast('System default updated', 'success')
+      }
+    } catch (err) {
+      console.error('❌ Failed to save column selection', err)
+      setColumnSelectionError(err.message || 'Failed to save column settings')
+    } finally {
+      setColumnsSavingScope('')
+    }
+  }
+
+  const getEntityTypeLabel = (entity) =>
+    entity.entityType?.name || entity.entity_type?.name || '—'
+
+  const renderEntityColumn = (column, entity) => {
+    const metadata =
+      entity.metadata && typeof entity.metadata === 'object' ? entity.metadata : {}
+
+    switch (column.key) {
+      case 'name':
+        return (
+          <Link
+            to={`/entities/${entity.id}`}
+            state={{
+              fromEntities: {
+                search: currentSearch,
+              },
+            }}
+            className="entity-name-link"
+          >
+            {entity.name}
+          </Link>
+        )
+      case 'type':
+        return getEntityTypeLabel(entity)
+      case 'visibility': {
+        const visibility = entity.visibility || 'hidden'
+        const badgeClass = VISIBILITY_BADGES[visibility] || 'badge-hidden'
+        return (
+          <span className={`visibility-badge ${badgeClass}`}>
+            {visibility.charAt(0).toUpperCase() + visibility.slice(1)}
+          </span>
+        )
+      }
+      case 'createdAt':
+        return formatDate(entity.createdAt || entity.created_at)
+      case 'description':
+        return entity.description ? entity.description : '—'
+      default: {
+        if (column.key.startsWith('metadata.')) {
+          const key = column.key.replace(/^metadata\./, '')
+          return formatMetadataValue(metadata?.[key])
+        }
+        return '—'
+      }
+    }
+  }
 
   const closePanel = () => {
     setPanelOpen(false)
@@ -216,7 +645,6 @@ export default function EntityList() {
   if (!token) return <p>Authenticating...</p>
 
   const hasEntities = filteredEntities.length > 0
-  const filterActive = Boolean(selectedFilter)
 
   return (
     <section className="entities-page">
@@ -245,6 +673,133 @@ export default function EntityList() {
           )}
         </div>
         <div className="entities-controls">
+          {filterActive && (
+            <div className="entities-column-menu-wrapper">
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={handleOpenColumnMenu}
+              >
+                <SlidersHorizontal size={16} /> Columns
+              </button>
+              {columnMenuOpen && (
+                <div className="entities-column-menu" role="dialog" aria-modal="false">
+                  <div className="entities-column-menu-header">
+                    <div>
+                      <h3>Columns for {activeTypeName || 'selected type'}</h3>
+                      <p className="entities-column-info">
+                        Choose which fields are visible in this list. Saving will store your
+                        personal preference for this entity type.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => setColumnMenuOpen(false)}
+                      title="Close column settings"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  {columnsLoading ? (
+                    <p className="entities-column-info">Loading columns…</p>
+                  ) : columnsError ? (
+                    <div className="alert error" role="alert">
+                      {columnsError}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="entities-column-section">
+                        <h4>Core Columns</h4>
+                        <div className="entities-column-options">
+                          {coreColumnOptions.map((column) => (
+                            <label key={column.key} className="entities-column-option">
+                              <input
+                                type="checkbox"
+                                checked={draftColumnKeys.includes(column.key)}
+                                onChange={() => handleToggleColumn(column.key)}
+                              />
+                              <span>{column.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="entities-column-section">
+                        <h4>Metadata Columns</h4>
+                        {metadataColumnOptions.length === 0 ? (
+                          <p className="entities-column-empty">
+                            This entity type has no metadata fields yet.
+                          </p>
+                        ) : (
+                          <div className="entities-column-options">
+                            {metadataColumnOptions.map((column) => (
+                              <label key={column.key} className="entities-column-option">
+                                <input
+                                  type="checkbox"
+                                  checked={draftColumnKeys.includes(column.key)}
+                                  onChange={() => handleToggleColumn(column.key)}
+                                />
+                                <span>{column.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {columnSelectionError && (
+                        <p className="entities-column-error">{columnSelectionError}</p>
+                      )}
+                    </>
+                  )}
+                  <div className="entities-column-actions">
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      onClick={handleResetToBaseline}
+                      disabled={columnsLoading || draftMatchesFallback}
+                    >
+                      Reset to basic view
+                    </button>
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      onClick={handleUseSystemDefault}
+                      disabled={
+                        columnsLoading || !hasSystemDefault || draftMatchesSystem
+                      }
+                      title={
+                        hasSystemDefault
+                          ? 'Apply the system default column set.'
+                          : 'No system default has been set yet.'
+                      }
+                    >
+                      Use system default
+                    </button>
+                    <button
+                      type="button"
+                      className="btn submit"
+                      onClick={() => handleSaveColumns(COLUMN_SCOPE_USER)}
+                      disabled={columnsLoading || isSavingUserColumns || !isUserDirty}
+                    >
+                      {isSavingUserColumns ? 'Saving…' : 'Save for me'}
+                    </button>
+                    {isSystemAdmin && (
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        onClick={() => handleSaveColumns(COLUMN_SCOPE_SYSTEM)}
+                        disabled={
+                          columnsLoading || isSavingSystemColumns || !isSystemDirty
+                        }
+                        title="Set these columns as the default for all users."
+                      >
+                        {isSavingSystemColumns ? 'Saving…' : 'Set as system default'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <button
             type="button"
             className="icon-btn"
@@ -293,68 +848,44 @@ export default function EntityList() {
           <table className="entities-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Visibility</th>
-                <th>Created</th>
+                {visibleColumnDefs.map((column) => (
+                  <th key={column.key}>{column.label}</th>
+                ))}
                 {canManage && <th className="actions-column">Actions</th>}
               </tr>
             </thead>
             <tbody>
-              {filteredEntities.map((entity) => {
-                const createdAt = entity.createdAt || entity.created_at
-                const typeName = entity.entityType?.name || entity.entity_type?.name || '—'
-                const visibility = entity.visibility || 'hidden'
-                const badgeClass = VISIBILITY_BADGES[visibility] || 'badge-hidden'
-                return (
-                  <tr key={entity.id}>
-                    <td>
-                      <Link
-                        to={`/entities/${entity.id}`}
-                        state={{
-                          fromEntities: {
-                            search: currentSearch,
-                          },
-                        }}
-                        className="entity-name-link"
-                      >
-                        {entity.name}
-                      </Link>
+              {filteredEntities.map((entity) => (
+                <tr key={entity.id}>
+                  {visibleColumnDefs.map((column) => (
+                    <td key={column.key}>{renderEntityColumn(column, entity)}</td>
+                  ))}
+                  {canManage && (
+                    <td className="actions-column">
+                      <div className="entity-actions">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() => openEdit(entity)}
+                          title="Edit entity"
+                          disabled={loadingEntities}
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn danger"
+                          onClick={() => handleDelete(entity)}
+                          title="Delete entity"
+                          disabled={deletingId === entity.id}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
-                    <td>{typeName}</td>
-                    <td>
-                      <span className={`visibility-badge ${badgeClass}`}>
-                        {visibility.charAt(0).toUpperCase() + visibility.slice(1)}
-                      </span>
-                    </td>
-                    <td>{formatDate(createdAt)}</td>
-                    {canManage && (
-                      <td className="actions-column">
-                        <div className="entity-actions">
-                          <button
-                            type="button"
-                            className="icon-btn"
-                            onClick={() => openEdit(entity)}
-                            title="Edit entity"
-                            disabled={loadingEntities}
-                          >
-                            <Pencil size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            className="icon-btn danger"
-                            onClick={() => handleDelete(entity)}
-                            title="Delete entity"
-                            disabled={deletingId === entity.id}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                )
-              })}
+                  )}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
