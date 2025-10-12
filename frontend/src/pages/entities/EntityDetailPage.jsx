@@ -385,16 +385,14 @@ export default function EntityDetailPage() {
     metadataInitialValues,
   ])
 
-  const metadataSectionTitle = entity?.entityType?.name
-    ? `${entity.entityType.name} Metadata`
-    : 'Metadata'
+  const metadataSectionTitle = 'Information'
 
   const editSchema = useMemo(() => {
     const hasMetadataFields = metadataFields.length > 0
 
     const sections = [
       {
-        title: 'Core Details',
+        title: 'Details',
         columns: 2,
         fields: [
           { key: 'name', label: 'Name', type: 'text' },
@@ -423,7 +421,7 @@ export default function EntityDetailPage() {
               {
                 key: 'metadata.__placeholder',
                 name: 'metadata.__placeholder',
-                label: 'Metadata',
+                label: 'Information',
                 type: 'readonly',
               },
             ],
@@ -443,7 +441,7 @@ export default function EntityDetailPage() {
           {
             key: 'metadata.__placeholder',
             name: 'metadata.__placeholder',
-            label: 'Metadata',
+            label: 'Information',
             type: 'readonly',
           },
         ]
@@ -635,7 +633,7 @@ export default function EntityDetailPage() {
         bidirectional: Boolean(relationship.bidirectional),
       }
     })
-  }, [relationships, relationshipPerspective]) // Recompute when perspective changes
+  }, [relationships])
 
   const relationshipsByPerspective = useMemo(() => {
     const entityId = entity?.id
@@ -698,8 +696,8 @@ export default function EntityDetailPage() {
 
   return (
     <div className="entity-detail-page">
-      <div className="entity-detail-shell">
-        <div className="entity-detail-topbar">
+      <div className="entity-detail-topbar">
+        <div className="entity-detail-topbar-inner">
           <EntityHeader
             name={entity.name}
             onBack={handleBack}
@@ -709,7 +707,8 @@ export default function EntityDetailPage() {
           />
           <TabNav tabs={tabItems} activeTab={activeTab} onChange={setActiveTab} />
         </div>
-
+      </div>
+      <div className="entity-detail-shell">
         <div className="entity-detail-body" role="tabpanel">
           {activeTab === 'dossier' && (
             <div className="entity-tab-content">
@@ -785,77 +784,44 @@ export default function EntityDetailPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {relationshipsToDisplay.map((relationship) => {
-                            const entityName = entity?.name || 'This entity'
-                            const isSourcePerspective = relationshipPerspective === 'source'
-                            const relatedEntityId = isSourcePerspective
-                              ? relationship.toId
-                              : relationship.fromId
-                            const relatedEntityName = isSourcePerspective
-                              ? relationship.toName
-                              : relationship.fromName
-                            const relationshipLabel = getRelationshipLabel(
-                              relationship,
-                              relationshipPerspective
-                            )
-
-                            const renderEntityName = () => (
-                              <span className="entity-relationship-primary">{entityName}</span>
-                            )
-
-                            const renderRelatedEntity = () => {
-                              if (!relatedEntityId) {
-                                return <span>{relatedEntityName || '—'}</span>
-                              }
-                              return (
-                                <Link
-                                  to={`/entities/${relatedEntityId}`}
-                                  className="entity-relationship-link"
-                                >
-                                  {relatedEntityName || '—'}
-                                </Link>
-                              )
-                            }
-
-                            return (
-                              <tr key={relationship.id}>
-                                <td>
-                                  {relationshipPerspective === 'source' ? (
-                                    <>
-                                      <span className="entity-relationship-primary">{entity.name}</span>{' '}
-                                      {getRelationshipLabel(relationship)}{' '}
-                                      {relationship.toId ? (
-                                        <Link
-                                          to={`/entities/${relationship.toId}`}
-                                          className="entity-relationship-link"
-                                        >
-                                          {relationship.toName || '—'}
-                                        </Link>
-                                      ) : (
-                                        <span>{relationship.toName || '—'}</span>
-                                      )}
-                                    </>
-                                  ) : (
-                                    <>
-                                      {relationship.fromId ? (
-                                        <Link
-                                          to={`/entities/${relationship.fromId}`}
-                                          className="entity-relationship-link"
-                                        >
-                                          {relationship.fromName || '—'}
-                                        </Link>
-                                      ) : (
-                                        <span>{relationship.fromName || '—'}</span>
-                                      )}{' '}
-                                      {getRelationshipLabel(relationship)}{' '}
-                                      <span className="entity-relationship-primary">{entity.name}</span>
-                                    </>
-                                  )}
-                                </td>
-                                <td>{relationship.typeName}</td>
-                              </tr>
-                            )
-                          })}
+                          {relationshipsToDisplay.map((relationship) => (
+                            <tr key={relationship.id}>
+                              <td>
+                                {relationshipPerspective === 'source' ? (
+                                  <>
+                                    <span className="entity-relationship-primary">{entity.name}</span>{' '}
+                                    {getRelationshipLabel(relationship)}{' '}
+                                    {relationship.toId ? (
+                                      <Link
+                                        to={`/entities/${relationship.toId}`}
+                                        className="entity-relationship-link"
+                                      >
+                                        {relationship.toName || '—'}
+                                      </Link>
+                                    ) : (
+                                      <span>{relationship.toName || '—'}</span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    {relationship.fromId ? (
+                                      <Link
+                                        to={`/entities/${relationship.fromId}`}
+                                        className="entity-relationship-link"
+                                      >
+                                        {relationship.fromName || '—'}
+                                      </Link>
+                                    ) : (
+                                      <span>{relationship.fromName || '—'}</span>
+                                    )}{' '}
+                                    {getRelationshipLabel(relationship)}{' '}
+                                    <span className="entity-relationship-primary">{entity.name}</span>
+                                  </>
+                                )}
+                              </td>
+                              <td>{relationship.typeName || '—'}</td>
+                            </tr>
+                          ))}
                         </tbody>
                       </table>
                     </div>
