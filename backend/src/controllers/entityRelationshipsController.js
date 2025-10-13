@@ -6,6 +6,7 @@ import {
   EntityRelationshipTypeEntityType,
 } from '../models/index.js'
 import { ensureBidirectionalLink } from '../utils/relationshipHelpers.js'
+import { applyRelBuilderHeader } from '../utils/featureFlags.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
 
 const normaliseId = (value) => {
@@ -109,6 +110,7 @@ const mapRelationship = (relationshipInstance) => {
 
 export async function getRelationshipTypes(req, res) {
   try {
+    applyRelBuilderHeader(res)
     const { worldId } = req.query ?? {}
     const where = {}
 
@@ -148,6 +150,7 @@ export async function getRelationshipTypes(req, res) {
 
 export async function listRelationships(req, res) {
   try {
+    applyRelBuilderHeader(res)
     const { worldId } = req.query ?? {}
     const trimmedWorldId = typeof worldId === 'string' ? worldId.trim() : ''
 
@@ -212,6 +215,7 @@ export async function listRelationships(req, res) {
 
 export async function createRelationship(req, res) {
   try {
+    applyRelBuilderHeader(res)
     const {
       from_entity,
       from_entity_id,
@@ -398,6 +402,7 @@ export async function createRelationship(req, res) {
 
 export async function getRelationshipsByEntity(req, res) {
   try {
+    applyRelBuilderHeader(res)
     const entityId = req.params.id
     const entity = await Entity.findByPk(entityId, { attributes: ['id', 'world_id'] })
 
@@ -432,6 +437,7 @@ export async function getRelationshipsByEntity(req, res) {
 
 export async function deleteRelationship(req, res) {
   try {
+    applyRelBuilderHeader(res)
     const relationship = await EntityRelationship.findByPk(req.params.id, {
       include: [
         { model: Entity, as: 'from', attributes: ['id', 'world_id'] },
