@@ -48,6 +48,9 @@ export default function EntityForm({
   entityId,
   onCancel,
   onSaved,
+  formId = 'entity-form',
+  onStateChange,
+  hideActions = false,
 }) {
   const isEditMode = Boolean(entityId)
   const pairIdRef = useRef(0)
@@ -304,8 +307,21 @@ export default function EntityForm({
 
   const isBusy = loadingTypes || loadingEntity
 
+  useEffect(() => {
+    if (!onStateChange) return
+    const mode = isEditMode ? 'edit' : 'create'
+    onStateChange({
+      mode,
+      saving,
+      isBusy,
+      submitLabel: saving ? 'Saving...' : isEditMode ? 'Save Changes' : 'Create Entity',
+      submitDisabled: saving || isBusy,
+      cancelDisabled: saving,
+    })
+  }, [onStateChange, isEditMode, saving, isBusy])
+
   return (
-    <form className="entity-form" onSubmit={handleSubmit}>
+    <form id={formId} className="entity-form" onSubmit={handleSubmit}>
       {isBusy ? (
         <div className="form-loading">Loading...</div>
       ) : (
@@ -320,6 +336,7 @@ export default function EntityForm({
               placeholder="e.g. Waterdeep"
               disabled={saving}
               required
+              data-autofocus
             />
           </div>
 
@@ -459,14 +476,16 @@ export default function EntityForm({
         </div>
       )}
 
-      <div className="form-actions">
-        <button type="button" className="btn cancel" onClick={onCancel} disabled={saving}>
-          Cancel
-        </button>
-        <button type="submit" className="btn submit" disabled={saving || isBusy}>
-          {saving ? 'Saving...' : isEditMode ? 'Save Changes' : 'Create Entity'}
-        </button>
-      </div>
+      {!hideActions && (
+        <div className="form-actions">
+          <button type="button" className="btn cancel" onClick={onCancel} disabled={saving}>
+            Cancel
+          </button>
+          <button type="submit" className="btn submit" disabled={saving || isBusy}>
+            {saving ? 'Saving...' : isEditMode ? 'Save Changes' : 'Create Entity'}
+          </button>
+        </div>
+      )}
     </form>
   )
 }

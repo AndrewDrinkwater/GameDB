@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Pencil, Plus, RotateCcw, SlidersHorizontal, Trash2, X } from 'lucide-react'
+import { Pencil, Plus, RotateCcw, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { deleteEntity, getWorldEntities } from '../../api/entities.js'
 import {
   getEntityTypeListColumns,
@@ -8,6 +8,7 @@ import {
 } from '../../api/entityTypes.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
+import DrawerPanel from '../../components/DrawerPanel.jsx'
 import EntityForm from './EntityForm.jsx'
 
 const VISIBILITY_BADGES = {
@@ -31,6 +32,13 @@ const DEFAULT_CORE_COLUMN_OPTIONS = [
 
 const COLUMN_SCOPE_USER = 'user'
 const COLUMN_SCOPE_SYSTEM = 'system'
+
+const createDrawerFooterState = (mode = 'create') => ({
+  mode,
+  submitLabel: mode === 'edit' ? 'Save Changes' : 'Create Entity',
+  submitDisabled: false,
+  cancelDisabled: false,
+})
 
 const listsMatch = (a = [], b = []) => {
   if (a.length !== b.length) return false
@@ -106,6 +114,7 @@ export default function EntityList() {
 
   const [panelOpen, setPanelOpen] = useState(false)
   const [editingEntityId, setEditingEntityId] = useState(null)
+  const [activeEntityName, setActiveEntityName] = useState('')
   const [deletingId, setDeletingId] = useState('')
   const [toast, setToast] = useState(null)
   const [columnOptions, setColumnOptions] = useState(null)
@@ -120,6 +129,9 @@ export default function EntityList() {
   const [columnMenuOpen, setColumnMenuOpen] = useState(false)
   const [columnSelectionError, setColumnSelectionError] = useState('')
   const [columnsSavingScope, setColumnsSavingScope] = useState('')
+  const [entityFormUiState, setEntityFormUiState] = useState(() =>
+    createDrawerFooterState('create'),
+  )
 
   const currentSearch = searchParams.toString()
 
@@ -127,6 +139,7 @@ export default function EntityList() {
   const selectedFilter = searchParams.get(FILTER_PARAM) ?? ''
   const filterActive = Boolean(selectedFilter)
 
+  const entityFormIdRef = useRef(`entity-form-${Math.random().toString(36).slice(2)}`)
   const previousWorldIdRef = useRef(worldId)
 
   const showToast = useCallback((message, tone = 'info') => {
@@ -207,6 +220,8 @@ export default function EntityList() {
         setPanelOpen(false)
         setEditingEntityId(null)
       }
+      setActiveEntityName('')
+      setEntityFormUiState(createDrawerFooterState('create'))
       setEntitiesError('')
       setToast(null)
       setSearchParams((prev) => {
@@ -574,6 +589,8 @@ export default function EntityList() {
   const closePanel = () => {
     setPanelOpen(false)
     setEditingEntityId(null)
+    setActiveEntityName('')
+    setEntityFormUiState(createDrawerFooterState('create'))
   }
 
   const handleFormSaved = async (mode) => {
@@ -613,14 +630,27 @@ export default function EntityList() {
   const openCreate = () => {
     if (!canManage || !worldId) return
     setEditingEntityId(null)
+    setActiveEntityName('')
+    setEntityFormUiState(createDrawerFooterState('create'))
     setPanelOpen(true)
   }
 
   const openEdit = (entity) => {
-    if (!canManage) return
+    if (!canManage || !entity?.id) return
+    const name = typeof entity.name === 'string' ? entity.name.trim() : ''
     setEditingEntityId(entity.id)
+    setActiveEntityName(name)
+    setEntityFormUiState(createDrawerFooterState('edit'))
     setPanelOpen(true)
   }
+
+  const handleEntityFormStateChange = useCallback((nextState) => {
+    if (!nextState) return
+    setEntityFormUiState((prev) => ({
+      ...prev,
+      ...nextState,
+    }))
+  }, [])
 
   const formatDate = (value) => {
     if (!value) return '—'
@@ -632,6 +662,20 @@ export default function EntityList() {
       day: 'numeric',
     })
   }
+
+  const editingEntityTitleName = useMemo(() => {
+    if (!editingEntityId) return ''
+    const match = entities.find((item) => item.id === editingEntityId)
+    const resolvedName =
+      (typeof match?.name === 'string' && match.name.trim()) ||
+      (typeof activeEntityName === 'string' && activeEntityName.trim()) ||
+      ''
+    return resolvedName || 'Untitled entity'
+  }, [entities, editingEntityId, activeEntityName])
+
+  const entityDrawerTitle = editingEntityId
+    ? `Edit Entity: ${editingEntityTitleName}`
+    : 'Add Entity'
 
   const clearFilter = useCallback(() => {
     setSearchParams((prev) => {
@@ -911,31 +955,42 @@ export default function EntityList() {
         </div>
       )}
 
-      {panelOpen && (
-        <div className="side-panel-overlay" role="dialog" aria-modal="true">
-          <div className="side-panel">
-            <div className="side-panel-header">
-              <h2>{editingEntityId ? 'Edit Entity' : 'Add Entity'}</h2>
-              <button
-                type="button"
-                className="icon-btn"
-                onClick={closePanel}
-                title="Close form"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="side-panel-content">
-              <EntityForm
-                worldId={worldId}
-                entityId={editingEntityId}
-                onCancel={closePanel}
-                onSaved={handleFormSaved}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      <DrawerPanel
+        isOpen={panelOpen}
+        onClose={closePanel}
+        title={entityDrawerTitle}
+        width={420}
+        footerActions={
+          <>
+            <button
+              type="button"
+              className="btn cancel"
+              onClick={closePanel}
+              disabled={entityFormUiState.cancelDisabled}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn submit"
+              form={entityFormIdRef.current}
+              disabled={entityFormUiState.submitDisabled}
+            >
+              {entityFormUiState.submitLabel}
+            </button>
+          </>
+        }
+      >
+        <EntityForm
+          worldId={worldId}
+          entityId={editingEntityId}
+          onCancel={closePanel}
+          onSaved={handleFormSaved}
+          formId={entityFormIdRef.current}
+          onStateChange={handleEntityFormStateChange}
+          hideActions
+        />
+      </DrawerPanel>
     </section>
   )
 }

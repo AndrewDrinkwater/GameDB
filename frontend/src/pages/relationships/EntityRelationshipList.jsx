@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react'
+import { Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import SearchBar from '../../components/SearchBar.jsx'
 import { getEntity } from '../../api/entities.js'
 import {
@@ -9,9 +9,17 @@ import {
 import { getRelationshipTypes } from '../../api/entityRelationshipTypes.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
+import DrawerPanel from '../../components/DrawerPanel.jsx'
 import EntityRelationshipForm from './EntityRelationshipForm.jsx'
 
 const MANAGER_ROLES = new Set(['system_admin'])
+
+const createRelationshipFooterState = (mode = 'create') => ({
+  mode,
+  submitLabel: mode === 'edit' ? 'Save Changes' : 'Create Relationship',
+  submitDisabled: false,
+  cancelDisabled: false,
+})
 
 export default function EntityRelationshipList() {
   const { user, token, sessionReady } = useAuth()
@@ -30,12 +38,18 @@ export default function EntityRelationshipList() {
   const [editingRelationshipId, setEditingRelationshipId] = useState(null)
   const [deletingId, setDeletingId] = useState('')
   const [toast, setToast] = useState(null)
+  const [relationshipFormUiState, setRelationshipFormUiState] = useState(() =>
+    createRelationshipFooterState('create'),
+  )
 
   const [typeFilter, setTypeFilter] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
 
   const worldId = selectedCampaign?.world?.id ?? ''
   const previousWorldIdRef = useRef(worldId)
+  const relationshipFormIdRef = useRef(
+    `relationship-form-${Math.random().toString(36).slice(2)}`,
+  )
 
   const showToast = useCallback((message, tone = 'info') => {
     setToast({ message, tone })
@@ -209,6 +223,7 @@ export default function EntityRelationshipList() {
         setPanelOpen(false)
         setEditingRelationshipId(null)
       }
+      setRelationshipFormUiState(createRelationshipFooterState('create'))
       setToast(null)
       setTypeFilter('')
       setSearchTerm('')
@@ -367,6 +382,7 @@ export default function EntityRelationshipList() {
   if (!token) return <p>Authenticating...</p>
 
   const hasRelationships = filteredRelationships.length > 0
+  const relationshipDrawerTitle = editingRelationshipId ? 'Edit Relationship' : 'Add Relationship'
 
   const handleRefresh = () => {
     if (!worldId) return
@@ -376,19 +392,30 @@ export default function EntityRelationshipList() {
   const openCreate = () => {
     if (!canManage || !worldId) return
     setEditingRelationshipId(null)
+    setRelationshipFormUiState(createRelationshipFooterState('create'))
     setPanelOpen(true)
   }
 
   const openEdit = (relationship) => {
-    if (!canManage) return
+    if (!canManage || !relationship?.id) return
     setEditingRelationshipId(relationship.id)
+    setRelationshipFormUiState(createRelationshipFooterState('edit'))
     setPanelOpen(true)
   }
 
   const closePanel = () => {
     setPanelOpen(false)
     setEditingRelationshipId(null)
+    setRelationshipFormUiState(createRelationshipFooterState('create'))
   }
+
+  const handleRelationshipFormStateChange = useCallback((nextState) => {
+    if (!nextState) return
+    setRelationshipFormUiState((prev) => ({
+      ...prev,
+      ...nextState,
+    }))
+  }, [])
 
   const handleFormSaved = async (mode, relationship) => {
     closePanel()
@@ -618,31 +645,42 @@ export default function EntityRelationshipList() {
         </div>
       )}
 
-      {panelOpen && (
-        <div className="side-panel-overlay" role="dialog" aria-modal="true">
-          <div className="side-panel">
-            <div className="side-panel-header">
-              <h2>{editingRelationshipId ? 'Edit Relationship' : 'Add Relationship'}</h2>
-              <button
-                type="button"
-                className="icon-btn"
-                onClick={closePanel}
-                title="Close form"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <div className="side-panel-content">
-              <EntityRelationshipForm
-                worldId={worldId}
-                relationshipId={editingRelationshipId}
-                onCancel={closePanel}
-                onSaved={handleFormSaved}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      <DrawerPanel
+        isOpen={panelOpen}
+        onClose={closePanel}
+        title={relationshipDrawerTitle}
+        width={420}
+        footerActions={
+          <>
+            <button
+              type="button"
+              className="btn cancel"
+              onClick={closePanel}
+              disabled={relationshipFormUiState.cancelDisabled}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn submit"
+              form={relationshipFormIdRef.current}
+              disabled={relationshipFormUiState.submitDisabled}
+            >
+              {relationshipFormUiState.submitLabel}
+            </button>
+          </>
+        }
+      >
+        <EntityRelationshipForm
+          worldId={worldId}
+          relationshipId={editingRelationshipId}
+          onCancel={closePanel}
+          onSaved={handleFormSaved}
+          formId={relationshipFormIdRef.current}
+          onStateChange={handleRelationshipFormStateChange}
+          hideActions
+        />
+      </DrawerPanel>
     </section>
   )
 }
