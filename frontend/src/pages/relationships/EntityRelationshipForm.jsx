@@ -437,29 +437,43 @@ export default function EntityRelationshipForm({
     resolvedDefaultToId,
   ])
 
+  const fromRoleForTypes = useMemo(() => {
+    if (direction === 'reverse') {
+      return lockedField === 'to' ? 'from' : 'to'
+    }
+    return 'from'
+  }, [direction, lockedField])
+
+  const toRoleForTypes = useMemo(() => {
+    if (direction === 'reverse') {
+      return lockedField === 'to' ? 'to' : 'from'
+    }
+    return 'to'
+  }, [direction, lockedField])
+
   const relationshipTypeFilterContext = useMemo(() => {
     const lockedId = lockedEntityTypeId ? String(lockedEntityTypeId) : ''
 
     if (lockedId) {
       if (lockedField === 'from') {
-        return { typeId: lockedId, role: direction === 'reverse' ? 'to' : 'from' }
+        return { typeId: lockedId, role: fromRoleForTypes }
       }
       if (lockedField === 'to') {
-        return { typeId: lockedId, role: direction === 'reverse' ? 'from' : 'to' }
+        return { typeId: lockedId, role: toRoleForTypes }
       }
     }
 
     if (selectedFromEntityTypeId) {
       return {
         typeId: String(selectedFromEntityTypeId),
-        role: direction === 'reverse' ? 'to' : 'from',
+        role: fromRoleForTypes,
       }
     }
 
     if (selectedToEntityTypeId) {
       return {
         typeId: String(selectedToEntityTypeId),
-        role: direction === 'reverse' ? 'from' : 'to',
+        role: toRoleForTypes,
       }
     }
 
@@ -467,9 +481,10 @@ export default function EntityRelationshipForm({
   }, [
     lockedEntityTypeId,
     lockedField,
-    direction,
     selectedFromEntityTypeId,
     selectedToEntityTypeId,
+    fromRoleForTypes,
+    toRoleForTypes,
   ])
 
   const availableRelationshipTypes = useMemo(() => {
@@ -494,20 +509,6 @@ export default function EntityRelationshipForm({
       (type) => String(type.id) === String(values.relationshipTypeId),
     )
   }, [relationshipTypes, values.relationshipTypeId])
-
-  const fromRoleForTypes = useMemo(() => {
-    if (direction === 'reverse') {
-      return lockedField === 'to' ? 'from' : 'to'
-    }
-    return 'from'
-  }, [direction, lockedField])
-
-  const toRoleForTypes = useMemo(() => {
-    if (direction === 'reverse') {
-      return lockedField === 'to' ? 'to' : 'from'
-    }
-    return 'to'
-  }, [direction, lockedField])
 
   const allowedFromTypeIds = useMemo(() => {
     if (!activeRelationshipType) return []
