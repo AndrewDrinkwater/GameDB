@@ -751,7 +751,18 @@ export default function EntityDetailPage() {
           onSaved={handleRelationshipCreated}
           onToast={handleRelationshipToast}
           defaultFromEntityId={entity?.id}
+          defaultToEntityId={entity?.id}
           lockFromEntity
+          lockToEntity
+          defaultPerspective={relationshipPerspective}
+          currentEntityId={entity?.id}
+          currentEntityTypeId={
+            entity?.entity_type_id ??
+            entity?.entityTypeId ??
+            entity?.entity_type?.id ??
+            entity?.entityType?.id ??
+            ''
+          }
         />
       </DrawerPanel>
 
