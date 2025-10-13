@@ -301,6 +301,9 @@ export default function EntityRelationshipForm({
   onSaved,
   defaultFromEntityId,
   lockFromEntity = false,
+  formId = 'relationship-form',
+  onStateChange,
+  hideActions = false,
 }) {
   const isEditMode = Boolean(relationshipId)
   const showEntityHelperHints = isEditMode
@@ -982,8 +985,29 @@ export default function EntityRelationshipForm({
   const noAvailableTypes =
     Boolean(selectedFromEntityTypeId) && availableRelationshipTypes.length === 0
 
+  useEffect(() => {
+    if (!onStateChange) return
+    const mode = isEditMode ? 'edit' : 'create'
+    onStateChange({
+      mode,
+      saving,
+      isBusy,
+      submitLabel: saving
+        ? 'Saving...'
+        : isEditMode
+          ? 'Save Changes'
+          : 'Create Relationship',
+      submitDisabled: saving || isBusy,
+      cancelDisabled: saving,
+    })
+  }, [onStateChange, isEditMode, saving, isBusy])
+
   return (
-    <form className="entity-form relationship-form" onSubmit={handleSubmit}>
+    <form
+      id={formId}
+      className="entity-form relationship-form"
+      onSubmit={handleSubmit}
+    >
       <div className="form-two-column">
         <div className="form-group">
           <label htmlFor="relationship-from-entity">From Entity *</label>
@@ -997,6 +1021,7 @@ export default function EntityRelationshipForm({
               lockFromEntity
             }
             required
+            data-autofocus={!lockFromEntity ? true : undefined}
           >
             <option value="">Select entity...</option>
             {filteredFromEntities.map((entity) => (
@@ -1207,14 +1232,16 @@ export default function EntityRelationshipForm({
         </div>
       )}
 
-      <div className="form-actions">
-        <button type="button" className="btn cancel" onClick={onCancel} disabled={saving}>
-          Cancel
-        </button>
-        <button type="submit" className="btn submit" disabled={saving || isBusy}>
-          {saving ? 'Saving...' : isEditMode ? 'Save Changes' : 'Create Relationship'}
-        </button>
-      </div>
+      {!hideActions && (
+        <div className="form-actions">
+          <button type="button" className="btn cancel" onClick={onCancel} disabled={saving}>
+            Cancel
+          </button>
+          <button type="submit" className="btn submit" disabled={saving || isBusy}>
+            {saving ? 'Saving...' : isEditMode ? 'Save Changes' : 'Create Relationship'}
+          </button>
+        </div>
+      )}
     </form>
   )
 }
