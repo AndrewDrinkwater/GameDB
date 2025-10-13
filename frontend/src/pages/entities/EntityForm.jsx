@@ -295,7 +295,7 @@ export default function EntityForm({
       if (isEditMode) {
         await updateEntity(entityId, payload)
       } else {
-        await createEntity(worldId, payload)
+        await createEntity({ ...payload, world_id: worldId })
       }
       onSaved?.(isEditMode ? 'edit' : 'create')
     } catch (err) {

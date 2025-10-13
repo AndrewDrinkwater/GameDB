@@ -725,6 +725,10 @@ export default function EntityDetailPage() {
     [loadRelationships],
   )
 
+  const handleRelationshipToast = useCallback((message, tone = 'info') => {
+    setToast({ message, tone })
+  }, [])
+
   if (!sessionReady) return <p>Restoring session...</p>
   if (!token) return <p>Authenticating...</p>
 
@@ -745,6 +749,7 @@ export default function EntityDetailPage() {
           worldId={worldId}
           onCancel={() => setShowRelationshipForm(false)}
           onSaved={handleRelationshipCreated}
+          onToast={handleRelationshipToast}
           defaultFromEntityId={entity?.id}
           lockFromEntity
         />

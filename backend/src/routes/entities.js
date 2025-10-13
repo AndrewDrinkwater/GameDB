@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { authenticate } from '../middleware/authMiddleware.js'
 import {
+  createEntity,
   createEntitySecret,
   deleteEntity,
   getEntityById,
@@ -12,6 +13,7 @@ const router = Router()
 
 router.use(authenticate)
 
+router.post('/', createEntity)
 router.get('/:id', getEntityById)
 router.patch('/:id', updateEntity)
 router.delete('/:id', deleteEntity)
