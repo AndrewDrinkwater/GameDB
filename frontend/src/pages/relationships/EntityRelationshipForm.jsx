@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createEntity, getWorldEntities } from '../../api/entities.js'
+import { getWorldEntities } from '../../api/entities.js'
 import {
   createRelationship,
   getRelationship,
@@ -7,6 +7,7 @@ import {
 } from '../../api/entityRelationships.js'
 import { getRelationshipTypes } from '../../api/entityRelationshipTypes.js'
 import { getEntityTypes } from '../../api/entityTypes.js'
+import EntityMiniCreateInline from '../../components/EntityMiniCreateInline.jsx'
 
 const normaliseValueForInput = (value) => {
   if (value === null || value === undefined) return ''
@@ -45,16 +46,6 @@ const coerceContextValue = (value) => {
   return value
 }
 
-const CREATE_FROM_OPTION = '__create_from__'
-const CREATE_TO_OPTION = '__create_to__'
-const DEFAULT_VISIBILITY = 'hidden'
-
-const VISIBILITY_OPTIONS = [
-  { value: 'hidden', label: 'Hidden' },
-  { value: 'partial', label: 'Partial' },
-  { value: 'visible', label: 'Visible' },
-]
-
 const joinWithConjunction = (items) => {
   if (!Array.isArray(items) || items.length === 0) return ''
   if (items.length === 1) return items[0]
@@ -63,26 +54,6 @@ const joinWithConjunction = (items) => {
   const last = items[items.length - 1]
   return `${initial.join(', ')}, or ${last}`
 }
-
-const normaliseEntityTypeOption = (entry) => {
-  if (!entry) return null
-  const id =
-    entry.id ??
-    entry.value ??
-    entry.entity_type_id ??
-    entry.entityTypeId ??
-    (typeof entry === 'string' || typeof entry === 'number' ? entry : null)
-  if (id === undefined || id === null || id === '') return null
-  const name =
-    entry.name ||
-    entry.label ||
-    entry.title ||
-    entry.display ||
-    entry.slug ||
-    (typeof entry === 'string' || typeof entry === 'number' ? String(entry) : 'Untitled type')
-  return { id: String(id), name: String(name) }
-}
-
 const normaliseEntityRecord = (entity) => {
   if (!entity || entity.id === undefined || entity.id === null) return null
   const entityTypeId =
@@ -109,149 +80,6 @@ const normaliseEntityRecord = (entity) => {
 
 const resolveTypeName = (entry) =>
   entry?.name || entry?.entityType?.name || entry?.entity_type?.name || ''
-
-function InlineEntityCreator({
-  worldId,
-  entityTypes,
-  defaultTypeId,
-  onCreated,
-  onCancel,
-  idPrefix = 'inline-entity',
-}) {
-  const [values, setValues] = useState({
-    name: '',
-    entityTypeId: defaultTypeId || '',
-    visibility: DEFAULT_VISIBILITY,
-  })
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    if (!defaultTypeId) return
-    setValues((prev) => ({ ...prev, entityTypeId: defaultTypeId }))
-  }, [defaultTypeId])
-
-  const options = useMemo(
-    () =>
-      (Array.isArray(entityTypes) ? entityTypes : [])
-        .map((entry) => normaliseEntityTypeOption(entry))
-        .filter(Boolean),
-    [entityTypes],
-  )
-
-  const handleChange = (field) => (event) => {
-    const { value } = event.target
-    setValues((prev) => ({ ...prev, [field]: value }))
-  }
-
-  const handleSubmit = async (event) => {
-    event.preventDefault()
-    if (!worldId) {
-      setError('Select a world before creating entities.')
-      return
-    }
-
-    const trimmedName = values.name.trim()
-    if (!trimmedName) {
-      setError('Name is required.')
-      return
-    }
-
-    const entityTypeId = values.entityTypeId
-    if (!entityTypeId) {
-      setError('Entity type is required.')
-      return
-    }
-
-    try {
-      setSaving(true)
-      setError('')
-      const response = await createEntity(worldId, {
-        name: trimmedName,
-        entity_type_id: entityTypeId,
-        visibility: values.visibility || DEFAULT_VISIBILITY,
-      })
-      const data = response?.data?.data ?? response?.data ?? response
-      if (!data || data.id === undefined || data.id === null) {
-        throw new Error('Failed to create entity')
-      }
-      onCreated?.(data)
-      setValues({ name: '', entityTypeId: defaultTypeId || '', visibility: DEFAULT_VISIBILITY })
-    } catch (err) {
-      setError(err.message || 'Failed to create entity')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const nameId = `${idPrefix}-name`
-  const typeId = `${idPrefix}-type`
-  const visibilityId = `${idPrefix}-visibility`
-
-  return (
-    <form className="inline-entity-creator" onSubmit={handleSubmit}>
-      <div className="form-row">
-        <div className="form-group">
-          <label htmlFor={nameId}>Name *</label>
-          <input
-            id={nameId}
-            type="text"
-            value={values.name}
-            onChange={handleChange('name')}
-            disabled={saving}
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor={typeId}>Type *</label>
-          <select
-            id={typeId}
-            value={values.entityTypeId}
-            onChange={handleChange('entityTypeId')}
-            disabled={saving || options.length === 0}
-            required
-          >
-            <option value="">Select type...</option>
-            {options.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-      <div className="form-group">
-        <label htmlFor={visibilityId}>Visibility</label>
-        <select
-          id={visibilityId}
-          value={values.visibility}
-          onChange={handleChange('visibility')}
-          disabled={saving}
-        >
-          {VISIBILITY_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <p className="drawer-field-hint">New entities default to Hidden visibility.</p>
-      </div>
-      {error && (
-        <div className="form-error" role="alert">
-          {error}
-        </div>
-      )}
-      <div className="inline-actions">
-        <button type="button" className="btn secondary" onClick={onCancel} disabled={saving}>
-          Cancel
-        </button>
-        <button type="submit" className="btn" disabled={saving}>
-          {saving ? 'Creating...' : 'Create entity'}
-        </button>
-      </div>
-    </form>
-  )
-}
 
 const getEntityTypeEntriesForRole = (type, role) => {
   if (!type) return []
@@ -299,6 +127,7 @@ export default function EntityRelationshipForm({
   relationshipId,
   onCancel,
   onSaved,
+  onToast,
   defaultFromEntityId,
   lockFromEntity = false,
   formId = 'relationship-form',
@@ -375,6 +204,8 @@ export default function EntityRelationshipForm({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [creatingRole, setCreatingRole] = useState(null)
+  const highlightTimersRef = useRef({ from: null, to: null })
+  const [highlightedEntities, setHighlightedEntities] = useState({ from: '', to: '' })
 
   const hasContext = useMemo(
     () => contextPairs.some((pair) => pair.key.trim() !== '' || pair.value.trim() !== ''),
@@ -568,6 +399,32 @@ export default function EntityRelationshipForm({
     () => (allowedToTypeIds.length > 0 ? String(allowedToTypeIds[0]) : ''),
     [allowedToTypeIds],
   )
+
+  const handleInlineCreateRequest = useCallback(
+    (role) => {
+      if (role === 'from') {
+        if (lockFromEntity) return
+        if (!allowedFromTypeIds.length) {
+          onToast?.('This entity type is not allowed for this relationship.', 'warning')
+          return
+        }
+      } else if (!allowedToTypeIds.length) {
+        onToast?.('This entity type is not allowed for this relationship.', 'warning')
+        return
+      }
+
+      setCreatingRole(role)
+    },
+    [allowedFromTypeIds.length, allowedToTypeIds.length, lockFromEntity, onToast],
+  )
+
+  useEffect(() => {
+    if (creatingRole === 'from' && allowedFromTypeIds.length === 0) {
+      setCreatingRole(null)
+    } else if (creatingRole === 'to' && allowedToTypeIds.length === 0) {
+      setCreatingRole(null)
+    }
+  }, [creatingRole, allowedFromTypeIds.length, allowedToTypeIds.length])
 
   const filteredFromEntities = useMemo(() => {
     if (!allowedFromTypeIds.length) return entities
@@ -854,20 +711,12 @@ export default function EntityRelationshipForm({
 
   const handleFromEntityChange = (event) => {
     const { value } = event.target
-    if (value === CREATE_FROM_OPTION) {
-      setCreatingRole('from')
-      return
-    }
     setCreatingRole((prev) => (prev === 'from' ? null : prev))
     setValues((prev) => ({ ...prev, fromEntityId: value }))
   }
 
   const handleToEntityChange = (event) => {
     const { value } = event.target
-    if (value === CREATE_TO_OPTION) {
-      setCreatingRole('to')
-      return
-    }
     setCreatingRole((prev) => (prev === 'to' ? null : prev))
     setValues((prev) => ({ ...prev, toEntityId: value }))
   }
@@ -876,28 +725,58 @@ export default function EntityRelationshipForm({
     setCreatingRole(null)
   }, [])
 
-  const handleInlineEntityCreated = useCallback((role, entity) => {
-    const normalised = normaliseEntityRecord(entity)
-    if (!normalised) return
-
-    setEntities((prev) => {
-      const existingIndex = prev.findIndex((entry) => String(entry.id) === String(normalised.id))
-      if (existingIndex >= 0) {
-        const clone = [...prev]
-        clone[existingIndex] = { ...clone[existingIndex], ...normalised }
-        return clone
-      }
-      return [normalised, ...prev]
-    })
-
-    const nextId = String(normalised.id)
-    if (role === 'from') {
-      setValues((prev) => ({ ...prev, fromEntityId: nextId }))
-    } else if (role === 'to') {
-      setValues((prev) => ({ ...prev, toEntityId: nextId }))
+  const triggerHighlight = useCallback((role, entityId) => {
+    const key = role === 'to' ? 'to' : 'from'
+    const nextId = entityId ? String(entityId) : ''
+    setHighlightedEntities((prev) => ({ ...prev, [key]: nextId }))
+    if (highlightTimersRef.current[key]) {
+      clearTimeout(highlightTimersRef.current[key])
     }
+    highlightTimersRef.current[key] = setTimeout(() => {
+      setHighlightedEntities((prev) => ({ ...prev, [key]: '' }))
+      highlightTimersRef.current[key] = null
+    }, 2000)
+  }, [])
 
-    setCreatingRole(null)
+  const handleInlineEntityCreated = useCallback(
+    (role, entity) => {
+      const normalised = normaliseEntityRecord(entity)
+      if (!normalised) return
+
+      setEntities((prev) => {
+        const existingIndex = prev.findIndex(
+          (entry) => String(entry.id) === String(normalised.id),
+        )
+        if (existingIndex >= 0) {
+          const clone = [...prev]
+          clone[existingIndex] = { ...clone[existingIndex], ...normalised }
+          return clone
+        }
+        return [normalised, ...prev]
+      })
+
+      const nextId = String(normalised.id)
+      if (role === 'from') {
+        setValues((prev) => ({ ...prev, fromEntityId: nextId }))
+      } else if (role === 'to') {
+        setValues((prev) => ({ ...prev, toEntityId: nextId }))
+      }
+
+      triggerHighlight(role, nextId)
+      setCreatingRole(null)
+    },
+    [triggerHighlight],
+  )
+
+  useEffect(() => {
+    const timers = highlightTimersRef.current
+    return () => {
+      Object.values(timers).forEach((timer) => {
+        if (timer) {
+          clearTimeout(timer)
+        }
+      })
+    }
   }, [])
 
   const handleContextChange = (id, field) => (event) => {
@@ -1009,7 +888,13 @@ export default function EntityRelationshipForm({
       onSubmit={handleSubmit}
     >
       <div className="form-two-column">
-        <div className="form-group">
+        <div
+          className={`form-group${
+            highlightedEntities.from && highlightedEntities.from === values.fromEntityId
+              ? ' entity-select-highlight'
+              : ''
+          }`}
+        >
           <label htmlFor="relationship-from-entity">From Entity *</label>
           <select
             id="relationship-from-entity"
@@ -1029,14 +914,6 @@ export default function EntityRelationshipForm({
                 {entity.name}
               </option>
             ))}
-            {!lockFromEntity && filteredFromEntities.length > 0 && (
-              <option value="__divider_from" disabled>
-                ──────────
-              </option>
-            )}
-            {!lockFromEntity && (
-              <option value={CREATE_FROM_OPTION}>+ Create new entity…</option>
-            )}
           </select>
           {lockFromEntity && (
             <p className="field-hint">
@@ -1049,21 +926,46 @@ export default function EntityRelationshipForm({
           {showEntityHelperHints && activeRelationshipType && fromTypeSummary && (
             <p className="field-hint">Allowed types: {fromTypeSummary}</p>
           )}
+          {!lockFromEntity && (
+            <div className="inline-create-trigger">
+              {allowedFromTypeIds.length > 0 ? (
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => handleInlineCreateRequest('from')}
+                  disabled={creatingRole === 'from'}
+                >
+                  + Create new
+                </button>
+              ) : (
+                <button type="button" className="link-button disabled" disabled>
+                  + Create new
+                </button>
+              )}
+            </div>
+          )}
+          {!lockFromEntity && allowedFromTypeIds.length === 0 && (
+            <p className="inline-create-hint disabled">
+              Inline creation isn’t available for this relationship.
+            </p>
+          )}
           {activeRelationshipType && allowedFromTypeIds.length > 0 &&
             filteredFromEntities.length === 0 && (
               <p className="field-hint">
-                No entities match the allowed source types yet. Use "Create new entity…" to add
-                one without leaving this page.
+                No entities match the allowed source types yet. Use “+ Create new” to add one
+                without leaving this page.
               </p>
             )}
           {!lockFromEntity && creatingRole === 'from' && (
-            <InlineEntityCreator
+            <EntityMiniCreateInline
+              key={`inline-from-${values.relationshipTypeId}`}
+              allowedTypeIds={allowedFromTypeIds}
+              defaultTypeId={suggestedFromTypeId}
               worldId={worldId}
               entityTypes={entityTypes}
-              defaultTypeId={suggestedFromTypeId}
               onCreated={(entity) => handleInlineEntityCreated('from', entity)}
               onCancel={handleInlineCancel}
-              idPrefix="inline-from"
+              onToast={onToast}
             />
           )}
         </div>
@@ -1100,7 +1002,13 @@ export default function EntityRelationshipForm({
       </div>
 
       <div className="form-two-column">
-        <div className="form-group">
+        <div
+          className={`form-group${
+            highlightedEntities.to && highlightedEntities.to === values.toEntityId
+              ? ' entity-select-highlight'
+              : ''
+          }`}
+        >
           <label htmlFor="relationship-to-entity">To Entity *</label>
           <select
             id="relationship-to-entity"
@@ -1115,12 +1023,6 @@ export default function EntityRelationshipForm({
                 {entity.name}
               </option>
             ))}
-            {filteredToEntities.length > 0 && (
-              <option value="__divider_to" disabled>
-                ──────────
-              </option>
-            )}
-            <option value={CREATE_TO_OPTION}>+ Create new entity…</option>
           </select>
           {showEntityHelperHints && effectiveToLabel && (
             <p className="field-hint">Displayed label: {effectiveToLabel}</p>
@@ -1128,20 +1030,43 @@ export default function EntityRelationshipForm({
           {showEntityHelperHints && activeRelationshipType && toTypeSummary && (
             <p className="field-hint">Allowed targets: {toTypeSummary}</p>
           )}
+          <div className="inline-create-trigger">
+            {allowedToTypeIds.length > 0 ? (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => handleInlineCreateRequest('to')}
+                disabled={creatingRole === 'to'}
+              >
+                + Create new
+              </button>
+            ) : (
+              <button type="button" className="link-button disabled" disabled>
+                + Create new
+              </button>
+            )}
+          </div>
+          {allowedToTypeIds.length === 0 && (
+            <p className="inline-create-hint disabled">
+              Inline creation isn’t available for this relationship.
+            </p>
+          )}
           {activeRelationshipType && allowedToTypeIds.length > 0 && filteredToEntities.length === 0 && (
             <p className="field-hint">
-              No entities match the allowed target types yet. Use "Create new entity…" to add one
-              without losing your place.
+              No entities match the allowed target types yet. Use “+ Create new” to add one without
+              losing your place.
             </p>
           )}
           {creatingRole === 'to' && (
-            <InlineEntityCreator
+            <EntityMiniCreateInline
+              key={`inline-to-${values.relationshipTypeId}`}
+              allowedTypeIds={allowedToTypeIds}
+              defaultTypeId={suggestedToTypeId}
               worldId={worldId}
               entityTypes={entityTypes}
-              defaultTypeId={suggestedToTypeId}
               onCreated={(entity) => handleInlineEntityCreated('to', entity)}
               onCancel={handleInlineCancel}
-              idPrefix="inline-to"
+              onToast={onToast}
             />
           )}
         </div>

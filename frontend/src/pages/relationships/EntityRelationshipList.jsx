@@ -409,13 +409,13 @@ export default function EntityRelationshipList() {
     setRelationshipFormUiState(createRelationshipFooterState('create'))
   }
 
-  const handleRelationshipFormStateChange = useCallback((nextState) => {
+  const handleRelationshipFormStateChange = (nextState) => {
     if (!nextState) return
     setRelationshipFormUiState((prev) => ({
       ...prev,
       ...nextState,
     }))
-  }, [])
+  }
 
   const handleFormSaved = async (mode, relationship) => {
     closePanel()
@@ -676,6 +676,7 @@ export default function EntityRelationshipList() {
           relationshipId={editingRelationshipId}
           onCancel={closePanel}
           onSaved={handleFormSaved}
+          onToast={showToast}
           formId={relationshipFormIdRef.current}
           onStateChange={handleRelationshipFormStateChange}
           hideActions

@@ -85,6 +85,72 @@ const normaliseMetadata = (metadata) => {
   return metadata
 }
 
+const createEntityResponse = async ({ world, user, body }) => {
+  const {
+    name,
+    description,
+    entity_type_id: entityTypeId,
+    visibility,
+    metadata,
+  } = body ?? {}
+
+  if (!name || !entityTypeId) {
+    return {
+      status: 400,
+      body: { success: false, message: 'name and entity_type_id are required' },
+    }
+  }
+
+  const entityType = await EntityType.findByPk(entityTypeId)
+  if (!entityType) {
+    return { status: 404, body: { success: false, message: 'Entity type not found' } }
+  }
+
+  const resolvedVisibility = visibility ?? 'hidden'
+  if (!VISIBILITY_VALUES.has(resolvedVisibility)) {
+    return { status: 400, body: { success: false, message: 'Invalid visibility value' } }
+  }
+
+  let metadataInput = {}
+  if (metadata !== undefined) {
+    const normalised = normaliseMetadata(metadata)
+    if (normalised === null) {
+      return {
+        status: 400,
+        body: { success: false, message: 'metadata must be an object' },
+      }
+    }
+    metadataInput = normalised ?? {}
+  }
+
+  const { metadata: metadataToPersist, fields } = await prepareEntityMetadata(
+    entityTypeId,
+    metadataInput,
+  )
+
+  const entity = await Entity.create({
+    name,
+    description,
+    world_id: world.id,
+    entity_type_id: entityTypeId,
+    visibility: resolvedVisibility,
+    metadata: metadataToPersist,
+    created_by: user.id,
+  })
+
+  const fullEntity = await Entity.findByPk(entity.id, {
+    include: [
+      { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
+      { model: World, as: 'world', attributes: ['id', 'name', 'created_by'] },
+      { association: 'creator', attributes: ['id', 'username', 'email'] },
+    ],
+  })
+
+  const payload = await buildEntityPayload(fullEntity, fields)
+
+  return { status: 201, body: { success: true, data: payload } }
+}
+
 export const listWorldEntities = async (req, res) => {
   try {
     const { user, world } = req
@@ -127,59 +193,37 @@ export const createWorldEntity = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    const { name, description, entity_type_id: entityTypeId, visibility, metadata } = req.body
+    const result = await createEntityResponse({ world, user, body: req.body })
 
-    if (!name || !entityTypeId) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'name and entity_type_id are required' })
+    return res.status(result.status).json(result.body)
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+export const createEntity = async (req, res) => {
+  try {
+    const { user } = req
+    const { world_id: worldId } = req.body ?? {}
+
+    if (!worldId) {
+      return res.status(400).json({ success: false, message: 'world_id is required' })
     }
 
-    const entityType = await EntityType.findByPk(entityTypeId)
-    if (!entityType) {
-      return res.status(404).json({ success: false, message: 'Entity type not found' })
+    const world = await World.findByPk(worldId)
+    if (!world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
     }
 
-    const resolvedVisibility = visibility ?? 'hidden'
-    if (!VISIBILITY_VALUES.has(resolvedVisibility)) {
-      return res.status(400).json({ success: false, message: 'Invalid visibility value' })
+    const access = await checkWorldAccess(worldId, user)
+
+    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    let metadataInput = {}
-    if (metadata !== undefined) {
-      const normalised = normaliseMetadata(metadata)
-      if (normalised === null) {
-        return res.status(400).json({ success: false, message: 'metadata must be an object' })
-      }
-      metadataInput = normalised ?? {}
-    }
+    const result = await createEntityResponse({ world, user, body: req.body })
 
-    const { metadata: metadataToPersist, fields } = await prepareEntityMetadata(
-      entityTypeId,
-      metadataInput
-    )
-
-    const entity = await Entity.create({
-      name,
-      description,
-      world_id: world.id,
-      entity_type_id: entityTypeId,
-      visibility: resolvedVisibility,
-      metadata: metadataToPersist,
-      created_by: user.id,
-    })
-
-    const fullEntity = await Entity.findByPk(entity.id, {
-      include: [
-        { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
-        { model: World, as: 'world', attributes: ['id', 'name', 'created_by'] },
-        { association: 'creator', attributes: ['id', 'username', 'email'] },
-      ],
-    })
-
-    const payload = await buildEntityPayload(fullEntity, fields)
-
-    res.status(201).json({ success: true, data: payload })
+    return res.status(result.status).json(result.body)
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }

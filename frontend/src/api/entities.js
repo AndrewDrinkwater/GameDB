@@ -4,8 +4,7 @@ export const getWorldEntities = (worldId) => api.get(`/worlds/${worldId}/entitie
 
 export const getEntity = (id) => api.get(`/entities/${id}`)
 
-export const createEntity = (worldId, data) =>
-  api.post(`/worlds/${worldId}/entities`, data)
+export const createEntity = (data) => api.post('/entities', data)
 
 export const updateEntity = (id, data) => api.patch(`/entities/${id}`, data)
 
