@@ -6,6 +6,7 @@ import {
   deleteEntity,
   getEntityById,
   getEntitySecrets,
+  searchEntities,
   updateEntity,
 } from '../controllers/entityController.js'
 
@@ -14,6 +15,7 @@ const router = Router()
 router.use(authenticate)
 
 router.post('/', createEntity)
+router.get('/search', searchEntities)
 router.get('/:id', getEntityById)
 router.patch('/:id', updateEntity)
 router.delete('/:id', deleteEntity)
