@@ -13,6 +13,7 @@ import {
   coerceValueForField,
   validateEntityMetadata,
 } from '../utils/entityMetadataValidator.js'
+import { applyRelBuilderHeader } from '../utils/featureFlags.js'
 
 const VISIBILITY_VALUES = new Set(['hidden', 'visible', 'partial'])
 const PUBLIC_VISIBILITY = ['visible', 'partial']
@@ -216,6 +217,7 @@ const clampNumber = (value, { min = 0, max = Number.MAX_SAFE_INTEGER, fallback =
 
 export const searchEntities = async (req, res) => {
   try {
+    applyRelBuilderHeader(res)
     const { user } = req
     const { worldId, q = '', limit: rawLimit, offset: rawOffset, typeIds } = req.query
 
@@ -296,6 +298,7 @@ export const searchEntities = async (req, res) => {
 
 export const createWorldEntity = async (req, res) => {
   try {
+    applyRelBuilderHeader(res)
     const { world, user } = req
     const access = req.worldAccess ?? (await checkWorldAccess(world.id, user))
 
@@ -313,6 +316,7 @@ export const createWorldEntity = async (req, res) => {
 
 export const createEntity = async (req, res) => {
   try {
+    applyRelBuilderHeader(res)
     const { user } = req
     const { world_id: worldId } = req.body ?? {}
 

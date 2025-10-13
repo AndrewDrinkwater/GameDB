@@ -10,7 +10,9 @@ import { getRelationshipTypes } from '../../api/entityRelationshipTypes.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import DrawerPanel from '../../components/DrawerPanel.jsx'
+import { useFeatureFlag } from '../../context/FeatureFlagContext.jsx'
 import EntityRelationshipForm from './EntityRelationshipForm.jsx'
+import RelationshipDrawerV2 from './RelationshipDrawerV2.jsx'
 
 const MANAGER_ROLES = new Set(['system_admin'])
 
@@ -24,6 +26,11 @@ const createRelationshipFooterState = (mode = 'create') => ({
 export default function EntityRelationshipList() {
   const { user, token, sessionReady } = useAuth()
   const { selectedCampaign } = useCampaignContext()
+  const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
+
+  const RelationshipBuilderComponent = relBuilderV2Enabled
+    ? RelationshipDrawerV2
+    : EntityRelationshipForm
 
   const [relationships, setRelationships] = useState([])
   const [relationshipTypes, setRelationshipTypes] = useState([])
@@ -671,7 +678,7 @@ export default function EntityRelationshipList() {
           </>
         }
       >
-        <EntityRelationshipForm
+        <RelationshipBuilderComponent
           worldId={worldId}
           relationshipId={editingRelationshipId}
           onCancel={closePanel}

@@ -8,7 +8,9 @@ import EntityHeader from '../../components/entities/EntityHeader.jsx'
 import { getEntity, updateEntity } from '../../api/entities.js'
 import { getEntityRelationships } from '../../api/entityRelationships.js'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { useFeatureFlag } from '../../context/FeatureFlagContext.jsx'
 import EntityRelationshipForm from '../relationships/EntityRelationshipForm.jsx'
+import RelationshipDrawerV2 from '../relationships/RelationshipDrawerV2.jsx'
 
 const VISIBILITY_LABELS = {
   hidden: 'Hidden',
@@ -172,6 +174,10 @@ export default function EntityDetailPage() {
   const [showRelationshipForm, setShowRelationshipForm] = useState(false)
   const [relationshipPerspective, setRelationshipPerspective] = useState('source')
   const [toast, setToast] = useState(null)
+  const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
+  const RelationshipBuilderComponent = relBuilderV2Enabled
+    ? RelationshipDrawerV2
+    : EntityRelationshipForm
   const fromEntitiesSearch = location.state?.fromEntities?.search || ''
 
   const backUrl = useMemo(() => {
@@ -745,7 +751,7 @@ export default function EntityDetailPage() {
         description="Link this entity to others without leaving the page."
         size="lg"
       >
-        <EntityRelationshipForm
+        <RelationshipBuilderComponent
           worldId={worldId}
           onCancel={() => setShowRelationshipForm(false)}
           onSaved={handleRelationshipCreated}
