@@ -32,6 +32,15 @@ Both implementations share the same props:
 | `onToast` | Surfaces validation and success notifications. |
 | `onStateChange` | Communicates submit/cancel button enablement. |
 
+## Use cases
+
+- **Creating a relationship and changing the type** – Switching the relationship type while selecting entities clears the opposi
+te entity picker to avoid invalid pairings.
+- **Selecting a type as the source entity** – When "This entity is the source" is chosen, the "Relationship type" step only dis
+plays relationship definitions where the current entity type can act as the source.
+- **Selecting a type as the target entity** – When "This entity is the target" is chosen, the "Relationship type" step only sho
+ws relationship definitions where the current entity type can act as the target.
+
 ## Telemetry events
 
 The V2 builder will emit the following events through the shared analytics pipeline:

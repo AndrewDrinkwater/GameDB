@@ -437,29 +437,56 @@ export default function EntityRelationshipForm({
     resolvedDefaultToId,
   ])
 
-  const contextTypeId = useMemo(() => {
-    if (lockedEntityTypeId) return lockedEntityTypeId
-    if (selectedFromEntityTypeId) return selectedFromEntityTypeId
-    return ''
-  }, [lockedEntityTypeId, selectedFromEntityTypeId])
+  const relationshipTypeFilterContext = useMemo(() => {
+    const lockedId = lockedEntityTypeId ? String(lockedEntityTypeId) : ''
+
+    if (lockedId) {
+      if (lockedField === 'from') {
+        return { typeId: lockedId, role: direction === 'reverse' ? 'to' : 'from' }
+      }
+      if (lockedField === 'to') {
+        return { typeId: lockedId, role: direction === 'reverse' ? 'from' : 'to' }
+      }
+    }
+
+    if (selectedFromEntityTypeId) {
+      return {
+        typeId: String(selectedFromEntityTypeId),
+        role: direction === 'reverse' ? 'to' : 'from',
+      }
+    }
+
+    if (selectedToEntityTypeId) {
+      return {
+        typeId: String(selectedToEntityTypeId),
+        role: direction === 'reverse' ? 'from' : 'to',
+      }
+    }
+
+    return null
+  }, [
+    lockedEntityTypeId,
+    lockedField,
+    direction,
+    selectedFromEntityTypeId,
+    selectedToEntityTypeId,
+  ])
 
   const availableRelationshipTypes = useMemo(() => {
     if (!relationshipTypes?.length) return []
-    if (!contextTypeId) return relationshipTypes
+    if (!relationshipTypeFilterContext) return relationshipTypes
 
-    const selectedId = String(contextTypeId)
+    const { typeId, role } = relationshipTypeFilterContext
+    const selectedId = String(typeId)
 
     return relationshipTypes.filter((type) => {
-      const sourceIds = getEntityTypeIdsForRole(type, 'from')
-      const targetIds = getEntityTypeIdsForRole(type, 'to')
-
-      if (sourceIds.length === 0 && targetIds.length === 0) {
+      const allowedIds = getEntityTypeIdsForRole(type, role)
+      if (allowedIds.length === 0) {
         return true
       }
-
-      return sourceIds.includes(selectedId) || targetIds.includes(selectedId)
+      return allowedIds.includes(selectedId)
     })
-  }, [relationshipTypes, contextTypeId])
+  }, [relationshipTypes, relationshipTypeFilterContext])
 
   const activeRelationshipType = useMemo(() => {
     if (!values.relationshipTypeId) return null
@@ -902,7 +929,21 @@ export default function EntityRelationshipForm({
 
   const handleValueChange = (field) => (event) => {
     const { value } = event.target
-    setValues((prev) => ({ ...prev, [field]: value }))
+    setValues((prev) => {
+      if (field !== 'relationshipTypeId' || isEditMode) {
+        return { ...prev, [field]: value }
+      }
+
+      const updates = { ...prev, relationshipTypeId: value }
+
+      if (lockedField === 'from') {
+        updates.toEntityId = ''
+      } else if (lockedField === 'to') {
+        updates.fromEntityId = ''
+      }
+
+      return updates
+    })
     if (field === 'relationshipTypeId') {
       setCreatingRole(null)
     }
@@ -1069,7 +1110,8 @@ export default function EntityRelationshipForm({
   }
 
   const isBusy = loadingEntities || loadingTypes || loadingRelationship || loadingEntityTypes
-  const noAvailableTypes = Boolean(contextTypeId) && availableRelationshipTypes.length === 0
+  const noAvailableTypes =
+    Boolean(relationshipTypeFilterContext?.typeId) && availableRelationshipTypes.length === 0
 
   useEffect(() => {
     if (!onStateChange) return
