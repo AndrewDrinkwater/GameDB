@@ -184,6 +184,116 @@ export const listWorldEntities = async (req, res) => {
   }
 }
 
+const normaliseIdList = (value) => {
+  if (!value) return []
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => {
+        if (entry === undefined || entry === null) return ''
+        return String(entry).trim()
+      })
+      .filter(Boolean)
+  }
+
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  }
+
+  return []
+}
+
+const clampNumber = (value, { min = 0, max = Number.MAX_SAFE_INTEGER, fallback = 0 } = {}) => {
+  if (value === undefined || value === null || value === '') return fallback
+  const parsed = Number(value)
+  if (Number.isNaN(parsed)) return fallback
+  if (parsed < min) return min
+  if (parsed > max) return max
+  return parsed
+}
+
+export const searchEntities = async (req, res) => {
+  try {
+    const { user } = req
+    const { worldId, q = '', limit: rawLimit, offset: rawOffset, typeIds } = req.query
+
+    if (!worldId) {
+      return res.status(400).json({ success: false, message: 'worldId is required' })
+    }
+
+    const world = await World.findByPk(worldId)
+    if (!world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    const access = req.worldAccess ?? (await checkWorldAccess(world.id, user))
+    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const limit = clampNumber(rawLimit, { min: 1, max: 100, fallback: 20 })
+    const offset = clampNumber(rawOffset, { min: 0, fallback: 0 })
+    const trimmedQuery = typeof q === 'string' ? q.trim() : ''
+    const where = { world_id: world.id }
+
+    if (!access.isOwner && !access.isAdmin) {
+      where[Op.or] = [
+        { visibility: { [Op.in]: PUBLIC_VISIBILITY } },
+        { created_by: user.id },
+      ]
+    }
+
+    if (trimmedQuery) {
+      const pattern = `%${trimmedQuery}%`
+      const dialect = Entity.sequelize?.getDialect?.() || ''
+      if (dialect === 'postgres') {
+        where.name = { [Op.iLike]: pattern }
+      } else {
+        where.name = { [Op.like]: pattern }
+      }
+    }
+
+    const resolvedTypeIds = normaliseIdList(typeIds)
+    if (resolvedTypeIds.length) {
+      where.entity_type_id = { [Op.in]: resolvedTypeIds }
+    }
+
+    const { rows, count } = await Entity.findAndCountAll({
+      where,
+      include: [
+        { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
+      ],
+      order: [['name', 'ASC']],
+      distinct: true,
+      limit,
+      offset,
+    })
+
+    const payload = rows.map((entity) => {
+      const plain = entity.get({ plain: true })
+      const type = plain.entityType || {}
+      return {
+        id: plain.id,
+        name: plain.name,
+        typeId: type.id ?? plain.entity_type_id ?? null,
+        typeName: type.name ?? plain.entity_type_name ?? null,
+      }
+    })
+
+    const hasMore = offset + rows.length < count
+
+    return res.json({
+      success: true,
+      data: payload,
+      pagination: { total: count, limit, offset, hasMore },
+    })
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message })
+  }
+}
+
 export const createWorldEntity = async (req, res) => {
   try {
     const { world, user } = req
