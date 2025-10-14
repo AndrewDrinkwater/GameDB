@@ -770,6 +770,7 @@ export default function EntityDetailPage() {
             entity?.entityType?.id ??
             ''
           }
+          mode="inline"
         />
       </DrawerPanel>
 
