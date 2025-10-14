@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   ArrowDown,
   ArrowUp,
+  ChevronDown,
+  ChevronRight,
+  Filter,
   Pencil,
   Plus,
   RotateCcw,
@@ -19,6 +22,9 @@ import { useAuth } from '../../context/AuthContext.jsx'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import DrawerPanel from '../../components/DrawerPanel.jsx'
 import EntityForm from './EntityForm.jsx'
+import SearchBar from '../../components/SearchBar.jsx'
+import ConditionBuilderModal from '../../components/ConditionBuilderModal.jsx'
+import useDataExplorer from '../../hooks/useDataExplorer.js'
 
 const VISIBILITY_BADGES = {
   visible: 'badge-visible',
@@ -141,6 +147,14 @@ export default function EntityList() {
   const [entityFormUiState, setEntityFormUiState] = useState(() =>
     createDrawerFooterState('create'),
   )
+  const [filterModalOpen, setFilterModalOpen] = useState(false)
+  const [groupMenuState, setGroupMenuState] = useState({
+    open: false,
+    columnKey: '',
+    columnLabel: '',
+    x: 0,
+    y: 0,
+  })
 
   const currentSearch = searchParams.toString()
 
@@ -156,10 +170,33 @@ export default function EntityList() {
   }, [])
 
   useEffect(() => {
+    if (!groupMenuState.open) return
+    const close = () =>
+      setGroupMenuState({ open: false, columnKey: '', columnLabel: '', x: 0, y: 0 })
+    window.addEventListener('click', close)
+    window.addEventListener('contextmenu', close)
+    return () => {
+      window.removeEventListener('click', close)
+      window.removeEventListener('contextmenu', close)
+    }
+  }, [groupMenuState.open])
+
+  useEffect(() => {
     if (!toast) return
     const timer = setTimeout(() => setToast(null), 3500)
     return () => clearTimeout(timer)
   }, [toast])
+
+  const formatDate = useCallback((value) => {
+    if (!value) return '—'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return '—'
+    return date.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  }, [])
 
   const membershipRole = useMemo(() => {
     if (!selectedCampaign || !user) return ''
@@ -563,8 +600,130 @@ export default function EntityList() {
     }
   }
 
-  const getEntityTypeLabel = (entity) =>
-    entity.entityType?.name || entity.entity_type?.name || '—'
+  const getEntityTypeLabel = useCallback(
+    (entity) => entity?.entityType?.name || entity?.entity_type?.name || '—',
+    [],
+  )
+
+  const resolveEntityValue = useCallback(
+    (entity, key) => {
+      if (!entity) return ''
+      switch (key) {
+        case 'name':
+          return entity.name || ''
+        case 'type':
+          return getEntityTypeLabel(entity)
+        case 'visibility':
+          return entity.visibility || 'hidden'
+        case 'createdAt':
+          return entity.createdAt || entity.created_at || ''
+        case 'description':
+          return entity.description || ''
+        default: {
+          if (key.startsWith('metadata.')) {
+            const metadata =
+              entity.metadata && typeof entity.metadata === 'object' ? entity.metadata : {}
+            const metaKey = key.replace(/^metadata\./, '')
+            return metadata?.[metaKey]
+          }
+          return entity[key]
+        }
+      }
+    },
+    [getEntityTypeLabel],
+  )
+
+  const explorerColumns = useMemo(() => {
+    const entries = []
+    availableColumnMap.forEach((column) => {
+      const metadataType =
+        column.type === 'metadata'
+          ? column.dataType || column.data_type || 'string'
+          : column.dataType
+      const resolvedType = metadataType || (column.key === 'createdAt' ? 'date' : 'string')
+      entries.push({
+        key: column.key,
+        label: column.label || column.name || column.key,
+        dataType: resolvedType,
+        accessor: (entity) => resolveEntityValue(entity, column.key),
+      })
+    })
+    return entries
+  }, [availableColumnMap, resolveEntityValue])
+
+  const explorerColumnMap = useMemo(
+    () => new Map(explorerColumns.map((column) => [column.key, column])),
+    [explorerColumns],
+  )
+
+  const dataExplorer = useDataExplorer(filteredEntities, { columns: explorerColumns })
+
+  const formatGroupLabel = useCallback(
+    (value) => {
+      const column = dataExplorer.groupBy
+        ? availableColumnMap.get(dataExplorer.groupBy)
+        : null
+      if (!column) {
+        return formatMetadataValue(value)
+      }
+
+      if (column.key === 'visibility') {
+        const text = typeof value === 'string' ? value : ''
+        if (!text) return 'Hidden'
+        return text.charAt(0).toUpperCase() + text.slice(1)
+      }
+
+      if (column.key === 'createdAt') {
+        return formatDate(value)
+      }
+
+      if (column.key === 'type') {
+        return value || 'Unassigned'
+      }
+
+      if (column.key.startsWith('metadata.')) {
+        return formatMetadataValue(value)
+      }
+
+      if (column.key === 'name' || column.key === 'description') {
+        return value ? String(value) : '—'
+      }
+
+      return value ? String(value) : 'Unassigned'
+    },
+    [availableColumnMap, dataExplorer.groupBy, formatDate],
+  )
+
+  const filterFields = useMemo(
+    () =>
+      explorerColumns.map((column) => ({
+        key: column.key,
+        label: explorerColumnMap.get(column.key)?.label || column.label || column.key,
+        dataType: column.dataType,
+      })),
+    [explorerColumns, explorerColumnMap],
+  )
+
+  const handleHeaderClick = (columnKey) => {
+    if (!columnKey) return
+    dataExplorer.toggleSort(columnKey)
+  }
+
+  const handleHeaderContextMenu = (event, column) => {
+    event.preventDefault()
+    setGroupMenuState({
+      open: true,
+      columnKey: column.key,
+      columnLabel: column.label || column.name || column.key,
+      x: event.clientX,
+      y: event.clientY,
+    })
+  }
+
+  const handleGroupByColumn = (columnKey) => {
+    dataExplorer.setGroupBy(columnKey)
+    setGroupMenuState({ open: false, columnKey: '', columnLabel: '', x: 0, y: 0 })
+  }
 
   const renderEntityColumn = (column, entity) => {
     const metadata =
@@ -676,17 +835,6 @@ export default function EntityList() {
     }))
   }, [])
 
-  const formatDate = (value) => {
-    if (!value) return '—'
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return '—'
-    return date.toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
-  }
-
   const editingEntityTitleName = useMemo(() => {
     if (!editingEntityId) return ''
     const match = entities.find((item) => item.id === editingEntityId)
@@ -713,6 +861,9 @@ export default function EntityList() {
   if (!token) return <p>Authenticating...</p>
 
   const hasEntities = filteredEntities.length > 0
+  const hasResults = dataExplorer.groupBy
+    ? dataExplorer.groups.some((group) => group.items.length > 0)
+    : dataExplorer.data.length > 0
 
   return (
     <section className="entities-page">
@@ -741,6 +892,19 @@ export default function EntityList() {
           )}
         </div>
         <div className="entities-controls">
+          <SearchBar
+            value={dataExplorer.searchTerm}
+            onChange={dataExplorer.setSearchTerm}
+            placeholder="Search entities..."
+            ariaLabel="Search entities"
+          />
+          <button
+            type="button"
+            className={`btn secondary compact${dataExplorer.filterActive ? ' is-active' : ''}`}
+            onClick={() => setFilterModalOpen(true)}
+          >
+            <Filter size={16} /> Filters
+          </button>
           {filterActive && (
             <div className="entities-column-menu-wrapper">
               <button
@@ -1006,51 +1170,157 @@ export default function EntityList() {
       ) : !worldId ? (
         <div className="empty-state">Select a campaign to view its entities.</div>
       ) : hasEntities ? (
-        <div className="entities-table-wrapper">
-          <table className="entities-table">
-            <thead>
-              <tr>
-                {visibleColumnDefs.map((column) => (
-                  <th key={column.key}>{column.label}</th>
-                ))}
-                {canManage && <th className="actions-column">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredEntities.map((entity) => (
-                <tr key={entity.id}>
-                  {visibleColumnDefs.map((column) => (
-                    <td key={column.key}>{renderEntityColumn(column, entity)}</td>
-                  ))}
-                  {canManage && (
-                    <td className="actions-column">
-                      <div className="entity-actions">
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          onClick={() => openEdit(entity)}
-                          title="Edit entity"
-                          disabled={loadingEntities}
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-btn danger"
-                          onClick={() => handleDelete(entity)}
-                          title="Delete entity"
-                          disabled={deletingId === entity.id}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  )}
+        hasResults ? (
+          <div className="entities-table-wrapper">
+            <table className="entities-table">
+              <thead>
+                <tr>
+                  {visibleColumnDefs.map((column) => {
+                    const isSorted = dataExplorer.sortState.key === column.key
+                    const isGrouped = dataExplorer.groupBy === column.key
+                    return (
+                      <th
+                        key={column.key}
+                        onClick={() => handleHeaderClick(column.key)}
+                        onContextMenu={(event) => handleHeaderContextMenu(event, column)}
+                        className="sortable-header"
+                      >
+                        <span className="header-label">
+                          {column.label}
+                          {isSorted && (
+                            <span className="sort-indicator">
+                              {dataExplorer.sortState.direction === 'asc' ? '▲' : '▼'}
+                            </span>
+                          )}
+                          {isGrouped && <span className="group-indicator">Grouped</span>}
+                        </span>
+                      </th>
+                    )
+                  })}
+                  {canManage && <th className="actions-column">Actions</th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {dataExplorer.groupBy
+                  ? dataExplorer.groups.map((group) => (
+                      <Fragment key={group.id}>
+                        <tr className="entities-group-row">
+                          <td colSpan={visibleColumnDefs.length + (canManage ? 1 : 0)}>
+                            <button
+                              type="button"
+                              className="group-toggle"
+                              onClick={() => dataExplorer.toggleGroupCollapse(group.id)}
+                              aria-label={`Toggle group ${formatGroupLabel(group.value)}`}
+                            >
+                              {dataExplorer.isGroupCollapsed(group.id) ? (
+                                <ChevronRight size={14} />
+                              ) : (
+                                <ChevronDown size={14} />
+                              )}
+                            </button>
+                            <span className="entities-group-label">
+                              {formatGroupLabel(group.value)}{' '}
+                              <span className="entities-group-count">({group.items.length})</span>
+                            </span>
+                          </td>
+                        </tr>
+                        {!dataExplorer.isGroupCollapsed(group.id) &&
+                          group.items.map((entity) => (
+                            <tr key={entity.id}>
+                              {visibleColumnDefs.map((column) => (
+                                <td key={column.key}>{renderEntityColumn(column, entity)}</td>
+                              ))}
+                              {canManage && (
+                                <td className="actions-column">
+                                  <div className="entity-actions">
+                                    <button
+                                      type="button"
+                                      className="icon-btn"
+                                      onClick={() => openEdit(entity)}
+                                      title="Edit entity"
+                                      disabled={loadingEntities}
+                                    >
+                                      <Pencil size={16} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="icon-btn danger"
+                                      onClick={() => handleDelete(entity)}
+                                      title="Delete entity"
+                                      disabled={deletingId === entity.id}
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                      </Fragment>
+                    ))
+                  : dataExplorer.data.map((entity) => (
+                      <tr key={entity.id}>
+                        {visibleColumnDefs.map((column) => (
+                          <td key={column.key}>{renderEntityColumn(column, entity)}</td>
+                        ))}
+                        {canManage && (
+                          <td className="actions-column">
+                            <div className="entity-actions">
+                              <button
+                                type="button"
+                                className="icon-btn"
+                                onClick={() => openEdit(entity)}
+                                title="Edit entity"
+                                disabled={loadingEntities}
+                              >
+                                <Pencil size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                className="icon-btn danger"
+                                onClick={() => handleDelete(entity)}
+                                title="Delete entity"
+                                disabled={deletingId === entity.id}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <p className="empty-title">No entities match your filters.</p>
+            <div className="empty-actions">
+              {(dataExplorer.filterActive || dataExplorer.searchTerm) && (
+                <div className="empty-action-buttons">
+                  {dataExplorer.filterActive && (
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      onClick={() => dataExplorer.clearFilters()}
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                  {dataExplorer.searchTerm && (
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      onClick={() => dataExplorer.setSearchTerm('')}
+                    >
+                      Reset search
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )
       ) : (
         <div className="empty-state">
           {filterActive ? (
@@ -1072,6 +1342,36 @@ export default function EntityList() {
           )}
         </div>
       )}
+
+      {groupMenuState.open && (
+        <div
+          className="column-context-menu"
+          style={{ top: groupMenuState.y, left: groupMenuState.x }}
+          role="menu"
+        >
+          <button type="button" onClick={() => handleGroupByColumn(groupMenuState.columnKey)}>
+            {dataExplorer.groupBy === groupMenuState.columnKey
+              ? 'Remove grouping'
+              : `Group by ${groupMenuState.columnLabel}`}
+          </button>
+          {dataExplorer.groupBy && dataExplorer.groupBy !== groupMenuState.columnKey && (
+            <button type="button" onClick={() => handleGroupByColumn('')}>
+              Clear grouping
+            </button>
+          )}
+        </div>
+      )}
+
+      <ConditionBuilderModal
+        open={filterModalOpen}
+        onClose={() => setFilterModalOpen(false)}
+        fields={filterFields}
+        value={dataExplorer.filters}
+        onApply={(config) => {
+          dataExplorer.setFilters(config)
+          setFilterModalOpen(false)
+        }}
+      />
 
       <DrawerPanel
         isOpen={panelOpen}
