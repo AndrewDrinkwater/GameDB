@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Pencil, Plus, RotateCcw, SlidersHorizontal, Trash2, X } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  Pencil,
+  Plus,
+  RotateCcw,
+  SlidersHorizontal,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { deleteEntity, getWorldEntities } from '../../api/entities.js'
 import {
   getEntityTypeListColumns,
@@ -487,6 +496,21 @@ export default function EntityList() {
     })
   }
 
+  const handleMoveColumn = (key, direction) => {
+    if (!selectedFilter) return
+    setDraftColumnKeys((prev) => {
+      const currentIndex = prev.indexOf(key)
+      if (currentIndex === -1) return prev
+      const nextIndex = currentIndex + direction
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev
+      if (nextIndex === currentIndex) return prev
+      const next = [...prev]
+      next.splice(currentIndex, 1)
+      next.splice(nextIndex, 0, key)
+      return next
+    })
+  }
+
   const handleOpenColumnMenu = () => {
     if (!selectedFilter) return
     setColumnSelectionError('')
@@ -722,9 +746,11 @@ export default function EntityList() {
               <button
                 type="button"
                 className="btn secondary"
+                aria-haspopup="dialog"
                 onClick={handleOpenColumnMenu}
               >
-                <SlidersHorizontal size={16} /> Columns
+                <SlidersHorizontal size={16} />
+                <span className="btn-label">Columns</span>
               </button>
               {columnMenuOpen && (
                 <div className="entities-column-menu" role="dialog" aria-modal="false">
@@ -756,16 +782,62 @@ export default function EntityList() {
                       <div className="entities-column-section">
                         <h4>Core Columns</h4>
                         <div className="entities-column-options">
-                          {coreColumnOptions.map((column) => (
-                            <label key={column.key} className="entities-column-option">
-                              <input
-                                type="checkbox"
-                                checked={draftColumnKeys.includes(column.key)}
-                                onChange={() => handleToggleColumn(column.key)}
-                              />
-                              <span>{column.label}</span>
-                            </label>
-                          ))}
+                          {coreColumnOptions.map((column) => {
+                            const isSelected = draftColumnKeys.includes(column.key)
+                            const orderIndex = isSelected
+                              ? draftColumnKeys.indexOf(column.key)
+                              : -1
+                            return (
+                              <div
+                                key={column.key}
+                                className={`entities-column-option${
+                                  isSelected ? ' is-selected' : ''
+                                }`}
+                              >
+                                <label className="entities-column-checkbox">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleToggleColumn(column.key)}
+                                  />
+                                  <span>{column.label}</span>
+                                </label>
+                                <div className="entities-column-order">
+                                  {isSelected ? (
+                                    <>
+                                      <span className="entities-column-order-index">
+                                        {orderIndex + 1}
+                                      </span>
+                                      <div className="entities-column-order-buttons">
+                                        <button
+                                          type="button"
+                                          className="icon-btn small"
+                                          onClick={() => handleMoveColumn(column.key, -1)}
+                                          disabled={orderIndex <= 0}
+                                          aria-label={`Move ${column.label} earlier`}
+                                        >
+                                          <ArrowUp size={14} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="icon-btn small"
+                                          onClick={() => handleMoveColumn(column.key, 1)}
+                                          disabled={orderIndex === draftColumnKeys.length - 1}
+                                          aria-label={`Move ${column.label} later`}
+                                        >
+                                          <ArrowDown size={14} />
+                                        </button>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <span className="entities-column-order-placeholder">
+                                      Not shown
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
                       </div>
                       <div className="entities-column-section">
@@ -776,16 +848,62 @@ export default function EntityList() {
                           </p>
                         ) : (
                           <div className="entities-column-options">
-                            {metadataColumnOptions.map((column) => (
-                              <label key={column.key} className="entities-column-option">
-                                <input
-                                  type="checkbox"
-                                  checked={draftColumnKeys.includes(column.key)}
-                                  onChange={() => handleToggleColumn(column.key)}
-                                />
-                                <span>{column.label}</span>
-                              </label>
-                            ))}
+                            {metadataColumnOptions.map((column) => {
+                              const isSelected = draftColumnKeys.includes(column.key)
+                              const orderIndex = isSelected
+                                ? draftColumnKeys.indexOf(column.key)
+                                : -1
+                              return (
+                                <div
+                                  key={column.key}
+                                  className={`entities-column-option${
+                                    isSelected ? ' is-selected' : ''
+                                  }`}
+                                >
+                                  <label className="entities-column-checkbox">
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => handleToggleColumn(column.key)}
+                                    />
+                                    <span>{column.label}</span>
+                                  </label>
+                                  <div className="entities-column-order">
+                                    {isSelected ? (
+                                      <>
+                                        <span className="entities-column-order-index">
+                                          {orderIndex + 1}
+                                        </span>
+                                        <div className="entities-column-order-buttons">
+                                          <button
+                                            type="button"
+                                            className="icon-btn small"
+                                            onClick={() => handleMoveColumn(column.key, -1)}
+                                            disabled={orderIndex <= 0}
+                                            aria-label={`Move ${column.label} earlier`}
+                                          >
+                                            <ArrowUp size={14} />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="icon-btn small"
+                                            onClick={() => handleMoveColumn(column.key, 1)}
+                                            disabled={orderIndex === draftColumnKeys.length - 1}
+                                            aria-label={`Move ${column.label} later`}
+                                          >
+                                            <ArrowDown size={14} />
+                                          </button>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <span className="entities-column-order-placeholder">
+                                        Not shown
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
                           </div>
                         )}
                       </div>
