@@ -10,6 +10,12 @@ import { getEntityTypes } from '../../api/entityTypes.js'
 import EntityMiniCreateInline from '../../components/EntityMiniCreateInline.jsx'
 import EntitySelect from '../../components/EntitySelect.jsx'
 import PerspectiveToggle from '../../components/relationships/PerspectiveToggle.jsx'
+import {
+  getDirectionalConfig,
+  getEntityTypeEntriesForRole,
+  getEntityTypeIdsForRole,
+  getValidRelationshipTypes,
+} from '../../utils/relationshipLogic.js'
 
 const normaliseId = (value) => {
   if (value === undefined || value === null) return ''
@@ -123,47 +129,6 @@ const normaliseEntitySelectResult = (entity) => {
 const resolveTypeName = (entry) =>
   entry?.name || entry?.entityType?.name || entry?.entity_type?.name || ''
 
-const getEntityTypeEntriesForRole = (type, role) => {
-  if (!type) return []
-
-  const rawList =
-    role === 'from'
-      ? type?.from_entity_types ?? type?.fromEntityTypes ?? type?.fromTypes ?? []
-      : type?.to_entity_types ?? type?.toEntityTypes ?? type?.toTypes ?? []
-
-  if (!Array.isArray(rawList)) return []
-
-  return rawList
-}
-
-const resolveRuleId = (entry) => {
-  if (!entry) return ''
-
-  if (typeof entry === 'string' || typeof entry === 'number') {
-    const trimmed = String(entry).trim()
-    return trimmed
-  }
-
-  if (typeof entry === 'object') {
-    if (entry.id !== undefined && entry.id !== null) return String(entry.id)
-    if (entry.entity_type_id !== undefined && entry.entity_type_id !== null)
-      return String(entry.entity_type_id)
-    if (entry.entityTypeId !== undefined && entry.entityTypeId !== null)
-      return String(entry.entityTypeId)
-    if (entry.entityType?.id !== undefined && entry.entityType?.id !== null)
-      return String(entry.entityType.id)
-    if (entry.entity_type?.id !== undefined && entry.entity_type?.id !== null)
-      return String(entry.entity_type.id)
-  }
-
-  return ''
-}
-
-const getEntityTypeIdsForRole = (type, role) =>
-  getEntityTypeEntriesForRole(type, role)
-    .map((entry) => resolveRuleId(entry))
-    .filter((value) => value !== '')
-
 export default function EntityRelationshipForm({
   worldId,
   relationshipId,
@@ -180,11 +145,14 @@ export default function EntityRelationshipForm({
   formId = 'relationship-form',
   onStateChange,
   hideActions = false,
+  mode = 'inline',
 }) {
   const isEditMode = Boolean(relationshipId)
   const showEntityHelperHints = isEditMode
   const showContextEditor = isEditMode
   const pairIdRef = useRef(0)
+  const isInlineMode = mode === 'inline'
+  const isGlobalMode = mode === 'global'
 
   const generatePair = useCallback(
     (key = '', value = '') => {
@@ -263,6 +231,7 @@ export default function EntityRelationshipForm({
   const [highlightedEntities, setHighlightedEntities] = useState({ from: '', to: '' })
   const perspective = direction === 'reverse' ? 'target' : 'source'
   const isSourcePerspective = perspective === 'source'
+  const bothEntitiesSelected = Boolean(values.fromEntityId && values.toEntityId)
   const hasAnchoredEntity = useMemo(
     () =>
       Boolean(
@@ -571,36 +540,22 @@ export default function EntityRelationshipForm({
   const availableRelationshipTypes = useMemo(() => {
     if (!relationshipTypes?.length) return []
 
-    const ensureAllowed = (list, role, entityTypeId) => {
-      if (!entityTypeId) return list
-      const targetId = String(entityTypeId)
-      return list.filter((type) => {
-        const allowedIds = getEntityTypeIdsForRole(type, role)
-        if (allowedIds.length === 0) {
-          return true
-        }
-        return allowedIds.includes(targetId)
-      })
-    }
-
-    let filtered = relationshipTypes
-
-    if (relationshipTypeFilterContext) {
-      const { typeId, role } = relationshipTypeFilterContext
-      filtered = ensureAllowed(filtered, role, typeId)
-    }
-
-    filtered = ensureAllowed(filtered, fromRoleForTypes, selectedFromEntityTypeId)
-    filtered = ensureAllowed(filtered, toRoleForTypes, selectedToEntityTypeId)
-
-    return filtered
+    return getValidRelationshipTypes({
+      relationshipTypes,
+      sourceType: selectedFromEntityTypeId,
+      targetType: selectedToEntityTypeId,
+      sourceRole: fromRoleForTypes,
+      targetRole: toRoleForTypes,
+      filterType: relationshipTypeFilterContext?.typeId,
+      filterRole: relationshipTypeFilterContext?.role,
+    })
   }, [
     relationshipTypes,
-    relationshipTypeFilterContext,
-    fromRoleForTypes,
-    toRoleForTypes,
     selectedFromEntityTypeId,
     selectedToEntityTypeId,
+    fromRoleForTypes,
+    toRoleForTypes,
+    relationshipTypeFilterContext,
   ])
 
   const activeRelationshipType = useMemo(() => {
@@ -1265,11 +1220,16 @@ export default function EntityRelationshipForm({
 
   const isBusy = loadingEntities || loadingTypes || loadingRelationship || loadingEntityTypes
   const noAvailableTypes =
-    Boolean(relationshipTypeFilterContext?.typeId) && availableRelationshipTypes.length === 0
+    Boolean(relationshipTypeFilterContext?.typeId) &&
+    availableRelationshipTypes.length === 0 &&
+    (isInlineMode || bothEntitiesSelected)
 
   useEffect(() => {
     if (!onStateChange) return
     const mode = isEditMode ? 'edit' : 'create'
+    const hasRequiredFields = Boolean(
+      values.fromEntityId && values.toEntityId && values.relationshipTypeId,
+    )
     onStateChange({
       mode,
       saving,
@@ -1279,10 +1239,41 @@ export default function EntityRelationshipForm({
         : isEditMode
           ? 'Save Changes'
           : 'Create Relationship',
-      submitDisabled: saving || isBusy || isPerspectiveInvalid,
+      submitDisabled: saving || isBusy || isPerspectiveInvalid || !hasRequiredFields,
       cancelDisabled: saving,
     })
-  }, [onStateChange, isEditMode, saving, isBusy, isPerspectiveInvalid])
+  }, [
+    onStateChange,
+    isEditMode,
+    saving,
+    isBusy,
+    isPerspectiveInvalid,
+    values.fromEntityId,
+    values.toEntityId,
+    values.relationshipTypeId,
+  ])
+
+  useEffect(() => {
+    if (!isGlobalMode) return
+    if (!activeRelationshipType) return
+    if (!selectedFromEntity || !selectedToEntity) return
+
+    const config = getDirectionalConfig({
+      relationshipType: activeRelationshipType,
+      sourceEntity: selectedFromEntity,
+      targetEntity: selectedToEntity,
+    })
+
+    if (config.direction && config.direction !== direction) {
+      setDirection(config.direction)
+    }
+  }, [
+    isGlobalMode,
+    activeRelationshipType,
+    selectedFromEntity,
+    selectedToEntity,
+    direction,
+  ])
 
   return (
     <form
@@ -1290,13 +1281,15 @@ export default function EntityRelationshipForm({
       className="entity-form relationship-form"
       onSubmit={handleSubmit}
     >
-      <PerspectiveToggle
-        value={perspective}
-        onChange={handlePerspectiveChange}
-        disabled={saving || isBusy}
-        sourceLabel={perspectiveLabels.source}
-        targetLabel={perspectiveLabels.target}
-      />
+      {isInlineMode && (
+        <PerspectiveToggle
+          value={perspective}
+          onChange={handlePerspectiveChange}
+          disabled={saving || isBusy}
+          sourceLabel={perspectiveLabels.source}
+          targetLabel={perspectiveLabels.target}
+        />
+      )}
 
       {perspectiveWarning && (
         <div className="alert warning" role="alert">
@@ -1390,7 +1383,12 @@ export default function EntityRelationshipForm({
             id="relationship-type"
             value={values.relationshipTypeId}
             onChange={handleValueChange('relationshipTypeId')}
-            disabled={saving || isBusy || !availableRelationshipTypes.length}
+            disabled={
+              saving ||
+              isBusy ||
+              !availableRelationshipTypes.length ||
+              (isGlobalMode && !bothEntitiesSelected)
+            }
             required
           >
             <option value="">Select type...</option>

@@ -687,6 +687,7 @@ export default function EntityRelationshipList() {
           formId={relationshipFormIdRef.current}
           onStateChange={handleRelationshipFormStateChange}
           hideActions
+          mode="global"
         />
       </DrawerPanel>
     </section>
