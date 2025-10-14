@@ -1107,6 +1107,7 @@ export default function EntityList() {
           formId={entityFormIdRef.current}
           onStateChange={handleEntityFormStateChange}
           hideActions
+          selectedEntityTypeId={filterActive ? selectedFilter : ''}
         />
       </DrawerPanel>
     </section>
