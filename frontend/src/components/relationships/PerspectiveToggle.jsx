@@ -1,9 +1,15 @@
-const OPTIONS = [
-  { value: 'source', label: 'This entity is the source' },
-  { value: 'target', label: 'This entity is the target' },
-]
+export default function PerspectiveToggle({
+  value,
+  onChange,
+  disabled = false,
+  sourceLabel = 'This entity is the source',
+  targetLabel = 'This entity is the target',
+}) {
+  const options = [
+    { value: 'source', label: sourceLabel },
+    { value: 'target', label: targetLabel },
+  ]
 
-export default function PerspectiveToggle({ value, onChange, disabled = false }) {
   const handleChange = (event) => {
     const nextValue = event.target.value === 'target' ? 'target' : 'source'
     if (nextValue !== value) {
@@ -15,7 +21,7 @@ export default function PerspectiveToggle({ value, onChange, disabled = false })
     <fieldset className="perspective-toggle" disabled={disabled}>
       <legend>Relationship Perspective</legend>
       <div role="radiogroup" aria-label="Relationship perspective" className="perspective-toggle-options">
-        {OPTIONS.map((option) => {
+        {options.map((option) => {
           const classes = ['perspective-toggle-option']
           if (option.value === value) classes.push('active')
           if (disabled) classes.push('disabled')

@@ -263,6 +263,36 @@ export default function EntityRelationshipForm({
   const [highlightedEntities, setHighlightedEntities] = useState({ from: '', to: '' })
   const perspective = direction === 'reverse' ? 'target' : 'source'
   const isSourcePerspective = perspective === 'source'
+  const hasAnchoredEntity = useMemo(
+    () =>
+      Boolean(
+        lockFromEntity ||
+          lockToEntity ||
+          resolvedCurrentEntityId ||
+          resolvedDefaultFromId ||
+          resolvedDefaultToId,
+      ),
+    [
+      lockFromEntity,
+      lockToEntity,
+      resolvedCurrentEntityId,
+      resolvedDefaultFromId,
+      resolvedDefaultToId,
+    ],
+  )
+  const perspectiveLabels = useMemo(
+    () =>
+      hasAnchoredEntity
+        ? {
+            source: 'This entity is the source',
+            target: 'This entity is the target',
+          }
+        : {
+            source: 'From entity initiates the relationship',
+            target: 'To entity initiates the relationship',
+          },
+    [hasAnchoredEntity],
+  )
   const upsertEntityFromSelect = useCallback((entity) => {
     const record = normaliseEntitySelectResult(entity)
     if (!record) return
@@ -312,7 +342,10 @@ export default function EntityRelationshipForm({
             ? response.data
             : []
         if (!cancelled) {
-          setEntities(list)
+          const normalisedList = list
+            .map((entry) => normaliseEntityRecord(entry))
+            .filter((entry) => entry !== null)
+          setEntities(normalisedList)
         }
       } catch (err) {
         if (!cancelled) {
@@ -1261,6 +1294,8 @@ export default function EntityRelationshipForm({
         value={perspective}
         onChange={handlePerspectiveChange}
         disabled={saving || isBusy}
+        sourceLabel={perspectiveLabels.source}
+        targetLabel={perspectiveLabels.target}
       />
 
       {perspectiveWarning && (
