@@ -29,19 +29,25 @@ const buildRulePayload = (relationshipTypeId, role, ids) =>
     role,
   }))
 
-const findExistingTypeByName = async (world_id, name) => {
+const findExistingTypeByName = async (world_id, name, excludeId) => {
   if (!world_id || !name) return null
 
   const trimmed = name.trim().toLowerCase()
   if (!trimmed) return null
 
+  const where = {
+    world_id,
+    [Op.and]: [
+      sequelize.where(sequelize.fn('LOWER', sequelize.col('name')), trimmed),
+    ],
+  }
+
+  if (excludeId) {
+    where.id = { [Op.ne]: excludeId }
+  }
+
   return EntityRelationshipType.findOne({
-    where: {
-      world_id,
-      [Op.and]: [
-        sequelize.where(sequelize.fn('LOWER', sequelize.col('name')), trimmed),
-      ],
-    },
+    where,
     attributes: ['id', 'name', 'world_id'],
   })
 }
@@ -142,6 +148,7 @@ const validateInput = async ({
   world_id,
   fromEntityTypeIds,
   toEntityTypeIds,
+  existingTypeId,
 }) => {
   const trimmedName = typeof name === 'string' ? name.trim() : ''
   if (!trimmedName) return { error: 'name is required' }
@@ -172,7 +179,11 @@ const validateInput = async ({
     return { error: 'One or more selected entity types were not found' }
   }
 
-  const existingType = await findExistingTypeByName(resolvedWorldId, trimmedName)
+  const existingType = await findExistingTypeByName(
+    resolvedWorldId,
+    trimmedName,
+    existingTypeId
+  )
   if (existingType) {
     return { error: 'A relationship type with this name already exists in the selected world' }
   }
@@ -279,6 +290,7 @@ export const updateRelationshipType = async (req, res) => {
         req.body?.from_entity_type_ids ?? req.body?.fromEntityTypeIds ?? [],
       toEntityTypeIds:
         req.body?.to_entity_type_ids ?? req.body?.toEntityTypeIds ?? [],
+      existingTypeId: relationshipType.id,
     })
 
     if (error) return res.status(400).json({ success: false, message: error })
@@ -311,6 +323,15 @@ export const updateRelationshipType = async (req, res) => {
     const instance = await fetchRelationshipType(relationshipType.id)
     res.json({ success: true, data: mapType(instance) })
   } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      const constraint = error?.parent?.constraint || ''
+      if (constraint === 'uniq_relationship_types_world_name') {
+        return res.status(409).json({
+          success: false,
+          message: 'A relationship type with this name already exists in the selected world',
+        })
+      }
+    }
     res.status(500).json({ success: false, message: error.message })
   }
 }
