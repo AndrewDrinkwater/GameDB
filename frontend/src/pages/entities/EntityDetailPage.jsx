@@ -5,6 +5,7 @@ import FieldRenderer from '../../components/RecordForm/FieldRenderer.jsx'
 import TabNav from '../../components/TabNav.jsx'
 import DrawerPanel from '../../components/DrawerPanel.jsx'
 import EntityHeader from '../../components/entities/EntityHeader.jsx'
+import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import { getEntity, updateEntity } from '../../api/entities.js'
 import { getEntityRelationships } from '../../api/entityRelationships.js'
 import { useAuth } from '../../context/AuthContext.jsx'
@@ -878,12 +879,18 @@ export default function EntityDetailPage() {
                                     <span className="entity-relationship-primary">{entity.name}</span>{' '}
                                     {getRelationshipLabel(relationship)}{' '}
                                     {relationship.toId ? (
-                                      <Link
-                                        to={`/entities/${relationship.toId}`}
-                                        className="entity-relationship-link"
-                                      >
-                                        {relationship.toName || '—'}
-                                      </Link>
+                                      <span className="entity-link-with-preview">
+                                        <Link
+                                          to={`/entities/${relationship.toId}`}
+                                          className="entity-relationship-link"
+                                        >
+                                          {relationship.toName || '—'}
+                                        </Link>
+                                        <EntityInfoPreview
+                                          entityId={relationship.toId}
+                                          entityName={relationship.toName || 'entity'}
+                                        />
+                                      </span>
                                     ) : (
                                       <span>{relationship.toName || '—'}</span>
                                     )}
@@ -891,12 +898,18 @@ export default function EntityDetailPage() {
                                 ) : (
                                   <>
                                     {relationship.fromId ? (
-                                      <Link
-                                        to={`/entities/${relationship.fromId}`}
-                                        className="entity-relationship-link"
-                                      >
-                                        {relationship.fromName || '—'}
-                                      </Link>
+                                      <span className="entity-link-with-preview">
+                                        <Link
+                                          to={`/entities/${relationship.fromId}`}
+                                          className="entity-relationship-link"
+                                        >
+                                          {relationship.fromName || '—'}
+                                        </Link>
+                                        <EntityInfoPreview
+                                          entityId={relationship.fromId}
+                                          entityName={relationship.fromName || 'entity'}
+                                        />
+                                      </span>
                                     ) : (
                                       <span>{relationship.fromName || '—'}</span>
                                     )}{' '}
