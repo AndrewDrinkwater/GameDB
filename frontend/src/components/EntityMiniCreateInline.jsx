@@ -103,6 +103,7 @@ export default function EntityMiniCreateInline({
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    event.stopPropagation()
 
     if (!worldId) {
       setError('Select a world before creating entities.')
