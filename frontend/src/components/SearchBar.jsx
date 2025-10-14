@@ -1,11 +1,12 @@
-export default function SearchBar({ value, onChange }) {
+export default function SearchBar({ value, onChange, placeholder = 'Search...', ariaLabel }) {
   return (
     <input
       className="search-input compact"
       type="text"
-      placeholder="Search..."
+      placeholder={placeholder}
+      aria-label={ariaLabel || placeholder}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(event) => onChange(event.target.value)}
     />
   )
 }
