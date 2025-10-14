@@ -103,7 +103,6 @@ export default function EntityMiniCreateInline({
 
   const handleSubmit = async (event) => {
     event.preventDefault()
-    event.stopPropagation()
 
     if (!worldId) {
       setError('Select a world before creating entities.')
@@ -170,7 +169,7 @@ export default function EntityMiniCreateInline({
     options.length === 0
 
   return (
-    <form className="entity-mini-create-inline" onSubmit={handleSubmit}>
+    <div className="entity-mini-create-inline">
       <div className="form-group">
         <label htmlFor="entity-mini-name">Name *</label>
         <input
@@ -225,10 +224,15 @@ export default function EntityMiniCreateInline({
         <button type="button" className="btn secondary" onClick={onCancel} disabled={saving}>
           Cancel
         </button>
-        <button type="submit" className="btn" disabled={isSaveDisabled}>
+        <button
+          type="button"
+          className="btn"
+          disabled={isSaveDisabled}
+          onClick={handleSubmit}
+        >
           {saving ? 'Creating…' : 'Save'}
         </button>
       </div>
-    </form>
+    </div>
   )
 }
