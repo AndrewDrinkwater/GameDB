@@ -385,6 +385,14 @@ export default function EntityRelationshipList() {
     })
   }, [normalisedRelationships, typeFilter, searchTerm, getEntityLabel])
 
+  const handleRelationshipFormStateChange = useCallback((nextState) => {
+    if (!nextState) return
+    setRelationshipFormUiState((prev) => ({
+      ...prev,
+      ...nextState,
+    }))
+  }, [])
+
   if (!sessionReady) return <p>Restoring session...</p>
   if (!token) return <p>Authenticating...</p>
 
@@ -414,14 +422,6 @@ export default function EntityRelationshipList() {
     setPanelOpen(false)
     setEditingRelationshipId(null)
     setRelationshipFormUiState(createRelationshipFooterState('create'))
-  }
-
-  const handleRelationshipFormStateChange = (nextState) => {
-    if (!nextState) return
-    setRelationshipFormUiState((prev) => ({
-      ...prev,
-      ...nextState,
-    }))
   }
 
   const handleFormSaved = async (mode, relationship) => {
