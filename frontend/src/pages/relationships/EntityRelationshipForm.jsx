@@ -17,6 +17,13 @@ const normaliseId = (value) => {
   return trimmed
 }
 
+const idsMatch = (a, b) => {
+  const left = normaliseId(a)
+  const right = normaliseId(b)
+  if (!left || !right) return false
+  return left === right
+}
+
 const normaliseValueForInput = (value) => {
   if (value === null || value === undefined) return ''
   if (typeof value === 'object') {
@@ -440,14 +447,14 @@ export default function EntityRelationshipForm({
       if (selectedFromEntityTypeId) return selectedFromEntityTypeId
       if (
         resolvedCurrentEntityId &&
-        values.fromEntityId === resolvedCurrentEntityId &&
+        idsMatch(values.fromEntityId, resolvedCurrentEntityId) &&
         resolvedCurrentEntityTypeId
       ) {
         return resolvedCurrentEntityTypeId
       }
       if (
         resolvedDefaultFromId &&
-        values.fromEntityId === resolvedDefaultFromId &&
+        idsMatch(values.fromEntityId, resolvedDefaultFromId) &&
         resolvedCurrentEntityTypeId
       ) {
         return resolvedCurrentEntityTypeId
@@ -458,14 +465,14 @@ export default function EntityRelationshipForm({
       if (selectedToEntityTypeId) return selectedToEntityTypeId
       if (
         resolvedCurrentEntityId &&
-        values.toEntityId === resolvedCurrentEntityId &&
+        idsMatch(values.toEntityId, resolvedCurrentEntityId) &&
         resolvedCurrentEntityTypeId
       ) {
         return resolvedCurrentEntityTypeId
       }
       if (
         resolvedDefaultToId &&
-        values.toEntityId === resolvedDefaultToId &&
+        idsMatch(values.toEntityId, resolvedDefaultToId) &&
         resolvedCurrentEntityTypeId
       ) {
         return resolvedCurrentEntityTypeId
@@ -611,7 +618,7 @@ export default function EntityRelationshipForm({
             const lockedId = resolvedDefaultToId || fallbackId
             if (lockedId) {
               updates.toEntityId = lockedId
-              if (lockFromEntity && prev.fromEntityId === lockedId) {
+              if (lockFromEntity && idsMatch(prev.fromEntityId, lockedId)) {
                 updates.fromEntityId = ''
               }
             }
@@ -619,7 +626,7 @@ export default function EntityRelationshipForm({
             const lockedId = resolvedDefaultFromId || fallbackId
             if (lockedId) {
               updates.fromEntityId = lockedId
-              if (lockToEntity && prev.toEntityId === lockedId) {
+              if (lockToEntity && idsMatch(prev.toEntityId, lockedId)) {
                 updates.toEntityId = ''
               }
             }
@@ -995,15 +1002,15 @@ export default function EntityRelationshipForm({
 
     setValues((prev) => {
       const fieldKey = lockedField === 'from' ? 'fromEntityId' : 'toEntityId'
-      if (prev[fieldKey] === lockedId) return prev
+      if (idsMatch(prev[fieldKey], lockedId)) return prev
 
       const updates = { ...prev, [fieldKey]: lockedId }
 
-      if (lockedField === 'from' && lockToEntity && prev.toEntityId === lockedId) {
+      if (lockedField === 'from' && lockToEntity && idsMatch(prev.toEntityId, lockedId)) {
         updates.toEntityId = ''
       }
 
-      if (lockedField === 'to' && lockFromEntity && prev.fromEntityId === lockedId) {
+      if (lockedField === 'to' && lockFromEntity && idsMatch(prev.fromEntityId, lockedId)) {
         updates.fromEntityId = ''
       }
 
@@ -1195,7 +1202,7 @@ export default function EntityRelationshipForm({
 
     const shouldSwapPayload =
       payloadDirection === 'reverse' &&
-      (!resolvedCurrentEntityId || values.fromEntityId === resolvedCurrentEntityId)
+      (!resolvedCurrentEntityId || idsMatch(values.fromEntityId, resolvedCurrentEntityId))
 
     if (shouldSwapPayload) {
       payloadFromId = toEntityId
