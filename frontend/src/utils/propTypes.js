@@ -63,7 +63,7 @@ const createArrayOfTypeChecker = (typeChecker) => {
     value.forEach((item, index) => {
       try {
         typeChecker({ [`${propName}[${index}]`]: item }, `${propName}[${index}]`, componentName)
-      } catch (err) {
+      } catch {
         // Ignore errors from custom validators
       }
     })
