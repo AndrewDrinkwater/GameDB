@@ -103,6 +103,71 @@ export function getValidRelationshipTypes({
   })
 }
 
+export function getValidTypesWithPerspective({
+  relationshipTypes = [],
+  lockedRole,
+  lockedTypeId,
+  otherTypeId,
+  sourceType,
+  targetType,
+  sourceRole = 'from',
+  targetRole = 'to',
+  filterType,
+  filterRole,
+} = {}) {
+  const resolvedLockedTypeId = normaliseEntityTypeId(lockedTypeId)
+  const resolvedOtherTypeId = normaliseEntityTypeId(otherTypeId)
+  const resolvedSourceTypeId = normaliseEntityTypeId(sourceType)
+  const resolvedTargetTypeId = normaliseEntityTypeId(targetType)
+  const resolvedFilterTypeId = normaliseEntityTypeId(filterType)
+
+  let nextSourceTypeId = resolvedSourceTypeId
+  let nextTargetTypeId = resolvedTargetTypeId
+
+  if (lockedRole === 'from') {
+    if (sourceRole === 'from') {
+      nextSourceTypeId = resolvedLockedTypeId || nextSourceTypeId
+      if (!nextTargetTypeId && resolvedOtherTypeId) {
+        nextTargetTypeId = resolvedOtherTypeId
+      }
+    } else {
+      if (!nextSourceTypeId && resolvedOtherTypeId) {
+        nextSourceTypeId = resolvedOtherTypeId
+      }
+      nextTargetTypeId = resolvedLockedTypeId || nextTargetTypeId
+    }
+  } else if (lockedRole === 'to') {
+    if (targetRole === 'to') {
+      nextTargetTypeId = resolvedLockedTypeId || nextTargetTypeId
+      if (!nextSourceTypeId && resolvedOtherTypeId) {
+        nextSourceTypeId = resolvedOtherTypeId
+      }
+    } else {
+      nextSourceTypeId = resolvedLockedTypeId || nextSourceTypeId
+      if (!nextTargetTypeId && resolvedOtherTypeId) {
+        nextTargetTypeId = resolvedOtherTypeId
+      }
+    }
+  } else {
+    if (!nextSourceTypeId && resolvedFilterTypeId && (filterRole || 'from') === sourceRole) {
+      nextSourceTypeId = resolvedFilterTypeId
+    }
+    if (!nextTargetTypeId && resolvedFilterTypeId && (filterRole || 'from') === targetRole) {
+      nextTargetTypeId = resolvedFilterTypeId
+    }
+  }
+
+  return getValidRelationshipTypes({
+    relationshipTypes,
+    sourceType: nextSourceTypeId,
+    targetType: nextTargetTypeId,
+    sourceRole,
+    targetRole,
+    filterType: resolvedLockedTypeId || resolvedFilterTypeId,
+    filterRole: lockedRole || filterRole,
+  })
+}
+
 const arraysShareValues = (a = [], b = []) => {
   if (!a.length || !b.length) return true
   return a.some((value) => b.includes(value))

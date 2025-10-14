@@ -14,7 +14,7 @@ import {
   getDirectionalConfig,
   getEntityTypeEntriesForRole,
   getEntityTypeIdsForRole,
-  getValidRelationshipTypes,
+  getValidTypesWithPerspective,
 } from '../../utils/relationshipLogic.js'
 
 const normaliseId = (value) => {
@@ -501,6 +501,56 @@ export default function EntityRelationshipForm({
     return 'to'
   }, [direction, lockedField])
 
+  const perspectiveLockedRole = useMemo(() => {
+    if (isInlineMode) {
+      return lockedField || ''
+    }
+    if (isGlobalMode) {
+      if (values.fromEntityId && !values.toEntityId) return 'from'
+      if (!values.fromEntityId && values.toEntityId) return 'to'
+    }
+    return ''
+  }, [
+    isInlineMode,
+    isGlobalMode,
+    lockedField,
+    values.fromEntityId,
+    values.toEntityId,
+  ])
+
+  const perspectiveLockedTypeId = useMemo(() => {
+    if (perspectiveLockedRole === 'from') {
+      if (isInlineMode && lockedField === 'from') {
+        return lockedEntityTypeId || ''
+      }
+      return selectedFromEntityTypeId || ''
+    }
+    if (perspectiveLockedRole === 'to') {
+      if (isInlineMode && lockedField === 'to') {
+        return lockedEntityTypeId || ''
+      }
+      return selectedToEntityTypeId || ''
+    }
+    return ''
+  }, [
+    isInlineMode,
+    lockedEntityTypeId,
+    lockedField,
+    perspectiveLockedRole,
+    selectedFromEntityTypeId,
+    selectedToEntityTypeId,
+  ])
+
+  const perspectiveOtherTypeId = useMemo(() => {
+    if (perspectiveLockedRole === 'from') {
+      return selectedToEntityTypeId || ''
+    }
+    if (perspectiveLockedRole === 'to') {
+      return selectedFromEntityTypeId || ''
+    }
+    return ''
+  }, [perspectiveLockedRole, selectedFromEntityTypeId, selectedToEntityTypeId])
+
   const relationshipTypeFilterContext = useMemo(() => {
     const lockedId = lockedEntityTypeId ? String(lockedEntityTypeId) : ''
 
@@ -540,8 +590,11 @@ export default function EntityRelationshipForm({
   const availableRelationshipTypes = useMemo(() => {
     if (!relationshipTypes?.length) return []
 
-    return getValidRelationshipTypes({
+    return getValidTypesWithPerspective({
       relationshipTypes,
+      lockedRole: perspectiveLockedRole || null,
+      lockedTypeId: perspectiveLockedTypeId,
+      otherTypeId: perspectiveOtherTypeId,
       sourceType: selectedFromEntityTypeId,
       targetType: selectedToEntityTypeId,
       sourceRole: fromRoleForTypes,
@@ -551,6 +604,9 @@ export default function EntityRelationshipForm({
     })
   }, [
     relationshipTypes,
+    perspectiveLockedRole,
+    perspectiveLockedTypeId,
+    perspectiveOtherTypeId,
     selectedFromEntityTypeId,
     selectedToEntityTypeId,
     fromRoleForTypes,
@@ -734,6 +790,7 @@ export default function EntityRelationshipForm({
   useEffect(() => {
     if (!values.fromEntityId) return
     if (!allowedFromTypeIds.length) return
+    if (isInlineMode && lockedField === 'from') return
     const allowedSet = new Set(allowedFromTypeIds)
     const selected = entities.find((entity) => String(entity.id) === String(values.fromEntityId))
     if (!selected) return
@@ -741,11 +798,18 @@ export default function EntityRelationshipForm({
     if (!entityTypeId || !allowedSet.has(entityTypeId)) {
       setValues((prev) => ({ ...prev, fromEntityId: '' }))
     }
-  }, [allowedFromTypeIds, entities, values.fromEntityId])
+  }, [
+    allowedFromTypeIds,
+    entities,
+    isInlineMode,
+    lockedField,
+    values.fromEntityId,
+  ])
 
   useEffect(() => {
     if (!values.toEntityId) return
     if (!allowedToTypeIds.length) return
+    if (isInlineMode && lockedField === 'to') return
     const allowedSet = new Set(allowedToTypeIds)
     const selected = entities.find((entity) => String(entity.id) === String(values.toEntityId))
     if (!selected) return
@@ -753,7 +817,13 @@ export default function EntityRelationshipForm({
     if (!entityTypeId || !allowedSet.has(entityTypeId)) {
       setValues((prev) => ({ ...prev, toEntityId: '' }))
     }
-  }, [allowedToTypeIds, entities, values.toEntityId])
+  }, [
+    allowedToTypeIds,
+    entities,
+    isInlineMode,
+    lockedField,
+    values.toEntityId,
+  ])
 
   const fromTypeSummary = useMemo(() => {
     if (!activeRelationshipType) return ''
@@ -1387,7 +1457,7 @@ export default function EntityRelationshipForm({
               saving ||
               isBusy ||
               !availableRelationshipTypes.length ||
-              (isGlobalMode && !bothEntitiesSelected)
+              (isGlobalMode && !values.fromEntityId && !values.toEntityId)
             }
             required
           >
