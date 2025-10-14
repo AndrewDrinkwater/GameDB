@@ -210,7 +210,6 @@ export default function EntityRelationshipForm({
     fromEntityId: initialFromValue,
     toEntityId: initialToValue,
     relationshipTypeId: '',
-    bidirectional: true,
   })
   const [contextPairs, setContextPairs] = useState(() => {
     pairIdRef.current = 0
@@ -489,19 +488,38 @@ export default function EntityRelationshipForm({
 
   const availableRelationshipTypes = useMemo(() => {
     if (!relationshipTypes?.length) return []
-    if (!relationshipTypeFilterContext) return relationshipTypes
 
-    const { typeId, role } = relationshipTypeFilterContext
-    const selectedId = String(typeId)
+    const ensureAllowed = (list, role, entityTypeId) => {
+      if (!entityTypeId) return list
+      const targetId = String(entityTypeId)
+      return list.filter((type) => {
+        const allowedIds = getEntityTypeIdsForRole(type, role)
+        if (allowedIds.length === 0) {
+          return true
+        }
+        return allowedIds.includes(targetId)
+      })
+    }
 
-    return relationshipTypes.filter((type) => {
-      const allowedIds = getEntityTypeIdsForRole(type, role)
-      if (allowedIds.length === 0) {
-        return true
-      }
-      return allowedIds.includes(selectedId)
-    })
-  }, [relationshipTypes, relationshipTypeFilterContext])
+    let filtered = relationshipTypes
+
+    if (relationshipTypeFilterContext) {
+      const { typeId, role } = relationshipTypeFilterContext
+      filtered = ensureAllowed(filtered, role, typeId)
+    }
+
+    filtered = ensureAllowed(filtered, fromRoleForTypes, selectedFromEntityTypeId)
+    filtered = ensureAllowed(filtered, toRoleForTypes, selectedToEntityTypeId)
+
+    return filtered
+  }, [
+    relationshipTypes,
+    relationshipTypeFilterContext,
+    fromRoleForTypes,
+    toRoleForTypes,
+    selectedFromEntityTypeId,
+    selectedToEntityTypeId,
+  ])
 
   const activeRelationshipType = useMemo(() => {
     if (!values.relationshipTypeId) return null
@@ -533,6 +551,36 @@ export default function EntityRelationshipForm({
   const handlePerspectiveChange = (nextPerspective) => {
     const desiredDirection = nextPerspective === 'target' ? 'reverse' : 'forward'
     setAutoCorrectionMessage('')
+
+    if (direction !== desiredDirection) {
+      setValues((prev) => {
+        const updates = { ...prev, relationshipTypeId: '' }
+
+        if (!isEditMode) {
+          const fallbackId = resolvedCurrentEntityId || ''
+          if (desiredDirection === 'reverse') {
+            const lockedId = resolvedDefaultToId || fallbackId
+            if (lockedId) {
+              updates.toEntityId = lockedId
+              if (lockFromEntity && prev.fromEntityId === lockedId) {
+                updates.fromEntityId = ''
+              }
+            }
+          } else {
+            const lockedId = resolvedDefaultFromId || fallbackId
+            if (lockedId) {
+              updates.fromEntityId = lockedId
+              if (lockToEntity && prev.toEntityId === lockedId) {
+                updates.toEntityId = ''
+              }
+            }
+          }
+        }
+
+        return updates
+      })
+    }
+
     setDirection((prev) => {
       if (prev === desiredDirection) return prev
       return desiredDirection
@@ -798,7 +846,6 @@ export default function EntityRelationshipForm({
         fromEntityId: initialDirection === 'forward' ? resolvedDefaultFromId : '',
         toEntityId: initialDirection === 'reverse' ? resolvedDefaultToId : '',
         relationshipTypeId: '',
-        bidirectional: true,
       })
       setContextPairs([generatePair()])
       setDirection(initialDirection)
@@ -841,15 +888,10 @@ export default function EntityRelationshipForm({
             data.relationshipType?.id ||
             data.relationship_type?.id ||
             ''
-          const bidirectional = Boolean(
-            data.bidirectional ?? data.is_bidirectional ?? data.two_way,
-          )
-
           setValues({
             fromEntityId: fromEntityId ? String(fromEntityId) : '',
             toEntityId: toEntityId ? String(toEntityId) : '',
             relationshipTypeId: relationshipTypeId ? String(relationshipTypeId) : '',
-            bidirectional,
           })
           setDirection(resolveDirection(data.context) || 'forward')
           setContextPairs(ensureAtLeastOnePair(normalisePairsFromContext(data.context)))
@@ -892,40 +934,40 @@ export default function EntityRelationshipForm({
 
   useEffect(() => {
     if (isEditMode) return
-    if (direction === 'reverse') {
-      if (lockToEntity && resolvedDefaultToId) {
-        const lockedId = resolvedDefaultToId
-        setValues((prev) => {
-          const updates = {}
-          if (prev.toEntityId !== lockedId) {
-            updates.toEntityId = lockedId
-          }
-          if (lockFromEntity && prev.fromEntityId === lockedId) {
-            updates.fromEntityId = ''
-          }
-          return Object.keys(updates).length ? { ...prev, ...updates } : prev
-        })
+    if (!lockedField) return
+
+    const fallbackId = resolvedCurrentEntityId || ''
+    const lockedId =
+      lockedField === 'from'
+        ? resolvedDefaultFromId || fallbackId
+        : resolvedDefaultToId || fallbackId
+
+    if (!lockedId) return
+
+    setValues((prev) => {
+      const fieldKey = lockedField === 'from' ? 'fromEntityId' : 'toEntityId'
+      if (prev[fieldKey] === lockedId) return prev
+
+      const updates = { ...prev, [fieldKey]: lockedId }
+
+      if (lockedField === 'from' && lockToEntity && prev.toEntityId === lockedId) {
+        updates.toEntityId = ''
       }
-    } else if (lockFromEntity && resolvedDefaultFromId) {
-      const lockedId = resolvedDefaultFromId
-      setValues((prev) => {
-        const updates = {}
-        if (prev.fromEntityId !== lockedId) {
-          updates.fromEntityId = lockedId
-        }
-        if (lockToEntity && prev.toEntityId === lockedId) {
-          updates.toEntityId = ''
-        }
-        return Object.keys(updates).length ? { ...prev, ...updates } : prev
-      })
-    }
+
+      if (lockedField === 'to' && lockFromEntity && prev.fromEntityId === lockedId) {
+        updates.fromEntityId = ''
+      }
+
+      return updates
+    })
   }, [
-    direction,
     isEditMode,
+    lockedField,
     lockFromEntity,
     lockToEntity,
     resolvedDefaultFromId,
     resolvedDefaultToId,
+    resolvedCurrentEntityId,
   ])
 
   const handleValueChange = (field) => (event) => {
@@ -948,11 +990,6 @@ export default function EntityRelationshipForm({
     if (field === 'relationshipTypeId') {
       setCreatingRole(null)
     }
-  }
-
-  const handleBidirectionalChange = (event) => {
-    const { checked } = event.target
-    setValues((prev) => ({ ...prev, bidirectional: checked }))
   }
 
   const handleFromEntityChange = (event) => {
@@ -1087,7 +1124,7 @@ export default function EntityRelationshipForm({
       from_entity_id: payloadFromId,
       to_entity_id: payloadToId,
       relationship_type_id: relationshipTypeId,
-      bidirectional: Boolean(values.bidirectional),
+      bidirectional: true,
       context: contextPayload,
     }
 
@@ -1346,18 +1383,6 @@ export default function EntityRelationshipForm({
           )}
         </div>
 
-        <div className="form-group checkbox">
-          <label htmlFor="relationship-bidirectional">
-            <input
-              id="relationship-bidirectional"
-              type="checkbox"
-              checked={values.bidirectional}
-              onChange={handleBidirectionalChange}
-              disabled={saving || isBusy}
-            />
-            Bidirectional
-          </label>
-        </div>
       </div>
 
       {showContextEditor && (
