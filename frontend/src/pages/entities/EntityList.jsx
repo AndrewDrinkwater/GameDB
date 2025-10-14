@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Pencil, Plus, RotateCcw, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { Pencil, Plus, RotateCcw, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { deleteEntity, getWorldEntities } from '../../api/entities.js'
 import {
   getEntityTypeListColumns,
