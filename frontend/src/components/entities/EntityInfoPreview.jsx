@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Info, X } from 'lucide-react'
-import PropTypes from 'prop-types'
+import PropTypes from '../../utils/propTypes.js'
 import { getEntity } from '../../api/entities.js'
 
 const formatDateTime = (value) => {
