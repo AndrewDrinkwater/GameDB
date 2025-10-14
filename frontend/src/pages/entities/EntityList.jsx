@@ -24,6 +24,7 @@ import DrawerPanel from '../../components/DrawerPanel.jsx'
 import EntityForm from './EntityForm.jsx'
 import SearchBar from '../../components/SearchBar.jsx'
 import ConditionBuilderModal from '../../components/ConditionBuilderModal.jsx'
+import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import useDataExplorer from '../../hooks/useDataExplorer.js'
 
 const VISIBILITY_BADGES = {
@@ -732,17 +733,22 @@ export default function EntityList() {
     switch (column.key) {
       case 'name':
         return (
-          <Link
-            to={`/entities/${entity.id}`}
-            state={{
-              fromEntities: {
-                search: currentSearch,
-              },
-            }}
-            className="entity-name-link"
-          >
-            {entity.name}
-          </Link>
+          <span className="entity-link-with-preview">
+            <Link
+              to={`/entities/${entity.id}`}
+              state={{
+                fromEntities: {
+                  search: currentSearch,
+                },
+              }}
+              className="entity-name-link"
+            >
+              {entity.name}
+            </Link>
+            {entity.id ? (
+              <EntityInfoPreview entityId={entity.id} entityName={entity.name || 'entity'} />
+            ) : null}
+          </span>
         )
       case 'type':
         return getEntityTypeLabel(entity)
