@@ -151,7 +151,6 @@ export default function EntityMiniCreateInline({
         throw new Error('Failed to create entity')
       }
 
-      onToast?.('Entity created and selected.', 'success')
       onCreated?.(data)
       resetForm()
     } catch (err) {

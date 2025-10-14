@@ -1026,19 +1026,18 @@ export default function EntityRelationshipForm({
       const normalised = normaliseEntityRecord(entity)
       if (!normalised) return
 
+      const nextId = String(normalised.id)
       setEntities((prev) => {
-        const existingIndex = prev.findIndex(
-          (entry) => String(entry.id) === String(normalised.id),
-        )
+        const record = { ...normalised, id: nextId }
+        const existingIndex = prev.findIndex((entry) => String(entry.id) === nextId)
         if (existingIndex >= 0) {
           const clone = [...prev]
-          clone[existingIndex] = { ...clone[existingIndex], ...normalised }
+          clone[existingIndex] = { ...clone[existingIndex], ...record }
           return clone
         }
-        return [normalised, ...prev]
+        return [record, ...prev]
       })
 
-      const nextId = String(normalised.id)
       if (role === 'from') {
         setValues((prev) => ({ ...prev, fromEntityId: nextId }))
       } else if (role === 'to') {
@@ -1047,8 +1046,15 @@ export default function EntityRelationshipForm({
 
       triggerHighlight(role, nextId)
       setCreatingRole(null)
+
+      const roleLabel = role === 'from' ? fromRoleLabel : toRoleLabel
+      const capitalisedLabel = roleLabel ? `${roleLabel[0].toUpperCase()}${roleLabel.slice(1)}` : ''
+      const successMessage = capitalisedLabel
+        ? `New ${capitalisedLabel} entity added and selected.`
+        : 'New entity added and selected.'
+      onToast?.(successMessage, 'success')
     },
-    [triggerHighlight],
+    [triggerHighlight, fromRoleLabel, toRoleLabel, onToast],
   )
 
   useEffect(() => {
