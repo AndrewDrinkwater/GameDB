@@ -48,6 +48,7 @@ export default function EntityRelationshipList() {
   const [relationshipFormUiState, setRelationshipFormUiState] = useState(() =>
     createRelationshipFooterState('create'),
   )
+  const lastFormStateRef = useRef(createRelationshipFooterState('create'))
 
   const [typeFilter, setTypeFilter] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -385,12 +386,6 @@ export default function EntityRelationshipList() {
     })
   }, [normalisedRelationships, typeFilter, searchTerm, getEntityLabel])
 
-  if (!sessionReady) return <p>Restoring session...</p>
-  if (!token) return <p>Authenticating...</p>
-
-  const hasRelationships = filteredRelationships.length > 0
-  const relationshipDrawerTitle = editingRelationshipId ? 'Edit Relationship' : 'Add Relationship'
-
   const handleRefresh = () => {
     if (!worldId) return
     loadRelationships(worldId)
@@ -399,30 +394,49 @@ export default function EntityRelationshipList() {
   const openCreate = () => {
     if (!canManage || !worldId) return
     setEditingRelationshipId(null)
-    setRelationshipFormUiState(createRelationshipFooterState('create'))
+    const nextState = createRelationshipFooterState('create')
+    setRelationshipFormUiState(nextState)
+    lastFormStateRef.current = nextState
     setPanelOpen(true)
   }
 
   const openEdit = (relationship) => {
     if (!canManage || !relationship?.id) return
     setEditingRelationshipId(relationship.id)
-    setRelationshipFormUiState(createRelationshipFooterState('edit'))
+    const nextState = createRelationshipFooterState('edit')
+    setRelationshipFormUiState(nextState)
+    lastFormStateRef.current = nextState
     setPanelOpen(true)
   }
 
   const closePanel = () => {
     setPanelOpen(false)
     setEditingRelationshipId(null)
-    setRelationshipFormUiState(createRelationshipFooterState('create'))
+    const nextState = createRelationshipFooterState('create')
+    setRelationshipFormUiState(nextState)
+    lastFormStateRef.current = nextState
   }
 
-  const handleRelationshipFormStateChange = (nextState) => {
-    if (!nextState) return
-    setRelationshipFormUiState((prev) => ({
-      ...prev,
-      ...nextState,
-    }))
-  }
+  const handleRelationshipFormStateChange = useCallback(
+    (nextState) => {
+      if (!nextState) return
+      const previous = lastFormStateRef.current || {}
+      const isSame =
+        previous.mode === nextState.mode &&
+        previous.saving === nextState.saving &&
+        previous.isBusy === nextState.isBusy &&
+        previous.submitLabel === nextState.submitLabel &&
+        previous.submitDisabled === nextState.submitDisabled &&
+        previous.cancelDisabled === nextState.cancelDisabled
+
+      if (isSame) return
+
+      const merged = { ...previous, ...nextState }
+      lastFormStateRef.current = merged
+      setRelationshipFormUiState((prev) => ({ ...prev, ...nextState }))
+    },
+    [setRelationshipFormUiState],
+  )
 
   const handleFormSaved = async (mode, relationship) => {
     closePanel()
@@ -480,6 +494,12 @@ export default function EntityRelationshipList() {
       setDeletingId('')
     }
   }
+
+  if (!sessionReady) return <p>Restoring session...</p>
+  if (!token) return <p>Authenticating...</p>
+
+  const hasRelationships = filteredRelationships.length > 0
+  const relationshipDrawerTitle = editingRelationshipId ? 'Edit Relationship' : 'Add Relationship'
 
   return (
     <section className="entities-page relationships-page">

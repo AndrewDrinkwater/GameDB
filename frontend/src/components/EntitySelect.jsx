@@ -67,6 +67,9 @@ const EntitySelect = ({
   disabled = false,
   onEntityResolved,
   limit = DEFAULT_LIMIT,
+  id,
+  required = false,
+  autoFocus = false,
 }) => {
   const [inputValue, setInputValue] = useState('')
   const [results, setResults] = useState([])
@@ -83,7 +86,7 @@ const EntitySelect = ({
   const listRef = useRef(null)
   const currentFetchRef = useRef(0)
 
-  const isDisabled = disabled || !worldId || allowedTypeIds.length === 0
+  const isDisabled = disabled || !worldId
 
   const resetSearchState = useCallback(() => {
     setResults([])
@@ -177,7 +180,7 @@ const EntitySelect = ({
 
   const fetchResults = useCallback(
     async ({ append = false } = {}) => {
-      if (!worldId || allowedTypeIds.length === 0) {
+      if (!worldId) {
         resetSearchState()
         return
       }
@@ -192,21 +195,32 @@ const EntitySelect = ({
         const response = await searchEntities({
           worldId,
           query,
-          typeIds: allowedTypeIds,
+          typeIds: allowedTypeIds.length > 0 ? allowedTypeIds : undefined,
           limit,
           offset: nextOffset,
         })
         if (fetchId !== currentFetchRef.current) return
         const { data, pagination } = extractListFromResponse(response)
+        const allowedSet =
+          allowedTypeIds.length > 0
+            ? new Set(allowedTypeIds.map((typeId) => String(typeId)))
+            : null
+        const filteredData =
+          allowedSet === null
+            ? data
+            : data.filter((item) => {
+                if (!item?.typeId) return true
+                return allowedSet.has(String(item.typeId))
+              })
         setActiveQuery(query)
         if (append) {
-          setResults((prev) => [...prev, ...data])
+          setResults((prev) => [...prev, ...filteredData])
         } else {
-          setResults(data)
+          setResults(filteredData)
         }
         const resolvedOffset = pagination?.offset ?? nextOffset
         const resolvedLimit = pagination?.limit ?? limit
-        const totalLoaded = (append ? results.length : 0) + data.length
+        const totalLoaded = (append ? results.length : 0) + filteredData.length
         const totalAvailable = pagination?.total ?? totalLoaded
         const computedHasMore =
           pagination?.hasMore ?? totalLoaded + resolvedOffset < totalAvailable
@@ -317,6 +331,9 @@ const EntitySelect = ({
           aria-expanded={open}
           aria-haspopup="listbox"
           role="combobox"
+          id={id}
+          required={required}
+          autoFocus={autoFocus}
         />
         {showClearButton && (
           <button
@@ -390,6 +407,9 @@ EntitySelect.propTypes = {
   disabled: PropTypes.bool,
   onEntityResolved: PropTypes.func,
   limit: PropTypes.number,
+  id: PropTypes.string,
+  required: PropTypes.bool,
+  autoFocus: PropTypes.bool,
 }
 
 export default EntitySelect
