@@ -176,6 +176,7 @@ export default function EntityDetailPage() {
   const [relationshipPerspective, setRelationshipPerspective] = useState('source')
   const [toast, setToast] = useState(null)
   const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
+  console.log('🔍 Relationship Builder Active:', relBuilderV2Enabled ? 'V2' : 'Legacy')
   const RelationshipBuilderComponent = relBuilderV2Enabled
     ? RelationshipDrawerV2
     : EntityRelationshipForm
