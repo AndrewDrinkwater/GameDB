@@ -18,6 +18,7 @@ export default function EntitySelectAdapter({
   onChange,
   allowedTypeIds = [],
   onEntityResolved,
+  initialEntities = [],
   ...rest
 }) {
   const stringValue = useMemo(() => normaliseId(value), [value])
@@ -31,6 +32,19 @@ export default function EntitySelectAdapter({
         : [],
     [allowedTypeIds],
   )
+
+  const safeInitialEntities = useMemo(() => {
+    if (!Array.isArray(initialEntities)) return []
+    const seen = new Map()
+    initialEntities.forEach((entity) => {
+      const normalised = normaliseEntity(entity)
+      if (!normalised) return
+      const id = normaliseId(normalised.id)
+      if (!id || seen.has(id)) return
+      seen.set(id, { ...normalised, id })
+    })
+    return Array.from(seen.values())
+  }, [initialEntities])
 
   const handleChange = useCallback(
     (nextValue) => {
@@ -69,6 +83,7 @@ export default function EntitySelectAdapter({
       onChange={handleChange}
       allowedTypeIds={safeAllowedIds}
       onEntityResolved={handleEntityResolved}
+      initialEntities={safeInitialEntities}
     />
   )
 }
@@ -80,4 +95,9 @@ EntitySelectAdapter.propTypes = {
     PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   ),
   onEntityResolved: PropTypes.func,
+  initialEntities: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    }),
+  ),
 }

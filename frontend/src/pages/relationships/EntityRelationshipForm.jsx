@@ -1225,6 +1225,7 @@ export default function EntityRelationshipForm({
             onChange={handleFromEntityChange}
             allowedTypeIds={allowedFromTypeIds}
             onEntityResolved={upsertEntityFromSelect}
+            initialEntities={filteredFromEntities}
             disabled={
               saving ||
               isBusy ||
@@ -1339,6 +1340,7 @@ export default function EntityRelationshipForm({
             onChange={handleToEntityChange}
             allowedTypeIds={allowedToTypeIds}
             onEntityResolved={upsertEntityFromSelect}
+            initialEntities={filteredToEntities}
             disabled={
               saving ||
               isBusy ||

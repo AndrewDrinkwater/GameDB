@@ -49,6 +49,35 @@ const extractListFromResponse = (response) => {
   }
 }
 
+const normaliseOption = (entry) => {
+  const payload = normaliseEntityPayload(entry)
+  if (!payload) return null
+  if (payload.id === undefined || payload.id === null) return null
+  const id = String(payload.id)
+  const typeId =
+    payload.typeId === undefined || payload.typeId === null
+      ? ''
+      : String(payload.typeId)
+  return {
+    ...payload,
+    id,
+    typeId,
+  }
+}
+
+const mergeUniqueById = (existing = [], additions = []) => {
+  const map = new Map()
+  existing.forEach((item) => {
+    if (!item || item.id === undefined || item.id === null) return
+    map.set(String(item.id), item)
+  })
+  additions.forEach((item) => {
+    if (!item || item.id === undefined || item.id === null) return
+    map.set(String(item.id), item)
+  })
+  return Array.from(map.values())
+}
+
 const useDebouncedValue = (value, delay) => {
   const [debounced, setDebounced] = useState(value)
   useEffect(() => {
@@ -70,6 +99,7 @@ const EntitySelect = ({
   id,
   required = false,
   autoFocus = false,
+  initialEntities = [],
 }) => {
   const [inputValue, setInputValue] = useState('')
   const [results, setResults] = useState([])
@@ -85,8 +115,22 @@ const EntitySelect = ({
   const containerRef = useRef(null)
   const listRef = useRef(null)
   const currentFetchRef = useRef(0)
+  const resultsRef = useRef([])
 
   const isDisabled = disabled || !worldId
+
+  const initialOptions = useMemo(() => {
+    if (!Array.isArray(initialEntities) || initialEntities.length === 0) return []
+    const normalised = initialEntities
+      .map((entity) => normaliseOption(entity))
+      .filter(Boolean)
+    if (!allowedTypeIds.length) return normalised
+    const allowedSet = new Set(allowedTypeIds.map((value) => String(value)))
+    return normalised.filter((item) => {
+      if (!item.typeId) return true
+      return allowedSet.has(String(item.typeId))
+    })
+  }, [initialEntities, allowedTypeIds])
 
   const resetSearchState = useCallback(() => {
     setResults([])
@@ -136,7 +180,7 @@ const EntitySelect = ({
     getEntity(stringValue)
       .then((response) => {
         if (cancelled || fetchId !== currentFetchRef.current) return
-        const entity = normaliseEntityPayload(response?.data ?? response)
+        const entity = normaliseOption(response?.data ?? response)
         if (entity) {
           setSelected(entity)
           setInputValue(entity.name)
@@ -201,34 +245,44 @@ const EntitySelect = ({
         })
         if (fetchId !== currentFetchRef.current) return
         const { data, pagination } = extractListFromResponse(response)
+        const normalisedData = data.map((item) => normaliseOption(item)).filter(Boolean)
         const allowedSet =
           allowedTypeIds.length > 0
             ? new Set(allowedTypeIds.map((typeId) => String(typeId)))
             : null
         const filteredData =
           allowedSet === null
-            ? data
-            : data.filter((item) => {
+            ? normalisedData
+            : normalisedData.filter((item) => {
                 if (!item?.typeId) return true
                 return allowedSet.has(String(item.typeId))
               })
         setActiveQuery(query)
-        if (append) {
-          setResults((prev) => [...prev, ...filteredData])
-        } else {
-          setResults(filteredData)
-        }
         const resolvedOffset = pagination?.offset ?? nextOffset
         const resolvedLimit = pagination?.limit ?? limit
-        const totalLoaded = (append ? results.length : 0) + filteredData.length
-        const totalAvailable = pagination?.total ?? totalLoaded
-        const computedHasMore =
-          pagination?.hasMore ?? totalLoaded + resolvedOffset < totalAvailable
-        setHasMore(computedHasMore)
-        const nextComputedOffset = append
-          ? nextOffset + resolvedLimit
-          : resolvedOffset + resolvedLimit
-        setOffset(nextComputedOffset)
+
+        if (append) {
+          const merged = mergeUniqueById(resultsRef.current, filteredData)
+          setResults(merged)
+          const totalLoaded = merged.length
+          const totalAvailable = pagination?.total ?? totalLoaded
+          const computedHasMore =
+            pagination?.hasMore ?? totalLoaded + resolvedOffset < totalAvailable
+          setHasMore(computedHasMore)
+          const nextComputedOffset = resolvedOffset + resolvedLimit
+          setOffset(nextComputedOffset)
+        } else {
+          const base = query ? [] : initialOptions
+          const merged = mergeUniqueById(base, filteredData)
+          setResults(merged)
+          const totalLoaded = merged.length
+          const totalAvailable = pagination?.total ?? totalLoaded
+          const computedHasMore =
+            pagination?.hasMore ?? totalLoaded + resolvedOffset < totalAvailable
+          setHasMore(computedHasMore)
+          const nextComputedOffset = resolvedOffset + resolvedLimit
+          setOffset(nextComputedOffset)
+        }
       } catch (err) {
         if (fetchId !== currentFetchRef.current) return
         setError(err.message || 'Failed to search entities')
@@ -248,7 +302,7 @@ const EntitySelect = ({
       limit,
       offset,
       resetSearchState,
-      results.length,
+      initialOptions,
     ],
   )
 
@@ -273,6 +327,23 @@ const EntitySelect = ({
       resetSearchState()
     }
   }, [debouncedInput, activeQuery, open, resetSearchState])
+
+  useEffect(() => {
+    if (!open) return
+    if (debouncedInput.trim()) return
+    if (!initialOptions.length) return
+    setResults((prev) => {
+      if (prev.length) return prev
+      return initialOptions
+    })
+    setHasMore(false)
+    setOffset(initialOptions.length)
+    setError('')
+  }, [open, debouncedInput, initialOptions])
+
+  useEffect(() => {
+    resultsRef.current = results
+  }, [results])
 
   const handleInputFocus = () => {
     if (isDisabled) return
@@ -410,6 +481,9 @@ EntitySelect.propTypes = {
   id: PropTypes.string,
   required: PropTypes.bool,
   autoFocus: PropTypes.bool,
+  initialEntities: PropTypes.arrayOf(
+    PropTypes.oneOfType([PropTypes.object, PropTypes.string]),
+  ),
 }
 
 export default EntitySelect
