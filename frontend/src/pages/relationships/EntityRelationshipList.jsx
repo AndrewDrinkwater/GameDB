@@ -48,6 +48,11 @@ export default function EntityRelationshipList() {
   const [relationshipFormUiState, setRelationshipFormUiState] = useState(() =>
     createRelationshipFooterState('create'),
   )
+  const relationshipFormUiStateRef = useRef(relationshipFormUiState)
+
+  useEffect(() => {
+    relationshipFormUiStateRef.current = relationshipFormUiState
+  }, [relationshipFormUiState])
 
   const [typeFilter, setTypeFilter] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -385,9 +390,6 @@ export default function EntityRelationshipList() {
     })
   }, [normalisedRelationships, typeFilter, searchTerm, getEntityLabel])
 
-  if (!sessionReady) return <p>Restoring session...</p>
-  if (!token) return <p>Authenticating...</p>
-
   const hasRelationships = filteredRelationships.length > 0
   const relationshipDrawerTitle = editingRelationshipId ? 'Edit Relationship' : 'Add Relationship'
 
@@ -399,30 +401,46 @@ export default function EntityRelationshipList() {
   const openCreate = () => {
     if (!canManage || !worldId) return
     setEditingRelationshipId(null)
-    setRelationshipFormUiState(createRelationshipFooterState('create'))
+    const nextState = createRelationshipFooterState('create')
+    relationshipFormUiStateRef.current = nextState
+    setRelationshipFormUiState(nextState)
     setPanelOpen(true)
   }
 
   const openEdit = (relationship) => {
     if (!canManage || !relationship?.id) return
     setEditingRelationshipId(relationship.id)
-    setRelationshipFormUiState(createRelationshipFooterState('edit'))
+    const nextState = createRelationshipFooterState('edit')
+    relationshipFormUiStateRef.current = nextState
+    setRelationshipFormUiState(nextState)
     setPanelOpen(true)
   }
 
   const closePanel = () => {
     setPanelOpen(false)
     setEditingRelationshipId(null)
-    setRelationshipFormUiState(createRelationshipFooterState('create'))
+    const nextState = createRelationshipFooterState('create')
+    relationshipFormUiStateRef.current = nextState
+    setRelationshipFormUiState(nextState)
   }
 
-  const handleRelationshipFormStateChange = (nextState) => {
+  const handleRelationshipFormStateChange = useCallback((nextState) => {
     if (!nextState) return
-    setRelationshipFormUiState((prev) => ({
-      ...prev,
-      ...nextState,
-    }))
-  }
+    setRelationshipFormUiState((prev) => {
+      const submitDisabled =
+        nextState.submitDisabled ?? prev.submitDisabled ?? false
+      const isBusy = nextState.isBusy ?? prev.isBusy ?? false
+      const same =
+        prev.submitDisabled === submitDisabled && prev.isBusy === isBusy
+      if (same) return prev
+      const merged = { ...prev, ...nextState, submitDisabled, isBusy }
+      relationshipFormUiStateRef.current = merged
+      return merged
+    })
+  }, [])
+
+  if (!sessionReady) return <p>Restoring session...</p>
+  if (!token) return <p>Authenticating...</p>
 
   const handleFormSaved = async (mode, relationship) => {
     closePanel()

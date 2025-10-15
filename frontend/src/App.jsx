@@ -18,6 +18,7 @@ import EntityTypeList from './pages/entityTypes/EntityTypeList.jsx'
 import EntityTypeFields from './pages/entityTypes/EntityTypeFields.jsx'
 import CreateEntityType from './pages/entityTypes/CreateEntityType.jsx'
 import EntityRelationshipList from './pages/relationships/EntityRelationshipList.jsx'
+import Relationships2Page from './pages/relationships2/Relationships2Page.jsx'
 import RelationshipTypeList from './pages/relationshipTypes/RelationshipTypeList.jsx'
 import CreateRelationshipType from './pages/relationshipTypes/CreateRelationshipType.jsx'
 import EditRelationshipType from './pages/relationshipTypes/EditRelationshipType.jsx'
@@ -67,6 +68,7 @@ const router = createBrowserRouter(
           <Route path=":id/edit" element={<EditRelationshipType />} />
         </Route>
         <Route path="entity-relationships" element={<EntityRelationshipList />} />
+        <Route path="relationships2" element={<Relationships2Page />} />
         <Route path="entity-secrets" element={<EntitySecretList />} />
         <Route path="characters">
           <Route index element={<Navigate to="/characters/my" replace />} />
