@@ -1,5 +1,5 @@
 // src/modules/relationships2/ui/HybridEntityPicker.jsx
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 
 const getTypeId = (e) =>
   String(
@@ -7,6 +7,8 @@ const getTypeId = (e) =>
     e?.entityTypeId ??
     e?.entityType?.id ??
     e?.entity_type?.id ??
+    e?.typeId ??
+    e?.type?.id ??
     ''
   )
 
@@ -26,21 +28,14 @@ export default function HybridEntityPicker({
   const abortRef = useRef(null)
 
   const allowedSet = useMemo(() => new Set((allowedTypeIds || []).map(String)), [allowedTypeIds])
-  const allowedKey = useMemo(
-    () => (allowedTypeIds && allowedTypeIds.length ? allowedTypeIds.map(String).join(',') : ''),
-    [allowedTypeIds],
-  )
 
-  const filterClientSide = useCallback(
-    (list) => {
-      if (!allowedSet.size) return list
-      return list.filter((e) => {
-        const t = getTypeId(e)
-        return t && allowedSet.has(String(t))
-      })
-    },
-    [allowedSet],
-  )
+  const filterClientSide = (list) => {
+    if (!allowedSet.size) return list
+    return list.filter((e) => {
+      const t = getTypeId(e)
+      return t && allowedSet.has(String(t))
+    })
+  }
 
   // initial load / allowed types changed
   useEffect(() => {
@@ -50,7 +45,7 @@ export default function HybridEntityPicker({
     abortRef.current = ac
     setLoading(true)
 
-    const qs = allowedKey ? `&entity_type_ids=${allowedKey}` : ''
+    const qs = allowedTypeIds.length ? `&entity_type_ids=${allowedTypeIds.join(',')}` : ''
     fetch(`/api/worlds/${worldId}/entities?limit=20${qs}`, { signal: ac.signal })
       .then((r) => r.json())
       .then((data) => {
@@ -61,7 +56,7 @@ export default function HybridEntityPicker({
       .finally(() => setLoading(false))
 
     return () => ac.abort()
-  }, [worldId, allowedKey, disabled, filterClientSide])
+  }, [worldId, allowedTypeIds.join(','), disabled])
 
   // debounced search
   useEffect(() => {
@@ -73,7 +68,7 @@ export default function HybridEntityPicker({
       setLoading(true)
       const url = new URL(`/api/worlds/${worldId}/entities/search`, window.location.origin)
       if (q) url.searchParams.set('q', q)
-      if (allowedKey) url.searchParams.set('entity_type_ids', allowedKey)
+      if (allowedTypeIds.length) url.searchParams.set('entity_type_ids', allowedTypeIds.join(','))
       fetch(url.toString(), { signal: ac.signal })
         .then((r) => r.json())
         .then((data) => {
@@ -87,14 +82,13 @@ export default function HybridEntityPicker({
       clearTimeout(t)
       ac.abort()
     }
-  }, [q, worldId, allowedKey, disabled, filterClientSide])
+  }, [q, worldId, allowedTypeIds.join(','), disabled])
 
   const pick = (entity) => {
     const id = String(entity?.id ?? '')
     if (!id) return
     onResolve?.(entity)
-    onChange?.(id)
-    setQ('')
+    onChange?.(id)      // ALWAYS emit string id
     setOpen(false)
   }
 

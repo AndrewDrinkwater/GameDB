@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import HybridEntityPicker from './ui/HybridEntityPicker.jsx'
 import { computeFilterParams } from './logic/perspective.js'
 import { allowedTypeIdsForRole, filterRelationshipTypes } from './logic/rules.js'
-import './relationships2.css'
 
 const getTypeId = (e) =>
   String(
@@ -11,18 +10,20 @@ const getTypeId = (e) =>
     e?.entityTypeId ??
     e?.entityType?.id ??
     e?.entity_type?.id ??
+    e?.typeId ??
+    e?.type?.id ??
     ''
   )
 
 export default function RelationshipComposer({
   worldId,
   relationshipTypes = [],
-  mode = 'global',
-  lockedField = null,            // 'from' | 'to' | null (inline only)
+  mode = 'global',                 // 'inline' | 'global'
+  lockedField = null,              // 'from' | 'to' | null (inline only)
   currentEntityId = '',
   currentEntityTypeId = '',
-  onSubmit,                      // ({fromEntityId, toEntityId, relationshipTypeId, direction})
-  onStateChange,                 // optional ui state emit
+  onSubmit,                        // ({fromEntityId, toEntityId, relationshipTypeId, direction})
+  onStateChange,                   // optional UI state emit
 }) {
   const isInline = mode === 'inline'
 
@@ -31,25 +32,15 @@ export default function RelationshipComposer({
   const [toEntityId, setToEntityId]     = useState(lockedField === 'to'   ? String(currentEntityId) : '')
   const [fromTypeId, setFromTypeId]     = useState(lockedField === 'from' ? String(currentEntityTypeId) : '')
   const [toTypeId, setToTypeId]         = useState(lockedField === 'to'   ? String(currentEntityTypeId) : '')
-
   const [relationshipTypeId, setRelationshipTypeId] = useState('')
 
-  // When user picks an entity, seed its type immediately (enables instant filtering)
-  const onFromResolve = (entity) => {
-    const t = getTypeId(entity)
-    if (t) setFromTypeId(t)
-  }
-  const onToResolve = (entity) => {
-    const t = getTypeId(entity)
-    if (t) setToTypeId(t)
-  }
+  // resolve type immediately on entity pick
+  const onFromResolve = (entity) => { const t = getTypeId(entity); if (t) setFromTypeId(t) }
+  const onToResolve   = (entity) => { const t = getTypeId(entity); if (t) setToTypeId(t) }
 
-  // perspective-aware filtering
+  // perspective-aware filtering context (selected types)
   const { sourceType, targetType } = computeFilterParams({
-    mode,
-    lockedField,
-    fromTypeId,
-    toTypeId,
+    mode, lockedField, fromTypeId, toTypeId
   })
 
   const availableRelTypes = useMemo(
@@ -62,16 +53,20 @@ export default function RelationshipComposer({
     [availableRelTypes, relationshipTypeId]
   )
 
+  // DIRECTION-AWARE roles for UI fields
+  const uiFromRole = direction === 'reverse' ? 'to' : 'from'
+  const uiToRole   = direction === 'reverse' ? 'from' : 'to'
+
   const allowedFrom = useMemo(
-    () => (activeRel ? allowedTypeIdsForRole(activeRel, 'from') : []),
-    [activeRel]
+    () => (activeRel ? allowedTypeIdsForRole(activeRel, uiFromRole) : []),
+    [activeRel, uiFromRole]
   )
   const allowedTo = useMemo(
-    () => (activeRel ? allowedTypeIdsForRole(activeRel, 'to') : []),
-    [activeRel]
+    () => (activeRel ? allowedTypeIdsForRole(activeRel, uiToRole) : []),
+    [activeRel, uiToRole]
   )
 
-  // Parent UI updates — shallow de-duped to prevent render loop
+  // Dedup parent state updates to prevent loops
   const lastRef = useRef({})
   useEffect(() => {
     if (!onStateChange) return
@@ -84,6 +79,28 @@ export default function RelationshipComposer({
     lastRef.current = next
     onStateChange(next)
   }, [onStateChange, fromEntityId, toEntityId, relationshipTypeId])
+
+  // Handle perspective toggle (inline only)
+  const handlePerspectiveChange = (next) => {
+    const desired = next === 'target' ? 'reverse' : 'forward'
+    if (desired === direction) return
+    setRelationshipTypeId('') // clear type on flip
+
+    // move locked/current side appropriately
+    if (desired === 'reverse') {
+      // UI From <- current To (preserve locked logic in caller)
+      setToEntityId(fromEntityId)
+      setToTypeId(fromTypeId)
+      setFromEntityId('')
+      setFromTypeId('')
+    } else {
+      setFromEntityId(toEntityId)
+      setFromTypeId(toTypeId)
+      setToEntityId('')
+      setToTypeId('')
+    }
+    setDirection(desired)
+  }
 
   const handleSubmit = () => {
     if (!(fromEntityId && toEntityId && relationshipTypeId)) return
@@ -102,7 +119,7 @@ export default function RelationshipComposer({
           <label>Perspective</label>
           <select
             value={direction}
-            onChange={(e) => setDirection(e.target.value)}
+            onChange={(e) => handlePerspectiveChange(e.target.value)}
           >
             <option value="forward">Source → Target</option>
             <option value="reverse">Target ← Source</option>
@@ -114,6 +131,7 @@ export default function RelationshipComposer({
         <div className="col">
           <label>From Entity</label>
           <HybridEntityPicker
+            key={`from-${relationshipTypeId}-${direction}-${allowedFrom.join(',')}`}
             worldId={worldId}
             value={fromEntityId}
             allowedTypeIds={allowedFrom.length ? allowedFrom : []}
@@ -152,6 +170,7 @@ export default function RelationshipComposer({
       <div className="row">
         <label>To Entity</label>
         <HybridEntityPicker
+          key={`to-${relationshipTypeId}-${direction}-${allowedTo.join(',')}`}
           worldId={worldId}
           value={toEntityId}
           allowedTypeIds={allowedTo.length ? allowedTo : []}

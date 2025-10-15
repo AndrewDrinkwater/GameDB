@@ -15,6 +15,5 @@ export const computeFilterParams = ({ mode, lockedField = null, fromTypeId = '',
     sourceType = fromTypeId || ''
     targetType = toTypeId   || ''
   }
-
   return { sourceType, targetType }
 }
