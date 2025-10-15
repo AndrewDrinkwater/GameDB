@@ -548,6 +548,16 @@ export default function EntityRelationshipForm({
     [allowedToTypeIds],
   )
 
+  const fromEntitySelectTypeIds = useMemo(
+    () => (allowedFromTypeIds.length > 0 ? allowedFromTypeIds : undefined),
+    [allowedFromTypeIds],
+  )
+
+  const toEntitySelectTypeIds = useMemo(
+    () => (allowedToTypeIds.length > 0 ? allowedToTypeIds : undefined),
+    [allowedToTypeIds],
+  )
+
   const handlePerspectiveChange = (nextPerspective) => {
     const desiredDirection = nextPerspective === 'target' ? 'reverse' : 'forward'
     setAutoCorrectionMessage('')
@@ -972,21 +982,7 @@ export default function EntityRelationshipForm({
 
   const handleValueChange = (field) => (event) => {
     const { value } = event.target
-    setValues((prev) => {
-      if (field !== 'relationshipTypeId' || isEditMode) {
-        return { ...prev, [field]: value }
-      }
-
-      const updates = { ...prev, relationshipTypeId: value }
-
-      if (lockedField === 'from') {
-        updates.toEntityId = ''
-      } else if (lockedField === 'to') {
-        updates.fromEntityId = ''
-      }
-
-      return updates
-    })
+    setValues((prev) => ({ ...prev, [field]: value }))
     if (field === 'relationshipTypeId') {
       setCreatingRole(null)
     }
@@ -1219,7 +1215,7 @@ export default function EntityRelationshipForm({
           <EntitySelect
             id="relationship-from-entity"
             worldId={worldId}
-            allowedTypeIds={allowedFromTypeIds}
+            allowedTypeIds={fromEntitySelectTypeIds}
             value={values.fromEntityId}
             onChange={handleFromEntityChange}
             disabled={saving || isBusy || lockedField === 'from'}
@@ -1326,7 +1322,7 @@ export default function EntityRelationshipForm({
           <EntitySelect
             id="relationship-to-entity"
             worldId={worldId}
-            allowedTypeIds={allowedToTypeIds}
+            allowedTypeIds={toEntitySelectTypeIds}
             value={values.toEntityId}
             onChange={handleToEntityChange}
             disabled={saving || isBusy || lockedField === 'to'}
