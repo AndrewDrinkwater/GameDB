@@ -216,6 +216,8 @@ export default function EntityRelationshipForm({
     return [generatePair()]
   })
   const [direction, setDirection] = useState(initialDirection)
+  const [fromEntitySearch, setFromEntitySearch] = useState('')
+  const [toEntitySearch, setToEntitySearch] = useState('')
   const [loadingEntities, setLoadingEntities] = useState(false)
   const [loadingTypes, setLoadingTypes] = useState(false)
   const [loadingEntityTypes, setLoadingEntityTypes] = useState(false)
@@ -615,17 +617,54 @@ export default function EntityRelationshipForm({
     }
   }, [creatingRole, allowedFromTypeIds.length, allowedToTypeIds.length])
 
-  const filteredFromEntities = useMemo(() => {
+  const filteredFromEntitiesByType = useMemo(() => {
     if (!allowedFromTypeIds.length) return entities
     const allowedSet = new Set(allowedFromTypeIds)
     return entities.filter((entity) => allowedSet.has(resolveEntityTypeId(entity)))
   }, [entities, allowedFromTypeIds])
 
-  const filteredToEntities = useMemo(() => {
+  const filteredToEntitiesByType = useMemo(() => {
     if (!allowedToTypeIds.length) return entities
     const allowedSet = new Set(allowedToTypeIds)
     return entities.filter((entity) => allowedSet.has(resolveEntityTypeId(entity)))
   }, [entities, allowedToTypeIds])
+
+  const entityMatchesQuery = useCallback((entity, query) => {
+    if (!query) return true
+    const trimmed = query.trim().toLowerCase()
+    if (!trimmed) return true
+
+    const name = String(entity?.name || '').toLowerCase()
+    if (name.includes(trimmed)) return true
+
+    const typeName = String(
+      entity?.entityType?.name || entity?.entity_type?.name || entity?.entity_type_name || '',
+    ).toLowerCase()
+    if (typeName.includes(trimmed)) return true
+
+    const id = String(entity?.id ?? '').toLowerCase()
+    if (id.includes(trimmed)) return true
+
+    return false
+  }, [])
+
+  const filteredFromEntities = useMemo(
+    () => filteredFromEntitiesByType.filter((entity) => entityMatchesQuery(entity, fromEntitySearch)),
+    [filteredFromEntitiesByType, entityMatchesQuery, fromEntitySearch],
+  )
+
+  const filteredToEntities = useMemo(
+    () => filteredToEntitiesByType.filter((entity) => entityMatchesQuery(entity, toEntitySearch)),
+    [filteredToEntitiesByType, entityMatchesQuery, toEntitySearch],
+  )
+
+  useEffect(() => {
+    setFromEntitySearch('')
+  }, [filteredFromEntitiesByType])
+
+  useEffect(() => {
+    setToEntitySearch('')
+  }, [filteredToEntitiesByType])
 
   useEffect(() => {
     if (!values.relationshipTypeId) return
@@ -1207,6 +1246,15 @@ export default function EntityRelationshipForm({
           }`}
         >
           <label htmlFor="relationship-from-entity">From Entity *</label>
+          <input
+            type="search"
+            className="entity-search-input"
+            placeholder="Search entities..."
+            value={fromEntitySearch}
+            onChange={(event) => setFromEntitySearch(event.target.value)}
+            disabled={saving || isBusy || lockedField === 'from'}
+            aria-label="Search from entities"
+          />
           <select
             id="relationship-from-entity"
             value={values.fromEntityId}
@@ -1226,6 +1274,9 @@ export default function EntityRelationshipForm({
               </option>
             ))}
           </select>
+          {fromEntitySearch.trim() && filteredFromEntities.length === 0 && (
+            <p className="field-hint">No entities match the current search.</p>
+          )}
           {lockedField === 'from' && lockedFieldHint && (
             <p className="field-hint">{lockedFieldHint}</p>
           )}
@@ -1258,8 +1309,9 @@ export default function EntityRelationshipForm({
               Inline creation isn’t available for this relationship.
             </p>
           )}
-          {activeRelationshipType && allowedFromTypeIds.length > 0 &&
-            filteredFromEntities.length === 0 && (
+          {activeRelationshipType &&
+            allowedFromTypeIds.length > 0 &&
+            filteredFromEntitiesByType.length === 0 && (
               <p className="field-hint">
                 No entities match the allowed {fromRoleLabel} types yet. Use “+ Create new” to add one
                 without leaving this page.
@@ -1318,6 +1370,15 @@ export default function EntityRelationshipForm({
           }`}
         >
           <label htmlFor="relationship-to-entity">To Entity *</label>
+          <input
+            type="search"
+            className="entity-search-input"
+            placeholder="Search entities..."
+            value={toEntitySearch}
+            onChange={(event) => setToEntitySearch(event.target.value)}
+            disabled={saving || isBusy || lockedField === 'to'}
+            aria-label="Search to entities"
+          />
           <select
             id="relationship-to-entity"
             value={values.toEntityId}
@@ -1337,6 +1398,9 @@ export default function EntityRelationshipForm({
               </option>
             ))}
           </select>
+          {toEntitySearch.trim() && filteredToEntities.length === 0 && (
+            <p className="field-hint">No entities match the current search.</p>
+          )}
           {lockedField === 'to' && lockedFieldHint && (
             <p className="field-hint">{lockedFieldHint}</p>
           )}
@@ -1369,7 +1433,9 @@ export default function EntityRelationshipForm({
               Inline creation isn’t available for this relationship.
             </p>
           )}
-          {activeRelationshipType && allowedToTypeIds.length > 0 && filteredToEntities.length === 0 && (
+          {activeRelationshipType &&
+            allowedToTypeIds.length > 0 &&
+            filteredToEntitiesByType.length === 0 && (
             <p className="field-hint">
               No entities match the allowed {toRoleLabel} types yet. Use “+ Create new” to add one without
               losing your place.
