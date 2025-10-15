@@ -965,6 +965,31 @@ export default function EntityRelationshipForm({
     }
   }
 
+  const upsertEntityFromSelect = useCallback(
+    (entity) => {
+      if (!entity) return null
+      const normalised = normaliseEntityRecord(entity)
+      if (!normalised || normalised.id === undefined || normalised.id === null) {
+        return null
+      }
+
+      const stringId = String(normalised.id)
+      const record = { ...normalised, id: stringId }
+      setEntities((prev) => {
+        const existingIndex = prev.findIndex((entry) => String(entry.id) === stringId)
+        if (existingIndex >= 0) {
+          const clone = [...prev]
+          clone[existingIndex] = { ...clone[existingIndex], ...record }
+          return clone
+        }
+        return [record, ...prev]
+      })
+
+      return record
+    },
+    [setEntities],
+  )
+
   const handleFromEntityChange = useCallback(
     (nextValue) => {
       setCreatingRole((prev) => (prev === 'from' ? null : prev))
@@ -1013,31 +1038,6 @@ export default function EntityRelationshipForm({
       highlightTimersRef.current[key] = null
     }, 2000)
   }, [])
-
-  const upsertEntityFromSelect = useCallback(
-    (entity) => {
-      if (!entity) return null
-      const normalised = normaliseEntityRecord(entity)
-      if (!normalised || normalised.id === undefined || normalised.id === null) {
-        return null
-      }
-
-      const stringId = String(normalised.id)
-      const record = { ...normalised, id: stringId }
-      setEntities((prev) => {
-        const existingIndex = prev.findIndex((entry) => String(entry.id) === stringId)
-        if (existingIndex >= 0) {
-          const clone = [...prev]
-          clone[existingIndex] = { ...clone[existingIndex], ...record }
-          return clone
-        }
-        return [record, ...prev]
-      })
-
-      return record
-    },
-    [setEntities],
-  )
 
   const handleInlineEntityCreated = useCallback(
     (role, entity) => {
