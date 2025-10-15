@@ -18,7 +18,7 @@ export const allowedTypeIdsForRole = (relType, role /* 'from' | 'to' */) => {
   ).filter(Boolean)
 }
 
-// Filter rel types by side(s). Empty allowed list on a role = unrestricted (treat as match).
+// Treat empty allowed list on a role = unrestricted (match)
 export const filterRelationshipTypes = (relTypes, sourceTypeId /* from */, targetTypeId /* to */) => {
   if (!Array.isArray(relTypes)) return []
   const matchSide = (rt, role, typeId) => {

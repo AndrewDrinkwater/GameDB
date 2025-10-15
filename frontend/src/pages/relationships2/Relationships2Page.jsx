@@ -3,23 +3,18 @@ import RelationshipComposer from '../../modules/relationships2/RelationshipCompo
 
 export default function Relationships2Page() {
   const [relTypes, setRelTypes] = useState([])
-  const worldId = 'CURRENT_WORLD_ID' // replace with real id
+  const worldId = 'REPLACE_WITH_REAL_WORLD_ID' // TODO
 
   useEffect(() => {
     let cancel = false
     const load = async () => {
-      try {
-        const r = await fetch(`/api/worlds/${worldId}/relationship-types`)
-        const json = await r.json()
-        const list = Array.isArray(json) ? json : (Array.isArray(json?.data) ? json.data : [])
-        if (!cancel) setRelTypes(list)
-      } catch (err) {
-        if (!cancel) setRelTypes([])
-        console.error('Failed to load relationship types', err)
-      }
+      const r = await fetch(`/api/worlds/${worldId}/relationship-types`)
+      const json = await r.json()
+      const list = Array.isArray(json) ? json : (Array.isArray(json?.data) ? json.data : [])
+      if (!cancel) setRelTypes(list)
     }
     load()
-    return () => (cancel = true)
+    return () => { cancel = true }
   }, [worldId])
 
   const handleSubmit = async ({ fromEntityId, toEntityId, relationshipTypeId, direction }) => {
@@ -59,8 +54,8 @@ export default function Relationships2Page() {
         relationshipTypes={relTypes}
         mode="inline"
         lockedField="from"
-        currentEntityId="LOCKED_ENTITY_ID"
-        currentEntityTypeId="LOCKED_ENTITY_TYPE_ID"
+        currentEntityId="REPLACE_LOCKED_ENTITY_ID"
+        currentEntityTypeId="REPLACE_LOCKED_ENTITY_TYPE_ID"
         onSubmit={handleSubmit}
       />
     </div>
