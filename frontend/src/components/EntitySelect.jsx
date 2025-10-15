@@ -61,7 +61,7 @@ const useDebouncedValue = (value, delay) => {
 const EntitySelect = ({
   id,
   worldId,
-  allowedTypeIds = [],
+  allowedTypeIds,
   value,
   onChange,
   placeholder = 'Search for entity…',
@@ -84,7 +84,17 @@ const EntitySelect = ({
   const listRef = useRef(null)
   const currentFetchRef = useRef(0)
 
-  const isDisabled = disabled || !worldId || allowedTypeIds.length === 0
+  const normalisedAllowedTypeIds = useMemo(() => {
+    if (!Array.isArray(allowedTypeIds)) return undefined
+    return allowedTypeIds
+      .map((typeId) => (typeId === undefined || typeId === null ? '' : String(typeId).trim()))
+      .filter(Boolean)
+  }, [allowedTypeIds])
+
+  const hasExplicitRestriction = normalisedAllowedTypeIds !== undefined
+  const hasAllowedTypes = (normalisedAllowedTypeIds?.length ?? 0) > 0
+
+  const isDisabled = disabled || !worldId || (hasExplicitRestriction && !hasAllowedTypes)
 
   const resetSearchState = useCallback(() => {
     setResults([])
@@ -178,7 +188,7 @@ const EntitySelect = ({
 
   const fetchResults = useCallback(
     async ({ append = false } = {}) => {
-      if (!worldId || allowedTypeIds.length === 0) {
+      if (!worldId || (hasExplicitRestriction && !hasAllowedTypes)) {
         resetSearchState()
         return
       }
@@ -193,7 +203,7 @@ const EntitySelect = ({
         const response = await searchEntities({
           worldId,
           query,
-          typeIds: allowedTypeIds,
+          typeIds: normalisedAllowedTypeIds,
           limit,
           offset: nextOffset,
         })
@@ -230,7 +240,9 @@ const EntitySelect = ({
     },
     [
       worldId,
-      allowedTypeIds,
+      hasExplicitRestriction,
+      hasAllowedTypes,
+      normalisedAllowedTypeIds,
       debouncedInput,
       limit,
       offset,
@@ -242,7 +254,7 @@ const EntitySelect = ({
   useEffect(() => {
     if (!open) return
     fetchResults({ append: false })
-  }, [debouncedInput, allowedTypeIds, worldId, fetchResults, open])
+  }, [debouncedInput, normalisedAllowedTypeIds, worldId, fetchResults, open])
 
   useEffect(() => {
     if (!open) return
@@ -297,11 +309,11 @@ const EntitySelect = ({
   const showClearButton = useMemo(() => !isDisabled && Boolean(selected?.id), [isDisabled, selected])
 
   const resolvedPlaceholder = useMemo(() => {
-    if (isDisabled && allowedTypeIds.length === 0) {
+    if (isDisabled && hasExplicitRestriction && !hasAllowedTypes) {
       return 'No allowed types'
     }
     return placeholder
-  }, [isDisabled, allowedTypeIds.length, placeholder])
+  }, [isDisabled, hasExplicitRestriction, hasAllowedTypes, placeholder])
 
   return (
     <div className={`entity-select${isDisabled ? ' disabled' : ''}`} ref={containerRef}>
