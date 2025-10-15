@@ -59,6 +59,7 @@ const useDebouncedValue = (value, delay) => {
 }
 
 const EntitySelect = ({
+  id,
   worldId,
   allowedTypeIds = [],
   value,
@@ -306,6 +307,7 @@ const EntitySelect = ({
     <div className={`entity-select${isDisabled ? ' disabled' : ''}`} ref={containerRef}>
       <div className="entity-select-input-wrapper">
         <input
+          id={id}
           type="text"
           className="entity-select-input"
           value={inputValue}
@@ -380,6 +382,7 @@ const EntitySelect = ({
 }
 
 EntitySelect.propTypes = {
+  id: PropTypes.string,
   worldId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   allowedTypeIds: PropTypes.arrayOf(
     PropTypes.oneOfType([PropTypes.string, PropTypes.number]),

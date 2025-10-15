@@ -9,6 +9,7 @@ import { getRelationshipTypes } from '../../api/entityRelationshipTypes.js'
 import { getEntityTypes } from '../../api/entityTypes.js'
 import EntityMiniCreateInline from '../../components/EntityMiniCreateInline.jsx'
 import PerspectiveToggle from '../../components/relationships/PerspectiveToggle.jsx'
+import EntitySelect from '../../components/EntitySelect.jsx'
 
 const normaliseId = (value) => {
   if (value === undefined || value === null) return ''
@@ -216,8 +217,6 @@ export default function EntityRelationshipForm({
     return [generatePair()]
   })
   const [direction, setDirection] = useState(initialDirection)
-  const [fromEntitySearch, setFromEntitySearch] = useState('')
-  const [toEntitySearch, setToEntitySearch] = useState('')
   const [loadingEntities, setLoadingEntities] = useState(false)
   const [loadingTypes, setLoadingTypes] = useState(false)
   const [loadingEntityTypes, setLoadingEntityTypes] = useState(false)
@@ -240,7 +239,6 @@ export default function EntityRelationshipForm({
     if (lockToEntity) return 'to'
     return ''
   }, [lockFromEntity, lockToEntity, perspective])
-  const editableField = lockedField === 'from' ? 'to' : lockedField === 'to' ? 'from' : ''
 
   const hasContext = useMemo(
     () => contextPairs.some((pair) => pair.key.trim() !== '' || pair.value.trim() !== ''),
@@ -629,43 +627,6 @@ export default function EntityRelationshipForm({
     return entities.filter((entity) => allowedSet.has(resolveEntityTypeId(entity)))
   }, [entities, allowedToTypeIds])
 
-  const entityMatchesQuery = useCallback((entity, query) => {
-    if (!query) return true
-    const trimmed = query.trim().toLowerCase()
-    if (!trimmed) return true
-
-    const name = String(entity?.name || '').toLowerCase()
-    if (name.includes(trimmed)) return true
-
-    const typeName = String(
-      entity?.entityType?.name || entity?.entity_type?.name || entity?.entity_type_name || '',
-    ).toLowerCase()
-    if (typeName.includes(trimmed)) return true
-
-    const id = String(entity?.id ?? '').toLowerCase()
-    if (id.includes(trimmed)) return true
-
-    return false
-  }, [])
-
-  const filteredFromEntities = useMemo(
-    () => filteredFromEntitiesByType.filter((entity) => entityMatchesQuery(entity, fromEntitySearch)),
-    [filteredFromEntitiesByType, entityMatchesQuery, fromEntitySearch],
-  )
-
-  const filteredToEntities = useMemo(
-    () => filteredToEntitiesByType.filter((entity) => entityMatchesQuery(entity, toEntitySearch)),
-    [filteredToEntitiesByType, entityMatchesQuery, toEntitySearch],
-  )
-
-  useEffect(() => {
-    setFromEntitySearch('')
-  }, [filteredFromEntitiesByType])
-
-  useEffect(() => {
-    setToEntitySearch('')
-  }, [filteredToEntitiesByType])
-
   useEffect(() => {
     if (!values.relationshipTypeId) return
     const exists = availableRelationshipTypes.some(
@@ -1031,20 +992,40 @@ export default function EntityRelationshipForm({
     }
   }
 
-  const handleFromEntityChange = (event) => {
-    const { value } = event.target
+  const handleFromEntityChange = (value) => {
+    const nextValue = value ? String(value) : ''
     setCreatingRole((prev) => (prev === 'from' ? null : prev))
-    setValues((prev) => ({ ...prev, fromEntityId: value }))
+    setValues((prev) => ({ ...prev, fromEntityId: nextValue }))
   }
 
-  const handleToEntityChange = (event) => {
-    const { value } = event.target
+  const handleToEntityChange = (value) => {
+    const nextValue = value ? String(value) : ''
     setCreatingRole((prev) => (prev === 'to' ? null : prev))
-    setValues((prev) => ({ ...prev, toEntityId: value }))
+    setValues((prev) => ({ ...prev, toEntityId: nextValue }))
   }
 
   const handleInlineCancel = useCallback(() => {
     setCreatingRole(null)
+  }, [])
+
+  const upsertEntityRecord = useCallback((entity) => {
+    const normalised = normaliseEntityRecord(entity)
+    if (!normalised) return null
+
+    const nextId = String(normalised.id)
+    const record = { ...normalised, id: nextId }
+
+    setEntities((prev) => {
+      const existingIndex = prev.findIndex((entry) => String(entry.id) === nextId)
+      if (existingIndex >= 0) {
+        const clone = [...prev]
+        clone[existingIndex] = { ...clone[existingIndex], ...record }
+        return clone
+      }
+      return [record, ...prev]
+    })
+
+    return record
   }, [])
 
   const triggerHighlight = useCallback((role, entityId) => {
@@ -1062,21 +1043,10 @@ export default function EntityRelationshipForm({
 
   const handleInlineEntityCreated = useCallback(
     (role, entity) => {
-      const normalised = normaliseEntityRecord(entity)
-      if (!normalised) return
+      const record = upsertEntityRecord(entity)
+      if (!record) return
 
-      const nextId = String(normalised.id)
-      setEntities((prev) => {
-        const record = { ...normalised, id: nextId }
-        const existingIndex = prev.findIndex((entry) => String(entry.id) === nextId)
-        if (existingIndex >= 0) {
-          const clone = [...prev]
-          clone[existingIndex] = { ...clone[existingIndex], ...record }
-          return clone
-        }
-        return [record, ...prev]
-      })
-
+      const nextId = String(record.id)
       if (role === 'from') {
         setValues((prev) => ({ ...prev, fromEntityId: nextId }))
       } else if (role === 'to') {
@@ -1093,7 +1063,7 @@ export default function EntityRelationshipForm({
         : 'New entity added and selected.'
       onToast?.(successMessage, 'success')
     },
-    [triggerHighlight, fromRoleLabel, toRoleLabel, onToast],
+    [triggerHighlight, fromRoleLabel, toRoleLabel, onToast, upsertEntityRecord],
   )
 
   useEffect(() => {
@@ -1246,37 +1216,20 @@ export default function EntityRelationshipForm({
           }`}
         >
           <label htmlFor="relationship-from-entity">From Entity *</label>
-          <input
-            type="search"
-            className="entity-search-input"
-            placeholder="Search entities..."
-            value={fromEntitySearch}
-            onChange={(event) => setFromEntitySearch(event.target.value)}
-            disabled={saving || isBusy || lockedField === 'from'}
-            aria-label="Search from entities"
-          />
-          <select
+          <EntitySelect
             id="relationship-from-entity"
+            worldId={worldId}
+            allowedTypeIds={allowedFromTypeIds}
             value={values.fromEntityId}
             onChange={handleFromEntityChange}
-            disabled={
-              saving ||
-              isBusy ||
-              lockedField === 'from'
-            }
-            required
-            data-autofocus={editableField === 'from' ? true : undefined}
-          >
-            <option value="">Select entity...</option>
-            {filteredFromEntities.map((entity) => (
-              <option key={entity.id} value={entity.id}>
-                {entity.name}
-              </option>
-            ))}
-          </select>
-          {fromEntitySearch.trim() && filteredFromEntities.length === 0 && (
-            <p className="field-hint">No entities match the current search.</p>
-          )}
+            disabled={saving || isBusy || lockedField === 'from'}
+            placeholder="Select entity..."
+            onEntityResolved={(entity) => {
+              if (entity) {
+                upsertEntityRecord(entity)
+              }
+            }}
+          />
           {lockedField === 'from' && lockedFieldHint && (
             <p className="field-hint">{lockedFieldHint}</p>
           )}
@@ -1370,37 +1323,20 @@ export default function EntityRelationshipForm({
           }`}
         >
           <label htmlFor="relationship-to-entity">To Entity *</label>
-          <input
-            type="search"
-            className="entity-search-input"
-            placeholder="Search entities..."
-            value={toEntitySearch}
-            onChange={(event) => setToEntitySearch(event.target.value)}
-            disabled={saving || isBusy || lockedField === 'to'}
-            aria-label="Search to entities"
-          />
-          <select
+          <EntitySelect
             id="relationship-to-entity"
+            worldId={worldId}
+            allowedTypeIds={allowedToTypeIds}
             value={values.toEntityId}
             onChange={handleToEntityChange}
-            disabled={
-              saving ||
-              isBusy ||
-              lockedField === 'to'
-            }
-            required
-            data-autofocus={editableField === 'to' ? true : undefined}
-          >
-            <option value="">Select entity...</option>
-            {filteredToEntities.map((entity) => (
-              <option key={entity.id} value={entity.id}>
-                {entity.name}
-              </option>
-            ))}
-          </select>
-          {toEntitySearch.trim() && filteredToEntities.length === 0 && (
-            <p className="field-hint">No entities match the current search.</p>
-          )}
+            disabled={saving || isBusy || lockedField === 'to'}
+            placeholder="Select entity..."
+            onEntityResolved={(entity) => {
+              if (entity) {
+                upsertEntityRecord(entity)
+              }
+            }}
+          />
           {lockedField === 'to' && lockedFieldHint && (
             <p className="field-hint">{lockedFieldHint}</p>
           )}
