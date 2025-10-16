@@ -750,13 +750,15 @@ export default function EntityDetailPage() {
   size="lg"
 >
   <RelationshipBuilder
-    worldId={worldId}
-    onCreated={() => {
-      setShowRelationshipForm(false)
-      loadRelationships()
-    }}
-    onCancel={() => setShowRelationshipForm(false)}
-  />
+  worldId={worldId}
+  fromEntity={entity} // ← crucial line
+  onCreated={() => {
+    setShowRelationshipForm(false)
+    loadRelationships()
+  }}
+  onCancel={() => setShowRelationshipForm(false)}
+/>
+
 </DrawerPanel>
 
 {/* --- ENTITY DETAIL TOP BAR --- */}

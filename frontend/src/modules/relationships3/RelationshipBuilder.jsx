@@ -8,6 +8,7 @@ import InlineEntityCreator from './ui/InlineEntityCreator.jsx'
 
 export default function RelationshipBuilder({
   worldId,
+  fromEntity = null,
   onCreated,
   onCancel,
   existingRelationships = [],
@@ -22,7 +23,7 @@ export default function RelationshipBuilder({
   const [relationshipTypeId, setRelationshipTypeId] = useState('')
   const [showCreator, setShowCreator] = useState(false)
 
-  // --- Load entities + relationship types
+  // --- Load data once
   useEffect(() => {
     if (!worldId) return
     setLoading(true)
@@ -38,93 +39,82 @@ export default function RelationshipBuilder({
       .finally(() => setLoading(false))
   }, [worldId])
 
-  // --- Normaliser helper
+  // --- Auto-populate Entity 1 (only once)
+  useEffect(() => {
+    if (!fromEntity || entity1) return
+    if (!fromEntity.id || !fromEntity.name) return
+
+    const normalised = {
+      id: fromEntity.id,
+      name: fromEntity.name,
+      entity_type_id:
+        fromEntity.entity_type_id ||
+        fromEntity.entityType?.id ||
+        fromEntity.entity_type?.id,
+      entityType: fromEntity.entityType || fromEntity.entity_type || null,
+      typeName:
+        fromEntity.typeName ||
+        fromEntity.entityType?.name ||
+        fromEntity.entity_type?.name,
+    }
+
+    setEntity1(normalised)
+    console.debug('💡 Auto-populated Entity 1 once:', normalised)
+  }, [fromEntity]) // intentionally not depending on entity1 to avoid repeats
+
+  // --- Normalise helper
   const normaliseEntity = (entity) => {
     if (!entity) return null
     const typeId =
       entity.entity_type_id ||
       entity.typeId ||
       entity.entityType?.id ||
-      entity.entity_type?.id ||
-      null
+      entity.entity_type?.id
     const typeName =
       entity.typeName ||
       entity.entityType?.name ||
-      entity.entity_type?.name ||
-      null
+      entity.entity_type?.name
     return { ...entity, entity_type_id: typeId, typeName }
   }
 
-  // --- Extractor helper for IDs in relationship types
-  const extractTypeIds = (arr = []) =>
-    arr
-      .map((t) =>
-        String(
-          t?.id ||
-            t?.entity_type_id ||
-            t?.entityTypeId ||
-            t?.type_id ||
-            t?.typeId ||
-            ''
+  // --- Filter valid relationship types
+  const validRelationshipTypes = useMemo(() => {
+    const e1 = normaliseEntity(entity1)
+    const e2 = normaliseEntity(entity2)
+    if (!e1 || !e2) return []
+
+    const type1 = e1.entity_type_id
+    const type2 = e2.entity_type_id
+    if (!type1 || !type2) return []
+
+    const extractIds = (arr = []) =>
+      arr
+        .map(
+          (t) =>
+            t.id ||
+            t.entity_type_id ||
+            t.entityTypeId ||
+            t.type_id ||
+            t.typeId ||
+            t,
         )
-      )
+        .map(String)
+
+    return relationshipTypes
+      .map((rt) => {
+        const fromIds = extractIds(rt.from_entity_types)
+        const toIds = extractIds(rt.to_entity_types)
+        const direct =
+          fromIds.includes(String(type1)) && toIds.includes(String(type2))
+        const reverse =
+          fromIds.includes(String(type2)) && toIds.includes(String(type1))
+        if (direct || reverse) {
+          return { ...rt, _direction: direct ? 'direct' : 'reverse' }
+        }
+        return null
+      })
       .filter(Boolean)
-
-  // --- Compute valid relationship types
-const validRelationshipTypes = useMemo(() => {
-  if (!entity1 || !entity2 || relationshipTypes.length === 0) return []
-
-  // Force re-run by stringifying entity IDs (guards against React object reference caching)
-  const e1 = normaliseEntity(entity1)
-  const e2 = normaliseEntity(entity2)
-
-  const type1 = String(e1?.entity_type_id || '')
-  const type2 = String(e2?.entity_type_id || '')
-
-  if (!type1 || !type2) return []
-
-  console.groupCollapsed('🔍 Relationship Type Debug')
-  console.log('Entity1:', e1)
-  console.log('Entity2:', e2)
-  console.log('Available relationship types:', relationshipTypes)
-  console.groupEnd()
-
-  const extractTypeIds = (arr = []) =>
-    arr
-      .map((t) =>
-        String(
-          t?.id ||
-            t?.entity_type_id ||
-            t?.entityTypeId ||
-            t?.type_id ||
-            t?.typeId ||
-            ''
-        )
-      )
-      .filter(Boolean)
-
-  const results = relationshipTypes
-    .map((rt) => {
-      const fromIds = extractTypeIds(rt.from_entity_types)
-      const toIds = extractTypeIds(rt.to_entity_types)
-
-      const direct = fromIds.includes(type1) && toIds.includes(type2)
-      const reverse = fromIds.includes(type2) && toIds.includes(type1)
-
-      if (direct || reverse) {
-        return { ...rt, _direction: direct ? 'direct' : 'reverse' }
-      }
-      return null
-    })
-    .filter(Boolean)
-
-  console.log('✅ Filtered relationship types:', results)
-  return results
-}, [
-  JSON.stringify(entity1),
-  JSON.stringify(entity2),
-  JSON.stringify(relationshipTypes),
-])
+  }, [relationshipTypes, entity1, entity2])
 
   // --- Submit logic
   const handleSubmit = async () => {
@@ -140,17 +130,16 @@ const validRelationshipTypes = useMemo(() => {
           r.relationship_type_id === relationshipTypeId) ||
         (r.from_entity_id === entity2.id &&
           r.to_entity_id === entity1.id &&
-          r.relationship_type_id === relationshipTypeId)
+          r.relationship_type_id === relationshipTypeId),
     )
     if (duplicate) return setError('This relationship already exists.')
 
     const selectedType = validRelationshipTypes.find(
-      (r) => r.id === relationshipTypeId
+      (r) => r.id === relationshipTypeId,
     )
 
     let from_entity_id = entity1.id
     let to_entity_id = entity2.id
-
     if (selectedType?._direction === 'reverse') {
       from_entity_id = entity2.id
       to_entity_id = entity1.id
@@ -180,36 +169,29 @@ const validRelationshipTypes = useMemo(() => {
       {error && <div className="alert error">{error}</div>}
 
       {/* ENTITY 1 */}
-<div className="form-row">
-  <EntitySearchSelect
-    worldId={worldId}
-    label="Entity 1"
-    value={entity1?.id || ''}
-    onChange={(entity) => {
-      console.log('🟩 Entity 1 selected:', entity)
-      setEntity1(entity)
-      setRelationshipTypeId('')
-    }}
-  />
-</div>
+      <div className="form-row">
+        <EntitySearchSelect
+          worldId={worldId}
+          label="Entity 1"
+          value={entity1?.id || ''}
+          onChange={(entity) => {
+            if (!fromEntity) {
+              setEntity1(entity)
+              setRelationshipTypeId('')
+            }
+          }}
+          disabled={!!fromEntity}
+        />
+      </div>
 
-{/* ENTITY 2 */}
-<div className="form-row entity2-section">
-  <EntitySearchSelect
-    worldId={worldId}
-    label="Entity 2"
-    value={entity2?.id || ''}
-    onChange={(idOrEntity) => {
-      console.log('🟩 Entity 2 manually selected:', idOrEntity)
-      // handle both full entity objects and IDs
-      const found =
-        entities.find((e) => e.id === idOrEntity?.id || e.id === idOrEntity) ||
-        idOrEntity ||
-        null
-      setEntity2(found)
-    }}
-  />
-
+      {/* ENTITY 2 */}
+      <div className="form-row entity2-section">
+        <EntitySearchSelect
+          worldId={worldId}
+          label="Entity 2"
+          value={entity2?.id || ''}
+          onChange={(entity) => setEntity2(entity)}
+        />
 
         {!showCreator && (
           <button
@@ -226,25 +208,14 @@ const validRelationshipTypes = useMemo(() => {
           <InlineEntityCreator
             worldId={worldId}
             onCreated={async (newEntity) => {
-              console.log('✅ Inline entity created:', newEntity)
               setEntities((prev) => [...prev, newEntity])
-
               try {
                 const res = await getEntity(newEntity.id)
                 const fullEntity = res?.data || res
                 setEntity2(fullEntity)
-                console.log(
-                  '🎯 Auto-selected new entity as Entity 2:',
-                  fullEntity.name
-                )
-              } catch (err) {
-                console.warn(
-                  '⚠️ Could not fetch newly created entity; using local copy',
-                  err
-                )
+              } catch {
                 setEntity2(newEntity)
               }
-
               setShowCreator(false)
             }}
           />
@@ -270,32 +241,6 @@ const validRelationshipTypes = useMemo(() => {
               <option disabled>No valid relationship types</option>
             )}
           </select>
-
-          {/* Direction cue */}
-          {relationshipTypeId && (
-            <div className="relationship-direction-cue">
-              {(() => {
-                const type = validRelationshipTypes.find(
-                  (t) => t.id === relationshipTypeId
-                )
-                if (!type) return null
-
-                const isReverse = type._direction === 'reverse'
-                const fromLabel = isReverse ? entity2?.name : entity1?.name
-                const toLabel = isReverse ? entity1?.name : entity2?.name
-
-                return (
-                  <p className="small text-muted">
-                    <strong>Direction:</strong>{' '}
-                    <span className="highlight">{fromLabel || 'Entity 1'}</span>{' '}
-                    →{' '}
-                    <span className="highlight">{toLabel || 'Entity 2'}</span>{' '}
-                    <em>({type.name}, {type._direction})</em>
-                  </p>
-                )
-              })()}
-            </div>
-          )}
         </div>
       )}
 
