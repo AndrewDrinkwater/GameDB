@@ -1,11 +1,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
-  ArrowDown,
-  ArrowUp,
   ChevronDown,
   ChevronRight,
   Filter,
+  GripVertical,
   Pencil,
   Plus,
   RotateCcw,
@@ -145,6 +144,8 @@ export default function EntityList() {
   const [columnMenuOpen, setColumnMenuOpen] = useState(false)
   const [columnSelectionError, setColumnSelectionError] = useState('')
   const [columnsSavingScope, setColumnsSavingScope] = useState('')
+  const [draggingColumnKey, setDraggingColumnKey] = useState('')
+  const [dropTargetKey, setDropTargetKey] = useState('')
   const [entityFormUiState, setEntityFormUiState] = useState(() =>
     createDrawerFooterState('create'),
   )
@@ -430,34 +431,47 @@ export default function EntityList() {
     return match?.entityType?.name || match?.entity_type?.name || ''
   }, [entities, selectedFilter])
 
-  const coreColumnOptions = useMemo(() => {
-    const source = columnOptions?.coreColumns ?? DEFAULT_CORE_COLUMN_OPTIONS
-    return source.map((column) => ({
-      ...column,
-      type: column.type ?? 'core',
-      label: column.label || column.key,
-    }))
-  }, [columnOptions])
+  const columnOptionList = useMemo(() => {
+    const combined = []
+    const seen = new Set()
 
-  const metadataColumnOptions = useMemo(() => {
-    const source = columnOptions?.metadataColumns ?? []
-    return source.map((column) => ({
-      ...column,
-      type: 'metadata',
-      label: column.label || column.name || column.key,
-    }))
+    const appendColumn = (column, fallbackType) => {
+      if (!column || typeof column !== 'object') return
+      const key = typeof column.key === 'string' ? column.key.trim() : ''
+      if (!key || seen.has(key)) return
+      const labelCandidate =
+        column.label || column.name || (typeof column.title === 'string' ? column.title : '')
+      const label = typeof labelCandidate === 'string' && labelCandidate.trim()
+        ? labelCandidate.trim()
+        : key
+      combined.push({
+        ...column,
+        key,
+        label,
+        type: column.type || fallbackType,
+      })
+      seen.add(key)
+    }
+
+    const coreSource = columnOptions?.coreColumns ?? DEFAULT_CORE_COLUMN_OPTIONS
+    coreSource.forEach((column) => appendColumn(column, 'core'))
+
+    const metadataSource = columnOptions?.metadataColumns ?? []
+    metadataSource.forEach((column) => appendColumn(column, 'metadata'))
+
+    return combined
   }, [columnOptions])
 
   const availableColumnMap = useMemo(() => {
     const map = new Map()
-    coreColumnOptions.forEach((column) => {
-      map.set(column.key, { ...column, type: column.type ?? 'core' })
-    })
-    metadataColumnOptions.forEach((column) => {
-      map.set(column.key, { ...column, type: 'metadata' })
+    columnOptionList.forEach((column) => {
+      map.set(column.key, {
+        ...column,
+        type: column.type === 'metadata' ? 'metadata' : 'core',
+      })
     })
     return map
-  }, [coreColumnOptions, metadataColumnOptions])
+  }, [columnOptionList])
 
   const allowedColumnKeys = useMemo(
     () => Array.from(availableColumnMap.keys()),
@@ -510,11 +524,15 @@ export default function EntityList() {
   const handleResetToBaseline = () => {
     setDraftColumnKeys([...fallbackColumns])
     setColumnSelectionError('')
+    setDraggingColumnKey('')
+    setDropTargetKey('')
   }
 
   const handleUseSystemDefault = () => {
     setDraftColumnKeys([...systemBaselineColumns])
     setColumnSelectionError('')
+    setDraggingColumnKey('')
+    setDropTargetKey('')
   }
 
   const handleToggleColumn = (key) => {
@@ -526,6 +544,10 @@ export default function EntityList() {
           return prev
         }
         setColumnSelectionError('')
+        if (draggingColumnKey === key) {
+          setDraggingColumnKey('')
+          setDropTargetKey('')
+        }
         return prev.filter((value) => value !== key)
       }
       if (!availableColumnMap.has(key)) return prev
@@ -534,19 +556,65 @@ export default function EntityList() {
     })
   }
 
-  const handleMoveColumn = (key, direction) => {
+  const handleColumnDragStart = (key, event) => {
+    if (!selectedFilter) return
+    if (!draftColumnKeys.includes(key)) return
+    setDraggingColumnKey(key)
+    setDropTargetKey('')
+    if (event?.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('text/plain', key)
+    }
+  }
+
+  const handleColumnDragOver = (key, event) => {
+    if (!draggingColumnKey || draggingColumnKey === key) return
+    if (!draftColumnKeys.includes(key)) return
+    if (event) {
+      event.preventDefault()
+    }
+    setDropTargetKey(key)
+  }
+
+  const handleColumnDragLeave = (key) => {
+    if (dropTargetKey === key) {
+      setDropTargetKey('')
+    }
+  }
+
+  const handleColumnDrop = (targetKey) => {
     if (!selectedFilter) return
     setDraftColumnKeys((prev) => {
-      const currentIndex = prev.indexOf(key)
-      if (currentIndex === -1) return prev
-      const nextIndex = currentIndex + direction
-      if (nextIndex < 0 || nextIndex >= prev.length) return prev
-      if (nextIndex === currentIndex) return prev
+      if (!draggingColumnKey || draggingColumnKey === targetKey) return prev
+      const sourceIndex = prev.indexOf(draggingColumnKey)
+      const targetIndex = prev.indexOf(targetKey)
+      if (sourceIndex === -1 || targetIndex === -1) return prev
       const next = [...prev]
-      next.splice(currentIndex, 1)
-      next.splice(nextIndex, 0, key)
+      const [movingKey] = next.splice(sourceIndex, 1)
+      const insertIndex = sourceIndex < targetIndex ? Math.max(targetIndex - 1, 0) : targetIndex
+      next.splice(insertIndex, 0, movingKey)
       return next
     })
+    setDropTargetKey('')
+    setDraggingColumnKey('')
+  }
+
+  const handleColumnDropAtEnd = () => {
+    if (!selectedFilter) return
+    setDraftColumnKeys((prev) => {
+      if (!draggingColumnKey) return prev
+      if (!prev.includes(draggingColumnKey)) return prev
+      const next = prev.filter((value) => value !== draggingColumnKey)
+      next.push(draggingColumnKey)
+      return next
+    })
+    setDropTargetKey('')
+    setDraggingColumnKey('')
+  }
+
+  const handleColumnDragEnd = () => {
+    setDropTargetKey('')
+    setDraggingColumnKey('')
   }
 
   const handleOpenColumnMenu = () => {
@@ -556,9 +624,21 @@ export default function EntityList() {
       const next = !prev
       if (!prev && next) {
         setDraftColumnKeys([...selectedColumnKeys])
+        setDraggingColumnKey('')
+        setDropTargetKey('')
+      }
+      if (prev && !next) {
+        setDraggingColumnKey('')
+        setDropTargetKey('')
       }
       return next
     })
+  }
+
+  const handleCloseColumnMenu = () => {
+    setColumnMenuOpen(false)
+    setDropTargetKey('')
+    setDraggingColumnKey('')
   }
 
   const handleSaveColumns = async (scope) => {
@@ -583,7 +663,7 @@ export default function EntityList() {
           updatedAt: new Date().toISOString(),
         })
         setSelectedColumnKeys([...draftColumnKeys])
-        setColumnMenuOpen(false)
+        handleCloseColumnMenu()
         showToast('Column preference saved', 'success')
       } else {
         setSystemColumnDefault({
@@ -923,210 +1003,208 @@ export default function EntityList() {
                 <span className="btn-label">Columns</span>
               </button>
               {columnMenuOpen && (
-                <div className="entities-column-menu" role="dialog" aria-modal="false">
-                  <div className="entities-column-menu-header">
-                    <div>
-                      <h3>Columns for {activeTypeName || 'selected type'}</h3>
-                      <p className="entities-column-info">
-                        Choose which fields are visible in this list. Saving will store your
-                        personal preference for this entity type.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      onClick={() => setColumnMenuOpen(false)}
-                      title="Close column settings"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                  {columnsLoading ? (
-                    <p className="entities-column-info">Loading columns…</p>
-                  ) : columnsError ? (
-                    <div className="alert error" role="alert">
-                      {columnsError}
-                    </div>
-                  ) : (
-                    <>
-                      <div className="entities-column-section">
-                        <h4>Core Columns</h4>
-                        <div className="entities-column-options">
-                          {coreColumnOptions.map((column) => {
-                            const isSelected = draftColumnKeys.includes(column.key)
-                            const orderIndex = isSelected
-                              ? draftColumnKeys.indexOf(column.key)
-                              : -1
-                            return (
-                              <div
-                                key={column.key}
-                                className={`entities-column-option${
-                                  isSelected ? ' is-selected' : ''
-                                }`}
-                              >
-                                <label className="entities-column-checkbox">
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => handleToggleColumn(column.key)}
-                                  />
-                                  <span>{column.label}</span>
-                                </label>
-                                <div className="entities-column-order">
-                                  {isSelected ? (
-                                    <>
-                                      <span className="entities-column-order-index">
-                                        {orderIndex + 1}
-                                      </span>
-                                      <div className="entities-column-order-buttons">
-                                        <button
-                                          type="button"
-                                          className="icon-btn small"
-                                          onClick={() => handleMoveColumn(column.key, -1)}
-                                          disabled={orderIndex <= 0}
-                                          aria-label={`Move ${column.label} earlier`}
-                                        >
-                                          <ArrowUp size={14} />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="icon-btn small"
-                                          onClick={() => handleMoveColumn(column.key, 1)}
-                                          disabled={orderIndex === draftColumnKeys.length - 1}
-                                          aria-label={`Move ${column.label} later`}
-                                        >
-                                          <ArrowDown size={14} />
-                                        </button>
-                                      </div>
-                                    </>
-                                  ) : (
-                                    <span className="entities-column-order-placeholder">
-                                      Not shown
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
+                <div
+                  className="entities-column-drawer-overlay"
+                  role="presentation"
+                  onClick={handleCloseColumnMenu}
+                >
+                  <div
+                    className="entities-column-drawer"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="column-drawer-title"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div className="entities-column-drawer-header">
+                      <div>
+                        <h3 id="column-drawer-title">
+                          Columns for {activeTypeName || 'selected type'}
+                        </h3>
+                        <p className="entities-column-info">
+                          Choose which fields are visible in this list. Drag the handle to
+                          reorder selected columns and save to keep your personal preference.
+                        </p>
                       </div>
-                      <div className="entities-column-section">
-                        <h4>Metadata Columns</h4>
-                        {metadataColumnOptions.length === 0 ? (
-                          <p className="entities-column-empty">
-                            This entity type has no metadata fields yet.
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={handleCloseColumnMenu}
+                        title="Close column settings"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                    <div className="entities-column-drawer-body">
+                      {columnsLoading ? (
+                        <p className="entities-column-info">Loading columns…</p>
+                      ) : columnsError ? (
+                        <div className="alert error" role="alert">
+                          {columnsError}
+                        </div>
+                      ) : (
+                        <>
+                          <p className="entities-column-hint">
+                            Checked columns appear in the table. Drag the grip icon to adjust
+                            their display order.
                           </p>
-                        ) : (
-                          <div className="entities-column-options">
-                            {metadataColumnOptions.map((column) => {
+                          <ul className="entities-column-list">
+                            {columnOptionList.map((column) => {
                               const isSelected = draftColumnKeys.includes(column.key)
-                              const orderIndex = isSelected
-                                ? draftColumnKeys.indexOf(column.key)
-                                : -1
+                              const isDragging = draggingColumnKey === column.key
+                              const isDropTarget = dropTargetKey === column.key
+                              const checkboxId = `column-option-${column.key}`
+                              const badgeLabel =
+                                column.type === 'metadata' ? 'Metadata' : 'Core'
                               return (
-                                <div
+                                <li
                                   key={column.key}
-                                  className={`entities-column-option${
+                                  className={`entities-column-item${
                                     isSelected ? ' is-selected' : ''
+                                  }${isDragging ? ' is-dragging' : ''}${
+                                    isDropTarget ? ' is-drop-target' : ''
                                   }`}
+                                  onDragOver={(event) =>
+                                    handleColumnDragOver(column.key, event)
+                                  }
+                                  onDragLeave={() => handleColumnDragLeave(column.key)}
+                                  onDrop={(event) => {
+                                    event.preventDefault()
+                                    handleColumnDrop(column.key)
+                                  }}
+                                  onDragEnd={handleColumnDragEnd}
                                 >
-                                  <label className="entities-column-checkbox">
+                                  <div className="entities-column-item-main">
                                     <input
+                                      id={checkboxId}
                                       type="checkbox"
                                       checked={isSelected}
                                       onChange={() => handleToggleColumn(column.key)}
                                     />
-                                    <span>{column.label}</span>
-                                  </label>
-                                  <div className="entities-column-order">
-                                    {isSelected ? (
-                                      <>
-                                        <span className="entities-column-order-index">
-                                          {orderIndex + 1}
-                                        </span>
-                                        <div className="entities-column-order-buttons">
-                                          <button
-                                            type="button"
-                                            className="icon-btn small"
-                                            onClick={() => handleMoveColumn(column.key, -1)}
-                                            disabled={orderIndex <= 0}
-                                            aria-label={`Move ${column.label} earlier`}
-                                          >
-                                            <ArrowUp size={14} />
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="icon-btn small"
-                                            onClick={() => handleMoveColumn(column.key, 1)}
-                                            disabled={orderIndex === draftColumnKeys.length - 1}
-                                            aria-label={`Move ${column.label} later`}
-                                          >
-                                            <ArrowDown size={14} />
-                                          </button>
-                                        </div>
-                                      </>
-                                    ) : (
-                                      <span className="entities-column-order-placeholder">
-                                        Not shown
-                                      </span>
-                                    )}
+                                    <label htmlFor={checkboxId} className="entities-column-name">
+                                      {column.label}
+                                    </label>
+                                    <span className="entities-column-type-badge">
+                                      {badgeLabel}
+                                    </span>
                                   </div>
-                                </div>
+                                  <button
+                                    type="button"
+                                    className={`entities-column-handle${
+                                      isSelected ? '' : ' is-disabled'
+                                    }`}
+                                    title={
+                                      isSelected
+                                        ? 'Drag to reorder columns'
+                                        : 'Select the column to enable reordering'
+                                    }
+                                    aria-label={
+                                      isSelected
+                                        ? `Drag ${column.label} to change its order`
+                                        : `Select ${column.label} to enable dragging`
+                                    }
+                                    draggable={isSelected}
+                                    onDragStart={(event) =>
+                                      handleColumnDragStart(column.key, event)
+                                    }
+                                    onDragEnd={handleColumnDragEnd}
+                                  >
+                                    <GripVertical size={18} />
+                                  </button>
+                                </li>
                               )
                             })}
+                          </ul>
+                          {draggingColumnKey && (
+                            <div
+                              className={`entities-column-dropzone${
+                                dropTargetKey === '__end' ? ' is-active' : ''
+                              }`}
+                              onDragOver={(event) => {
+                                if (!draggingColumnKey) return
+                                event.preventDefault()
+                                setDropTargetKey('__end')
+                              }}
+                              onDragLeave={() => {
+                                if (dropTargetKey === '__end') {
+                                  setDropTargetKey('')
+                                }
+                              }}
+                              onDrop={(event) => {
+                                event.preventDefault()
+                                handleColumnDropAtEnd()
+                              }}
+                            >
+                              Drop here to move column to the end
+                            </div>
+                          )}
+                          {columnOptionList.every((column) => column.type !== 'metadata') && (
+                            <p className="entities-column-empty">
+                              This entity type does not have metadata fields yet.
+                            </p>
+                          )}
+                          {columnSelectionError && (
+                            <p className="entities-column-error">{columnSelectionError}</p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    <div className="entities-column-drawer-footer">
+                      <div className="entities-column-footer-left">
+                        <button
+                          type="button"
+                          className="btn secondary"
+                          onClick={handleResetToBaseline}
+                          disabled={columnsLoading || draftMatchesFallback}
+                        >
+                          Reset
+                        </button>
+                        <button
+                          type="button"
+                          className="btn secondary"
+                          onClick={handleUseSystemDefault}
+                          disabled={
+                            columnsLoading || !hasSystemDefault || draftMatchesSystem
+                          }
+                          title={
+                            hasSystemDefault
+                              ? 'Apply the system default column set.'
+                              : 'No system default has been set yet.'
+                          }
+                        >
+                          Use system default
+                        </button>
+                      </div>
+                      <div className="entities-column-footer-right">
+                        <button
+                          type="button"
+                          className="btn submit"
+                          onClick={() => handleSaveColumns(COLUMN_SCOPE_USER)}
+                          disabled={columnsLoading || isSavingUserColumns || !isUserDirty}
+                        >
+                          {isSavingUserColumns ? 'Saving…' : 'Save for me'}
+                        </button>
+                        {isSystemAdmin && (
+                          <div className="entities-column-admin">
+                            <span className="entities-column-admin-label">
+                              System settings (admin only)
+                            </span>
+                            <button
+                              type="button"
+                              className="btn secondary"
+                              onClick={() => handleSaveColumns(COLUMN_SCOPE_SYSTEM)}
+                              disabled={
+                                columnsLoading || isSavingSystemColumns || !isSystemDirty
+                              }
+                              title="Set these columns as the default for all users"
+                            >
+                              {isSavingSystemColumns
+                                ? 'Saving…'
+                                : 'Set as system default'}
+                            </button>
                           </div>
                         )}
                       </div>
-                      {columnSelectionError && (
-                        <p className="entities-column-error">{columnSelectionError}</p>
-                      )}
-                    </>
-                  )}
-                  <div className="entities-column-actions">
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      onClick={handleResetToBaseline}
-                      disabled={columnsLoading || draftMatchesFallback}
-                    >
-                      Reset to basic view
-                    </button>
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      onClick={handleUseSystemDefault}
-                      disabled={
-                        columnsLoading || !hasSystemDefault || draftMatchesSystem
-                      }
-                      title={
-                        hasSystemDefault
-                          ? 'Apply the system default column set.'
-                          : 'No system default has been set yet.'
-                      }
-                    >
-                      Use system default
-                    </button>
-                    <button
-                      type="button"
-                      className="btn submit"
-                      onClick={() => handleSaveColumns(COLUMN_SCOPE_USER)}
-                      disabled={columnsLoading || isSavingUserColumns || !isUserDirty}
-                    >
-                      {isSavingUserColumns ? 'Saving…' : 'Save for me'}
-                    </button>
-                    {isSystemAdmin && (
-                      <button
-                        type="button"
-                        className="btn secondary"
-                        onClick={() => handleSaveColumns(COLUMN_SCOPE_SYSTEM)}
-                        disabled={
-                          columnsLoading || isSavingSystemColumns || !isSystemDirty
-                        }
-                        title="Set these columns as the default for all users."
-                      >
-                        {isSavingSystemColumns ? 'Saving…' : 'Set as system default'}
-                      </button>
-                    )}
+                    </div>
                   </div>
                 </div>
               )}
