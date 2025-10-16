@@ -1,6 +1,6 @@
 // src/modules/relationships3/ui/EntitySearchSelect.jsx
 import React, { useState, useEffect, useRef, useMemo } from 'react'
-import { searchEntities } from '../../../api/entities.js'
+import { searchEntities, getEntity } from '../../../api/entities.js'
 import './EntitySearchSelect.css'
 
 export default function EntitySearchSelect({
@@ -20,18 +20,12 @@ export default function EntitySearchSelect({
   const containerRef = useRef(null)
   const debounceRef = useRef(null)
 
-  // ✅ Stable serialised version of allowedTypeIds for API use
-  const allowedTypeIdsMemo = useMemo(() => [...allowedTypeIds], [JSON.stringify(allowedTypeIds)])
+  // --- Stable memo for typeIds
+  const allowedTypeIdsMemo = useMemo(
+    () => [...allowedTypeIds],
+    [JSON.stringify(allowedTypeIds)]
+  )
 
-  // 🔁 Reset when cleared externally
-  useEffect(() => {
-    if (!value) {
-      setSelectedEntity(null)
-      setQuery('')
-    }
-  }, [value])
-
-  // ✅ Builds safe “Name (Type)” label
   const getDisplayName = (entity) => {
     if (!entity) return ''
     const type =
@@ -42,7 +36,43 @@ export default function EntitySearchSelect({
     return type ? `${entity.name} (${type})` : entity.name
   }
 
-  // ✅ Debounced API call, no dependencies (safe)
+  // --- Sync only when parent value *actually changes*
+  useEffect(() => {
+    if (!value) {
+      setSelectedEntity(null)
+      setQuery('')
+      return
+    }
+
+    // If full entity object provided
+    if (typeof value === 'object' && value.id) {
+      const display = getDisplayName(value)
+      if (!selectedEntity || selectedEntity.id !== value.id) {
+        setSelectedEntity(value)
+        setQuery(display)
+      }
+      return
+    }
+
+    // If only ID provided
+    if (typeof value === 'string') {
+      if (selectedEntity?.id === value) return
+      ;(async () => {
+        try {
+          const res = await getEntity(value)
+          const data = res?.data || res
+          if (data?.id) {
+            setSelectedEntity(data)
+            setQuery(getDisplayName(data))
+          }
+        } catch (err) {
+          console.warn('Entity lookup failed', err)
+        }
+      })()
+    }
+  }, [value])
+
+  // --- Debounced search
   const performSearch = async (term) => {
     if (!worldId || term.length < 2) return setResults([])
     try {
@@ -63,22 +93,16 @@ export default function EntitySearchSelect({
     }
   }
 
-  // ✅ Smooth debounce with cleanup
   useEffect(() => {
-    if (selectedEntity || !query.trim()) {
-      setResults([])
-      return
-    }
-
+    if (!query.trim() || selectedEntity) return
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
       performSearch(query.trim())
     }, 400)
-
     return () => clearTimeout(debounceRef.current)
-  }, [query, selectedEntity, worldId]) // safe fixed deps
+  }, [query, worldId, selectedEntity])
 
-  // ✅ Close dropdown on outside click
+  // --- Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (containerRef.current && !containerRef.current.contains(e.target)) {
@@ -113,15 +137,17 @@ export default function EntitySearchSelect({
           type="text"
           value={query}
           onChange={(e) => {
-            if (!selectedEntity) {
-              setQuery(e.target.value)
-              setOpen(true)
-            }
+            const val = e.target.value
+            setQuery(val)
+            setSelectedEntity(null) // release lock
+            setOpen(true)
+          }}
+          onFocus={() => {
+            if (!disabled) setOpen(true)
           }}
           disabled={disabled}
           placeholder={placeholder}
-          className={`entity-search-input ${selectedEntity ? 'selected' : ''}`}
-          readOnly={!!selectedEntity}
+          className="entity-search-input"
         />
 
         {selectedEntity && (
@@ -144,7 +170,7 @@ export default function EntitySearchSelect({
             <li
               key={entity.id}
               onClick={() => handleSelect(entity)}
-              className={value === entity.id ? 'selected' : ''}
+              className={selectedEntity?.id === entity.id ? 'selected' : ''}
             >
               {getDisplayName(entity)}
             </li>

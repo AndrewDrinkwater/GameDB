@@ -4,6 +4,8 @@ import { getWorldEntities } from '../../api/entities.js'
 import { getRelationshipTypes } from '../../api/entityRelationshipTypes.js'
 import { createRelationship } from '../../api/entityRelationships.js'
 import EntitySearchSelect from './ui/EntitySearchSelect.jsx'
+import InlineEntityCreator from './ui/InlineEntityCreator.jsx'
+import { getEntity } from '../../api/entities.js' // make sure this import is at top
 
 export default function RelationshipBuilder({
   worldId,
@@ -19,6 +21,8 @@ export default function RelationshipBuilder({
   const [entity1, setEntity1] = useState(null)
   const [entity2, setEntity2] = useState(null)
   const [relationshipTypeId, setRelationshipTypeId] = useState('')
+  const [showCreator, setShowCreator] = useState(false)
+
 
   // --- Load entities + relationship types
   useEffect(() => {
@@ -121,16 +125,51 @@ export default function RelationshipBuilder({
       </div>
 
       {/* ENTITY 2 */}
-      <div className="form-row">
+      <div className="form-row entity2-section">
         <EntitySearchSelect
           worldId={worldId}
           label="Entity 2"
           value={entity2?.id || ''}
-          onChange={(entity) => {
-            setEntity2(entity)
-            setRelationshipTypeId('')
+          onChange={(id) => {
+            console.log('🟩 Entity 2 manually selected:', id)
+            const found = entities.find((e) => e.id === id) || null
+            setEntity2(found)
           }}
         />
+
+        {!showCreator && (
+          <button
+            type="button"
+            className="btn small tertiary"
+            onClick={() => setShowCreator(true)}
+            style={{ alignSelf: 'flex-start', marginTop: '0.4rem' }}
+          >
+            + Create new entity
+          </button>
+        )}
+
+        {showCreator && (
+          <InlineEntityCreator
+            worldId={worldId}
+                onCreated={async (newEntity) => {
+                  console.log('✅ Inline entity created:', newEntity)
+                  setEntities((prev) => [...prev, newEntity])
+
+                  try {
+                    // use authenticated API helper
+                    const res = await getEntity(newEntity.id)
+                    const fullEntity = res?.data || res
+                    setEntity2(fullEntity)
+                    console.log('🎯 Auto-selected new entity as Entity 2:', fullEntity.name)
+                  } catch (err) {
+                    console.warn('⚠️ Could not fetch newly created entity; using local copy', err)
+                    setEntity2(newEntity)
+                  }
+
+                  setShowCreator(false)
+                }}
+          />
+        )}
       </div>
 
       {/* RELATIONSHIP TYPE */}
