@@ -11,27 +11,15 @@ import { useAuth } from '../../context/AuthContext.jsx'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import DrawerPanel from '../../components/DrawerPanel.jsx'
 import { useFeatureFlag } from '../../context/FeatureFlagContext.jsx'
-import EntityRelationshipForm from './EntityRelationshipForm.jsx'
-import RelationshipDrawerV2 from './RelationshipDrawerV2.jsx'
+import RelationshipBuilder from '../../modules/relationships3/RelationshipBuilder.jsx'
 
 const MANAGER_ROLES = new Set(['system_admin'])
-
-const createRelationshipFooterState = (mode = 'create') => ({
-  mode,
-  submitLabel: mode === 'edit' ? 'Save Changes' : 'Create Relationship',
-  submitDisabled: false,
-  cancelDisabled: false,
-})
 
 export default function EntityRelationshipList() {
   const { user, token, sessionReady } = useAuth()
   const { selectedCampaign } = useCampaignContext()
   const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
-
-  const RelationshipBuilderComponent = relBuilderV2Enabled
-    ? RelationshipDrawerV2
-    : EntityRelationshipForm
-
+  const [showForm, setShowForm] = useState(false)
   const [relationships, setRelationships] = useState([])
   const [relationshipTypes, setRelationshipTypes] = useState([])
   const [entityLookup, setEntityLookup] = useState({})
@@ -41,13 +29,9 @@ export default function EntityRelationshipList() {
   const [loadingTypes, setLoadingTypes] = useState(false)
   const [listError, setListError] = useState('')
 
-  const [panelOpen, setPanelOpen] = useState(false)
   const [editingRelationshipId, setEditingRelationshipId] = useState(null)
   const [deletingId, setDeletingId] = useState('')
   const [toast, setToast] = useState(null)
-  const [relationshipFormUiState, setRelationshipFormUiState] = useState(() =>
-    createRelationshipFooterState('create'),
-  )
 
   const [typeFilter, setTypeFilter] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -226,11 +210,10 @@ export default function EntityRelationshipList() {
 
   useEffect(() => {
     if (previousWorldIdRef.current !== worldId) {
-      if (panelOpen) {
-        setPanelOpen(false)
+      if (showForm) {
+        setShowForm(false)
         setEditingRelationshipId(null)
       }
-      setRelationshipFormUiState(createRelationshipFooterState('create'))
       setToast(null)
       setTypeFilter('')
       setSearchTerm('')
@@ -239,7 +222,8 @@ export default function EntityRelationshipList() {
       setEntityLookup({})
       previousWorldIdRef.current = worldId
     }
-  }, [worldId, panelOpen])
+  }, [worldId, showForm])
+
 
   const relationshipTypeMap = useMemo(() => {
     const map = new Map()
@@ -399,21 +383,18 @@ export default function EntityRelationshipList() {
   const openCreate = () => {
     if (!canManage || !worldId) return
     setEditingRelationshipId(null)
-    setRelationshipFormUiState(createRelationshipFooterState('create'))
-    setPanelOpen(true)
+    setShowForm(true)
   }
 
   const openEdit = (relationship) => {
     if (!canManage || !relationship?.id) return
     setEditingRelationshipId(relationship.id)
-    setRelationshipFormUiState(createRelationshipFooterState('edit'))
     setPanelOpen(true)
   }
 
   const closePanel = () => {
     setPanelOpen(false)
     setEditingRelationshipId(null)
-    setRelationshipFormUiState(createRelationshipFooterState('create'))
   }
 
   const handleRelationshipFormStateChange = (nextState) => {
@@ -653,42 +634,23 @@ export default function EntityRelationshipList() {
       )}
 
       <DrawerPanel
-        isOpen={panelOpen}
-        onClose={closePanel}
-        title={relationshipDrawerTitle}
-        width={420}
-        footerActions={
-          <>
-            <button
-              type="button"
-              className="btn cancel"
-              onClick={closePanel}
-              disabled={relationshipFormUiState.cancelDisabled}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="btn submit"
-              form={relationshipFormIdRef.current}
-              disabled={relationshipFormUiState.submitDisabled}
-            >
-              {relationshipFormUiState.submitLabel}
-            </button>
-          </>
-        }
-      >
-        <RelationshipBuilderComponent
-          worldId={worldId}
-          relationshipId={editingRelationshipId}
-          onCancel={closePanel}
-          onSaved={handleFormSaved}
-          onToast={showToast}
-          formId={relationshipFormIdRef.current}
-          onStateChange={handleRelationshipFormStateChange}
-          hideActions
-        />
-      </DrawerPanel>
+  isOpen={showForm}
+  onClose={() => setShowForm(false)}
+  title="Add Relationship"
+  description="Link two entities in this world."
+  size="lg"
+>
+  <RelationshipBuilder
+    worldId={worldId}
+    existingRelationships={relationships || []}
+    onCreated={() => {
+      setShowForm(false)
+      loadRelationships()
+    }}
+    onCancel={() => setShowForm(false)}
+  />
+</DrawerPanel>
+
     </section>
   )
 }

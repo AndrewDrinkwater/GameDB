@@ -803,125 +803,95 @@ export default function EntityDetailPage() {
     )}
 
     {/* RELATIONSHIPS TAB */}
-    {activeTab === 'relationships' && (
-      <div className="entity-tab-content">
-        {toast && (
-          <div className={`toast-banner ${toast.tone}`} role="status">
-            <span>{toast.message}</span>
-            {toast.link ? (
-              <Link to={toast.link.to} className="toast-banner-link">
-                {toast.link.label}
-              </Link>
-            ) : null}
-          </div>
-        )}
-
-        <section className="entity-card">
-          <div className="entity-card-header">
-            <h2 className="entity-card-title">Relationships</h2>
-            {canEdit && (
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setShowRelationshipForm(true)}
-              >
-                Add relationship
-              </button>
-            )}
-          </div>
-
-          <div className="entity-card-body">
-            <div className="entity-relationships-toggle">
-              <p>{relationshipsToggleLabel}</p>
-              <button
-                type="button"
-                className="btn secondary"
-                onClick={() =>
-                  setRelationshipPerspective((prev) =>
-                    prev === 'source' ? 'target' : 'source'
-                  )
-                }
-              >
-                {relationshipsToggleActionLabel}
-              </button>
-            </div>
-
-            {relationshipsLoading ? (
-              <p>Loading relationships...</p>
-            ) : relationshipsError ? (
-              <div className="alert error" role="alert">
-                {relationshipsError}
-              </div>
-            ) : relationshipsToDisplay.length === 0 ? (
-              <p className="entity-empty-state">{relationshipsEmptyMessage}</p>
-            ) : (
-              <div className="entity-relationships-table-wrapper">
-                <table className="entity-relationships-table">
-                  <thead>
-                    <tr>
-                      <th>Relationship</th>
-                      <th>Type</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {relationshipsToDisplay.map((relationship) => (
-                      <tr key={relationship.id}>
-                        <td>
-                          {relationshipPerspective === 'source' ? (
-                            <>
-                              <span className="entity-relationship-primary">{entity.name}</span>{' '}
-                              {getRelationshipLabel(relationship)}{' '}
-                              {relationship.toId ? (
-                                <span className="entity-link-with-preview">
-                                  <Link
-                                    to={`/entities/${relationship.toId}`}
-                                    className="entity-relationship-link"
-                                  >
-                                    {relationship.toName || '—'}
-                                  </Link>
-                                  <EntityInfoPreview
-                                    entityId={relationship.toId}
-                                    entityName={relationship.toName || 'entity'}
-                                  />
-                                </span>
-                              ) : (
-                                <span>{relationship.toName || '—'}</span>
-                              )}
-                            </>
-                          ) : (
-                            <>
-                              {relationship.fromId ? (
-                                <span className="entity-link-with-preview">
-                                  <Link
-                                    to={`/entities/${relationship.fromId}`}
-                                    className="entity-relationship-link"
-                                  >
-                                    {relationship.fromName || '—'}
-                                  </Link>
-                                  <EntityInfoPreview
-                                    entityId={relationship.fromId}
-                                    entityName={relationship.fromName || 'entity'}
-                                  />
-                                </span>
-                              ) : (
-                                <span>{relationship.fromName || '—'}</span>
-                              )}{' '}
-                              {getRelationshipLabel(relationship)}{' '}
-                              <span className="entity-relationship-primary">{entity.name}</span>
-                            </>
-                          )}
-                        </td>
-                        <td>{relationship.typeName || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </section>
+{activeTab === 'relationships' && (
+  <div className="entity-tab-content">
+    {toast && (
+      <div className={`toast-banner ${toast.tone}`} role="status">
+        <span>{toast.message}</span>
+        {toast.link ? (
+          <Link to={toast.link.to} className="toast-banner-link">
+            {toast.link.label}
+          </Link>
+        ) : null}
       </div>
     )}
+
+    <section className="entity-card">
+      <div className="entity-card-header">
+        <h2 className="entity-card-title">Relationships</h2>
+        {canEdit && (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setShowRelationshipForm(true)}
+          >
+            Add relationship
+          </button>
+        )}
+      </div>
+
+      <div className="entity-card-body">
+        {relationshipsLoading ? (
+          <p>Loading relationships...</p>
+        ) : relationshipsError ? (
+          <div className="alert error" role="alert">
+            {relationshipsError}
+          </div>
+        ) : normalisedRelationships.length === 0 ? (
+          <p className="entity-empty-state">
+            No relationships found for this entity.
+          </p>
+        ) : (
+          <div className="entity-relationships-table-wrapper">
+            <table className="entity-relationships-table">
+              <thead>
+                <tr>
+                  <th>Relationship</th>
+                  <th>Type</th>
+                  <th>Direction</th>
+                </tr>
+              </thead>
+              <tbody>
+                {normalisedRelationships.map((relationship) => {
+                  const isSource =
+                    String(relationship.fromId) === String(entity.id)
+                  const relatedName = isSource
+                    ? relationship.toName
+                    : relationship.fromName
+                  const relatedId = isSource
+                    ? relationship.toId
+                    : relationship.fromId
+
+                  return (
+                    <tr key={relationship.id}>
+                      <td>
+                        <span className="entity-link-with-preview">
+                          <Link
+                            to={`/entities/${relatedId}`}
+                            className="entity-relationship-link"
+                          >
+                            {relatedName || '—'}
+                          </Link>
+                          <EntityInfoPreview
+                            entityId={relatedId}
+                            entityName={relatedName || 'entity'}
+                          />
+                        </span>
+                      </td>
+                      <td>{relationship.typeName || '—'}</td>
+                      <td>{isSource ? 'Outgoing' : 'Incoming'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
+  </div>
+)}
+
 
     {/* ACCESS TAB */}
     {activeTab === 'access' && (
