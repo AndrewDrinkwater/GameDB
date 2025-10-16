@@ -1,0 +1,224 @@
+/* src/modules/relationships3/ui/EntitySearchSelect.css */
+
+/* ----------------------------- */
+/* Shared Form & Layout Styling  */
+/* ----------------------------- */
+.relationship-builder-v3 {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--bg-surface, #fff);
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #ddd);
+}
+
+.relationship-builder-v3 h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: var(--text-primary, #222);
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.form-row label {
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: var(--text-muted, #666);
+}
+
+/* Consistent input styles (for relationship type dropdown) */
+.form-row select {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.9rem;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 6px;
+  background: var(--bg-input, #fff);
+  color: var(--text-primary, #222);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-row select:hover,
+.form-row select:focus {
+  border-color: var(--accent, #4a90e2);
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.15);
+}
+
+/* Actions */
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.form-actions .btn {
+  padding: 0.5rem 0.9rem;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.form-actions .btn.primary {
+  background: var(--accent, #4a90e2);
+  color: #fff;
+  border: 1px solid var(--accent, #4a90e2);
+}
+
+.form-actions .btn.primary:hover {
+  background: var(--accent-hover, #3a7bd5);
+}
+
+.form-actions .btn.secondary {
+  background: transparent;
+  border: 1px solid var(--border-color, #ccc);
+  color: var(--text-primary, #333);
+}
+
+.form-actions .btn.secondary:hover {
+  border-color: var(--accent, #4a90e2);
+  color: var(--accent, #4a90e2);
+}
+
+/* Relationship direction labels (“Entity 1 will be FROM”) */
+.relationship-direction {
+  font-size: 0.85rem;
+  color: var(--text-muted, #666);
+  font-style: italic;
+  margin-top: -0.3rem;
+  margin-bottom: 0.3rem;
+  padding-left: 0.2rem;
+}
+
+/* ----------------------------- */
+/* Entity Search Select Styling  */
+/* ----------------------------- */
+.entity-search-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  position: relative;
+  width: 100%;
+  font-family: var(--font-ui, 'Inter', system-ui, sans-serif);
+}
+
+.entity-search-select label {
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: var(--text-muted, #666);
+}
+
+.entity-search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.entity-search-input {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  padding-right: 2rem;
+  font-size: 0.9rem;
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 6px;
+  background: var(--bg-input, #fff);
+  color: var(--text-primary, #222);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+
+.entity-search-input:hover:not(:disabled),
+.entity-search-input:focus {
+  border-color: var(--accent, #4a90e2);
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.15);
+}
+
+.entity-search-input.selected {
+  background: var(--bg-selected, #f8f9fb);
+  border-color: var(--border-color, #ccc);
+  color: var(--text-secondary, #333);
+}
+
+.entity-search-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.clear-btn {
+  position: absolute;
+  right: 0.5rem;
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #888);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.2s ease;
+}
+
+.clear-btn:hover {
+  color: var(--accent, #4a90e2);
+}
+
+.entity-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--bg-surface, #fff);
+  border: 1px solid var(--border-color, #ccc);
+  border-radius: 6px;
+  margin-top: 4px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+  z-index: 20;
+  list-style: none;
+  padding: 0;
+}
+
+.entity-results li {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-primary, #222);
+  transition: background 0.15s, color 0.15s;
+}
+
+.entity-results li:hover {
+  background: var(--bg-hover, #f1f5fb);
+}
+
+.entity-results li.selected {
+  background: var(--accent-light, rgba(74, 144, 226, 0.15));
+  color: var(--accent, #4a90e2);
+  font-weight: 500;
+}
+
+.small.text-muted {
+  font-size: 0.8rem;
+  color: var(--text-muted, #777);
+  margin-top: 0.25rem;
+}
+
+/* Subtle scrollbar */
+.entity-results::-webkit-scrollbar {
+  width: 6px;
+}
+.entity-results::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+.entity-results::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}

@@ -12,6 +12,8 @@ import { useAuth } from '../../context/AuthContext.jsx'
 import { useFeatureFlag } from '../../context/FeatureFlagContext.jsx'
 import EntityRelationshipForm from '../relationships/EntityRelationshipForm.jsx'
 import RelationshipDrawerV2 from '../relationships/RelationshipDrawerV2.jsx'
+import RelationshipBuilder from '../../modules/relationships3/RelationshipBuilder.jsx'
+
 
 const VISIBILITY_LABELS = {
   hidden: 'Hidden',
@@ -746,203 +748,201 @@ export default function EntityDetailPage() {
   return (
     <div className="entity-detail-page">
       <DrawerPanel
-        isOpen={showRelationshipForm}
-        onClose={() => setShowRelationshipForm(false)}
-        title="Add relationship"
-        description="Link this entity to others without leaving the page."
-        size="lg"
-      >
-        <RelationshipBuilderComponent
-          worldId={worldId}
-          onCancel={() => setShowRelationshipForm(false)}
-          onSaved={handleRelationshipCreated}
-          onToast={handleRelationshipToast}
-          defaultFromEntityId={entity?.id}
-          defaultToEntityId={entity?.id}
-          lockFromEntity
-          lockToEntity
-          defaultPerspective={relationshipPerspective}
-          currentEntityId={entity?.id}
-          currentEntityTypeId={
-            entity?.entity_type_id ??
-            entity?.entityTypeId ??
-            entity?.entity_type?.id ??
-            entity?.entityType?.id ??
-            ''
-          }
-        />
-      </DrawerPanel>
+  isOpen={showRelationshipForm}
+  onClose={() => setShowRelationshipForm(false)}
+  title="Add relationship"
+  description="Link this entity to others without leaving the page."
+  size="lg"
+>
+  <RelationshipBuilder
+    worldId={worldId}
+    onCreated={() => {
+      setShowRelationshipForm(false)
+      loadRelationships()
+    }}
+    onCancel={() => setShowRelationshipForm(false)}
+  />
+</DrawerPanel>
 
-      <div className="entity-detail-topbar">
-        <div className="entity-detail-topbar-inner">
-          <EntityHeader
-            name={entity.name}
-            onBack={handleBack}
-            canEdit={canEdit}
-            isEditing={isEditing}
-            onToggleEdit={handleEditToggle}
-          />
-          <TabNav tabs={tabItems} activeTab={activeTab} onChange={setActiveTab} />
-        </div>
+{/* --- ENTITY DETAIL TOP BAR --- */}
+<div className="entity-detail-topbar">
+  <div className="entity-detail-topbar-inner">
+    <EntityHeader
+      name={entity.name}
+      onBack={handleBack}
+      canEdit={canEdit}
+      isEditing={isEditing}
+      onToggleEdit={handleEditToggle}
+    />
+    <TabNav tabs={tabItems} activeTab={activeTab} onChange={setActiveTab} />
+  </div>
+</div>
+
+{/* --- MAIN SHELL --- */}
+<div className="entity-detail-shell">
+  <div className="entity-detail-body" role="tabpanel">
+    {/* DOSSIER TAB */}
+    {activeTab === 'dossier' && (
+      <div className="entity-tab-content">
+        {formError && (
+          <section className="entity-card">
+            <div className="alert error" role="alert">
+              {formError}
+            </div>
+          </section>
+        )}
+
+        {isEditing && canEdit ? (
+          <section className="entity-card entity-card--form">
+            <FormRenderer
+              schema={editSchema}
+              initialData={editInitialData || {}}
+              onSubmit={handleUpdate}
+              onCancel={() => setIsEditing(false)}
+            />
+          </section>
+        ) : (
+          renderSchemaSections(dossierSchema, viewData, 'dossier')
+        )}
       </div>
-      <div className="entity-detail-shell">
-        <div className="entity-detail-body" role="tabpanel">
-          {activeTab === 'dossier' && (
-            <div className="entity-tab-content">
-              {formError ? (
-                <section className="entity-card">
-                  <div className="alert error" role="alert">
-                    {formError}
-                  </div>
-                </section>
-              ) : null}
+    )}
 
-              {isEditing && canEdit ? (
-                <section className="entity-card entity-card--form">
-                  <FormRenderer
-                    schema={editSchema}
-                    initialData={editInitialData || {}}
-                    onSubmit={handleUpdate}
-                    onCancel={() => setIsEditing(false)}
-                  />
-                </section>
-              ) : (
-                renderSchemaSections(dossierSchema, viewData, 'dossier')
-              )}
+    {/* RELATIONSHIPS TAB */}
+    {activeTab === 'relationships' && (
+      <div className="entity-tab-content">
+        {toast && (
+          <div className={`toast-banner ${toast.tone}`} role="status">
+            <span>{toast.message}</span>
+            {toast.link ? (
+              <Link to={toast.link.to} className="toast-banner-link">
+                {toast.link.label}
+              </Link>
+            ) : null}
+          </div>
+        )}
+
+        <section className="entity-card">
+          <div className="entity-card-header">
+            <h2 className="entity-card-title">Relationships</h2>
+            {canEdit && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShowRelationshipForm(true)}
+              >
+                Add relationship
+              </button>
+            )}
+          </div>
+
+          <div className="entity-card-body">
+            <div className="entity-relationships-toggle">
+              <p>{relationshipsToggleLabel}</p>
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() =>
+                  setRelationshipPerspective((prev) =>
+                    prev === 'source' ? 'target' : 'source'
+                  )
+                }
+              >
+                {relationshipsToggleActionLabel}
+              </button>
             </div>
-          )}
 
-          {activeTab === 'relationships' && (
-            <div className="entity-tab-content">
-              {toast && (
-                <div className={`toast-banner ${toast.tone}`} role="status">
-                  <span>{toast.message}</span>
-                  {toast.link ? (
-                    <Link to={toast.link.to} className="toast-banner-link">
-                      {toast.link.label}
-                    </Link>
-                  ) : null}
-                </div>
-              )}
-              <section className="entity-card">
-                <div className="entity-card-header">
-                  <h2 className="entity-card-title">Relationships</h2>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => setShowRelationshipForm(true)}
-                    >
-                      Add relationship
-                    </button>
-                  )}
-                </div>
-                <div className="entity-card-body">
-                  <div className="entity-relationships-toggle">
-                    <p>{relationshipsToggleLabel}</p>
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      onClick={() =>
-                        setRelationshipPerspective((prev) =>
-                          prev === 'source' ? 'target' : 'source',
-                        )
-                      }
-                    >
-                      {relationshipsToggleActionLabel}
-                    </button>
-                  </div>
-
-                  {relationshipsLoading ? (
-                    <p>Loading relationships...</p>
-                  ) : relationshipsError ? (
-                    <div className="alert error" role="alert">
-                      {relationshipsError}
-                    </div>
-                  ) : relationshipsToDisplay.length === 0 ? (
-                    <p className="entity-empty-state">{relationshipsEmptyMessage}</p>
-                  ) : (
-                    <div className="entity-relationships-table-wrapper">
-                      <table className="entity-relationships-table">
-                        <thead>
-                          <tr>
-                            <th>Relationship</th>
-                            <th>Type</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {relationshipsToDisplay.map((relationship) => (
-                            <tr key={relationship.id}>
-                              <td>
-                                {relationshipPerspective === 'source' ? (
-                                  <>
-                                    <span className="entity-relationship-primary">{entity.name}</span>{' '}
-                                    {getRelationshipLabel(relationship)}{' '}
-                                    {relationship.toId ? (
-                                      <span className="entity-link-with-preview">
-                                        <Link
-                                          to={`/entities/${relationship.toId}`}
-                                          className="entity-relationship-link"
-                                        >
-                                          {relationship.toName || '—'}
-                                        </Link>
-                                        <EntityInfoPreview
-                                          entityId={relationship.toId}
-                                          entityName={relationship.toName || 'entity'}
-                                        />
-                                      </span>
-                                    ) : (
-                                      <span>{relationship.toName || '—'}</span>
-                                    )}
-                                  </>
-                                ) : (
-                                  <>
-                                    {relationship.fromId ? (
-                                      <span className="entity-link-with-preview">
-                                        <Link
-                                          to={`/entities/${relationship.fromId}`}
-                                          className="entity-relationship-link"
-                                        >
-                                          {relationship.fromName || '—'}
-                                        </Link>
-                                        <EntityInfoPreview
-                                          entityId={relationship.fromId}
-                                          entityName={relationship.fromName || 'entity'}
-                                        />
-                                      </span>
-                                    ) : (
-                                      <span>{relationship.fromName || '—'}</span>
-                                    )}{' '}
-                                    {getRelationshipLabel(relationship)}{' '}
-                                    <span className="entity-relationship-primary">{entity.name}</span>
-                                  </>
-                                )}
-                              </td>
-                              <td>{relationship.typeName || '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              </section>
-            </div>
-          )}
-
-          {activeTab === 'access' && (
-            <div className="entity-tab-content">
-              {renderSchemaSections(accessSchema, viewData, 'access')}
-            </div>
-          )}
-
-          {activeTab === 'system' && (
-            <div className="entity-tab-content">
-              {renderSchemaSections(systemSchema, viewData, 'system')}
-            </div>
-          )}
-        </div>
+            {relationshipsLoading ? (
+              <p>Loading relationships...</p>
+            ) : relationshipsError ? (
+              <div className="alert error" role="alert">
+                {relationshipsError}
+              </div>
+            ) : relationshipsToDisplay.length === 0 ? (
+              <p className="entity-empty-state">{relationshipsEmptyMessage}</p>
+            ) : (
+              <div className="entity-relationships-table-wrapper">
+                <table className="entity-relationships-table">
+                  <thead>
+                    <tr>
+                      <th>Relationship</th>
+                      <th>Type</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {relationshipsToDisplay.map((relationship) => (
+                      <tr key={relationship.id}>
+                        <td>
+                          {relationshipPerspective === 'source' ? (
+                            <>
+                              <span className="entity-relationship-primary">{entity.name}</span>{' '}
+                              {getRelationshipLabel(relationship)}{' '}
+                              {relationship.toId ? (
+                                <span className="entity-link-with-preview">
+                                  <Link
+                                    to={`/entities/${relationship.toId}`}
+                                    className="entity-relationship-link"
+                                  >
+                                    {relationship.toName || '—'}
+                                  </Link>
+                                  <EntityInfoPreview
+                                    entityId={relationship.toId}
+                                    entityName={relationship.toName || 'entity'}
+                                  />
+                                </span>
+                              ) : (
+                                <span>{relationship.toName || '—'}</span>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {relationship.fromId ? (
+                                <span className="entity-link-with-preview">
+                                  <Link
+                                    to={`/entities/${relationship.fromId}`}
+                                    className="entity-relationship-link"
+                                  >
+                                    {relationship.fromName || '—'}
+                                  </Link>
+                                  <EntityInfoPreview
+                                    entityId={relationship.fromId}
+                                    entityName={relationship.fromName || 'entity'}
+                                  />
+                                </span>
+                              ) : (
+                                <span>{relationship.fromName || '—'}</span>
+                              )}{' '}
+                              {getRelationshipLabel(relationship)}{' '}
+                              <span className="entity-relationship-primary">{entity.name}</span>
+                            </>
+                          )}
+                        </td>
+                        <td>{relationship.typeName || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
       </div>
-    </div>
-  )
+    )}
+
+    {/* ACCESS TAB */}
+    {activeTab === 'access' && (
+      <div className="entity-tab-content">
+        {renderSchemaSections(accessSchema, viewData, 'access')}
+      </div>
+    )}
+
+    {/* SYSTEM TAB */}
+    {activeTab === 'system' && (
+      <div className="entity-tab-content">
+        {renderSchemaSections(systemSchema, viewData, 'system')}
+      </div>
+    )}
+  </div>
+</div>
+</div>
+)
 }
