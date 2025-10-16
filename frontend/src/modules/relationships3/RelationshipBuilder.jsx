@@ -23,7 +23,7 @@ export default function RelationshipBuilder({
   const [relationshipTypeId, setRelationshipTypeId] = useState('')
   const [showCreator, setShowCreator] = useState(false)
 
-  // --- Load data once
+  // --- Load entities and relationship types once
   useEffect(() => {
     if (!worldId) return
     setLoading(true)
@@ -39,7 +39,7 @@ export default function RelationshipBuilder({
       .finally(() => setLoading(false))
   }, [worldId])
 
-  // --- Auto-populate Entity 1 (only once)
+  // --- Auto-populate Entity 1 when creating from an entity page
   useEffect(() => {
     if (!fromEntity || entity1) return
     if (!fromEntity.id || !fromEntity.name) return
@@ -59,10 +59,9 @@ export default function RelationshipBuilder({
     }
 
     setEntity1(normalised)
-    console.debug('💡 Auto-populated Entity 1 once:', normalised)
-  }, [fromEntity]) // intentionally not depending on entity1 to avoid repeats
+  }, [fromEntity])
 
-  // --- Normalise helper
+  // --- Helper to normalise entity data for type matching
   const normaliseEntity = (entity) => {
     if (!entity) return null
     const typeId =
@@ -77,7 +76,7 @@ export default function RelationshipBuilder({
     return { ...entity, entity_type_id: typeId, typeName }
   }
 
-  // --- Filter valid relationship types
+  // --- Calculate valid relationship types
   const validRelationshipTypes = useMemo(() => {
     const e1 = normaliseEntity(entity1)
     const e2 = normaliseEntity(entity2)
@@ -116,26 +115,32 @@ export default function RelationshipBuilder({
       .filter(Boolean)
   }, [relationshipTypes, entity1, entity2])
 
-  // --- Submit logic
+    // --- Create relationship
   const handleSubmit = async () => {
+    setError('')
+
     if (!entity1 || !entity2 || !relationshipTypeId)
       return setError('Please select both entities and a relationship type.')
+
     if (entity1.id === entity2.id)
       return setError('Cannot create self-relationships.')
 
+    // Client-side duplicate check
     const duplicate = existingRelationships.find(
       (r) =>
-        (r.from_entity_id === entity1.id &&
-          r.to_entity_id === entity2.id &&
-          r.relationship_type_id === relationshipTypeId) ||
-        (r.from_entity_id === entity2.id &&
-          r.to_entity_id === entity1.id &&
-          r.relationship_type_id === relationshipTypeId),
+        ((r.from_entity_id === entity1.id &&
+          r.to_entity_id === entity2.id) ||
+          (r.from_entity_id === entity2.id &&
+            r.to_entity_id === entity1.id)) &&
+        r.relationship_type_id === relationshipTypeId
     )
-    if (duplicate) return setError('This relationship already exists.')
+    if (duplicate) {
+      setError('This relationship already exists.')
+      return
+    }
 
     const selectedType = validRelationshipTypes.find(
-      (r) => r.id === relationshipTypeId,
+      (r) => r.id === relationshipTypeId
     )
 
     let from_entity_id = entity1.id
@@ -157,7 +162,20 @@ export default function RelationshipBuilder({
         relationship_type_id: relationshipTypeId,
       })
     } catch (err) {
-      setError(err.message || 'Failed to create relationship')
+      // ✅ Improved and defensive error handling
+      if (
+        err.response?.status === 409 ||
+        err.response?.data?.message?.toLowerCase?.().includes('duplicate') ||
+        err.message?.toLowerCase?.().includes('duplicate') ||
+        err.message?.toLowerCase?.().includes('conflict')
+      ) {
+        setError('This relationship already exists.')
+      } else if (err.response?.data?.message) {
+        setError(err.response.data.message)
+      } else {
+        setError('Failed to create relationship.')
+      }
+      console.warn('⚠️ Relationship create error:', err)
     }
   }
 
@@ -167,6 +185,7 @@ export default function RelationshipBuilder({
     <div className="relationship-builder-v3">
       <h2>Add Relationship</h2>
       {error && <div className="alert error">{error}</div>}
+
 
       {/* ENTITY 1 */}
       <div className="form-row">
