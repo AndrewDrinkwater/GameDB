@@ -572,6 +572,9 @@ export default function EntityList() {
     if (!draftColumnKeys.includes(key)) return
     if (event) {
       event.preventDefault()
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move'
+      }
     }
     setDropTargetKey(key)
   }
@@ -1122,6 +1125,9 @@ export default function EntityList() {
                               onDragOver={(event) => {
                                 if (!draggingColumnKey) return
                                 event.preventDefault()
+                                if (event.dataTransfer) {
+                                  event.dataTransfer.dropEffect = 'move'
+                                }
                                 setDropTargetKey('__end')
                               }}
                               onDragLeave={() => {
