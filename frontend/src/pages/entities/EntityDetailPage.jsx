@@ -596,10 +596,19 @@ export default function EntityDetailPage() {
         relationship.relationship_type ||
         relationship.type ||
         {}
+
       const fromEntity =
-        relationship.fromEntity || relationship.from || relationship.from_entity || {}
+        relationship.fromEntity ||
+        relationship.from ||
+        relationship.from_entity ||
+        {}
+
       const toEntity =
-        relationship.toEntity || relationship.to || relationship.to_entity || {}
+        relationship.toEntity ||
+        relationship.to ||
+        relationship.to_entity ||
+        {}
+
       const context =
         (relationship.context && typeof relationship.context === 'object'
           ? relationship.context
@@ -607,16 +616,30 @@ export default function EntityDetailPage() {
 
       const direction = context.__direction === 'reverse' ? 'reverse' : 'forward'
       const baseTypeName = type?.name || '—'
+
+      // Directional labels from relationship type
       const typeFromName = type?.from_name || type?.fromName || baseTypeName
       const typeToName = type?.to_name || type?.toName || baseTypeName
-      const effectiveFromLabel = direction === 'reverse' ? typeToName : typeFromName
-      const effectiveToLabel = direction === 'reverse' ? typeFromName : typeToName
+      const sourceLabel =
+        type?.source_relationship_label ||
+        type?.sourceLabel ||
+        typeFromName
+      const targetLabel =
+        type?.target_relationship_label ||
+        type?.targetLabel ||
+        typeToName
+
+      // Resolve which label applies based on context direction
+      const effectiveFromLabel = direction === 'reverse' ? targetLabel : sourceLabel
+      const effectiveToLabel = direction === 'reverse' ? sourceLabel : targetLabel
 
       return {
         id: relationship.id,
         typeName: baseTypeName,
         typeFromName,
         typeToName,
+        sourceLabel,
+        targetLabel,
         effectiveFromLabel,
         effectiveToLabel,
         fromId:
@@ -855,32 +878,43 @@ export default function EntityDetailPage() {
               </thead>
               <tbody>
                 {normalisedRelationships.map((relationship) => {
-                  const isSource =
-                    String(relationship.fromId) === String(entity.id)
-                  const relatedName = isSource
-                    ? relationship.toName
-                    : relationship.fromName
-                  const relatedId = isSource
-                    ? relationship.toId
-                    : relationship.fromId
+                  const isSource = String(relationship.fromId) === String(entity.id)
+                  const relatedName = isSource ? relationship.toName : relationship.fromName
+                  const relatedId = isSource ? relationship.toId : relationship.fromId
+
+                  // Grab relationship type and directional labels
+                  const typeName = relationship.typeName || '—'
+                  const sourceLabel = relationship.sourceLabel || relationship.source_relationship_label || ''
+                  const targetLabel = relationship.targetLabel || relationship.target_relationship_label || ''
+
+                  // Build contextual phrase
+                  const currentName = entity.name || 'Entity'
+                  const phrase = isSource
+                    ? `${currentName} ${sourceLabel || ''} ${relatedName || ''}`.trim()
+                    : `${currentName} ${targetLabel || ''} ${relatedName || ''}`.trim()
 
                   return (
                     <tr key={relationship.id}>
                       <td>
-                        <span className="entity-link-with-preview">
-                          <Link
-                            to={`/entities/${relatedId}`}
-                            className="entity-relationship-link"
-                          >
-                            {relatedName || '—'}
-                          </Link>
-                          <EntityInfoPreview
-                            entityId={relatedId}
-                            entityName={relatedName || 'entity'}
-                          />
+                        <span className="relationship-phrase">
+                          {isSource ? (
+                            <>
+                              <strong>{entity.name}</strong> {sourceLabel || '—'}{' '}
+                              <Link to={`/entities/${relatedId}`} className="entity-relationship-link">
+                                {relatedName || '—'}
+                              </Link>
+                            </>
+                          ) : (
+                            <>
+                              <strong>{entity.name}</strong> {targetLabel || '—'}{' '}
+                              <Link to={`/entities/${relatedId}`} className="entity-relationship-link">
+                                {relatedName || '—'}
+                              </Link>
+                            </>
+                          )}
                         </span>
                       </td>
-                      <td>{relationship.typeName || '—'}</td>
+                      <td>{typeName}</td>
                       <td>{isSource ? 'Outgoing' : 'Incoming'}</td>
                     </tr>
                   )
@@ -893,7 +927,6 @@ export default function EntityDetailPage() {
     </section>
   </div>
 )}
-
 
     {/* ACCESS TAB */}
     {activeTab === 'access' && (

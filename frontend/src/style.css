@@ -3372,3 +3372,17 @@ th {
     padding: 0 1.25rem 1.25rem;
   }
 }
+
+.relationship-phrase {
+  font-weight: 500;
+  color: #111827; /* Tailwind gray-900 */
+}
+
+.entity-relationship-link {
+  color: #2563eb; /* Tailwind blue-600 */
+  text-decoration: none;
+}
+
+.entity-relationship-link:hover {
+  text-decoration: underline;
+}
