@@ -67,39 +67,39 @@ const buildRelationshipLabel = ({
   sourceNode,
   targetNode,
 }) => {
-  const labelParts = []
-  const tooltipParts = []
-
-  const baseName = relationshipType?.name || edge.label
-  const fromName = relationshipType?.fromName
-  const toName = relationshipType?.toName
+  const baseName = relationshipType?.name?.trim() || ''
+  const fromName = relationshipType?.fromName?.trim() || ''
+  const toName = relationshipType?.toName?.trim() || ''
 
   const sourceName = sourceNode?.name || sourceNode?.data?.label || 'Source'
   const targetName = targetNode?.name || targetNode?.data?.label || 'Target'
 
-  if (edge.label && edge.label !== baseName) {
-    labelParts.push(edge.label)
+  let directionLabel = ''
+
+  if (edge.source === rootKey && fromName) {
+    directionLabel = fromName
+  } else if (edge.target === rootKey && toName) {
+    directionLabel = toName
+  } else if (fromName) {
+    directionLabel = fromName
+  } else if (toName) {
+    directionLabel = toName
+  } else if (baseName) {
+    directionLabel = baseName
+  } else if (edge.label) {
+    directionLabel = edge.label
+  } else {
+    directionLabel = 'Relationship'
   }
 
-  if (relationshipType) {
-    if (edge.source === rootKey) {
-      labelParts.unshift(fromName || baseName)
-    } else if (edge.target === rootKey) {
-      labelParts.unshift(toName || baseName)
-    } else {
-      labelParts.unshift(baseName)
-    }
-  } else if (!labelParts.length && baseName) {
-    labelParts.push(baseName)
-  }
-
-  if (relationshipType?.name) {
-    tooltipParts.push(relationshipType.name)
+  const tooltipParts = []
+  if (baseName) {
+    tooltipParts.push(baseName)
   }
   tooltipParts.push(`${sourceName} → ${targetName}`)
 
   return {
-    label: labelParts.filter(Boolean).join('\n'),
+    label: directionLabel,
     tooltip: tooltipParts.filter(Boolean).join('\n'),
   }
 }
@@ -263,16 +263,14 @@ const buildLayout = (graphData, rootId) => {
   edgesByPair.forEach((edgeList, pairKey) => {
     const [sourceId, targetId] = pairKey.split('->')
     const multiCount = edgeList.length
+    const sourceNode = nodesMap.get(sourceId)
+    const targetNode = nodesMap.get(targetId)
 
-    edgeList.forEach((edge, index) => {
+    const relationshipSummaries = edgeList.map((edge, index) => {
       const relationshipType = edge.relationshipType || {}
       const typeId =
         edge.relationshipTypeId || edge.type || relationshipType?.id || null
-
       const style = getRelationshipStyle(typeId || `${sourceId}-${targetId}`)
-
-      const sourceNode = nodesMap.get(sourceId)
-      const targetNode = nodesMap.get(targetId)
 
       const { label, tooltip } = buildRelationshipLabel({
         edge: {
@@ -286,34 +284,81 @@ const buildLayout = (graphData, rootId) => {
         targetNode,
       })
 
-      const uniqueId = String(
-        edge.id ?? `${sourceId}-${targetId}-${typeId ?? 'rel'}-${index}`,
-      )
-
-      laidOutEdges.push({
-        id: uniqueId,
-        source: sourceId,
-        target: targetId,
+      return {
+        id: String(
+          edge.id ?? `${sourceId}-${targetId}-${typeId ?? 'rel'}-${index}`,
+        ),
+        typeId:
+          typeId === null || typeId === undefined ? null : String(typeId),
+        typeName:
+          relationshipType.name || edge.label || `Relationship ${index + 1}`,
         label,
-        data: {
-          relationshipTypeId: typeId || null,
-          relationshipTypeName:
-            relationshipType.name || label || null,
-          relationshipType: relationshipType || null,
-          tooltip,
-          multiIndex: index,
-          multiCount,
-          style,
-        },
-        animated: false,
-        type: 'customEdge',
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: style.color,
-          width: 18,
-          height: 18,
-        },
-      })
+        tooltip,
+        style,
+      }
+    })
+
+    const visibleTypeIds = Array.from(
+      new Set(
+        relationshipSummaries
+          .map((summary) => summary.typeId)
+          .filter((value) => value !== null && value !== undefined),
+      ),
+    ).map((value) => String(value))
+
+    const primaryTypeId = visibleTypeIds[0] ?? null
+    const baseStyle =
+      relationshipSummaries[0]?.style ||
+      getRelationshipStyle(primaryTypeId || `${sourceId}-${targetId}`)
+
+    const aggregatedLabel =
+      multiCount === 1
+        ? relationshipSummaries[0]?.label || ''
+        : String(multiCount)
+
+    const aggregatedTooltip =
+      multiCount === 1
+        ? relationshipSummaries[0]?.tooltip || ''
+        : relationshipSummaries
+            .map(
+              (summary) =>
+                summary.tooltip || summary.label || summary.typeName || 'Relationship',
+            )
+            .join('\n')
+
+    laidOutEdges.push({
+      id:
+        multiCount === 1
+          ? relationshipSummaries[0]?.id || `${pairKey}-single`
+          : `${pairKey}-group`,
+      source: sourceId,
+      target: targetId,
+      label: aggregatedLabel,
+      data: {
+        relationshipTypeId: primaryTypeId,
+        relationshipTypeIds: visibleTypeIds,
+        relationshipTypeName:
+          multiCount === 1
+            ? relationshipSummaries[0]?.typeName || aggregatedLabel || null
+            : `${multiCount} relationships`,
+        relationshipType:
+          multiCount === 1 ? edgeList[0]?.relationshipType || null : null,
+        tooltip: aggregatedTooltip,
+        multiIndex: multiCount > 1 ? (multiCount - 1) / 2 : 0,
+        multiCount,
+        style: baseStyle,
+        sourceName: sourceNode?.name || sourceNode?.data?.label || '',
+        targetName: targetNode?.name || targetNode?.data?.label || '',
+        relationships: relationshipSummaries,
+      },
+      animated: false,
+      type: 'customEdge',
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: baseStyle.color,
+        width: 18,
+        height: 18,
+      },
     })
   })
 
@@ -338,20 +383,113 @@ const applyLayerFilters = (
 
   let filteredEdges = Array.isArray(edges) ? edges.slice() : []
 
-  if (hiddenTypeSet.size > 0) {
-    filteredEdges = filteredEdges.filter((edge) => {
+  filteredEdges = filteredEdges
+    .map((edge) => {
+      if (!edge) return null
+
+      const relationships = Array.isArray(edge.data?.relationships)
+        ? edge.data.relationships
+        : null
+
+      if (relationships) {
+        const visibleRelationships = hiddenTypeSet.size
+          ? relationships.filter((relationship) => {
+              if (
+                relationship?.typeId === null ||
+                relationship?.typeId === undefined
+              ) {
+                return true
+              }
+              return !hiddenTypeSet.has(String(relationship.typeId))
+            })
+          : relationships.slice()
+
+        if (visibleRelationships.length === 0) {
+          return null
+        }
+
+        const nextMultiCount = visibleRelationships.length
+        const nextLabel =
+          nextMultiCount === 1
+            ? visibleRelationships[0]?.label ||
+              visibleRelationships[0]?.typeName ||
+              edge.label
+            : String(nextMultiCount)
+        const nextTooltip =
+          nextMultiCount === 1
+            ? visibleRelationships[0]?.tooltip ||
+              visibleRelationships[0]?.label ||
+              visibleRelationships[0]?.typeName
+            : visibleRelationships
+                .map(
+                  (relationship) =>
+                    relationship?.tooltip ||
+                    relationship?.label ||
+                    relationship?.typeName ||
+                    'Relationship',
+                )
+                .join('\n')
+
+        const nextTypeIds = visibleRelationships
+          .map((relationship) => relationship?.typeId)
+          .filter((value) => value !== null && value !== undefined)
+          .map((value) => String(value))
+        const nextPrimaryTypeId = nextTypeIds[0] || null
+
+        const nextRelationshipTypeName =
+          nextMultiCount === 1
+            ? visibleRelationships[0]?.typeName ||
+              edge.data?.relationshipTypeName ||
+              null
+            : `${nextMultiCount} relationships`
+
+        const nextStyle =
+          nextMultiCount === 1
+            ? visibleRelationships[0]?.style || edge.data?.style || {}
+            : edge.data?.style || {}
+
+        const nextMultiIndex =
+          nextMultiCount > 1 ? (nextMultiCount - 1) / 2 : 0
+
+        return {
+          ...edge,
+          label: nextLabel,
+          data: {
+            ...edge.data,
+            tooltip: nextTooltip,
+            multiCount: nextMultiCount,
+            multiIndex: nextMultiIndex,
+            relationshipTypeId: nextPrimaryTypeId,
+            relationshipTypeIds: nextTypeIds,
+            relationshipTypeName: nextRelationshipTypeName,
+            relationships: visibleRelationships,
+            style: nextStyle,
+          },
+          markerEnd: edge.markerEnd
+            ? { ...edge.markerEnd, color: nextStyle.color || edge.markerEnd.color }
+            : edge.markerEnd,
+        }
+      }
+
       const typeId =
         edge?.data?.relationshipTypeId ??
         edge?.relationshipTypeId ??
         edge?.type ??
         edge?.data?.relationshipType?.id ??
         null
-      if (typeId === null || typeId === undefined) {
-        return true
+
+      if (
+        hiddenTypeSet.size > 0 &&
+        typeId !== null &&
+        typeId !== undefined &&
+        hiddenTypeSet.has(String(typeId))
+      ) {
+        return null
       }
-      return !hiddenTypeSet.has(String(typeId))
+
+      return edge
     })
-  }
+    .filter(Boolean)
 
   const nodeMap = new Map(nodes.map((node) => [String(node.id), node]))
   const safeDepth = Math.min(Math.max(depthLimit ?? 1, 1), MAX_DEPTH)
@@ -435,6 +573,8 @@ export default function EntityExplorer() {
   const [availableRelationshipTypes, setAvailableRelationshipTypes] = useState([])
   const [hoveredEdgeId, setHoveredEdgeId] = useState(null)
   const [hoveredEdgeNodes, setHoveredEdgeNodes] = useState([])
+  const [activeEdgeId, setActiveEdgeId] = useState(null)
+  const [activeEdgeDetails, setActiveEdgeDetails] = useState(null)
   const [focusedNodeId, setFocusedNodeId] = useState(null)
   const [searchValue, setSearchValue] = useState('')
 
@@ -485,6 +625,28 @@ export default function EntityExplorer() {
 
         if (relationshipTypeMap.size === 0 && Array.isArray(laidOutEdges)) {
           laidOutEdges.forEach((edge) => {
+            const relationships = Array.isArray(edge.data?.relationships)
+              ? edge.data.relationships
+              : []
+
+            if (relationships.length) {
+              relationships.forEach((relationship) => {
+                if (!relationship || relationship.typeId === null || relationship.typeId === undefined) {
+                  return
+                }
+                const id = String(relationship.typeId)
+                if (relationshipTypeMap.has(id)) return
+                relationshipTypeMap.set(id, {
+                  id,
+                  name: relationship.typeName || `Relationship ${id}`,
+                  fromName: null,
+                  toName: null,
+                  style: getRelationshipStyle(id),
+                })
+              })
+              return
+            }
+
             const typeId = edge.data?.relationshipTypeId || edge.type
             if (!typeId) return
             const id = String(typeId)
@@ -647,6 +809,7 @@ export default function EntityExplorer() {
     setSelectedEntity(node.id)
     setContextMenu(CONTEXT_MENU_INITIAL_STATE)
     clearHoverState()
+    setActiveEdgeId(null)
   }, [clearHoverState])
 
   const onNodeContextMenu = useCallback((event, node) => {
@@ -658,6 +821,7 @@ export default function EntityExplorer() {
       y: event.clientY,
       node,
     })
+    setActiveEdgeId(null)
   }, [])
 
   const onEdgeMouseEnter = useCallback((_, edge) => {
@@ -668,6 +832,20 @@ export default function EntityExplorer() {
   const onEdgeMouseLeave = useCallback(() => {
     clearHoverState()
   }, [clearHoverState])
+
+  const onEdgeClick = useCallback(
+    (event, edge) => {
+      event?.preventDefault?.()
+      event?.stopPropagation?.()
+      if (!Array.isArray(edge?.data?.relationships) || edge.data.relationships.length === 0) {
+        setActiveEdgeId(null)
+        return
+      }
+      setContextMenu(CONTEXT_MENU_INITIAL_STATE)
+      setActiveEdgeId(edge.id)
+    },
+    [],
+  )
 
   const handleDepthChange = (event) => {
     const value = Number.parseInt(event.target.value, 10)
@@ -725,6 +903,7 @@ export default function EntityExplorer() {
   const handlePaneInteraction = useCallback(() => {
     setContextMenu(CONTEXT_MENU_INITIAL_STATE)
     clearHoverState()
+    setActiveEdgeId(null)
   }, [clearHoverState])
 
   const handleSearchSubmit = (event) => {
@@ -757,6 +936,7 @@ export default function EntityExplorer() {
   const handleClearSearch = () => {
     setSearchValue('')
     setFocusedNodeId(null)
+    setActiveEdgeId(null)
   }
 
   useEffect(() => {
@@ -817,6 +997,28 @@ export default function EntityExplorer() {
     )
   }, [hoveredEdgeId, setEdges])
 
+  useEffect(() => {
+    if (!activeEdgeId) {
+      setActiveEdgeDetails(null)
+      return
+    }
+
+    const targetEdge = edges.find((edge) => edge.id === activeEdgeId)
+    if (!targetEdge || !Array.isArray(targetEdge.data?.relationships)) {
+      setActiveEdgeDetails(null)
+      return
+    }
+
+    setActiveEdgeDetails({
+      id: targetEdge.id,
+      source: targetEdge.source,
+      target: targetEdge.target,
+      sourceName: targetEdge.data?.sourceName || '',
+      targetName: targetEdge.data?.targetName || '',
+      relationships: targetEdge.data.relationships,
+    })
+  }, [activeEdgeId, edges])
+
   return (
     <div className="flex h-full w-full">
       {/* Main graph area */}
@@ -836,6 +1038,7 @@ export default function EntityExplorer() {
                   onEdgesChange={onEdgesChange}
                   onNodeClick={onNodeClick}
                   onNodeContextMenu={onNodeContextMenu}
+                  onEdgeClick={onEdgeClick}
                   onEdgeMouseEnter={onEdgeMouseEnter}
                   onEdgeMouseLeave={onEdgeMouseLeave}
                   onPaneClick={handlePaneInteraction}
@@ -916,6 +1119,49 @@ export default function EntityExplorer() {
                   <Controls />
                   <Background color="#222" gap={16} />
                 </ReactFlow>
+                {activeEdgeDetails ? (
+                  <div className="graph-edge-detail">
+                    <div className="graph-edge-detail-header">
+                      <div>
+                        <p className="graph-edge-detail-title">Relationships</p>
+                        <p className="graph-edge-detail-entities">
+                          {(activeEdgeDetails.sourceName || activeEdgeDetails.source) &&
+                          (activeEdgeDetails.targetName || activeEdgeDetails.target)
+                            ? `${activeEdgeDetails.sourceName || activeEdgeDetails.source} ↔ ${
+                                activeEdgeDetails.targetName || activeEdgeDetails.target
+                              }`
+                            : 'Between selected entities'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="graph-edge-detail-close"
+                        onClick={() => setActiveEdgeId(null)}
+                        aria-label="Close relationship details"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    {activeEdgeDetails.relationships.length ? (
+                      <ul className="graph-edge-detail-list">
+                        {activeEdgeDetails.relationships.map((relationship) => (
+                          <li key={relationship.id} className="graph-edge-detail-item">
+                            <span className="graph-edge-detail-item-label">
+                              {relationship.label || relationship.typeName || 'Relationship'}
+                            </span>
+                            {relationship.typeName ? (
+                              <span className="graph-edge-detail-item-type">
+                                {relationship.typeName}
+                              </span>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="graph-edge-detail-empty">No relationships to display.</p>
+                    )}
+                  </div>
+                ) : null}
               </div>
 
               <aside className="graph-filter-sidebar">
