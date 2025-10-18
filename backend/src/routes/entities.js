@@ -53,24 +53,26 @@ router.get('/:id/explore', async (req, res) => {
       const rels = await EntityRelationship.findAll({
         where: {
           [Op.or]: [
-            { fromEntity: currentLevel },
-            { toEntity: currentLevel },
+            { from_entity: currentLevel },
+            { to_entity: currentLevel },
           ],
-          ...(relationshipTypes && { relationshipTypeId: relationshipTypes }),
+          ...(relationshipTypes && {
+            relationship_type_id: relationshipTypes,
+          }),
         },
       })
 
       const newEntityIds = new Set()
 
       for (const rel of rels) {
-        const src = rel.fromEntity
-        const tgt = rel.toEntity
+        const src = rel.from_entity
+        const tgt = rel.to_entity
 
         edges.push({
           source: src,
           target: tgt,
-          type: rel.relationshipTypeId,
-          label: rel.label || rel.relationshipTypeId,
+          type: rel.relationship_type_id,
+          label: rel.label || rel.relationship_type_id,
         })
 
         if (!visited.has(src)) newEntityIds.add(src)
