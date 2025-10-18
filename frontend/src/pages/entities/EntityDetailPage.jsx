@@ -764,6 +764,12 @@ export default function EntityDetailPage() {
     [relationshipPerspective],
   )
 
+  const handleRelationshipPerspectiveToggle = useCallback(() => {
+    setRelationshipPerspective((current) =>
+      current === 'source' ? 'target' : 'source',
+    )
+  }, [])
+
   const relationshipsEmptyMessage = useMemo(() => {
     const name = entity?.name || 'this entity'
     return relationshipPerspective === 'source'
@@ -920,6 +926,19 @@ export default function EntityDetailPage() {
       </div>
 
       <div className="entity-card-body">
+        <div className="entity-relationships-toggle">
+          <p className="entity-relationships-toggle-label">
+            {relationshipsToggleLabel}
+          </p>
+          <button
+            type="button"
+            className="btn"
+            onClick={handleRelationshipPerspectiveToggle}
+          >
+            {relationshipsToggleActionLabel}
+          </button>
+        </div>
+
         {relationshipsLoading ? (
           <p>Loading relationships...</p>
         ) : relationshipsError ? (
@@ -928,7 +947,7 @@ export default function EntityDetailPage() {
           </div>
         ) : relationshipsToDisplay.length === 0 ? (
           <p className="entity-empty-state">
-            No relationships found for this entity.
+            {relationshipsEmptyMessage}
           </p>
         ) : (
           <div className="entity-relationships-table-wrapper">

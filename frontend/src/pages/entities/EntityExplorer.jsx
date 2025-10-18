@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ReactFlow, {
   MiniMap,
@@ -102,6 +102,38 @@ const buildRelationshipLabel = ({
     label: directionLabel,
     tooltip: tooltipParts.filter(Boolean).join('\n'),
   }
+}
+
+const dedupeRelationshipSummaries = (relationships) => {
+  if (!Array.isArray(relationships)) return []
+
+  const seen = new Set()
+  const result = []
+
+  relationships.forEach((relationship) => {
+    if (!relationship) return
+
+    const rawId =
+      relationship.relationshipId ??
+      relationship.id ??
+      relationship.edgeId ??
+      relationship.data?.id ??
+      null
+
+    const typeKey = relationship.typeId ?? relationship.type ?? ''
+    const labelKey = relationship.label ?? relationship.typeName ?? ''
+
+    const key =
+      rawId !== null && rawId !== undefined
+        ? `id:${String(rawId)}`
+        : `summary:${String(typeKey)}:${String(labelKey)}`
+
+    if (seen.has(key)) return
+    seen.add(key)
+    result.push(relationship)
+  })
+
+  return result
 }
 
 const CONTEXT_MENU_INITIAL_STATE = {
@@ -247,6 +279,7 @@ const buildLayout = (graphData, rootId) => {
   })
 
   const edgesByPair = new Map()
+  const relationshipIdsByPair = new Map()
   ;(graphData.edges || []).forEach((edge) => {
     if (!edge) return
     const sourceId = String(edge.source)
@@ -254,7 +287,19 @@ const buildLayout = (graphData, rootId) => {
     const key = `${sourceId}->${targetId}`
     if (!edgesByPair.has(key)) {
       edgesByPair.set(key, [])
+      relationshipIdsByPair.set(key, new Set())
     }
+    const dedupeBase =
+      edge.relationshipId ??
+      edge.id ??
+      edge.data?.id ??
+      `${edge.source}-${edge.target}-${edge.type ?? ''}-${edge.label ?? ''}`
+
+    const dedupeKey = String(dedupeBase)
+    const seenForPair = relationshipIdsByPair.get(key)
+    if (seenForPair.has(dedupeKey)) return
+
+    seenForPair.add(dedupeKey)
     edgesByPair.get(key).push(edge)
   })
 
@@ -262,11 +307,10 @@ const buildLayout = (graphData, rootId) => {
 
   edgesByPair.forEach((edgeList, pairKey) => {
     const [sourceId, targetId] = pairKey.split('->')
-    const multiCount = edgeList.length
     const sourceNode = nodesMap.get(sourceId)
     const targetNode = nodesMap.get(targetId)
 
-    const relationshipSummaries = edgeList.map((edge, index) => {
+    const rawSummaries = edgeList.map((edge, index) => {
       const relationshipType = edge.relationshipType || {}
       const typeId =
         edge.relationshipTypeId || edge.type || relationshipType?.id || null
@@ -297,6 +341,13 @@ const buildLayout = (graphData, rootId) => {
         style,
       }
     })
+
+    const relationshipSummaries = dedupeRelationshipSummaries(rawSummaries)
+    const multiCount = relationshipSummaries.length
+
+    if (multiCount === 0) {
+      return
+    }
 
     const visibleTypeIds = Array.from(
       new Set(
@@ -388,7 +439,7 @@ const applyLayerFilters = (
       if (!edge) return null
 
       const relationships = Array.isArray(edge.data?.relationships)
-        ? edge.data.relationships
+        ? dedupeRelationshipSummaries(edge.data.relationships)
         : null
 
       if (relationships) {
@@ -577,6 +628,7 @@ export default function EntityExplorer() {
   const [activeEdgeDetails, setActiveEdgeDetails] = useState(null)
   const [focusedNodeId, setFocusedNodeId] = useState(null)
   const [searchValue, setSearchValue] = useState('')
+  const lastGraphIdentityRef = useRef({ worldId: null, entityId: null })
 
   const depth = filters.depth
   const hiddenRelationshipTypes = filters.hiddenRelationshipTypes
@@ -600,13 +652,25 @@ export default function EntityExplorer() {
 
         setRawNodes(laidOutNodes)
         setRawEdges(laidOutEdges)
-        setSelectedEntity(rootId)
-        setContextMenu(CONTEXT_MENU_INITIAL_STATE)
+
+        const graphIdentityChanged =
+          lastGraphIdentityRef.current.worldId !== worldId ||
+          lastGraphIdentityRef.current.entityId !== rootId
+
+        if (graphIdentityChanged) {
+          setSelectedEntity(rootId)
+          setContextMenu(CONTEXT_MENU_INITIAL_STATE)
+          setShouldAutoFit(true)
+        }
 
         const initialRoot = laidOutNodes.find((node) => node.id === rootId)
         if (initialRoot) {
-          setRootPosition(initialRoot.position)
+          setRootPosition((prev) =>
+            graphIdentityChanged ? initialRoot.position : prev || initialRoot.position,
+          )
         }
+
+        lastGraphIdentityRef.current = { worldId, entityId: rootId }
 
         const relationshipTypeMap = new Map()
         if (Array.isArray(data.relationshipTypes)) {
@@ -626,7 +690,7 @@ export default function EntityExplorer() {
         if (relationshipTypeMap.size === 0 && Array.isArray(laidOutEdges)) {
           laidOutEdges.forEach((edge) => {
             const relationships = Array.isArray(edge.data?.relationships)
-              ? edge.data.relationships
+              ? dedupeRelationshipSummaries(edge.data.relationships)
               : []
 
             if (relationships.length) {
@@ -737,9 +801,6 @@ export default function EntityExplorer() {
   useEffect(() => {
     setNodes(filteredGraph.nodes)
     setEdges(filteredGraph.edges)
-    if (filteredGraph.nodes.length) {
-      setShouldAutoFit(true)
-    }
   }, [filteredGraph, setEdges, setNodes])
 
   useEffect(() => {
@@ -1009,13 +1070,22 @@ export default function EntityExplorer() {
       return
     }
 
+    const dedupedRelationships = dedupeRelationshipSummaries(
+      targetEdge.data.relationships,
+    )
+
+    if (!dedupedRelationships.length) {
+      setActiveEdgeDetails(null)
+      return
+    }
+
     setActiveEdgeDetails({
       id: targetEdge.id,
       source: targetEdge.source,
       target: targetEdge.target,
       sourceName: targetEdge.data?.sourceName || '',
       targetName: targetEdge.data?.targetName || '',
-      relationships: targetEdge.data.relationships,
+      relationships: dedupedRelationships,
     })
   }, [activeEdgeId, edges])
 
