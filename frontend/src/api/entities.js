@@ -68,7 +68,7 @@ function getSessionToken() {
   }
 }
 
-export async function getEntityGraph(worldId, entityId) {
+export async function getEntityGraph(worldId, entityId, filters = {}) {
   const token = getSessionToken()
 
   if (!token) {
@@ -76,15 +76,34 @@ export async function getEntityGraph(worldId, entityId) {
     throw new Error('Missing session token')
   }
 
-  const res = await fetch(
-    `${API_BASE}/api/worlds/${worldId}/entities/${entityId}/explore`,
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        gamedb_session: token, // ✅ backend expects this header
-      },
-    }
-  )
+  const params = new URLSearchParams()
+
+  const depthValue = Number.parseInt(filters.depth, 10)
+  const safeDepth = Math.min(Math.max(Number.isNaN(depthValue) ? 1 : depthValue, 1), 3)
+  params.set('depth', safeDepth)
+
+  const relationshipTypes = Array.isArray(filters.relationshipTypes)
+    ? filters.relationshipTypes
+    : []
+  const cleanedRelationshipTypes = relationshipTypes
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+
+  if (cleanedRelationshipTypes.length > 0) {
+    params.set('relationshipTypes', cleanedRelationshipTypes.join(','))
+  }
+
+  const queryString = params.toString()
+  const url = `${API_BASE}/api/worlds/${worldId}/entities/${entityId}/explore${
+    queryString ? `?${queryString}` : ''
+  }`
+
+  const res = await fetch(url, {
+    headers: {
+      'Content-Type': 'application/json',
+      gamedb_session: token, // ✅ backend expects this header
+    },
+  })
 
   if (!res.ok) {
     const text = await res.text()
