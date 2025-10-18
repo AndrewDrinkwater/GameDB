@@ -136,6 +136,48 @@ const dedupeRelationshipSummaries = (relationships) => {
   return result
 }
 
+const getClusterPreviewTargets = (clusterDetail, existingNodes) => {
+  if (!clusterDetail || !Array.isArray(clusterDetail.targets)) return []
+
+  const blockedIds = new Set(
+    (Array.isArray(existingNodes) ? existingNodes : [])
+      .filter((node) => node && !node?.data?.isClusterPreview)
+      .map((node) => String(node.id)),
+  )
+
+  return clusterDetail.targets
+    .map((target) => ({
+      id: target?.id !== undefined && target?.id !== null ? String(target.id) : null,
+      name: target?.name || (target?.id ? `Entity ${target.id}` : 'Entity'),
+      type: target?.type || null,
+    }))
+    .filter((target) => target.id && !blockedIds.has(target.id))
+}
+
+const computeClusterPreviewLayout = (clusterNode, targets) => {
+  const layout = new Map()
+  if (!clusterNode || !clusterNode?.position || !Array.isArray(targets) || !targets.length) {
+    return layout
+  }
+
+  const centerX = clusterNode.position.x
+  const centerY = clusterNode.position.y
+  const radius = Math.max(70, Math.min(150, 48 + targets.length * 12))
+  const angleStep = targets.length > 1 ? (2 * Math.PI) / targets.length : 0
+
+  targets.forEach((target, index) => {
+    const angle = targets.length > 1 ? angleStep * index - Math.PI / 2 : -Math.PI / 2
+    const offsetX = Math.cos(angle) * radius
+    const offsetY = Math.sin(angle) * radius
+    layout.set(target.id, {
+      x: centerX + offsetX,
+      y: centerY + offsetY,
+    })
+  })
+
+  return layout
+}
+
 const CONTEXT_MENU_INITIAL_STATE = {
   visible: false,
   x: 0,
@@ -287,6 +329,8 @@ const buildLayout = (graphData, rootId) => {
       relationships: relationshipSummaries,
       targets: clusterTargets,
       style: clusterStyle,
+      sourceName:
+        sourceNode?.name || sourceNode?.data?.label || `Entity ${group.sourceId}`,
     })
 
     group.targets.forEach((target) => {
@@ -899,9 +943,11 @@ export default function EntityExplorer() {
   const [clusterDetails, setClusterDetails] = useState(new Map())
   const [activeClusterId, setActiveClusterId] = useState(null)
   const [activeClusterDetails, setActiveClusterDetails] = useState(null)
+  const [activePreviewTargetIds, setActivePreviewTargetIds] = useState([])
   const [focusedNodeId, setFocusedNodeId] = useState(null)
   const [searchValue, setSearchValue] = useState('')
   const lastGraphIdentityRef = useRef({ worldId: null, entityId: null })
+  const previewLayoutRef = useRef(new Map())
 
   const depth = filters.depth
   const hiddenRelationshipTypes = filters.hiddenRelationshipTypes
@@ -943,6 +989,8 @@ export default function EntityExplorer() {
           setShouldAutoFit(true)
           setActiveClusterId(null)
           setActiveClusterDetails(null)
+          setActivePreviewTargetIds([])
+          previewLayoutRef.current = new Map()
         }
 
         const initialRoot = laidOutNodes.find((node) => node.id === rootId)
@@ -1100,6 +1148,72 @@ export default function EntityExplorer() {
   }, [filteredGraph, setEdges, setNodes])
 
   useEffect(() => {
+    let nextPreviewIds = []
+    let nextLayout = new Map()
+
+    setNodes((current) => {
+      const baseNodes = current.filter((node) => !node?.data?.isClusterPreview)
+
+      if (
+        !activeClusterId ||
+        !activeClusterDetails ||
+        !Array.isArray(activeClusterDetails.targets) ||
+        activeClusterDetails.targets.length === 0
+      ) {
+        return baseNodes
+      }
+
+      const clusterNode = baseNodes.find((node) => node.id === activeClusterId)
+      if (!clusterNode) {
+        return baseNodes
+      }
+
+      const targets = getClusterPreviewTargets(activeClusterDetails, baseNodes)
+      if (!targets.length) {
+        return baseNodes
+      }
+
+      const layout = computeClusterPreviewLayout(clusterNode, targets)
+      nextLayout = layout
+      nextPreviewIds = targets.map((target) => target.id)
+      const depthBase = clusterNode.data?.depth ?? 0
+      const orientation = clusterNode.data?.orientation ?? 'bottom'
+      const sourceId =
+        activeClusterDetails.sourceId !== undefined &&
+        activeClusterDetails.sourceId !== null
+          ? String(activeClusterDetails.sourceId)
+          : ''
+
+      const previewNodes = targets.map((target) => {
+        const position = layout.get(target.id) || clusterNode.position
+        return {
+          id: target.id,
+          type: 'clusterEntity',
+          position,
+          data: {
+            id: target.id,
+            name: target.name,
+            label: target.name,
+            type: target.type,
+            typeName: target.type,
+            isClusterPreview: true,
+            clusterId: activeClusterId,
+            sourceId,
+            depth: depthBase + 0.5,
+            orientation,
+          },
+          draggable: true,
+        }
+      })
+
+      return [...baseNodes, ...previewNodes]
+    })
+
+    previewLayoutRef.current = nextLayout
+    setActivePreviewTargetIds(nextPreviewIds)
+  }, [activeClusterId, activeClusterDetails, setNodes])
+
+  useEffect(() => {
     if (!filteredGraph.nodes.length) {
       setFocusedNodeId(null)
     } else if (focusedNodeId && !filteredGraph.nodes.some((node) => node.id === focusedNodeId)) {
@@ -1178,6 +1292,10 @@ export default function EntityExplorer() {
       setContextMenu(CONTEXT_MENU_INITIAL_STATE)
       setActiveEdgeId(null)
 
+      if (node?.data?.isClusterPreview) {
+        return
+      }
+
       if (node.type === 'relationshipCluster' || node?.data?.isCluster) {
         setSelectedEntity(null)
         setActiveClusterId(node.id)
@@ -1196,6 +1314,7 @@ export default function EntityExplorer() {
   const onNodeContextMenu = useCallback((event, node) => {
     event.preventDefault()
     event.stopPropagation()
+    if (node?.data?.isClusterPreview) return
     setContextMenu({
       visible: true,
       x: event.clientX,
@@ -1293,6 +1412,165 @@ export default function EntityExplorer() {
     [navigate, rootId, worldId],
   )
 
+  const promoteClusterEntity = useCallback(
+    (node, clusterNode) => {
+      if (!node) return
+      const clusterId = node?.data?.clusterId
+      if (!clusterId) return
+      const detail = clusterDetails.get(clusterId)
+      if (!detail) return
+
+      const nodeId = String(node.id)
+      const targetInfo = (detail.targets || []).find(
+        (target) => String(target.id) === nodeId,
+      )
+      if (!targetInfo) return
+
+      const sourceId =
+        detail.sourceId !== undefined && detail.sourceId !== null
+          ? String(detail.sourceId)
+          : null
+      if (!sourceId) return
+
+      const clusterDepth = clusterNode?.data?.depth ?? 0
+      const orientation = clusterNode?.data?.orientation ?? 'bottom'
+      const baseStyle =
+        detail.style || getRelationshipStyle(detail.typeId || `${sourceId}-${nodeId}`)
+      const nextClusterCount = Math.max(0, (detail.count || 0) - 1)
+
+      const promotedNode = {
+        id: nodeId,
+        data: {
+          label: targetInfo.name || `Entity ${nodeId}`,
+          type: targetInfo.type || null,
+          depth: Math.ceil(clusterDepth + 0.5),
+          orientation,
+          isRoot: false,
+        },
+        position: node.position,
+        type: 'customNode',
+      }
+
+      setRawNodes((prev) => {
+        const updated = prev.map((entry) => {
+          if (String(entry.id) === clusterId) {
+            return {
+              ...entry,
+              data: { ...entry.data, count: nextClusterCount },
+            }
+          }
+          return entry
+        })
+        const index = updated.findIndex((entry) => String(entry.id) === nodeId)
+        if (index >= 0) {
+          const next = updated.slice()
+          next[index] = { ...updated[index], ...promotedNode }
+          return next
+        }
+        return [...updated, promotedNode]
+      })
+
+      const edgeId = `cluster-revealed:${sourceId}:${nodeId}:${
+        detail.typeId !== undefined && detail.typeId !== null
+          ? String(detail.typeId)
+          : 'relationship'
+      }`
+
+      const primaryRelationship =
+        Array.isArray(detail.relationships) && detail.relationships.length === 1
+          ? detail.relationships[0]
+          : null
+
+      const edgeLabel = primaryRelationship
+        ? primaryRelationship.label ||
+          primaryRelationship.typeName ||
+          detail.label ||
+          detail.typeName ||
+          ''
+        : detail.label || detail.typeName || String(detail.relationships?.length || '')
+
+      const newEdge = {
+        id: edgeId,
+        source: sourceId,
+        target: nodeId,
+        label: edgeLabel,
+        data: {
+          relationshipTypeId:
+            detail.typeId !== undefined && detail.typeId !== null
+              ? String(detail.typeId)
+              : null,
+          relationshipTypeIds:
+            detail.typeId !== undefined && detail.typeId !== null
+              ? [String(detail.typeId)]
+              : [],
+          relationshipTypeName: detail.typeName || null,
+          tooltip: detail.tooltip || null,
+          style: baseStyle,
+          relationships: detail.relationships || [],
+          sourceName: detail.sourceName || '',
+          targetName: targetInfo.name || `Entity ${nodeId}`,
+        },
+        animated: false,
+        type: 'customEdge',
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: baseStyle.color,
+          width: 18,
+          height: 18,
+        },
+      }
+
+      setRawEdges((prev) => {
+        const next = prev
+          .filter((edge) => edge.id !== edgeId)
+          .map((edge) => {
+            if (edge.id === `${clusterId}-edge`) {
+              return {
+                ...edge,
+                label: String(nextClusterCount),
+                data: {
+                  ...edge.data,
+                  clusterCount: nextClusterCount,
+                },
+              }
+            }
+            return edge
+          })
+        return [...next, newEdge]
+      })
+
+      setClusterDetails((prev) => {
+        if (!prev.has(clusterId)) return prev
+        const next = new Map(prev)
+        const currentDetail = next.get(clusterId)
+        const remainingTargets = (currentDetail?.targets || []).filter(
+          (target) => String(target.id) !== nodeId,
+        )
+        const updatedDetail = {
+          ...currentDetail,
+          targets: remainingTargets,
+          count: nextClusterCount,
+        }
+        next.set(clusterId, updatedDetail)
+        if (activeClusterId === clusterId) {
+          setActiveClusterDetails(updatedDetail)
+        }
+        return next
+      })
+
+      setActivePreviewTargetIds((prev) => prev.filter((id) => String(id) !== nodeId))
+      previewLayoutRef.current.delete(nodeId)
+    },
+    [
+      activeClusterId,
+      clusterDetails,
+      setActiveClusterDetails,
+      setActivePreviewTargetIds,
+      setRawEdges,
+      setRawNodes,
+    ],
+  )
+
   const openEntityRecordById = useCallback((targetId) => {
     if (!targetId) return
     const id = String(targetId)
@@ -1323,6 +1601,37 @@ export default function EntityExplorer() {
     setActiveClusterId(null)
     setActiveClusterDetails(null)
   }, [clearHoverState])
+
+  const handleNodeDragStop = useCallback(
+    (_, node) => {
+      if (!node?.data?.isClusterPreview) return
+      const clusterId = node?.data?.clusterId
+      if (!clusterId) return
+      const clusterNode = nodes.find((entry) => entry.id === clusterId)
+      if (!clusterNode) return
+
+      const dx = node.position.x - clusterNode.position.x
+      const dy = node.position.y - clusterNode.position.y
+      const distance = Math.sqrt(dx * dx + dy * dy)
+      const promotionThreshold = 90
+
+      if (distance > promotionThreshold) {
+        promoteClusterEntity(node, clusterNode)
+        return
+      }
+
+      const fallbackPosition = previewLayoutRef.current.get(String(node.id))
+      if (fallbackPosition) {
+        setNodes((current) =>
+          current.map((currentNode) => {
+            if (String(currentNode.id) !== String(node.id)) return currentNode
+            return { ...currentNode, position: fallbackPosition }
+          }),
+        )
+      }
+    },
+    [nodes, promoteClusterEntity, setNodes],
+  )
 
   const handleSearchSubmit = (event) => {
     event.preventDefault()
@@ -1361,6 +1670,9 @@ export default function EntityExplorer() {
     setNodes((current) =>
       current.map((node) => {
         const data = node.data || {}
+        if (data.isClusterPreview) {
+          return node
+        }
         const isFocused = focusedNodeId ? node.id === focusedNodeId : false
         const isSelected = selectedEntity ? node.id === selectedEntity : false
         const isHoverAdjacent = hoveredEdgeNodes.includes(String(node.id))
@@ -1399,6 +1711,9 @@ export default function EntityExplorer() {
     setEdges((current) =>
       current.map((edge) => {
         const data = edge.data || {}
+        if (data.isClusterPreviewEdge) {
+          return edge
+        }
         const isHovered = hoveredEdgeId === edge.id
         const shouldDim = hoveredEdgeId && hoveredEdgeId !== edge.id
 
@@ -1419,6 +1734,109 @@ export default function EntityExplorer() {
       }),
     )
   }, [hoveredEdgeId, setEdges])
+
+  useEffect(() => {
+    setEdges((current) => {
+      const baseEdges = current.filter((edge) => !edge?.data?.isClusterPreviewEdge)
+
+      if (
+        !activeClusterId ||
+        !activeClusterDetails ||
+        !Array.isArray(activeClusterDetails.targets) ||
+        !activeClusterDetails.targets.length ||
+        !activePreviewTargetIds.length
+      ) {
+        return baseEdges
+      }
+
+      const sourceId =
+        activeClusterDetails.sourceId !== undefined &&
+        activeClusterDetails.sourceId !== null
+          ? String(activeClusterDetails.sourceId)
+          : null
+      if (!sourceId) {
+        return baseEdges
+      }
+
+      const targetLookup = new Map(
+        activeClusterDetails.targets.map((target) => [
+          String(target.id),
+          target,
+        ]),
+      )
+
+      const style =
+        activeClusterDetails.style ||
+        getRelationshipStyle(activeClusterDetails.typeId || `${sourceId}-cluster`)
+      const label =
+        activeClusterDetails.relationships?.length === 1
+          ? activeClusterDetails.relationships[0]?.label ||
+            activeClusterDetails.relationships[0]?.typeName ||
+            activeClusterDetails.label ||
+            activeClusterDetails.typeName ||
+            ''
+          : activeClusterDetails.label ||
+            activeClusterDetails.typeName ||
+            String(activeClusterDetails.relationships?.length || '')
+
+      const existingPairs = new Set(
+        baseEdges
+          .filter((edge) => String(edge.source) === sourceId)
+          .map((edge) => `${edge.source}->${edge.target}`),
+      )
+
+      const previewEdges = activePreviewTargetIds
+        .map((targetId) => String(targetId))
+        .filter((targetId) => targetLookup.has(targetId) && !existingPairs.has(`${sourceId}->${targetId}`))
+        .map((targetId) => {
+          const target = targetLookup.get(targetId) || {}
+          const edgeId = `cluster-preview:${sourceId}:${targetId}:${
+            activeClusterDetails.typeId || 'rel'
+          }`
+          return {
+            id: edgeId,
+            source: sourceId,
+            target: targetId,
+            label,
+            data: {
+              relationshipTypeId:
+                activeClusterDetails.typeId !== undefined &&
+                activeClusterDetails.typeId !== null
+                  ? String(activeClusterDetails.typeId)
+                  : null,
+              relationshipTypeIds:
+                activeClusterDetails.typeId !== undefined &&
+                activeClusterDetails.typeId !== null
+                  ? [String(activeClusterDetails.typeId)]
+                  : [],
+              relationshipTypeName: activeClusterDetails.typeName || null,
+              tooltip: activeClusterDetails.tooltip || null,
+              style,
+              relationships: activeClusterDetails.relationships || [],
+              isClusterPreviewEdge: true,
+              clusterId: activeClusterId,
+              sourceName: activeClusterDetails.sourceName || '',
+              targetName: target?.name || `Entity ${targetId}`,
+            },
+            animated: false,
+            type: 'customEdge',
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: style.color,
+              width: 18,
+              height: 18,
+            },
+          }
+        })
+
+      return [...baseEdges, ...previewEdges]
+    })
+  }, [
+    activeClusterDetails,
+    activeClusterId,
+    activePreviewTargetIds,
+    setEdges,
+  ])
 
   useEffect(() => {
     if (!activeEdgeId) {
@@ -1484,6 +1902,7 @@ export default function EntityExplorer() {
                   onEdgesChange={onEdgesChange}
                   onNodeClick={onNodeClick}
                   onNodeContextMenu={onNodeContextMenu}
+                  onNodeDragStop={handleNodeDragStop}
                   onEdgeClick={onEdgeClick}
                   onEdgeMouseEnter={onEdgeMouseEnter}
                   onEdgeMouseLeave={onEdgeMouseLeave}
