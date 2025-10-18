@@ -11,7 +11,7 @@ import 'reactflow/dist/style.css';
 import { getEntityGraph } from '../../api/entities';
 import { Filter, Info } from 'lucide-react';
 import EntityInfoPreview from "../../components/entities/EntityInfoPreview.jsx";
-import { nodeTypes, edgeTypes } from '../../components/GraphTypes'; // Import statically defined types
+import { nodeTypes, edgeTypes } from '../../components/graphTypes';
 
 export default function EntityExplorer() {
   const { worldId, entityId } = useParams();
@@ -84,7 +84,10 @@ export default function EntityExplorer() {
       </div>
 
       {/* Main graph area */}
-      <div className="flex-1 relative bg-gray-950" style={{ height: '100vh' }}>
+      <div
+        className="flex-1 relative bg-gray-950"
+        style={{ width: '100%', height: '100%' }}
+      >
         {loading ? (
           <div className="text-gray-400 text-sm p-4">Loading graph...</div>
         ) : (
@@ -97,7 +100,7 @@ export default function EntityExplorer() {
             onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
             fitView
-            style={{ width: '100%', height: '100%' }}  // Ensure proper dimensions
+            style={{ width: '100%', height: '100%' }}
           >
             <MiniMap />
             <Controls />

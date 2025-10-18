@@ -11,7 +11,7 @@ import 'reactflow/dist/style.css'
 import { getEntityGraph } from '../../api/entities'
 import { Filter, Info } from 'lucide-react'
 import EntityInfoPreview from "../../components/entities/EntityInfoPreview.jsx"
-import CustomNode from "../../components/CustomNode.jsx" // Import the custom node
+import { nodeTypes, edgeTypes } from '../../components/graphTypes'
 
 export default function EntityExplorer() {
   const { worldId, entityId } = useParams()
@@ -58,11 +58,6 @@ export default function EntityExplorer() {
     setSelectedEntity(node.id)
   }, [])
 
-  // Register the custom node
-  const nodeTypes = {
-    customNode: CustomNode, // Register your custom node here
-  }
-
   return (
     <div className="flex h-full w-full">
       {/* Left filter panel */}
@@ -89,7 +84,10 @@ export default function EntityExplorer() {
       </div>
 
       {/* Main graph area */}
-      <div className="flex-1 relative bg-gray-950">
+      <div
+        className="flex-1 relative bg-gray-950"
+        style={{ width: '100%', height: '100%' }}
+      >
         {loading ? (
           <div className="text-gray-400 text-sm p-4">Loading graph...</div>
         ) : (
@@ -99,8 +97,10 @@ export default function EntityExplorer() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
-            nodeTypes={nodeTypes} // Pass nodeTypes to ReactFlow
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             fitView
+            style={{ width: '100%', height: '100%' }}
           >
             <MiniMap />
             <Controls />
