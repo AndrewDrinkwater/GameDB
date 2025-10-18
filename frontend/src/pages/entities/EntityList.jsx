@@ -1051,72 +1051,75 @@ export default function EntityList() {
                             their display order.
                           </p>
                           <ul className="entities-column-list">
-                            {columnOptionList.map((column) => {
-                              const isSelected = draftColumnKeys.includes(column.key)
-                              const isDragging = draggingColumnKey === column.key
-                              const isDropTarget = dropTargetKey === column.key
-                              const checkboxId = `column-option-${column.key}`
-                              const badgeLabel =
-                                column.type === 'metadata' ? 'Metadata' : 'Core'
+                            {/* --- Selected (active) columns, in correct order --- */}
+                            {draftColumnKeys.map((key) => {
+                              const column = columnOptionList.find((c) => c.key === key)
+                              if (!column) return null
+                              const isDragging = draggingColumnKey === key
+                              const isDropTarget = dropTargetKey === key
+                              const badgeLabel = column.type === 'metadata' ? 'Metadata' : 'Core'
+
                               return (
-                                <li
-                                  key={column.key}
-                                  className={`entities-column-item${
-                                    isSelected ? ' is-selected' : ''
-                                  }${isDragging ? ' is-dragging' : ''}${
-                                    isDropTarget ? ' is-drop-target' : ''
-                                  }`}
-                                  onDragOver={(event) =>
-                                    handleColumnDragOver(column.key, event)
-                                  }
-                                  onDragLeave={() => handleColumnDragLeave(column.key)}
-                                  onDrop={(event) => {
-                                    event.preventDefault()
-                                    handleColumnDrop(column.key)
-                                  }}
-                                  onDragEnd={handleColumnDragEnd}
-                                >
-                                  <div className="entities-column-item-main">
-                                    <input
-                                      id={checkboxId}
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={() => handleToggleColumn(column.key)}
-                                    />
-                                    <label htmlFor={checkboxId} className="entities-column-name">
-                                      {column.label}
-                                    </label>
-                                    <span className="entities-column-type-badge">
-                                      {badgeLabel}
-                                    </span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    className={`entities-column-handle${
-                                      isSelected ? '' : ' is-disabled'
-                                    }`}
-                                    title={
-                                      isSelected
-                                        ? 'Drag to reorder columns'
-                                        : 'Select the column to enable reordering'
-                                    }
-                                    aria-label={
-                                      isSelected
-                                        ? `Drag ${column.label} to change its order`
-                                        : `Select ${column.label} to enable dragging`
-                                    }
-                                    draggable={isSelected}
-                                    onDragStart={(event) =>
-                                      handleColumnDragStart(column.key, event)
-                                    }
+                                <Fragment key={key}>
+                                  {dropTargetKey === key && <div className="drop-indicator" />}
+                                  <li
+                                    className={`entities-column-item${isDragging ? ' is-dragging' : ''}`}
+                                    draggable
+                                    onDragStart={(e) => handleColumnDragStart(key, e)}
+                                    onDragOver={(e) => handleColumnDragOver(key, e)}
+                                    onDrop={() => handleColumnDrop(key)}
                                     onDragEnd={handleColumnDragEnd}
                                   >
-                                    <GripVertical size={18} />
-                                  </button>
-                                </li>
+                                    <div className="entities-column-item-main">
+                                      <input
+                                        type="checkbox"
+                                        checked
+                                        onChange={() => handleToggleColumn(key)}
+                                      />
+                                      <label className="entities-column-name">{column.label}</label>
+                                      <span className="entities-column-type-badge">{badgeLabel}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="entities-column-handle"
+                                      draggable
+                                      onDragStart={(e) => handleColumnDragStart(key, e)}
+                                    >
+                                      <GripVertical size={18} />
+                                    </button>
+                                  </li>
+                                </Fragment>
                               )
                             })}
+
+                            {/* --- Drop indicator at end of list --- */}
+                            {draggingColumnKey && dropTargetKey === '__end' && (
+                              <div className="drop-indicator end" />
+                            )}
+
+                            {/* --- Inactive (unchecked) columns --- */}
+                            {columnOptionList
+                              .filter((col) => !draftColumnKeys.includes(col.key))
+                              .map((column) => {
+                                const badgeLabel = column.type === 'metadata' ? 'Metadata' : 'Core'
+                                return (
+                                  <li key={column.key} className="entities-column-item inactive">
+                                    <div className="entities-column-item-main">
+                                      <input
+                                        type="checkbox"
+                                        checked={false}
+                                        onChange={() => handleToggleColumn(column.key)}
+                                      />
+                                      <label className="entities-column-name">{column.label}</label>
+                                      <span className="entities-column-type-badge">{badgeLabel}</span>
+                                    </div>
+                                    <div className="entities-column-handle-placeholder" />
+                                  </li>
+                                )
+                              })}
                           </ul>
+
+
                           {draggingColumnKey && (
                             <div
                               className={`entities-column-dropzone${
@@ -1161,21 +1164,6 @@ export default function EntityList() {
                           className="btn secondary"
                           onClick={handleResetToBaseline}
                           disabled={columnsLoading || draftMatchesFallback}
-                        >
-                          Reset
-                        </button>
-                        <button
-                          type="button"
-                          className="btn secondary"
-                          onClick={handleUseSystemDefault}
-                          disabled={
-                            columnsLoading || !hasSystemDefault || draftMatchesSystem
-                          }
-                          title={
-                            hasSystemDefault
-                              ? 'Apply the system default column set.'
-                              : 'No system default has been set yet.'
-                          }
                         >
                           Use system default
                         </button>

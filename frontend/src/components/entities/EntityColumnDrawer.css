@@ -1,0 +1,44 @@
+.entities-column-item {
+  position: relative;
+  transition: background 0.1s ease;
+}
+
+.entities-column-item.is-drop-target-before::before,
+.entities-column-item.is-drop-target-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: #3b82f6; /* Tailwind blue-500 */
+}
+
+.entities-column-item.is-drop-target-before::before {
+  top: 0;
+}
+
+.entities-column-item.is-drop-target-after::after {
+  bottom: 0;
+}
+
+.entities-column-item.is-dragging {
+  opacity: 0.5;
+}
+
+.entities-column-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.entity-column-drawer {
+  padding: 1rem;
+}
+
+.drawer-header,
+.drawer-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
