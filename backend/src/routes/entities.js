@@ -41,10 +41,23 @@ router.post('/:id/secrets', createEntitySecret)
 router.get('/:id/explore', async (req, res) => {
   const { worldId } = req.params
   const entityId = req.params.id
-  const depth = parseInt(req.query.depth || '1', 10)
-  const relationshipTypes = req.query.relationshipTypes
-    ? req.query.relationshipTypes.split(',')
-    : null
+
+  const depthParam = parseInt(req.query.depth || '1', 10)
+  const depth = Math.min(Math.max(Number.isNaN(depthParam) ? 1 : depthParam, 1), 3)
+
+  const relationshipTypesRaw = req.query.relationshipTypes
+  const relationshipTypeValues = Array.isArray(relationshipTypesRaw)
+    ? relationshipTypesRaw
+    : typeof relationshipTypesRaw === 'string'
+      ? relationshipTypesRaw.split(',')
+      : []
+
+  const relationshipTypes = relationshipTypeValues
+    .map((value) => Number.parseInt(value, 10))
+    .filter((value) => Number.isFinite(value) && value > 0)
+  const hasRelationshipTypeFilter = relationshipTypes.length > 0
+
+  const relationshipTypesById = new Map()
 
   try {
     const visited = new Set([entityId])
@@ -61,7 +74,7 @@ router.get('/:id/explore', async (req, res) => {
             { from_entity: currentLevel },
             { to_entity: currentLevel },
           ],
-          ...(relationshipTypes && {
+          ...(hasRelationshipTypeFilter && {
             relationship_type_id: relationshipTypes,
           }),
         },
@@ -80,6 +93,15 @@ router.get('/:id/explore', async (req, res) => {
         const src = rel.from_entity
         const tgt = rel.to_entity
 
+        const relationshipType = rel.relationshipType
+          ? {
+              id: rel.relationshipType.id,
+              name: rel.relationshipType.name,
+              fromName: rel.relationshipType.from_name,
+              toName: rel.relationshipType.to_name,
+            }
+          : null
+
         edges.push({
           id: rel.id,
           source: src,
@@ -88,15 +110,21 @@ router.get('/:id/explore', async (req, res) => {
           relationshipTypeId: rel.relationship_type_id,
           label: rel.label || rel.relationship_type_id,
           context: rel.context || {},
-          relationshipType: rel.relationshipType
-            ? {
-                id: rel.relationshipType.id,
-                name: rel.relationshipType.name,
-                fromName: rel.relationshipType.from_name,
-                toName: rel.relationshipType.to_name,
-              }
-            : null,
+          relationshipType,
         })
+
+        const relationshipTypeId = relationshipType?.id || rel.relationship_type_id
+        if (relationshipTypeId) {
+          const typeKey = String(relationshipTypeId)
+          if (!relationshipTypesById.has(typeKey)) {
+            relationshipTypesById.set(typeKey, {
+              id: relationshipTypeId,
+              name: relationshipType?.name || String(relationshipTypeId),
+              fromName: relationshipType?.fromName || null,
+              toName: relationshipType?.toName || null,
+            })
+          }
+        }
 
         if (!visited.has(src)) newEntityIds.add(src)
         if (!visited.has(tgt)) newEntityIds.add(tgt)
@@ -136,7 +164,11 @@ router.get('/:id/explore', async (req, res) => {
       })
     }
 
-    res.json({ nodes, edges })
+    const availableRelationshipTypes = Array.from(relationshipTypesById.values()).sort(
+      (a, b) => a.name.localeCompare(b.name),
+    )
+
+    res.json({ nodes, edges, relationshipTypes: availableRelationshipTypes })
   } catch (err) {
     console.error('Error building entity graph:', err)
     res.status(500).json({ error: 'Failed to build entity graph' })
