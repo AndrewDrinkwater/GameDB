@@ -125,16 +125,27 @@
   position: relative;
   width: 100%;
   height: 100%;
-  padding-right: 280px;
-  transition: padding-right 0.2s ease;
+  display: flex;
+  gap: 18px;
+  padding: 24px;
+  box-sizing: border-box;
+  align-items: stretch;
+}
+
+.graph-canvas-container {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border-radius: 18px;
+  overflow: hidden;
 }
 
 .graph-filter-sidebar {
-  position: absolute;
-  right: 16px;
-  top: 120px;
+  position: sticky;
+  top: 24px;
   width: 260px;
-  max-height: calc(100% - 160px);
+  max-height: calc(100vh - 120px);
   overflow-y: auto;
   background: rgba(15, 23, 42, 0.92);
   border: 1px solid rgba(148, 163, 184, 0.35);
@@ -146,6 +157,7 @@
   box-shadow: 0 20px 42px rgba(15, 23, 42, 0.55);
   backdrop-filter: blur(6px);
   z-index: 9;
+  flex-shrink: 0;
 }
 
 .graph-filter-sidebar::-webkit-scrollbar {
@@ -172,6 +184,12 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.graph-filter-description {
+  font-size: 0.7rem;
+  color: rgba(148, 163, 184, 0.8);
+  margin: 0;
 }
 
 .graph-filter-group-header {
@@ -331,7 +349,8 @@
 
 @media (max-width: 1280px) {
   .graph-area {
-    padding-right: 240px;
+    padding: 20px;
+    gap: 16px;
   }
 
   .graph-filter-sidebar {
@@ -340,25 +359,27 @@
 }
 
 @media (max-width: 1024px) {
-  .graph-area {
-    padding-right: 200px;
-  }
-
   .graph-filter-sidebar {
     width: 220px;
-    top: 108px;
+    top: 20px;
   }
 }
 
 @media (max-width: 900px) {
   .graph-area {
-    padding-right: 0;
+    flex-direction: column;
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .graph-canvas-container {
+    min-height: 440px;
   }
 
   .graph-filter-sidebar {
     position: static;
-    width: calc(100% - 32px);
+    width: 100%;
     max-height: none;
-    margin: 16px auto;
+    margin: 12px auto 0;
   }
 }
