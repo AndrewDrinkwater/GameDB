@@ -19,6 +19,21 @@
   box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2), 0 18px 40px rgba(8, 145, 178, 0.35);
 }
 
+.custom-node-card.is-highlighted {
+  border-color: rgba(250, 204, 21, 0.95);
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.2), 0 18px 42px rgba(250, 204, 21, 0.35);
+}
+
+.custom-node-card.is-adjacent {
+  border-color: rgba(56, 189, 248, 0.75);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18), 0 18px 38px rgba(56, 189, 248, 0.28);
+}
+
+.custom-node-card.is-dimmed {
+  opacity: 0.4;
+  filter: grayscale(0.2);
+}
+
 .custom-node-content {
   display: flex;
   flex-direction: column;
@@ -43,14 +58,23 @@
   border: 1px solid rgba(45, 212, 191, 0.35);
   background: rgba(10, 12, 24, 0.92);
   color: #bae6fd;
-  padding: 2px 8px;
-  font-size: 0.7rem;
+  padding: 3px 10px;
+  font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.45);
   pointer-events: auto;
-  white-space: nowrap;
+  white-space: pre-line;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 240px;
+  text-align: center;
+}
+
+.custom-edge-label-line {
+  line-height: 1.1;
 }
 
 .graph-toolbar {
@@ -59,7 +83,7 @@
   right: 16px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   z-index: 10;
 }
 
@@ -81,6 +105,58 @@
 .graph-toolbar button:hover {
   border-color: rgba(94, 234, 212, 0.7);
   background: rgba(15, 23, 42, 0.98);
+}
+
+.graph-search {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.graph-search-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  padding: 6px 10px;
+  border-radius: 999px;
+  min-width: 220px;
+  color: #e2e8f0;
+}
+
+.graph-search-field input {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 0.75rem;
+  width: 100%;
+  outline: none;
+}
+
+.graph-search-field svg {
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.graph-search-clear {
+  background: transparent;
+  border: none;
+  color: rgba(148, 163, 184, 0.8);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.graph-search-clear:hover {
+  color: #f87171;
+}
+
+.graph-search-submit {
+  background: rgba(56, 189, 248, 0.18) !important;
+  border-color: rgba(56, 189, 248, 0.45) !important;
+  color: #e0f2fe !important;
+  padding: 0.45rem 0.9rem !important;
 }
 
 .graph-context-menu {
@@ -310,14 +386,21 @@
 .graph-filter-type-row {
   display: flex;
   gap: 10px;
-  align-items: flex-start;
+  align-items: center;
   color: #e2e8f0;
   font-size: 0.78rem;
 }
 
 .graph-filter-type-row input {
-  margin-top: 3px;
   accent-color: #38bdf8;
+}
+
+.graph-filter-type-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid rgba(148, 163, 184, 0.6);
+  flex-shrink: 0;
 }
 
 .graph-filter-type-note {

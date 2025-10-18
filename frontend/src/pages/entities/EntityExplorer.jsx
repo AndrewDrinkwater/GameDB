@@ -10,7 +10,7 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { getEntityGraph } from '../../api/entities'
-import { Filter, Info } from 'lucide-react'
+import { Filter, Info, Search } from 'lucide-react'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import { nodeTypes, edgeTypes } from '../../components/graphTypes'
 import '../../components/graphStyles.css'
@@ -18,6 +18,91 @@ import '../../components/graphStyles.css'
 const HORIZONTAL_SPACING = 240
 const VERTICAL_SPACING = 220
 const MAX_DEPTH = 3
+
+const RELATIONSHIP_COLOR_PALETTE = [
+  '#38bdf8',
+  '#a855f7',
+  '#f97316',
+  '#22d3ee',
+  '#f43f5e',
+  '#84cc16',
+  '#facc15',
+  '#14b8a6',
+  '#c084fc',
+  '#fb7185',
+]
+
+const RELATIONSHIP_LABEL_BACKGROUND = '#0b1220'
+
+const hashStringToIndex = (value) => {
+  if (!value) return 0
+  const str = String(value)
+  let hash = 0
+  for (let i = 0; i < str.length; i += 1) {
+    hash = (hash << 5) - hash + str.charCodeAt(i)
+    hash |= 0
+  }
+  return Math.abs(hash)
+}
+
+const getRelationshipStyle = (typeId) => {
+  const paletteIndex =
+    RELATIONSHIP_COLOR_PALETTE[hashStringToIndex(typeId) % RELATIONSHIP_COLOR_PALETTE.length]
+
+  const patternIndex = hashStringToIndex(`${typeId}-pattern`) % 3
+  const strokeDasharray = patternIndex === 0 ? undefined : patternIndex === 1 ? '6 6' : '2 4'
+
+  return {
+    color: paletteIndex,
+    strokeDasharray,
+    labelBackground: RELATIONSHIP_LABEL_BACKGROUND,
+    labelColor: '#e0f2fe',
+  }
+}
+
+const buildRelationshipLabel = ({
+  edge,
+  relationshipType,
+  rootKey,
+  sourceNode,
+  targetNode,
+}) => {
+  const labelParts = []
+  const tooltipParts = []
+
+  const baseName = relationshipType?.name || edge.label
+  const fromName = relationshipType?.fromName
+  const toName = relationshipType?.toName
+
+  const sourceName = sourceNode?.name || sourceNode?.data?.label || 'Source'
+  const targetName = targetNode?.name || targetNode?.data?.label || 'Target'
+
+  if (edge.label && edge.label !== baseName) {
+    labelParts.push(edge.label)
+  }
+
+  if (relationshipType) {
+    if (edge.source === rootKey) {
+      labelParts.unshift(fromName || baseName)
+    } else if (edge.target === rootKey) {
+      labelParts.unshift(toName || baseName)
+    } else {
+      labelParts.unshift(baseName)
+    }
+  } else if (!labelParts.length && baseName) {
+    labelParts.push(baseName)
+  }
+
+  if (relationshipType?.name) {
+    tooltipParts.push(relationshipType.name)
+  }
+  tooltipParts.push(`${sourceName} → ${targetName}`)
+
+  return {
+    label: labelParts.filter(Boolean).join('\n'),
+    tooltip: tooltipParts.filter(Boolean).join('\n'),
+  }
+}
 
 const CONTEXT_MENU_INITIAL_STATE = {
   visible: false,
@@ -161,49 +246,75 @@ const buildLayout = (graphData, rootId) => {
     }
   })
 
-  const laidOutEdges = (graphData.edges || []).map((edge) => {
-    const relationshipType = edge.relationshipType || {}
+  const edgesByPair = new Map()
+  ;(graphData.edges || []).forEach((edge) => {
+    if (!edge) return
     const sourceId = String(edge.source)
     const targetId = String(edge.target)
-
-    const rootIsSource = sourceId === rootKey
-    const rootIsTarget = targetId === rootKey
-    let label = edge.label
-
-    if (relationshipType) {
-      if (rootIsSource) {
-        label =
-          relationshipType.fromName ||
-          relationshipType.name ||
-          edge.label
-      } else if (rootIsTarget) {
-        label =
-          relationshipType.toName || relationshipType.name || edge.label
-      } else {
-        label = relationshipType.name || edge.label
-      }
+    const key = `${sourceId}->${targetId}`
+    if (!edgesByPair.has(key)) {
+      edgesByPair.set(key, [])
     }
+    edgesByPair.get(key).push(edge)
+  })
 
-    return {
-      id: String(edge.id || `${sourceId}-${targetId}`),
-      source: sourceId,
-      target: targetId,
-      label,
-      data: {
-        relationshipTypeId: edge.relationshipTypeId || edge.type || null,
-        relationshipTypeName:
-          relationshipType.name || label || null,
-        relationshipType: relationshipType || null,
-      },
-      animated: false,
-      type: 'customEdge',
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: '#38bdf8',
-        width: 18,
-        height: 18,
-      },
-    }
+  const laidOutEdges = []
+
+  edgesByPair.forEach((edgeList, pairKey) => {
+    const [sourceId, targetId] = pairKey.split('->')
+    const multiCount = edgeList.length
+
+    edgeList.forEach((edge, index) => {
+      const relationshipType = edge.relationshipType || {}
+      const typeId =
+        edge.relationshipTypeId || edge.type || relationshipType?.id || null
+
+      const style = getRelationshipStyle(typeId || `${sourceId}-${targetId}`)
+
+      const sourceNode = nodesMap.get(sourceId)
+      const targetNode = nodesMap.get(targetId)
+
+      const { label, tooltip } = buildRelationshipLabel({
+        edge: {
+          ...edge,
+          source: sourceId,
+          target: targetId,
+        },
+        relationshipType,
+        rootKey,
+        sourceNode,
+        targetNode,
+      })
+
+      const uniqueId = String(
+        edge.id ?? `${sourceId}-${targetId}-${typeId ?? 'rel'}-${index}`,
+      )
+
+      laidOutEdges.push({
+        id: uniqueId,
+        source: sourceId,
+        target: targetId,
+        label,
+        data: {
+          relationshipTypeId: typeId || null,
+          relationshipTypeName:
+            relationshipType.name || label || null,
+          relationshipType: relationshipType || null,
+          tooltip,
+          multiIndex: index,
+          multiCount,
+          style,
+        },
+        animated: false,
+        type: 'customEdge',
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: style.color,
+          width: 18,
+          height: 18,
+        },
+      })
+    })
   })
 
   return {
@@ -322,6 +433,10 @@ export default function EntityExplorer() {
   const [reactFlowInstance, setReactFlowInstance] = useState(null)
   const [contextMenu, setContextMenu] = useState(CONTEXT_MENU_INITIAL_STATE)
   const [availableRelationshipTypes, setAvailableRelationshipTypes] = useState([])
+  const [hoveredEdgeId, setHoveredEdgeId] = useState(null)
+  const [hoveredEdgeNodes, setHoveredEdgeNodes] = useState([])
+  const [focusedNodeId, setFocusedNodeId] = useState(null)
+  const [searchValue, setSearchValue] = useState('')
 
   const depth = filters.depth
   const hiddenRelationshipTypes = filters.hiddenRelationshipTypes
@@ -363,6 +478,7 @@ export default function EntityExplorer() {
               name: type.name || `Relationship ${id}`,
               fromName: type.fromName || null,
               toName: type.toName || null,
+              style: getRelationshipStyle(id),
             })
           })
         }
@@ -383,6 +499,7 @@ export default function EntityExplorer() {
                 `Relationship ${id}`,
               fromName: relationshipType.fromName || null,
               toName: relationshipType.toName || null,
+              style: getRelationshipStyle(id),
             })
           })
         }
@@ -397,6 +514,7 @@ export default function EntityExplorer() {
                 name: value.name || existing.name || `Relationship ${key}`,
                 fromName: value.fromName ?? existing.fromName ?? null,
                 toName: value.toName ?? existing.toName ?? null,
+                style: value.style || existing.style || getRelationshipStyle(key),
               })
             })
             return Array.from(merged.values()).sort((a, b) =>
@@ -464,6 +582,14 @@ export default function EntityExplorer() {
 
   useEffect(() => {
     if (!filteredGraph.nodes.length) {
+      setFocusedNodeId(null)
+    } else if (focusedNodeId && !filteredGraph.nodes.some((node) => node.id === focusedNodeId)) {
+      setFocusedNodeId(null)
+    }
+  }, [filteredGraph.nodes, focusedNodeId])
+
+  useEffect(() => {
+    if (!filteredGraph.nodes.length) {
       setSelectedEntity(null)
       return
     }
@@ -512,10 +638,16 @@ export default function EntityExplorer() {
     }
   }, [contextMenu.visible])
 
+  const clearHoverState = useCallback(() => {
+    setHoveredEdgeId(null)
+    setHoveredEdgeNodes([])
+  }, [])
+
   const onNodeClick = useCallback((_, node) => {
     setSelectedEntity(node.id)
     setContextMenu(CONTEXT_MENU_INITIAL_STATE)
-  }, [])
+    clearHoverState()
+  }, [clearHoverState])
 
   const onNodeContextMenu = useCallback((event, node) => {
     event.preventDefault()
@@ -527,6 +659,15 @@ export default function EntityExplorer() {
       node,
     })
   }, [])
+
+  const onEdgeMouseEnter = useCallback((_, edge) => {
+    setHoveredEdgeId(edge.id)
+    setHoveredEdgeNodes([String(edge.source), String(edge.target)])
+  }, [])
+
+  const onEdgeMouseLeave = useCallback(() => {
+    clearHoverState()
+  }, [clearHoverState])
 
   const handleDepthChange = (event) => {
     const value = Number.parseInt(event.target.value, 10)
@@ -581,6 +722,101 @@ export default function EntityExplorer() {
     window.open(url, '_blank', 'noopener')
   }
 
+  const handlePaneInteraction = useCallback(() => {
+    setContextMenu(CONTEXT_MENU_INITIAL_STATE)
+    clearHoverState()
+  }, [clearHoverState])
+
+  const handleSearchSubmit = (event) => {
+    event.preventDefault()
+    if (!reactFlowInstance) return
+
+    const query = searchValue.trim().toLowerCase()
+    if (!query) {
+      setFocusedNodeId(null)
+      return
+    }
+
+    const targetNode = nodes.find((node) =>
+      (node?.data?.label || '').toLowerCase().includes(query),
+    )
+
+    if (!targetNode) {
+      return
+    }
+
+    setFocusedNodeId(targetNode.id)
+    setSelectedEntity(targetNode.id)
+
+    const viewNode = reactFlowInstance.getNode?.(targetNode.id) || targetNode
+    if (viewNode) {
+      reactFlowInstance.fitView({ nodes: [viewNode], padding: 0.8, duration: 400 })
+    }
+  }
+
+  const handleClearSearch = () => {
+    setSearchValue('')
+    setFocusedNodeId(null)
+  }
+
+  useEffect(() => {
+    setNodes((current) =>
+      current.map((node) => {
+        const data = node.data || {}
+        const isFocused = focusedNodeId ? node.id === focusedNodeId : false
+        const isSelected = selectedEntity ? node.id === selectedEntity : false
+        const isHoverAdjacent = hoveredEdgeNodes.includes(String(node.id))
+        const shouldDim =
+          hoveredEdgeNodes.length > 0 && !isHoverAdjacent && !isSelected && !isFocused
+
+        const nextData = {
+          ...data,
+          isHighlighted: isFocused || isSelected,
+          isEdgeAdjacent: isHoverAdjacent,
+          isDimmed: shouldDim,
+        }
+
+        if (
+          data.isHighlighted === nextData.isHighlighted &&
+          data.isEdgeAdjacent === nextData.isEdgeAdjacent &&
+          data.isDimmed === nextData.isDimmed
+        ) {
+          return node
+        }
+
+        return {
+          ...node,
+          data: nextData,
+        }
+      }),
+    )
+  }, [focusedNodeId, hoveredEdgeNodes, selectedEntity, setNodes])
+
+  useEffect(() => {
+    setEdges((current) =>
+      current.map((edge) => {
+        const data = edge.data || {}
+        const isHovered = hoveredEdgeId === edge.id
+        const shouldDim = hoveredEdgeId && hoveredEdgeId !== edge.id
+
+        const nextData = {
+          ...data,
+          isHovered,
+          isDimmed: Boolean(shouldDim),
+        }
+
+        if (data.isHovered === nextData.isHovered && data.isDimmed === nextData.isDimmed) {
+          return edge
+        }
+
+        return {
+          ...edge,
+          data: nextData,
+        }
+      }),
+    )
+  }, [hoveredEdgeId, setEdges])
+
   return (
     <div className="flex h-full w-full">
       {/* Main graph area */}
@@ -600,12 +836,38 @@ export default function EntityExplorer() {
                   onEdgesChange={onEdgesChange}
                   onNodeClick={onNodeClick}
                   onNodeContextMenu={onNodeContextMenu}
-                  onPaneClick={() => setContextMenu(CONTEXT_MENU_INITIAL_STATE)}
-                  onPaneContextMenu={() => setContextMenu(CONTEXT_MENU_INITIAL_STATE)}
+                  onEdgeMouseEnter={onEdgeMouseEnter}
+                  onEdgeMouseLeave={onEdgeMouseLeave}
+                  onPaneClick={handlePaneInteraction}
+                  onPaneContextMenu={handlePaneInteraction}
                   onInit={setReactFlowInstance}
                   style={{ width: '100%', height: '100%' }}
                 >
                   <div className="graph-toolbar">
+                    <form className="graph-search" onSubmit={handleSearchSubmit}>
+                      <div className="graph-search-field">
+                        <Search size={14} />
+                        <input
+                          type="search"
+                          placeholder="Find entity..."
+                          value={searchValue}
+                          onChange={(event) => setSearchValue(event.target.value)}
+                        />
+                        {searchValue ? (
+                          <button
+                            type="button"
+                            className="graph-search-clear"
+                            onClick={handleClearSearch}
+                            aria-label="Clear search"
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </div>
+                      <button type="submit" className="graph-search-submit">
+                        Jump
+                      </button>
+                    </form>
                     <button
                       type="button"
                       onClick={() => {
@@ -627,8 +889,30 @@ export default function EntityExplorer() {
                     >
                       Zoom to Fit
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!reactFlowInstance) return
+                        reactFlowInstance.fitView({ padding: 0.4, duration: 400 })
+                        setSearchValue('')
+                        setFocusedNodeId(null)
+                      }}
+                    >
+                      Reset View
+                    </button>
                   </div>
-                  <MiniMap />
+                  <MiniMap
+                    nodeColor={(node) =>
+                      node?.data?.isHighlighted
+                        ? '#facc15'
+                        : node?.data?.isEdgeAdjacent
+                        ? '#38bdf8'
+                        : '#1e293b'
+                    }
+                    nodeStrokeColor={(node) =>
+                      node?.data?.isHighlighted ? '#fde68a' : '#334155'
+                    }
+                  />
                   <Controls />
                   <Background color="#222" gap={16} />
                 </ReactFlow>
@@ -729,9 +1013,17 @@ export default function EntityExplorer() {
                       {availableRelationshipTypes.map((type) => {
                         const id = String(type.id)
                         const isChecked = !hiddenRelationshipTypes.includes(id)
+                        const style = type.style || getRelationshipStyle(id)
                         return (
                           <label key={id} className="graph-filter-type">
                             <div className="graph-filter-type-row">
+                              <span
+                                className="graph-filter-type-dot"
+                                style={{
+                                  background: style.color,
+                                  borderStyle: style.strokeDasharray ? 'dashed' : 'solid',
+                                }}
+                              />
                               <input
                                 type="checkbox"
                                 checked={isChecked}

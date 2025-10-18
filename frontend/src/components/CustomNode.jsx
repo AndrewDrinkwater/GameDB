@@ -12,10 +12,16 @@ const HANDLE_STYLE = {
 };
 
 const CustomNode = ({ data }) => {
-  const { label, type, isRoot } = data || {};
+  const { label, type, isRoot, isHighlighted, isEdgeAdjacent, isDimmed } = data || {};
+
+  const classes = ['custom-node-card'];
+  if (isRoot) classes.push('is-root');
+  if (isHighlighted) classes.push('is-highlighted');
+  if (isEdgeAdjacent && !isHighlighted) classes.push('is-adjacent');
+  if (isDimmed) classes.push('is-dimmed');
 
   return (
-    <div className={`custom-node-card${isRoot ? ' is-root' : ''}`}>
+    <div className={classes.join(' ')}>
       <Handle
         type="target"
         position={Position.Top}
