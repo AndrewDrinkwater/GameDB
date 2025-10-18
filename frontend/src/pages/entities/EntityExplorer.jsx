@@ -10,7 +10,7 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { getEntityGraph } from '../../api/entities'
-import { Filter, Info, Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Filter, Info, Search } from 'lucide-react'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import { nodeTypes, edgeTypes } from '../../components/graphTypes'
 import '../../components/graphStyles.css'
@@ -145,7 +145,7 @@ const CONTEXT_MENU_INITIAL_STATE = {
 
 const buildLayout = (graphData, rootId) => {
   if (!graphData || !Array.isArray(graphData.nodes)) {
-    return { nodes: [], edges: [] }
+    return { nodes: [], edges: [], clusters: [] }
   }
 
   const rootKey = String(rootId)
@@ -171,14 +171,141 @@ const buildLayout = (graphData, rootId) => {
     return {
       nodes: Array.from(nodesMap.values()),
       edges: graphData.edges || [],
+      clusters: [],
     }
   }
 
-  const adjacency = new Map()
+  const getEdgeTypeId = (edge) => {
+    const rawTypeId =
+      edge?.relationshipTypeId ??
+      edge?.type ??
+      edge?.relationshipType?.id ??
+      null
+    if (rawTypeId === null || rawTypeId === undefined) return null
+    return String(rawTypeId)
+  }
+
+  const clusterCandidates = new Map()
   ;(graphData.edges || []).forEach((edge) => {
-    if (!edge) return
+    if (!edge || edge.source === undefined || edge.target === undefined) {
+      return
+    }
     const sourceId = String(edge.source)
     const targetId = String(edge.target)
+    const typeId = getEdgeTypeId(edge)
+    if (!typeId) return
+
+    const key = `${sourceId}|${typeId}`
+    if (!clusterCandidates.has(key)) {
+      clusterCandidates.set(key, {
+        sourceId,
+        typeId,
+        typeName:
+          edge.relationshipType?.name ||
+          edge.label ||
+          `Relationship ${typeId}`,
+        relationships: [],
+        targets: new Map(),
+      })
+    }
+
+    const group = clusterCandidates.get(key)
+    group.relationships.push(edge)
+
+    const targetNode = nodesMap.get(targetId)
+    group.targets.set(targetId, {
+      id: targetId,
+      name: targetNode?.name || edge.targetName || `Entity ${targetId}`,
+      type: targetNode?.type || null,
+    })
+  })
+
+  const clusterDefinitions = []
+  const clusterEdgeLookup = new Map()
+
+  clusterCandidates.forEach((group) => {
+    if (group.targets.size < 5) return
+
+    const clusterId = `cluster:${group.sourceId}:${group.typeId}`
+    const sourceNode = nodesMap.get(group.sourceId)
+
+    const summaries = group.relationships.map((edge, index) => {
+      const typeId = getEdgeTypeId(edge) || group.typeId
+      const relationshipType = edge.relationshipType || {}
+      const targetId = String(edge.target)
+      const targetNode = nodesMap.get(targetId)
+
+      const { label, tooltip } = buildRelationshipLabel({
+        edge: {
+          ...edge,
+          source: group.sourceId,
+          target: targetId,
+        },
+        relationshipType,
+        rootKey,
+        sourceNode,
+        targetNode,
+      })
+
+      return {
+        id: String(
+          edge.id ?? `${group.sourceId}-${targetId}-${typeId ?? 'rel'}-${index}`,
+        ),
+        typeId,
+        typeName:
+          relationshipType.name || edge.label || `Relationship ${index + 1}`,
+        label,
+        tooltip,
+        style: getRelationshipStyle(typeId || `${group.sourceId}-${targetId}`),
+      }
+    })
+
+    const relationshipSummaries = dedupeRelationshipSummaries(summaries)
+    const clusterStyle =
+      relationshipSummaries[0]?.style || getRelationshipStyle(group.typeId)
+    const clusterLabel =
+      relationshipSummaries[0]?.label || relationshipSummaries[0]?.typeName || group.typeName
+    const clusterTooltip =
+      relationshipSummaries
+        .map(
+          (summary) =>
+            summary.tooltip || summary.label || summary.typeName || 'Relationship',
+        )
+        .filter(Boolean)
+        .join('\n') || group.typeName
+
+    const clusterTargets = Array.from(group.targets.values())
+
+    clusterDefinitions.push({
+      id: clusterId,
+      sourceId: group.sourceId,
+      typeId: group.typeId,
+      typeName: group.typeName,
+      label: clusterLabel,
+      tooltip: clusterTooltip,
+      count: clusterTargets.length,
+      relationships: relationshipSummaries,
+      targets: clusterTargets,
+      style: clusterStyle,
+    })
+
+    group.targets.forEach((target) => {
+      const lookupKey = `${group.sourceId}|${group.typeId}|${target.id}`
+      clusterEdgeLookup.set(lookupKey, clusterId)
+    })
+  })
+
+  const adjacency = new Map()
+  ;(graphData.edges || []).forEach((edge) => {
+    if (!edge || edge.source === undefined || edge.target === undefined) {
+      return
+    }
+    const sourceId = String(edge.source)
+    const targetId = String(edge.target)
+    const typeId = getEdgeTypeId(edge)
+    if (typeId && clusterEdgeLookup.has(`${sourceId}|${typeId}|${targetId}`)) {
+      return
+    }
     if (!adjacency.has(sourceId)) adjacency.set(sourceId, [])
     if (!adjacency.has(targetId)) adjacency.set(targetId, [])
     adjacency.get(sourceId).push({ id: targetId, direction: 'out' })
@@ -262,28 +389,119 @@ const buildLayout = (graphData, rootId) => {
     unplacedIndex += 1
   })
 
-  const laidOutNodes = Array.from(nodesMap.values()).map((node) => {
-    const meta = nodeMeta.get(node.id)
-    return {
-      id: node.id,
+  const remainingEdgeUsage = new Map()
+  const incrementUsage = (id) => {
+    if (!id) return
+    const key = String(id)
+    remainingEdgeUsage.set(key, (remainingEdgeUsage.get(key) || 0) + 1)
+  }
+
+  ;(graphData.edges || []).forEach((edge) => {
+    if (!edge || edge.source === undefined || edge.target === undefined) {
+      return
+    }
+    const sourceId = String(edge.source)
+    const targetId = String(edge.target)
+    const typeId = getEdgeTypeId(edge)
+    if (typeId && clusterEdgeLookup.has(`${sourceId}|${typeId}|${targetId}`)) {
+      return
+    }
+    incrementUsage(sourceId)
+    incrementUsage(targetId)
+  })
+
+  const hiddenNodeIds = new Set()
+  clusterDefinitions.forEach((cluster) => {
+    cluster.targets.forEach((target) => {
+      const usage = remainingEdgeUsage.get(target.id) || 0
+      if (usage === 0 && target.id !== rootKey) {
+        hiddenNodeIds.add(String(target.id))
+      }
+    })
+  })
+
+  const laidOutNodes = []
+  nodesMap.forEach((node, id) => {
+    if (hiddenNodeIds.has(id)) return
+    const meta = nodeMeta.get(id)
+    laidOutNodes.push({
+      id,
       data: {
         label: node.name,
         type: node.type,
-        isRoot: node.id === rootKey,
-        depth: meta?.depth ?? (node.id === rootKey ? 0 : null),
+        isRoot: id === rootKey,
+        depth: meta?.depth ?? (id === rootKey ? 0 : null),
         orientation: meta?.orientation ?? 'center',
       },
-      position: positions.get(node.id) || { x: 0, y: 0 },
+      position: positions.get(id) || { x: 0, y: 0 },
       type: 'customNode',
+    })
+  })
+
+  const clustersBySource = new Map()
+  clusterDefinitions.forEach((cluster) => {
+    if (!clustersBySource.has(cluster.sourceId)) {
+      clustersBySource.set(cluster.sourceId, [])
     }
+    clustersBySource.get(cluster.sourceId).push(cluster)
+  })
+
+  const CLUSTER_HORIZONTAL_STEP = HORIZONTAL_SPACING * 0.7
+  const CLUSTER_VERTICAL_OFFSET = VERTICAL_SPACING * 0.6
+
+  clustersBySource.forEach((clusters, sourceId) => {
+    const sourcePosition = positions.get(sourceId) || { x: 0, y: 0 }
+    const sourceMeta = nodeMeta.get(sourceId)
+    const orientationSign = sourceMeta?.orientation === 'top' ? -1 : 1
+    const startX =
+      sourcePosition.x - ((clusters.length - 1) * CLUSTER_HORIZONTAL_STEP) / 2
+
+    clusters
+      .slice()
+      .sort((a, b) => (a.label || '').localeCompare(b.label || ''))
+      .forEach((cluster, index) => {
+        const clusterPosition = {
+          x: startX + index * CLUSTER_HORIZONTAL_STEP,
+          y: sourcePosition.y + orientationSign * CLUSTER_VERTICAL_OFFSET,
+        }
+
+        nodeMeta.set(cluster.id, {
+          depth: (sourceMeta?.depth ?? 0) + 0.5,
+          orientation: orientationSign >= 0 ? 'bottom' : 'top',
+          firstDirection: orientationSign >= 0 ? 'bottom' : 'top',
+        })
+        positions.set(cluster.id, clusterPosition)
+
+        laidOutNodes.push({
+          id: cluster.id,
+          data: {
+            label: cluster.label,
+            type: cluster.typeName,
+            typeName: cluster.typeName,
+            count: cluster.count,
+            depth: (sourceMeta?.depth ?? 0) + 0.5,
+            orientation: orientationSign >= 0 ? 'bottom' : 'top',
+            isCluster: true,
+            cluster,
+          },
+          position: clusterPosition,
+          type: 'relationshipCluster',
+        })
+      })
   })
 
   const edgesByPair = new Map()
   const relationshipIdsByPair = new Map()
   ;(graphData.edges || []).forEach((edge) => {
-    if (!edge) return
+    if (!edge || edge.source === undefined || edge.target === undefined) {
+      return
+    }
     const sourceId = String(edge.source)
     const targetId = String(edge.target)
+    const typeId = getEdgeTypeId(edge)
+    if (typeId && clusterEdgeLookup.has(`${sourceId}|${typeId}|${targetId}`)) {
+      return
+    }
     const key = `${sourceId}->${targetId}`
     if (!edgesByPair.has(key)) {
       edgesByPair.set(key, [])
@@ -413,9 +631,49 @@ const buildLayout = (graphData, rootId) => {
     })
   })
 
+  clusterDefinitions.forEach((cluster) => {
+    const style = cluster.style || getRelationshipStyle(cluster.typeId)
+    laidOutEdges.push({
+      id: `${cluster.id}-edge`,
+      source: cluster.sourceId,
+      target: cluster.id,
+      label: String(cluster.count),
+      data: {
+        relationshipTypeId: cluster.typeId,
+        relationshipTypeIds: [cluster.typeId],
+        relationshipTypeName: cluster.typeName,
+        tooltip: cluster.tooltip,
+        multiIndex:
+          cluster.relationships.length > 1
+            ? (cluster.relationships.length - 1) / 2
+            : 0,
+        multiCount: cluster.relationships.length,
+        style,
+        relationships: cluster.relationships,
+        isClusterEdge: true,
+        clusterId: cluster.id,
+        sourceName:
+          nodesMap.get(cluster.sourceId)?.name ||
+          nodesMap.get(cluster.sourceId)?.data?.label ||
+          '',
+        targetName: cluster.label,
+        clusterCount: cluster.count,
+      },
+      animated: false,
+      type: 'customEdge',
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: style.color,
+        width: 18,
+        height: 18,
+      },
+    })
+  })
+
   return {
     nodes: laidOutNodes,
     edges: laidOutEdges,
+    clusters: clusterDefinitions,
   }
 }
 
@@ -459,15 +717,23 @@ const applyLayerFilters = (
           return null
         }
 
-        const nextMultiCount = visibleRelationships.length
-        const nextLabel =
-          nextMultiCount === 1
+        const isClusterEdge = Boolean(edge.data?.isClusterEdge)
+        const clusterCount = isClusterEdge
+          ? edge.data?.clusterCount ?? visibleRelationships.length
+          : visibleRelationships.length
+        const nextMultiCount = isClusterEdge
+          ? clusterCount
+          : visibleRelationships.length
+        const nextLabel = isClusterEdge
+          ? String(clusterCount)
+          : nextMultiCount === 1
             ? visibleRelationships[0]?.label ||
               visibleRelationships[0]?.typeName ||
               edge.label
             : String(nextMultiCount)
-        const nextTooltip =
-          nextMultiCount === 1
+        const nextTooltip = isClusterEdge
+          ? edge.data?.tooltip
+          : nextMultiCount === 1
             ? visibleRelationships[0]?.tooltip ||
               visibleRelationships[0]?.label ||
               visibleRelationships[0]?.typeName
@@ -487,15 +753,17 @@ const applyLayerFilters = (
           .map((value) => String(value))
         const nextPrimaryTypeId = nextTypeIds[0] || null
 
-        const nextRelationshipTypeName =
-          nextMultiCount === 1
+        const nextRelationshipTypeName = isClusterEdge
+          ? edge.data?.relationshipTypeName || null
+          : nextMultiCount === 1
             ? visibleRelationships[0]?.typeName ||
               edge.data?.relationshipTypeName ||
               null
             : `${nextMultiCount} relationships`
 
-        const nextStyle =
-          nextMultiCount === 1
+        const nextStyle = isClusterEdge
+          ? edge.data?.style || {}
+          : nextMultiCount === 1
             ? visibleRelationships[0]?.style || edge.data?.style || {}
             : edge.data?.style || {}
 
@@ -515,6 +783,7 @@ const applyLayerFilters = (
             relationshipTypeName: nextRelationshipTypeName,
             relationships: visibleRelationships,
             style: nextStyle,
+            clusterCount: isClusterEdge ? clusterCount : edge.data?.clusterCount,
           },
           markerEnd: edge.markerEnd
             ? { ...edge.markerEnd, color: nextStyle.color || edge.markerEnd.color }
@@ -617,6 +886,7 @@ export default function EntityExplorer() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedEntity, setSelectedEntity] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false)
   const [rootPosition, setRootPosition] = useState(null)
   const [shouldAutoFit, setShouldAutoFit] = useState(false)
   const [reactFlowInstance, setReactFlowInstance] = useState(null)
@@ -626,6 +896,9 @@ export default function EntityExplorer() {
   const [hoveredEdgeNodes, setHoveredEdgeNodes] = useState([])
   const [activeEdgeId, setActiveEdgeId] = useState(null)
   const [activeEdgeDetails, setActiveEdgeDetails] = useState(null)
+  const [clusterDetails, setClusterDetails] = useState(new Map())
+  const [activeClusterId, setActiveClusterId] = useState(null)
+  const [activeClusterDetails, setActiveClusterDetails] = useState(null)
   const [focusedNodeId, setFocusedNodeId] = useState(null)
   const [searchValue, setSearchValue] = useState('')
   const lastGraphIdentityRef = useRef({ worldId: null, entityId: null })
@@ -645,13 +918,20 @@ export default function EntityExplorer() {
         })
         if (cancelled) return
 
-        const { nodes: laidOutNodes, edges: laidOutEdges } = buildLayout(
+        const { nodes: laidOutNodes, edges: laidOutEdges, clusters } = buildLayout(
           data,
           entityId,
         )
 
         setRawNodes(laidOutNodes)
         setRawEdges(laidOutEdges)
+        setClusterDetails(
+          new Map(
+            Array.isArray(clusters)
+              ? clusters.map((cluster) => [cluster.id, cluster])
+              : [],
+          ),
+        )
 
         const graphIdentityChanged =
           lastGraphIdentityRef.current.worldId !== worldId ||
@@ -661,6 +941,8 @@ export default function EntityExplorer() {
           setSelectedEntity(rootId)
           setContextMenu(CONTEXT_MENU_INITIAL_STATE)
           setShouldAutoFit(true)
+          setActiveClusterId(null)
+          setActiveClusterDetails(null)
         }
 
         const initialRoot = laidOutNodes.find((node) => node.id === rootId)
@@ -799,6 +1081,20 @@ export default function EntityExplorer() {
   }, [availableRelationshipTypes])
 
   useEffect(() => {
+    if (!activeClusterId) {
+      setActiveClusterDetails(null)
+      return
+    }
+    if (!clusterDetails.has(activeClusterId)) {
+      setActiveClusterId(null)
+      setActiveClusterDetails(null)
+      return
+    }
+    const nextDetails = clusterDetails.get(activeClusterId) || null
+    setActiveClusterDetails(nextDetails)
+  }, [activeClusterId, clusterDetails])
+
+  useEffect(() => {
     setNodes(filteredGraph.nodes)
     setEdges(filteredGraph.edges)
   }, [filteredGraph, setEdges, setNodes])
@@ -861,17 +1157,41 @@ export default function EntityExplorer() {
     }
   }, [contextMenu.visible])
 
+  useEffect(() => {
+    if (!activeClusterId) return
+    const isVisible = filteredGraph.nodes.some((node) => node.id === activeClusterId)
+    if (!isVisible) {
+      setActiveClusterId(null)
+      setActiveClusterDetails(null)
+    }
+  }, [filteredGraph.nodes, activeClusterId])
+
   const clearHoverState = useCallback(() => {
     setHoveredEdgeId(null)
     setHoveredEdgeNodes([])
   }, [])
 
-  const onNodeClick = useCallback((_, node) => {
-    setSelectedEntity(node.id)
-    setContextMenu(CONTEXT_MENU_INITIAL_STATE)
-    clearHoverState()
-    setActiveEdgeId(null)
-  }, [clearHoverState])
+  const onNodeClick = useCallback(
+    (_, node) => {
+      if (!node) return
+      clearHoverState()
+      setContextMenu(CONTEXT_MENU_INITIAL_STATE)
+      setActiveEdgeId(null)
+
+      if (node.type === 'relationshipCluster' || node?.data?.isCluster) {
+        setSelectedEntity(null)
+        setActiveClusterId(node.id)
+        const detail = clusterDetails.get(node.id) || null
+        setActiveClusterDetails(detail)
+        return
+      }
+
+      setActiveClusterId(null)
+      setActiveClusterDetails(null)
+      setSelectedEntity(node.id)
+    },
+    [clearHoverState, clusterDetails],
+  )
 
   const onNodeContextMenu = useCallback((event, node) => {
     event.preventDefault()
@@ -883,6 +1203,8 @@ export default function EntityExplorer() {
       node,
     })
     setActiveEdgeId(null)
+    setActiveClusterId(null)
+    setActiveClusterDetails(null)
   }, [])
 
   const onEdgeMouseEnter = useCallback((_, edge) => {
@@ -898,14 +1220,32 @@ export default function EntityExplorer() {
     (event, edge) => {
       event?.preventDefault?.()
       event?.stopPropagation?.()
-      if (!Array.isArray(edge?.data?.relationships) || edge.data.relationships.length === 0) {
+
+      if (edge?.data?.isClusterEdge) {
+        const clusterId = edge?.data?.clusterId || edge?.target || null
+        setContextMenu(CONTEXT_MENU_INITIAL_STATE)
         setActiveEdgeId(null)
+        setActiveClusterId(clusterId)
+        const detail = clusterId ? clusterDetails.get(clusterId) || null : null
+        setActiveClusterDetails(detail)
+        return
+      }
+
+      if (
+        !Array.isArray(edge?.data?.relationships) ||
+        edge.data.relationships.length === 0
+      ) {
+        setActiveEdgeId(null)
+        setActiveClusterId(null)
+        setActiveClusterDetails(null)
         return
       }
       setContextMenu(CONTEXT_MENU_INITIAL_STATE)
+      setActiveClusterId(null)
+      setActiveClusterDetails(null)
       setActiveEdgeId(edge.id)
     },
-    [],
+    [clusterDetails],
   )
 
   const handleDepthChange = (event) => {
@@ -943,28 +1283,45 @@ export default function EntityExplorer() {
     setFilters((prev) => ({ ...prev, layerMode: value }))
   }
 
+  const focusEntityById = useCallback(
+    (targetId) => {
+      if (!targetId) return
+      const id = String(targetId)
+      if (id === rootId) return
+      navigate(`/worlds/${worldId}/entities/${id}/explore`)
+    },
+    [navigate, rootId, worldId],
+  )
+
+  const openEntityRecordById = useCallback((targetId) => {
+    if (!targetId) return
+    const id = String(targetId)
+    const url = `/entities/${id}`
+    window.open(url, '_blank', 'noopener')
+  }, [])
+
   const focusDisabled = !contextMenu.node || String(contextMenu.node.id) === rootId
 
   const handleFocusEntity = () => {
     if (!contextMenu.node) return
     const targetId = String(contextMenu.node.id)
     setContextMenu(CONTEXT_MENU_INITIAL_STATE)
-    if (targetId === rootId) return
-    navigate(`/worlds/${worldId}/entities/${targetId}/explore`)
+    focusEntityById(targetId)
   }
 
   const handleOpenRecord = () => {
     if (!contextMenu.node) return
     const targetId = String(contextMenu.node.id)
     setContextMenu(CONTEXT_MENU_INITIAL_STATE)
-    const url = `/entities/${targetId}`
-    window.open(url, '_blank', 'noopener')
+    openEntityRecordById(targetId)
   }
 
   const handlePaneInteraction = useCallback(() => {
     setContextMenu(CONTEXT_MENU_INITIAL_STATE)
     clearHoverState()
     setActiveEdgeId(null)
+    setActiveClusterId(null)
+    setActiveClusterDetails(null)
   }, [clearHoverState])
 
   const handleSearchSubmit = (event) => {
@@ -1007,12 +1364,17 @@ export default function EntityExplorer() {
         const isFocused = focusedNodeId ? node.id === focusedNodeId : false
         const isSelected = selectedEntity ? node.id === selectedEntity : false
         const isHoverAdjacent = hoveredEdgeNodes.includes(String(node.id))
+        const isClusterActive = activeClusterId ? node.id === activeClusterId : false
         const shouldDim =
-          hoveredEdgeNodes.length > 0 && !isHoverAdjacent && !isSelected && !isFocused
+          hoveredEdgeNodes.length > 0 &&
+          !isHoverAdjacent &&
+          !isSelected &&
+          !isFocused &&
+          !isClusterActive
 
         const nextData = {
           ...data,
-          isHighlighted: isFocused || isSelected,
+          isHighlighted: isFocused || isSelected || isClusterActive,
           isEdgeAdjacent: isHoverAdjacent,
           isDimmed: shouldDim,
         }
@@ -1031,7 +1393,7 @@ export default function EntityExplorer() {
         }
       }),
     )
-  }, [focusedNodeId, hoveredEdgeNodes, selectedEntity, setNodes])
+  }, [activeClusterId, focusedNodeId, hoveredEdgeNodes, selectedEntity, setNodes])
 
   useEffect(() => {
     setEdges((current) =>
@@ -1093,7 +1455,21 @@ export default function EntityExplorer() {
     <div className="flex h-full w-full">
       {/* Main graph area */}
       <div className="flex-1 relative bg-gray-950" style={{ height: '100vh' }}>
-        <div className="graph-area">
+        <div
+          className={`graph-area${filtersCollapsed ? ' filters-collapsed' : ''}`}
+        >
+          <button
+            type="button"
+            className="graph-filter-toggle-button"
+            onClick={() => setFiltersCollapsed((prev) => !prev)}
+            aria-expanded={!filtersCollapsed}
+          >
+            <span>
+              <Filter size={14} />
+              {filtersCollapsed ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
+              {filtersCollapsed ? 'Show Filters' : 'Hide Filters'}
+            </span>
+          </button>
           {loading ? (
             <div className="text-gray-400 text-sm p-4">Loading graph...</div>
           ) : (
@@ -1229,6 +1605,77 @@ export default function EntityExplorer() {
                       </ul>
                     ) : (
                       <p className="graph-edge-detail-empty">No relationships to display.</p>
+                    )}
+                  </div>
+                ) : null}
+
+                {activeClusterDetails ? (
+                  <div className="graph-cluster-detail">
+                    <div className="graph-cluster-detail-header">
+                      <div>
+                        <p className="graph-cluster-detail-title">Relationship Cluster</p>
+                        <p className="graph-cluster-detail-label">
+                          {activeClusterDetails.label ||
+                            activeClusterDetails.typeName ||
+                            'Related entities'}
+                        </p>
+                        <p className="graph-cluster-detail-label">
+                          {`${activeClusterDetails.count || 0} ${
+                            (activeClusterDetails.count || 0) === 1
+                              ? 'entity'
+                              : 'entities'
+                          }`}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="graph-cluster-detail-close"
+                        onClick={() => {
+                          setActiveClusterId(null)
+                          setActiveClusterDetails(null)
+                        }}
+                        aria-label="Close cluster details"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    {Array.isArray(activeClusterDetails.targets) &&
+                    activeClusterDetails.targets.length ? (
+                      <ul className="graph-cluster-detail-list">
+                        {activeClusterDetails.targets.map((target) => (
+                          <li key={target.id} className="graph-cluster-detail-item">
+                            <span className="graph-cluster-detail-entity">
+                              {target.name || `Entity ${target.id}`}
+                            </span>
+                            {target.type ? (
+                              <span className="graph-cluster-detail-entity-type">
+                                {target.type}
+                              </span>
+                            ) : null}
+                            <div className="graph-cluster-detail-actions">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  focusEntityById(target.id)
+                                  setActiveEdgeId(null)
+                                  setActiveClusterId(null)
+                                  setActiveClusterDetails(null)
+                                }}
+                              >
+                                Focus
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openEntityRecordById(target.id)}
+                              >
+                                Open record
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="graph-edge-detail-empty">No related entities.</p>
                     )}
                   </div>
                 ) : null}
