@@ -1,92 +1,62 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useState, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import ReactFlow, {
   MiniMap,
   Controls,
   Background,
   useNodesState,
   useEdgesState,
-} from 'reactflow'
-import 'reactflow/dist/style.css'
-import { getEntityGraph } from '../../api/entities'
-import { Filter, Info } from 'lucide-react'
-import EntityInfoPreview from "../../components/entities/EntityInfoPreview.jsx"
-
-// Custom Node Component
-const CustomNode = ({ data }) => {
-  return (
-    <div className="custom-node p-2 rounded-lg border bg-blue-500 text-white">
-      <div className="text-sm font-bold">{data.label}</div>
-      <div className="text-xs">{data.type}</div>
-    </div>
-  )
-}
-
-// Custom Edge Component
-const CustomEdge = ({ id, sourceX, sourceY, targetX, targetY, style }) => {
-  return (
-    <path
-      id={id}
-      className="react-flow__edge-path"
-      d={`M${sourceX},${sourceY}C${(sourceX + targetX) / 2},${sourceY} ${(sourceX + targetX) / 2},${targetY} ${targetX},${targetY}`}
-      style={{ ...style, stroke: 'lightgray', strokeWidth: 2 }}
-    />
-  )
-}
-
-// Define nodeTypes and edgeTypes outside of the component to avoid re-creation
-const nodeTypes = {
-  customNode: CustomNode,  // Your custom node component
-}
-
-const edgeTypes = {
-  customEdge: CustomEdge,  // Your custom edge component
-}
+} from 'reactflow';
+import 'reactflow/dist/style.css';
+import { getEntityGraph } from '../../api/entities';
+import { Filter, Info } from 'lucide-react';
+import EntityInfoPreview from "../../components/entities/EntityInfoPreview.jsx";
+import { nodeTypes, edgeTypes } from '../../components/GraphTypes'; // Import statically defined types
 
 export default function EntityExplorer() {
-  const { worldId, entityId } = useParams()
-
+  const { worldId, entityId } = useParams();
+  
   const [filters, setFilters] = useState({
     relationshipTypes: [],
     depth: 1,
-  })
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
-  const [selectedEntity, setSelectedEntity] = useState(null)
-  const [loading, setLoading] = useState(true)
+  });
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [selectedEntity, setSelectedEntity] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const fetchGraph = useCallback(async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      const data = await getEntityGraph(worldId, entityId, filters)
+      const data = await getEntityGraph(worldId, entityId, filters);
       const flowNodes = data.nodes.map((n) => ({
         id: n.id,
         data: { label: n.name, type: n.type },
         position: { x: Math.random() * 800, y: Math.random() * 600 },
-      }))
+      }));
       const flowEdges = data.edges.map((e) => ({
         id: `${e.source}-${e.target}`,
         source: e.source,
         target: e.target,
         label: e.label || e.type,
         animated: false,
-      }))
-      setNodes(flowNodes)
-      setEdges(flowEdges)
+      }));
+      setNodes(flowNodes);
+      setEdges(flowEdges);
     } catch (err) {
-      console.error('Error loading graph', err)
+      console.error('Error loading graph', err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [worldId, entityId, filters])
+  }, [worldId, entityId, filters]);
 
   useEffect(() => {
-    fetchGraph()
-  }, [fetchGraph])
+    fetchGraph();
+  }, [fetchGraph]);
 
   const onNodeClick = useCallback((_, node) => {
-    setSelectedEntity(node.id)
-  }, [])
+    setSelectedEntity(node.id);
+  }, []);
 
   return (
     <div className="flex h-full w-full">
@@ -114,20 +84,20 @@ export default function EntityExplorer() {
       </div>
 
       {/* Main graph area */}
-      <div className="flex-1 relative bg-gray-950" style={{ height: 'calc(100vh - 50px)' }}>
+      <div className="flex-1 relative bg-gray-950" style={{ height: '100vh' }}>
         {loading ? (
           <div className="text-gray-400 text-sm p-4">Loading graph...</div>
         ) : (
           <ReactFlow
-            nodeTypes={nodeTypes}  // Apply memoized nodeTypes
-            edgeTypes={edgeTypes}  // Apply memoized edgeTypes
+            nodeTypes={nodeTypes}  // Use pre-defined nodeTypes here
+            edgeTypes={edgeTypes}  // Use pre-defined edgeTypes here
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
             fitView
-            style={{ height: '100%' }}  // Ensure ReactFlow has a height
+            style={{ width: '100%', height: '100%' }}  // Ensure proper dimensions
           >
             <MiniMap />
             <Controls />
@@ -150,5 +120,5 @@ export default function EntityExplorer() {
         )}
       </div>
     </div>
-  )
+  );
 }
