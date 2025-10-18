@@ -534,16 +534,26 @@ export default function EntityExplorer() {
     setFilters((prev) => ({ ...prev, depth: safeValue }))
   }
 
-  const toggleHiddenRelationshipType = (typeId) => {
+  const handleRelationshipTypeVisibilityChange = (typeId) => (event) => {
+    const shouldShow = event.target.checked
     setFilters((prev) => {
       const id = String(typeId)
       const hidden = prev.hiddenRelationshipTypes || []
       const exists = hidden.includes(id)
+
+      if (shouldShow) {
+        if (!exists) return prev
+        return {
+          ...prev,
+          hiddenRelationshipTypes: hidden.filter((value) => value !== id),
+        }
+      }
+
+      if (exists) return prev
+
       return {
         ...prev,
-        hiddenRelationshipTypes: exists
-          ? hidden.filter((value) => value !== id)
-          : [...hidden, id],
+        hiddenRelationshipTypes: [...hidden, id],
       }
     })
   }
@@ -711,31 +721,24 @@ export default function EntityExplorer() {
                     ) : null}
                   </div>
                   <p className="graph-filter-description">
-                    Check a type to hide its relationships from the graph.
+                    Uncheck a type to hide its relationships from the graph.
                   </p>
 
                   {availableRelationshipTypes.length ? (
                     <div className="graph-filter-type-list">
                       {availableRelationshipTypes.map((type) => {
                         const id = String(type.id)
-                        const isChecked = hiddenRelationshipTypes.includes(id)
+                        const isChecked = !hiddenRelationshipTypes.includes(id)
                         return (
                           <label key={id} className="graph-filter-type">
                             <div className="graph-filter-type-row">
                               <input
                                 type="checkbox"
                                 checked={isChecked}
-                                onChange={() => toggleHiddenRelationshipType(id)}
-                                aria-label={`Hide ${type.name} relationships`}
+                                onChange={handleRelationshipTypeVisibilityChange(id)}
+                                aria-label={`Display ${type.name} relationships`}
                               />
-                              <span>
-                                {type.name}
-                                {(type.fromName || type.toName) && (
-                                  <span className="graph-filter-type-note">
-                                    {type.fromName || 'Source'} → {type.toName || 'Target'}
-                                  </span>
-                                )}
-                              </span>
+                              <span className="graph-filter-type-name">{type.name}</span>
                             </div>
                           </label>
                         )
