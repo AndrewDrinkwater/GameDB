@@ -943,11 +943,70 @@ export default function EntityExplorer() {
   const [clusterDetails, setClusterDetails] = useState(new Map())
   const [activeClusterId, setActiveClusterId] = useState(null)
   const [activeClusterDetails, setActiveClusterDetails] = useState(null)
-  const [activePreviewTargetIds, setActivePreviewTargetIds] = useState([])
   const [focusedNodeId, setFocusedNodeId] = useState(null)
   const [searchValue, setSearchValue] = useState('')
   const lastGraphIdentityRef = useRef({ worldId: null, entityId: null })
-  const previewLayoutRef = useRef(new Map())
+  const reactFlowWrapperRef = useRef(null)
+  const clusterWindowRef = useRef(null)
+  const [clusterWindowState, setClusterWindowState] = useState({
+    clusterId: null,
+    x: 0,
+    y: 0,
+  })
+  const [isClusterWindowDragging, setIsClusterWindowDragging] = useState(false)
+  const clusterWindowDragOffsetRef = useRef({ x: 0, y: 0 })
+  const [draggedClusterTargetId, setDraggedClusterTargetId] = useState(null)
+
+  const resetClusterWindowState = useCallback(() => {
+    setClusterWindowState({ clusterId: null, x: 0, y: 0 })
+  }, [])
+
+  const positionClusterWindowNearNode = useCallback(
+    (clusterId) => {
+      if (!clusterId) return
+      if (!reactFlowWrapperRef.current) return
+
+      const containerRect = reactFlowWrapperRef.current.getBoundingClientRect()
+      if (!containerRect) return
+
+      const safeId = String(clusterId).replace(/"/g, '\\"')
+      const nodeElement = reactFlowWrapperRef.current.querySelector(
+        `.react-flow__node[data-id="${safeId}"]`,
+      )
+
+      if (!nodeElement) {
+        setClusterWindowState((prev) => {
+          if (prev.clusterId === clusterId) return prev
+          return {
+            clusterId,
+            x: Math.max(Math.min(containerRect.width - 320, containerRect.width / 2 - 160), 0),
+            y: Math.max(Math.min(containerRect.height - 200, containerRect.height / 2 - 100), 0),
+          }
+        })
+        return
+      }
+
+      const nodeRect = nodeElement.getBoundingClientRect()
+      const defaultX = nodeRect.right - containerRect.left + 16
+      const defaultY = nodeRect.top - containerRect.top - 12
+
+      setClusterWindowState((prev) => {
+        if (prev.clusterId === clusterId) {
+          return prev
+        }
+
+        const clampedX = Math.min(Math.max(defaultX, 12), Math.max(containerRect.width - 320, 12))
+        const clampedY = Math.min(Math.max(defaultY, 12), Math.max(containerRect.height - 200, 12))
+
+        return {
+          clusterId,
+          x: clampedX,
+          y: clampedY,
+        }
+      })
+    },
+    [],
+  )
 
   const depth = filters.depth
   const hiddenRelationshipTypes = filters.hiddenRelationshipTypes
@@ -989,8 +1048,8 @@ export default function EntityExplorer() {
           setShouldAutoFit(true)
           setActiveClusterId(null)
           setActiveClusterDetails(null)
-          setActivePreviewTargetIds([])
-          previewLayoutRef.current = new Map()
+          resetClusterWindowState()
+          // Reset any derived preview layouts when the graph changes
         }
 
         const initialRoot = laidOutNodes.find((node) => node.id === rootId)
@@ -1094,7 +1153,7 @@ export default function EntityExplorer() {
     return () => {
       cancelled = true
     }
-  }, [worldId, entityId, depth, rootId])
+  }, [worldId, entityId, depth, rootId, resetClusterWindowState])
 
   const filteredGraph = useMemo(
     () =>
@@ -1131,16 +1190,87 @@ export default function EntityExplorer() {
   useEffect(() => {
     if (!activeClusterId) {
       setActiveClusterDetails(null)
+      resetClusterWindowState()
       return
     }
     if (!clusterDetails.has(activeClusterId)) {
       setActiveClusterId(null)
       setActiveClusterDetails(null)
+      resetClusterWindowState()
       return
     }
     const nextDetails = clusterDetails.get(activeClusterId) || null
     setActiveClusterDetails(nextDetails)
-  }, [activeClusterId, clusterDetails])
+  }, [activeClusterId, clusterDetails, resetClusterWindowState])
+
+  useEffect(() => {
+    if (!activeClusterId) return
+    if (clusterWindowState.clusterId && clusterWindowState.clusterId !== activeClusterId) {
+      positionClusterWindowNearNode(activeClusterId)
+      return
+    }
+    if (!clusterWindowState.clusterId) {
+      positionClusterWindowNearNode(activeClusterId)
+    }
+  }, [
+    activeClusterId,
+    clusterWindowState.clusterId,
+    positionClusterWindowNearNode,
+  ])
+
+  useEffect(() => {
+    if (!isClusterWindowDragging) return
+
+    const handlePointerMove = (event) => {
+      if (!reactFlowWrapperRef.current) return
+      setClusterWindowState((prev) => {
+        if (!prev.clusterId) return prev
+        const containerRect = reactFlowWrapperRef.current.getBoundingClientRect()
+        const nextX = event.clientX - containerRect.left - clusterWindowDragOffsetRef.current.x
+        const nextY = event.clientY - containerRect.top - clusterWindowDragOffsetRef.current.y
+        const clampedX = Math.min(
+          Math.max(nextX, 12),
+          Math.max(containerRect.width - 320, 12),
+        )
+        const clampedY = Math.min(
+          Math.max(nextY, 12),
+          Math.max(containerRect.height - 200, 12),
+        )
+        if (clampedX === prev.x && clampedY === prev.y) {
+          return prev
+        }
+        return { ...prev, x: clampedX, y: clampedY }
+      })
+    }
+
+    const handlePointerUp = () => {
+      setIsClusterWindowDragging(false)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [isClusterWindowDragging])
+
+  const handleClusterWindowPointerDown = useCallback(
+    (event) => {
+      if (!clusterWindowState.clusterId) return
+      if (event.button !== 0) return
+      if (!reactFlowWrapperRef.current) return
+      event.preventDefault()
+      event.stopPropagation()
+      const containerRect = reactFlowWrapperRef.current.getBoundingClientRect()
+      clusterWindowDragOffsetRef.current = {
+        x: event.clientX - containerRect.left - clusterWindowState.x,
+        y: event.clientY - containerRect.top - clusterWindowState.y,
+      }
+      setIsClusterWindowDragging(true)
+    },
+    [clusterWindowState.clusterId, clusterWindowState.x, clusterWindowState.y],
+  )
 
   useEffect(() => {
     setNodes(filteredGraph.nodes)
@@ -1148,70 +1278,8 @@ export default function EntityExplorer() {
   }, [filteredGraph, setEdges, setNodes])
 
   useEffect(() => {
-    let nextPreviewIds = []
-    let nextLayout = new Map()
-
-    setNodes((current) => {
-      const baseNodes = current.filter((node) => !node?.data?.isClusterPreview)
-
-      if (
-        !activeClusterId ||
-        !activeClusterDetails ||
-        !Array.isArray(activeClusterDetails.targets) ||
-        activeClusterDetails.targets.length === 0
-      ) {
-        return baseNodes
-      }
-
-      const clusterNode = baseNodes.find((node) => node.id === activeClusterId)
-      if (!clusterNode) {
-        return baseNodes
-      }
-
-      const targets = getClusterPreviewTargets(activeClusterDetails, baseNodes)
-      if (!targets.length) {
-        return baseNodes
-      }
-
-      const layout = computeClusterPreviewLayout(clusterNode, targets)
-      nextLayout = layout
-      nextPreviewIds = targets.map((target) => target.id)
-      const depthBase = clusterNode.data?.depth ?? 0
-      const orientation = clusterNode.data?.orientation ?? 'bottom'
-      const sourceId =
-        activeClusterDetails.sourceId !== undefined &&
-        activeClusterDetails.sourceId !== null
-          ? String(activeClusterDetails.sourceId)
-          : ''
-
-      const previewNodes = targets.map((target) => {
-        const position = layout.get(target.id) || clusterNode.position
-        return {
-          id: target.id,
-          type: 'clusterEntity',
-          position,
-          data: {
-            id: target.id,
-            name: target.name,
-            label: target.name,
-            type: target.type,
-            typeName: target.type,
-            isClusterPreview: true,
-            clusterId: activeClusterId,
-            sourceId,
-            depth: depthBase + 0.5,
-            orientation,
-          },
-          draggable: true,
-        }
-      })
-
-      return [...baseNodes, ...previewNodes]
-    })
-
-    previewLayoutRef.current = nextLayout
-    setActivePreviewTargetIds(nextPreviewIds)
-  }, [activeClusterId, activeClusterDetails, setNodes])
+    setNodes((current) => current.filter((node) => !node?.data?.isClusterPreview))
+  }, [activeClusterId, setNodes])
 
   useEffect(() => {
     if (!filteredGraph.nodes.length) {
@@ -1277,8 +1345,9 @@ export default function EntityExplorer() {
     if (!isVisible) {
       setActiveClusterId(null)
       setActiveClusterDetails(null)
+      resetClusterWindowState()
     }
-  }, [filteredGraph.nodes, activeClusterId])
+  }, [filteredGraph.nodes, activeClusterId, resetClusterWindowState])
 
   const clearHoverState = useCallback(() => {
     setHoveredEdgeId(null)
@@ -1301,14 +1370,21 @@ export default function EntityExplorer() {
         setActiveClusterId(node.id)
         const detail = clusterDetails.get(node.id) || null
         setActiveClusterDetails(detail)
+        positionClusterWindowNearNode(node.id)
         return
       }
 
       setActiveClusterId(null)
       setActiveClusterDetails(null)
+      resetClusterWindowState()
       setSelectedEntity(node.id)
     },
-    [clearHoverState, clusterDetails],
+    [
+      clearHoverState,
+      clusterDetails,
+      positionClusterWindowNearNode,
+      resetClusterWindowState,
+    ],
   )
 
   const onNodeContextMenu = useCallback((event, node) => {
@@ -1324,7 +1400,8 @@ export default function EntityExplorer() {
     setActiveEdgeId(null)
     setActiveClusterId(null)
     setActiveClusterDetails(null)
-  }, [])
+    resetClusterWindowState()
+  }, [resetClusterWindowState])
 
   const onEdgeMouseEnter = useCallback((_, edge) => {
     setHoveredEdgeId(edge.id)
@@ -1347,6 +1424,11 @@ export default function EntityExplorer() {
         setActiveClusterId(clusterId)
         const detail = clusterId ? clusterDetails.get(clusterId) || null : null
         setActiveClusterDetails(detail)
+        if (clusterId) {
+          positionClusterWindowNearNode(clusterId)
+        } else {
+          resetClusterWindowState()
+        }
         return
       }
 
@@ -1357,14 +1439,16 @@ export default function EntityExplorer() {
         setActiveEdgeId(null)
         setActiveClusterId(null)
         setActiveClusterDetails(null)
+        resetClusterWindowState()
         return
       }
       setContextMenu(CONTEXT_MENU_INITIAL_STATE)
       setActiveClusterId(null)
       setActiveClusterDetails(null)
       setActiveEdgeId(edge.id)
+      resetClusterWindowState()
     },
-    [clusterDetails],
+    [clusterDetails, positionClusterWindowNearNode, resetClusterWindowState],
   )
 
   const handleDepthChange = (event) => {
@@ -1412,15 +1496,14 @@ export default function EntityExplorer() {
     [navigate, rootId, worldId],
   )
 
-  const promoteClusterEntity = useCallback(
-    (node, clusterNode) => {
-      if (!node) return
-      const clusterId = node?.data?.clusterId
+  const promoteClusterTarget = useCallback(
+    ({ clusterId, targetId, position, clusterNode }) => {
       if (!clusterId) return
+      if (targetId === undefined || targetId === null) return
       const detail = clusterDetails.get(clusterId)
       if (!detail) return
 
-      const nodeId = String(node.id)
+      const nodeId = String(targetId)
       const targetInfo = (detail.targets || []).find(
         (target) => String(target.id) === nodeId,
       )
@@ -1432,11 +1515,25 @@ export default function EntityExplorer() {
           : null
       if (!sourceId) return
 
-      const clusterDepth = clusterNode?.data?.depth ?? 0
-      const orientation = clusterNode?.data?.orientation ?? 'bottom'
+      const resolvedClusterNode =
+        clusterNode ||
+        nodes.find((entry) => String(entry.id) === String(clusterId)) ||
+        reactFlowInstance?.getNode?.(clusterId) ||
+        null
+
+      const clusterDepth = resolvedClusterNode?.data?.depth ?? 0
+      const orientation = resolvedClusterNode?.data?.orientation ?? 'bottom'
       const baseStyle =
         detail.style || getRelationshipStyle(detail.typeId || `${sourceId}-${nodeId}`)
       const nextClusterCount = Math.max(0, (detail.count || 0) - 1)
+
+      const fallbackPosition =
+        position ||
+        resolvedClusterNode?.position ||
+        resolvedClusterNode?.positionAbsolute || {
+          x: 0,
+          y: 0,
+        }
 
       const promotedNode = {
         id: nodeId,
@@ -1446,14 +1543,25 @@ export default function EntityExplorer() {
           depth: Math.ceil(clusterDepth + 0.5),
           orientation,
           isRoot: false,
+          originClusterId: clusterId,
+          originClusterSourceId: sourceId,
+          originClusterTypeId:
+            detail.typeId !== undefined && detail.typeId !== null
+              ? String(detail.typeId)
+              : null,
+          originTarget: {
+            id: nodeId,
+            name: targetInfo.name || `Entity ${nodeId}`,
+            type: targetInfo.type || null,
+          },
         },
-        position: node.position,
+        position: fallbackPosition,
         type: 'customNode',
       }
 
       setRawNodes((prev) => {
         const updated = prev.map((entry) => {
-          if (String(entry.id) === clusterId) {
+          if (String(entry.id) === String(clusterId)) {
             return {
               ...entry,
               data: { ...entry.data, count: nextClusterCount },
@@ -1557,19 +1665,226 @@ export default function EntityExplorer() {
         }
         return next
       })
-
-      setActivePreviewTargetIds((prev) => prev.filter((id) => String(id) !== nodeId))
-      previewLayoutRef.current.delete(nodeId)
     },
     [
       activeClusterId,
       clusterDetails,
+      nodes,
+      reactFlowInstance,
       setActiveClusterDetails,
-      setActivePreviewTargetIds,
+      setClusterDetails,
       setRawEdges,
       setRawNodes,
     ],
   )
+
+  const returnClusterTarget = useCallback(
+    (node) => {
+      if (!node) return
+      const clusterId = node?.data?.originClusterId
+      if (!clusterId) return
+      const detail = clusterDetails.get(clusterId)
+      if (!detail) return
+
+      const nodeId = String(node.id)
+      const sourceId =
+        node?.data?.originClusterSourceId ||
+        (detail.sourceId !== undefined && detail.sourceId !== null
+          ? String(detail.sourceId)
+          : null)
+      if (!sourceId) return
+
+      const typeId =
+        node?.data?.originClusterTypeId ||
+        (detail.typeId !== undefined && detail.typeId !== null
+          ? String(detail.typeId)
+          : null)
+
+      const nextClusterCount = (detail.count || 0) + 1
+      const edgeId = `cluster-revealed:${sourceId}:${nodeId}:${typeId || 'relationship'}`
+
+      const targetInfo = node?.data?.originTarget || {
+        id: nodeId,
+        name: node?.data?.label || `Entity ${nodeId}`,
+        type: node?.data?.type || null,
+      }
+
+      setRawNodes((prev) =>
+        prev
+          .filter((entry) => String(entry.id) !== nodeId)
+          .map((entry) => {
+            if (String(entry.id) === String(clusterId)) {
+              return {
+                ...entry,
+                data: { ...entry.data, count: nextClusterCount },
+              }
+            }
+            return entry
+          }),
+      )
+
+      setRawEdges((prev) =>
+        prev
+          .filter((edge) => edge.id !== edgeId && String(edge.source) !== nodeId && String(edge.target) !== nodeId)
+          .map((edge) => {
+            if (edge.id === `${clusterId}-edge`) {
+              return {
+                ...edge,
+                label: String(nextClusterCount),
+                data: {
+                  ...edge.data,
+                  clusterCount: nextClusterCount,
+                },
+              }
+            }
+            return edge
+          }),
+      )
+
+      setClusterDetails((prev) => {
+        if (!prev.has(clusterId)) return prev
+        const next = new Map(prev)
+        const currentDetail = next.get(clusterId) || detail
+        const existingTargets = Array.isArray(currentDetail.targets)
+          ? currentDetail.targets.filter((target) => String(target.id) !== nodeId)
+          : []
+        const updatedTargets = [...existingTargets, targetInfo].sort((a, b) =>
+          (a.name || `Entity ${a.id || ''}`).localeCompare(b.name || `Entity ${b.id || ''}`),
+        )
+
+        const updatedDetail = {
+          ...currentDetail,
+          targets: updatedTargets,
+          count: nextClusterCount,
+        }
+        next.set(clusterId, updatedDetail)
+        if (activeClusterId === clusterId) {
+          setActiveClusterDetails(updatedDetail)
+        }
+        return next
+      })
+    },
+    [activeClusterId, clusterDetails, setActiveClusterDetails, setClusterDetails, setRawEdges, setRawNodes],
+  )
+
+  const handleClusterEntityDragStart = useCallback(
+    (event, target) => {
+      if (!target) return
+      if (!reactFlowInstance) return
+      event.stopPropagation()
+      setDraggedClusterTargetId(String(target.id))
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move'
+        event.dataTransfer.setData('text/plain', String(target.id))
+        const dragGhost = document.createElement('div')
+        dragGhost.style.position = 'absolute'
+        dragGhost.style.top = '-1000px'
+        dragGhost.style.width = '1px'
+        dragGhost.style.height = '1px'
+        dragGhost.style.opacity = '0'
+        document.body.appendChild(dragGhost)
+        event.dataTransfer.setDragImage(dragGhost, 0, 0)
+        setTimeout(() => {
+          if (dragGhost.parentNode) {
+            dragGhost.parentNode.removeChild(dragGhost)
+          }
+        }, 0)
+      }
+    },
+    [reactFlowInstance],
+  )
+
+  const handleClusterEntityDragEnd = useCallback(
+    (event, target) => {
+      setDraggedClusterTargetId(null)
+      if (!target) return
+      if (!reactFlowInstance) return
+      if (!reactFlowWrapperRef.current) return
+      if (!activeClusterId) return
+
+      const containerRect = reactFlowWrapperRef.current.getBoundingClientRect()
+      const withinFlow =
+        event.clientX >= containerRect.left &&
+        event.clientX <= containerRect.right &&
+        event.clientY >= containerRect.top &&
+        event.clientY <= containerRect.bottom
+
+      if (!withinFlow) return
+
+      if (clusterWindowRef.current) {
+        const windowBounds = clusterWindowRef.current.getBoundingClientRect()
+        const insideWindow =
+          event.clientX >= windowBounds.left &&
+          event.clientX <= windowBounds.right &&
+          event.clientY >= windowBounds.top &&
+          event.clientY <= windowBounds.bottom
+        if (insideWindow) {
+          return
+        }
+      }
+
+      const graphPosition = reactFlowInstance.project({
+        x: event.clientX - containerRect.left,
+        y: event.clientY - containerRect.top,
+      })
+
+      const clusterNode =
+        nodes.find((node) => String(node.id) === String(activeClusterId)) ||
+        reactFlowInstance.getNode?.(String(activeClusterId)) ||
+        null
+
+      promoteClusterTarget({
+        clusterId: activeClusterId,
+        targetId: target.id,
+        position: graphPosition,
+        clusterNode,
+      })
+    },
+    [activeClusterId, nodes, promoteClusterTarget, reactFlowInstance],
+  )
+
+  const handleExpandAllTargets = useCallback(() => {
+    if (!activeClusterId) return
+    if (!activeClusterDetails) return
+    if (!Array.isArray(activeClusterDetails.targets)) return
+    if (!activeClusterDetails.targets.length) return
+
+    const baseNodes = nodes.filter((node) => !node?.data?.isClusterPreview)
+    const clusterNode =
+      baseNodes.find((node) => String(node.id) === String(activeClusterId)) ||
+      reactFlowInstance?.getNode?.(String(activeClusterId)) ||
+      null
+
+    if (!clusterNode) return
+
+    const targets = getClusterPreviewTargets(activeClusterDetails, baseNodes)
+    if (!targets.length) return
+
+    const layout = computeClusterPreviewLayout(clusterNode, targets)
+
+    targets.forEach((target, index) => {
+      const basePosition = layout.get(target.id)
+      const fallback =
+        basePosition || {
+          x:
+            (clusterNode.position?.x ?? clusterNode.positionAbsolute?.x ?? 0) +
+            (index + 1) * 40,
+          y: clusterNode.position?.y ?? clusterNode.positionAbsolute?.y ?? 0,
+        }
+      promoteClusterTarget({
+        clusterId: activeClusterId,
+        targetId: target.id,
+        position: fallback,
+        clusterNode,
+      })
+    })
+  }, [
+    activeClusterDetails,
+    activeClusterId,
+    nodes,
+    promoteClusterTarget,
+    reactFlowInstance,
+  ])
 
   const openEntityRecordById = useCallback((targetId) => {
     if (!targetId) return
@@ -1600,37 +1915,25 @@ export default function EntityExplorer() {
     setActiveEdgeId(null)
     setActiveClusterId(null)
     setActiveClusterDetails(null)
-  }, [clearHoverState])
+    resetClusterWindowState()
+  }, [clearHoverState, resetClusterWindowState])
 
   const handleNodeDragStop = useCallback(
-    (_, node) => {
-      if (!node?.data?.isClusterPreview) return
-      const clusterId = node?.data?.clusterId
-      if (!clusterId) return
-      const clusterNode = nodes.find((entry) => entry.id === clusterId)
-      if (!clusterNode) return
+    (event, node) => {
+      if (!node) return
+      if (!node?.data?.originClusterId) return
+      if (!clusterWindowRef.current) return
+      if (clusterWindowState.clusterId !== node.data.originClusterId) return
 
-      const dx = node.position.x - clusterNode.position.x
-      const dy = node.position.y - clusterNode.position.y
-      const distance = Math.sqrt(dx * dx + dy * dy)
-      const promotionThreshold = 90
+      const bounds = clusterWindowRef.current.getBoundingClientRect()
+      const { clientX, clientY } = event
+      const withinX = clientX >= bounds.left && clientX <= bounds.right
+      const withinY = clientY >= bounds.top && clientY <= bounds.bottom
+      if (!withinX || !withinY) return
 
-      if (distance > promotionThreshold) {
-        promoteClusterEntity(node, clusterNode)
-        return
-      }
-
-      const fallbackPosition = previewLayoutRef.current.get(String(node.id))
-      if (fallbackPosition) {
-        setNodes((current) =>
-          current.map((currentNode) => {
-            if (String(currentNode.id) !== String(node.id)) return currentNode
-            return { ...currentNode, position: fallbackPosition }
-          }),
-        )
-      }
+      returnClusterTarget(node)
     },
-    [nodes, promoteClusterEntity, setNodes],
+    [clusterWindowState.clusterId, returnClusterTarget],
   )
 
   const handleSearchSubmit = (event) => {
@@ -1736,109 +2039,6 @@ export default function EntityExplorer() {
   }, [hoveredEdgeId, setEdges])
 
   useEffect(() => {
-    setEdges((current) => {
-      const baseEdges = current.filter((edge) => !edge?.data?.isClusterPreviewEdge)
-
-      if (
-        !activeClusterId ||
-        !activeClusterDetails ||
-        !Array.isArray(activeClusterDetails.targets) ||
-        !activeClusterDetails.targets.length ||
-        !activePreviewTargetIds.length
-      ) {
-        return baseEdges
-      }
-
-      const sourceId =
-        activeClusterDetails.sourceId !== undefined &&
-        activeClusterDetails.sourceId !== null
-          ? String(activeClusterDetails.sourceId)
-          : null
-      if (!sourceId) {
-        return baseEdges
-      }
-
-      const targetLookup = new Map(
-        activeClusterDetails.targets.map((target) => [
-          String(target.id),
-          target,
-        ]),
-      )
-
-      const style =
-        activeClusterDetails.style ||
-        getRelationshipStyle(activeClusterDetails.typeId || `${sourceId}-cluster`)
-      const label =
-        activeClusterDetails.relationships?.length === 1
-          ? activeClusterDetails.relationships[0]?.label ||
-            activeClusterDetails.relationships[0]?.typeName ||
-            activeClusterDetails.label ||
-            activeClusterDetails.typeName ||
-            ''
-          : activeClusterDetails.label ||
-            activeClusterDetails.typeName ||
-            String(activeClusterDetails.relationships?.length || '')
-
-      const existingPairs = new Set(
-        baseEdges
-          .filter((edge) => String(edge.source) === sourceId)
-          .map((edge) => `${edge.source}->${edge.target}`),
-      )
-
-      const previewEdges = activePreviewTargetIds
-        .map((targetId) => String(targetId))
-        .filter((targetId) => targetLookup.has(targetId) && !existingPairs.has(`${sourceId}->${targetId}`))
-        .map((targetId) => {
-          const target = targetLookup.get(targetId) || {}
-          const edgeId = `cluster-preview:${sourceId}:${targetId}:${
-            activeClusterDetails.typeId || 'rel'
-          }`
-          return {
-            id: edgeId,
-            source: sourceId,
-            target: targetId,
-            label,
-            data: {
-              relationshipTypeId:
-                activeClusterDetails.typeId !== undefined &&
-                activeClusterDetails.typeId !== null
-                  ? String(activeClusterDetails.typeId)
-                  : null,
-              relationshipTypeIds:
-                activeClusterDetails.typeId !== undefined &&
-                activeClusterDetails.typeId !== null
-                  ? [String(activeClusterDetails.typeId)]
-                  : [],
-              relationshipTypeName: activeClusterDetails.typeName || null,
-              tooltip: activeClusterDetails.tooltip || null,
-              style,
-              relationships: activeClusterDetails.relationships || [],
-              isClusterPreviewEdge: true,
-              clusterId: activeClusterId,
-              sourceName: activeClusterDetails.sourceName || '',
-              targetName: target?.name || `Entity ${targetId}`,
-            },
-            animated: false,
-            type: 'customEdge',
-            markerEnd: {
-              type: MarkerType.ArrowClosed,
-              color: style.color,
-              width: 18,
-              height: 18,
-            },
-          }
-        })
-
-      return [...baseEdges, ...previewEdges]
-    })
-  }, [
-    activeClusterDetails,
-    activeClusterId,
-    activePreviewTargetIds,
-    setEdges,
-  ])
-
-  useEffect(() => {
     if (!activeEdgeId) {
       setActiveEdgeDetails(null)
       return
@@ -1892,7 +2092,7 @@ export default function EntityExplorer() {
             <div className="text-gray-400 text-sm p-4">Loading graph...</div>
           ) : (
             <>
-              <div className="graph-canvas-container">
+              <div className="graph-canvas-container" ref={reactFlowWrapperRef}>
                 <ReactFlow
                   nodeTypes={nodeTypes}
                   edgeTypes={edgeTypes}
@@ -2029,8 +2229,21 @@ export default function EntityExplorer() {
                 ) : null}
 
                 {activeClusterDetails ? (
-                  <div className="graph-cluster-detail">
-                    <div className="graph-cluster-detail-header">
+                  <div
+                    ref={clusterWindowRef}
+                    className={`graph-cluster-detail${
+                      isClusterWindowDragging ? ' is-dragging' : ''
+                    }`}
+                    style={{
+                      left: `${clusterWindowState.x}px`,
+                      top: `${clusterWindowState.y}px`,
+                    }}
+                  >
+                    <div
+                      className="graph-cluster-detail-header"
+                      onPointerDown={handleClusterWindowPointerDown}
+                      role="presentation"
+                    >
                       <div>
                         <p className="graph-cluster-detail-title">Relationship Cluster</p>
                         <p className="graph-cluster-detail-label">
@@ -2052,46 +2265,78 @@ export default function EntityExplorer() {
                         onClick={() => {
                           setActiveClusterId(null)
                           setActiveClusterDetails(null)
+                          resetClusterWindowState()
                         }}
                         aria-label="Close cluster details"
                       >
                         ×
                       </button>
                     </div>
+                    <div className="graph-cluster-detail-toolbar">
+                      <button
+                        type="button"
+                        onClick={handleExpandAllTargets}
+                        disabled={
+                          !Array.isArray(activeClusterDetails.targets) ||
+                          activeClusterDetails.targets.length === 0
+                        }
+                      >
+                        Expand all
+                      </button>
+                    </div>
                     {Array.isArray(activeClusterDetails.targets) &&
                     activeClusterDetails.targets.length ? (
                       <ul className="graph-cluster-detail-list">
-                        {activeClusterDetails.targets.map((target) => (
-                          <li key={target.id} className="graph-cluster-detail-item">
-                            <span className="graph-cluster-detail-entity">
-                              {target.name || `Entity ${target.id}`}
-                            </span>
-                            {target.type ? (
-                              <span className="graph-cluster-detail-entity-type">
-                                {target.type}
-                              </span>
-                            ) : null}
-                            <div className="graph-cluster-detail-actions">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  focusEntityById(target.id)
-                                  setActiveEdgeId(null)
-                                  setActiveClusterId(null)
-                                  setActiveClusterDetails(null)
-                                }}
-                              >
-                                Focus
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => openEntityRecordById(target.id)}
-                              >
-                                Open record
-                              </button>
-                            </div>
-                          </li>
-                        ))}
+                        {activeClusterDetails.targets.map((target) => {
+                          const isDragging =
+                            draggedClusterTargetId === String(target.id)
+                          return (
+                            <li
+                              key={target.id}
+                              className={`graph-cluster-detail-item${
+                                isDragging ? ' is-dragging' : ''
+                              }`}
+                              draggable
+                              onDragStart={(event) =>
+                                handleClusterEntityDragStart(event, target)
+                              }
+                              onDragEnd={(event) =>
+                                handleClusterEntityDragEnd(event, target)
+                              }
+                            >
+                              <div className="graph-cluster-detail-row">
+                                <span className="graph-cluster-detail-entity">
+                                  {target.name || `Entity ${target.id}`}
+                                </span>
+                                {target.type ? (
+                                  <span className="graph-cluster-detail-entity-type">
+                                    {target.type}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="graph-cluster-detail-actions">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    focusEntityById(target.id)
+                                    setActiveEdgeId(null)
+                                    setActiveClusterId(null)
+                                    setActiveClusterDetails(null)
+                                    resetClusterWindowState()
+                                  }}
+                                >
+                                  Focus
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openEntityRecordById(target.id)}
+                                >
+                                  Open record
+                                </button>
+                              </div>
+                            </li>
+                          )
+                        })}
                       </ul>
                     ) : (
                       <p className="graph-edge-detail-empty">No related entities.</p>
