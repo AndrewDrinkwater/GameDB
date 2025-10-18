@@ -1,27 +1,37 @@
 // src/components/CustomEdge.jsx
 
 import React from 'react';
-import { EdgeText } from 'reactflow'; // You can use EdgeText to display the edge label
+import { BaseEdge, EdgeLabelRenderer, getBezierPath } from 'reactflow';
 
-const CustomEdge = ({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, label }) => {
-  // Calculate mid point to place the label, or use a predefined position
-  const edgeLabelPosition = {
-    x: (sourceX + targetX) / 2,
-    y: (sourceY + targetY) / 2
-  };
+const CustomEdge = ({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, label }) => {
+  const [edgePath, labelX, labelY] = getBezierPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+  });
 
   return (
-    <g className="react-flow__edge" style={{ pointerEvents: 'none' }}>
-      <path
-        className="react-flow__edge-path"
-        d={`M${sourceX},${sourceY}C${sourceX + 50},${sourceY} ${targetX - 50},${targetY} ${targetX},${targetY}`}
-        fill="transparent"
-        stroke="#FF0000"
-        strokeWidth={2}
-      />
-      {/* You can place the edge label in the middle of the edge */}
-      <EdgeText x={edgeLabelPosition.x} y={edgeLabelPosition.y} label={label} />
-    </g>
+    <>
+      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={{ stroke: '#38bdf8', strokeWidth: 2 }} />
+      {label ? (
+        <EdgeLabelRenderer>
+          <div
+            className="rounded-full border border-cyan-400/40 bg-slate-950/90 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-cyan-100 shadow-md"
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              pointerEvents: 'auto',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {label}
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
+    </>
   );
 };
 
