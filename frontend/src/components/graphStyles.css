@@ -113,6 +113,57 @@
   color: rgba(224, 231, 255, 0.85);
 }
 
+.cluster-entity-node {
+  position: relative;
+  min-width: 130px;
+  max-width: 160px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 2px dashed rgba(251, 191, 36, 0.55);
+  border-radius: 16px;
+  padding: 8px 12px;
+  color: #f8fafc;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.45);
+  transform: scale(0.85);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.cluster-entity-node:hover {
+  border-color: rgba(250, 204, 21, 0.8);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.55);
+  transform: scale(0.9);
+}
+
+.cluster-entity-node:active {
+  cursor: grabbing;
+}
+
+.cluster-entity-node-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.cluster-entity-node-name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cluster-entity-node-type {
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(148, 163, 184, 0.85);
+}
+
 .custom-edge-label {
   border-radius: 999px;
   border: 1px solid rgba(45, 212, 191, 0.35);
