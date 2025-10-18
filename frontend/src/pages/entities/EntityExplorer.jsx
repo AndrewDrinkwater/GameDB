@@ -4,6 +4,7 @@ import ReactFlow, {
   MiniMap,
   Controls,
   Background,
+  MarkerType,
   useNodesState,
   useEdgesState,
 } from 'reactflow';
@@ -11,7 +12,146 @@ import 'reactflow/dist/style.css';
 import { getEntityGraph } from '../../api/entities';
 import { Filter, Info } from 'lucide-react';
 import EntityInfoPreview from "../../components/entities/EntityInfoPreview.jsx";
-import { nodeTypes, edgeTypes } from '../../components/GraphTypes'; // Import statically defined types
+import { nodeTypes, edgeTypes } from '../../components/graphTypes';
+
+const HORIZONTAL_SPACING = 240;
+const VERTICAL_SPACING = 220;
+
+const buildLayout = (graphData, rootId) => {
+  if (!graphData || !Array.isArray(graphData.nodes)) {
+    return { nodes: [], edges: [] };
+  }
+
+  const rootKey = String(rootId);
+  const nodesMap = new Map();
+  graphData.nodes.forEach((node) => {
+    if (!node || !node.id) return;
+    const id = String(node.id);
+    nodesMap.set(id, {
+      ...node,
+      id,
+    });
+  });
+
+  if (!nodesMap.has(rootKey) && graphData.root) {
+    const rootNode = graphData.root;
+    nodesMap.set(rootKey, {
+      ...rootNode,
+      id: rootKey,
+    });
+  }
+
+  if (!nodesMap.has(rootKey)) {
+    return {
+      nodes: Array.from(nodesMap.values()),
+      edges: graphData.edges || [],
+    };
+  }
+
+  const adjacency = new Map();
+  (graphData.edges || []).forEach((edge) => {
+    if (!edge) return;
+    const sourceId = String(edge.source);
+    const targetId = String(edge.target);
+    if (!adjacency.has(sourceId)) adjacency.set(sourceId, []);
+    if (!adjacency.has(targetId)) adjacency.set(targetId, []);
+    adjacency.get(sourceId).push({ id: targetId, direction: 'out' });
+    adjacency.get(targetId).push({ id: sourceId, direction: 'in' });
+  });
+
+  const visited = new Set([rootKey]);
+  const nodeMeta = new Map([
+    [rootKey, { depth: 0, orientation: 'center', firstDirection: null }],
+  ]);
+  const queue = [rootKey];
+
+  while (queue.length) {
+    const currentId = queue.shift();
+    const currentMeta = nodeMeta.get(currentId);
+    const neighbors = adjacency.get(currentId) || [];
+
+    neighbors.forEach(({ id: neighborId, direction }) => {
+      if (visited.has(neighborId)) return;
+      visited.add(neighborId);
+
+      const nextDepth = (currentMeta?.depth ?? 0) + 1;
+      const nextFirstDirection =
+        currentMeta?.firstDirection ?? (direction === 'in' ? 'top' : 'bottom');
+      const orientation = nextFirstDirection ?? 'center';
+
+      nodeMeta.set(neighborId, {
+        depth: nextDepth,
+        orientation,
+        firstDirection: nextFirstDirection,
+      });
+      queue.push(neighborId);
+    });
+  }
+
+  const groupedByRow = new Map();
+  nodeMeta.forEach((meta, id) => {
+    if (id === rootKey) return;
+    if (!meta || !meta.orientation || meta.orientation === 'center') return;
+    const key = `${meta.orientation}-${meta.depth}`;
+    if (!groupedByRow.has(key)) {
+      groupedByRow.set(key, []);
+    }
+    groupedByRow.get(key).push(id);
+  });
+
+  const positions = new Map();
+  positions.set(rootKey, { x: 0, y: 0 });
+
+  groupedByRow.forEach((ids, key) => {
+    const [orientation, depthStr] = key.split('-');
+    const depth = Number.parseInt(depthStr, 10) || 1;
+    const yOffset =
+      orientation === 'top'
+        ? -depth * VERTICAL_SPACING
+        : depth * VERTICAL_SPACING;
+
+    ids.sort((a, b) => {
+      const nodeA = nodesMap.get(a);
+      const nodeB = nodesMap.get(b);
+      return (nodeA?.name || '').localeCompare(nodeB?.name || '');
+    });
+
+    const startX = -((ids.length - 1) * HORIZONTAL_SPACING) / 2;
+    ids.forEach((id, index) => {
+      positions.set(id, {
+        x: startX + index * HORIZONTAL_SPACING,
+        y: yOffset,
+      });
+    });
+  });
+
+  // Position any nodes not yet placed (fallback layout)
+  let unplacedIndex = 0;
+  nodesMap.forEach((node, id) => {
+    if (positions.has(id)) return;
+    positions.set(id, {
+      x: (unplacedIndex - 0.5) * HORIZONTAL_SPACING,
+      y: VERTICAL_SPACING * 2,
+    });
+    unplacedIndex += 1;
+  });
+
+  const laidOutNodes = Array.from(nodesMap.values()).map((node) => ({
+    id: node.id,
+    data: {
+      label: node.name,
+      type: node.type,
+      isRoot: node.id === rootKey,
+    },
+    position: positions.get(node.id) || { x: 0, y: 0 },
+    type: 'customNode',
+  }));
+
+  return {
+    nodes: laidOutNodes,
+    edges: graphData.edges || [],
+  };
+};
 
 export default function EntityExplorer() {
   const { worldId, entityId } = useParams();
@@ -29,26 +169,76 @@ export default function EntityExplorer() {
     setLoading(true);
     try {
       const data = await getEntityGraph(worldId, entityId, filters);
-      const flowNodes = data.nodes.map((n) => ({
-        id: n.id,
-        data: { label: n.name, type: n.type },
-        position: { x: Math.random() * 800, y: Math.random() * 600 },
-      }));
-      const flowEdges = data.edges.map((e) => ({
-        id: `${e.source}-${e.target}`,
-        source: e.source,
-        target: e.target,
-        label: e.label || e.type,
-        animated: false,
-      }));
+      const { nodes: flowNodes, edges: layoutEdges } = buildLayout(
+        data,
+        entityId,
+      );
+
+      const rootId = String(entityId);
+      const flowEdges = (layoutEdges || []).map((edge) => {
+        const relationshipType = edge.relationshipType || {};
+        const sourceId = String(edge.source);
+        const targetId = String(edge.target);
+
+        const rootIsSource = sourceId === rootId;
+        const rootIsTarget = targetId === rootId;
+        let label = edge.label;
+
+        if (relationshipType) {
+          if (rootIsSource) {
+            label =
+              relationshipType.fromName ||
+              relationshipType.name ||
+              edge.label;
+          } else if (rootIsTarget) {
+            label =
+              relationshipType.toName || relationshipType.name || edge.label;
+          } else {
+            label = relationshipType.name || edge.label;
+          }
+        }
+
+        return {
+          id: String(edge.id || `${sourceId}-${targetId}`),
+          source: sourceId,
+          target: targetId,
+          label,
+          data: {
+            relationshipTypeId: edge.relationshipTypeId || edge.type || null,
+          },
+          animated: false,
+          type: 'customEdge',
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: '#38bdf8',
+            width: 18,
+            height: 18,
+          },
+        };
+      });
+
       setNodes(flowNodes);
       setEdges(flowEdges);
+      setSelectedEntity(rootId);
     } catch (err) {
       console.error('Error loading graph', err);
     } finally {
       setLoading(false);
     }
-  }, [worldId, entityId, filters]);
+  }, [worldId, entityId, filters, setEdges, setNodes, setSelectedEntity]);
+
+  const [reactFlowInstance, setReactFlowInstance] = useState(null);
+
+  useEffect(() => {
+    if (!reactFlowInstance) return;
+    if (!nodes.length) return;
+
+    const timeout = setTimeout(() => {
+      reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
+    }, 0);
+
+    return () => clearTimeout(timeout);
+  }, [reactFlowInstance, nodes, edges]);
 
   useEffect(() => {
     fetchGraph();
@@ -97,6 +287,7 @@ export default function EntityExplorer() {
             onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
             fitView
+            onInit={setReactFlowInstance}
             style={{ width: '100%', height: '100%' }}  // Ensure proper dimensions
           >
             <MiniMap />
