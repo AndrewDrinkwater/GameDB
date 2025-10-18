@@ -225,7 +225,7 @@ const applyLayerFilters = (nodes, edges, { layerMode, depthLimit, rootId }) => {
     return node?.data?.depth ?? Infinity
   }
 
-  let filteredEdges = edges || []
+  let filteredEdges = Array.isArray(edges) ? edges.slice() : []
 
   if (layerMode === 'direct') {
     filteredEdges = filteredEdges.filter(
@@ -245,17 +245,36 @@ const applyLayerFilters = (nodes, edges, { layerMode, depthLimit, rootId }) => {
     })
   }
 
-  const allowedNodeIds = new Set([rootId])
+  const dedupedEdgesMap = new Map()
   filteredEdges.forEach((edge) => {
+    if (!edge) return
+    const key = String(edge.id ?? `${edge.source}-${edge.target}-${edge.label ?? ''}`)
+    if (dedupedEdgesMap.has(key)) return
+    dedupedEdgesMap.set(key, edge)
+  })
+
+  const uniqueEdges = Array.from(dedupedEdgesMap.values())
+
+  const allowedNodeIds = new Set([String(rootId)])
+  uniqueEdges.forEach((edge) => {
     allowedNodeIds.add(String(edge.source))
     allowedNodeIds.add(String(edge.target))
   })
 
-  const filteredNodes = nodes.filter((node) => allowedNodeIds.has(String(node.id)))
+  const seenNodeIds = new Set()
+  const filteredNodes = []
+  nodes.forEach((node) => {
+    if (!node) return
+    const id = String(node.id)
+    if (!allowedNodeIds.has(id)) return
+    if (seenNodeIds.has(id)) return
+    seenNodeIds.add(id)
+    filteredNodes.push(node)
+  })
 
   return {
     nodes: filteredNodes,
-    edges: filteredEdges,
+    edges: uniqueEdges,
   }
 }
 
@@ -509,175 +528,183 @@ export default function EntityExplorer() {
 
   return (
     <div className="flex h-full w-full">
-      {/* Left filter panel */}
-      <div className="w-72 bg-gray-900 text-gray-100 border-r border-gray-700 p-4 flex flex-col gap-4">
-        <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-200">
-          <Filter size={16} /> Filters
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-[0.65rem] uppercase tracking-wide text-gray-400">
-            Relationship Depth (1-3)
-          </label>
-          <input
-            type="number"
-            min={1}
-            max={3}
-            value={depth}
-            onChange={handleDepthChange}
-            className="bg-gray-800 border border-gray-700 p-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-          />
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <span className="text-[0.65rem] uppercase tracking-wide text-gray-400">
-            Relationship Layers
-          </span>
-          <div className="flex flex-col gap-2 text-sm">
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="layerMode"
-                value="direct"
-                checked={layerMode === 'direct'}
-                onChange={handleLayerModeChange}
-                className="mt-1"
-              />
-              <span>
-                Direct relationships only
-                <span className="block text-xs text-gray-500">
-                  Show links connected directly to the focused entity.
-                </span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="layerMode"
-                value="board"
-                checked={layerMode === 'board'}
-                onChange={handleLayerModeChange}
-                className="mt-1"
-              />
-              <span>
-                Include on-board relationships
-                <span className="block text-xs text-gray-500">
-                  Reveal links between entities already shown on the board.
-                </span>
-              </span>
-            </label>
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="layerMode"
-                value="extended"
-                checked={layerMode === 'extended'}
-                onChange={handleLayerModeChange}
-                className="mt-1"
-              />
-              <span>
-                Extended relationships
-                <span className="block text-xs text-gray-500">
-                  Explore additional layers up to the selected depth.
-                </span>
-              </span>
-            </label>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <span className="text-[0.65rem] uppercase tracking-wide text-gray-400">
-            Relationship Types
-          </span>
-          {availableRelationshipTypes.length ? (
-            <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1 text-sm">
-              {availableRelationshipTypes.map((type) => {
-                const id = String(type.id)
-                const isChecked = relationshipTypes.includes(id)
-                return (
-                  <label key={id} className="flex flex-col gap-1 cursor-pointer">
-                    <div className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggleRelationshipType(id)}
-                        className="mt-1"
-                      />
-                      <span>
-                        {type.name}
-                        {(type.fromName || type.toName) && (
-                          <span className="block text-xs text-gray-500">
-                            {type.fromName || 'Source'} → {type.toName || 'Target'}
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  </label>
-                )
-              })}
-            </div>
-          ) : (
-            <p className="text-xs text-gray-500">No relationship types loaded yet.</p>
-          )}
-          {relationshipTypes.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => setFilters((prev) => ({ ...prev, relationshipTypes: [] }))}
-              className="self-start text-xs text-sky-400 hover:text-sky-300"
-            >
-              Show all relationship types
-            </button>
-          ) : null}
-        </div>
-      </div>
-
       {/* Main graph area */}
       <div className="flex-1 relative bg-gray-950" style={{ height: '100vh' }}>
-        {loading ? (
-          <div className="text-gray-400 text-sm p-4">Loading graph...</div>
-        ) : (
-          <ReactFlow
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onNodeClick={onNodeClick}
-            onNodeContextMenu={onNodeContextMenu}
-            onPaneClick={() => setContextMenu(CONTEXT_MENU_INITIAL_STATE)}
-            onPaneContextMenu={() => setContextMenu(CONTEXT_MENU_INITIAL_STATE)}
-            onInit={setReactFlowInstance}
-            style={{ width: '100%', height: '100%' }}
-          >
-            <div className="graph-toolbar">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!reactFlowInstance || !rootPosition) return
-                  reactFlowInstance.setCenter(rootPosition.x, rootPosition.y, {
-                    zoom: 1.8,
-                    duration: 400,
-                  })
-                }}
+        <div className="graph-area">
+          {loading ? (
+            <div className="text-gray-400 text-sm p-4">Loading graph...</div>
+          ) : (
+            <>
+              <ReactFlow
+                nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onNodeClick={onNodeClick}
+                onNodeContextMenu={onNodeContextMenu}
+                onPaneClick={() => setContextMenu(CONTEXT_MENU_INITIAL_STATE)}
+                onPaneContextMenu={() => setContextMenu(CONTEXT_MENU_INITIAL_STATE)}
+                onInit={setReactFlowInstance}
+                style={{ width: '100%', height: '100%' }}
               >
-                Refocus Target
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!reactFlowInstance) return
-                  reactFlowInstance.fitView({ padding: 0.2, duration: 400 })
-                }}
-              >
-                Zoom to Fit
-              </button>
-            </div>
-            <MiniMap />
-            <Controls />
-            <Background color="#222" gap={16} />
-          </ReactFlow>
-        )}
+                <div className="graph-toolbar">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!reactFlowInstance || !rootPosition) return
+                      reactFlowInstance.setCenter(rootPosition.x, rootPosition.y, {
+                        zoom: 1.8,
+                        duration: 400,
+                      })
+                    }}
+                  >
+                    Refocus Target
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!reactFlowInstance) return
+                      reactFlowInstance.fitView({ padding: 0.2, duration: 400 })
+                    }}
+                  >
+                    Zoom to Fit
+                  </button>
+                </div>
+                <MiniMap />
+                <Controls />
+                <Background color="#222" gap={16} />
+              </ReactFlow>
+
+              <div className="graph-filter-sidebar">
+                <div className="graph-filter-header">
+                  <Filter size={14} /> Filters
+                </div>
+
+                <div className="graph-filter-group">
+                  <label className="graph-filter-label">Relationship Depth (1-3)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={MAX_DEPTH}
+                    value={depth}
+                    onChange={handleDepthChange}
+                    className="graph-filter-input"
+                  />
+                </div>
+
+                <div className="graph-filter-group">
+                  <span className="graph-filter-label">Relationship Layers</span>
+                  <div className="graph-filter-options">
+                    <label className="graph-filter-option">
+                      <input
+                        type="radio"
+                        name="layerMode"
+                        value="direct"
+                        checked={layerMode === 'direct'}
+                        onChange={handleLayerModeChange}
+                        className="graph-filter-radio"
+                      />
+                      <span>
+                        Direct relationships only
+                        <span className="graph-filter-option-note">
+                          Show links connected directly to the focused entity.
+                        </span>
+                      </span>
+                    </label>
+                    <label className="graph-filter-option">
+                      <input
+                        type="radio"
+                        name="layerMode"
+                        value="board"
+                        checked={layerMode === 'board'}
+                        onChange={handleLayerModeChange}
+                        className="graph-filter-radio"
+                      />
+                      <span>
+                        Include on-board relationships
+                        <span className="graph-filter-option-note">
+                          Reveal links between entities already shown on the board.
+                        </span>
+                      </span>
+                    </label>
+                    <label className="graph-filter-option">
+                      <input
+                        type="radio"
+                        name="layerMode"
+                        value="extended"
+                        checked={layerMode === 'extended'}
+                        onChange={handleLayerModeChange}
+                        className="graph-filter-radio"
+                      />
+                      <span>
+                        Extended relationships
+                        <span className="graph-filter-option-note">
+                          Explore additional layers up to the selected depth.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="graph-filter-group">
+                  <div className="graph-filter-group-header">
+                    <span className="graph-filter-label">Relationship Types</span>
+                    {relationshipTypes.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setFilters((prev) => ({ ...prev, relationshipTypes: [] }))}
+                        className="graph-filter-clear"
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {availableRelationshipTypes.length ? (
+                    <div className="graph-filter-type-list">
+                      {availableRelationshipTypes.map((type) => {
+                        const id = String(type.id)
+                        const isChecked = relationshipTypes.includes(id)
+                        return (
+                          <label key={id} className="graph-filter-type">
+                            <div className="graph-filter-type-row">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleRelationshipType(id)}
+                              />
+                              <span>
+                                {type.name}
+                                {(type.fromName || type.toName) && (
+                                  <span className="graph-filter-type-note">
+                                    {type.fromName || 'Source'} → {type.toName || 'Target'}
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p className="graph-filter-empty">No relationship types loaded yet.</p>
+                  )}
+                  {relationshipTypes.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setFilters((prev) => ({ ...prev, relationshipTypes: [] }))}
+                      className="graph-filter-reset"
+                    >
+                      Show all relationship types
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
         {contextMenu.visible && contextMenu.node ? (
           <div
@@ -697,7 +724,6 @@ export default function EntityExplorer() {
           </div>
         ) : null}
       </div>
-
       {/* Entity detail drawer */}
       <div className="w-80 bg-gray-900 text-gray-100 border-l border-gray-700">
         {selectedEntity ? (
