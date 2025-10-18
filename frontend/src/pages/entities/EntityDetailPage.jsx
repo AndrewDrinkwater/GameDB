@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Network } from 'lucide-react'
+
 import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
 import FieldRenderer from '../../components/RecordForm/FieldRenderer.jsx'
 import TabNav from '../../components/TabNav.jsx'
 import DrawerPanel from '../../components/DrawerPanel.jsx'
 import EntityHeader from '../../components/entities/EntityHeader.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
+
 import { getEntity, updateEntity } from '../../api/entities.js'
 import { getEntityRelationships } from '../../api/entityRelationships.js'
+
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useFeatureFlag } from '../../context/FeatureFlagContext.jsx'
+
 import RelationshipBuilder from '../../modules/relationships3/RelationshipBuilder.jsx'
 
 
@@ -786,7 +791,7 @@ export default function EntityDetailPage() {
 
 {/* --- ENTITY DETAIL TOP BAR --- */}
 <div className="entity-detail-topbar">
-  <div className="entity-detail-topbar-inner">
+  <div className="entity-detail-topbar-inner flex items-center justify-between">
     <EntityHeader
       name={entity.name}
       onBack={handleBack}
@@ -794,9 +799,19 @@ export default function EntityDetailPage() {
       isEditing={isEditing}
       onToggleEdit={handleEditToggle}
     />
-    <TabNav tabs={tabItems} activeTab={activeTab} onChange={setActiveTab} />
+
+    {/* Explore Button */}
+    <Link
+      to={`/worlds/${worldId}/entities/${entity.id}/explore`}
+      className="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white text-sm"
+    >
+      <Network size={16} /> Explore
+    </Link>
   </div>
+
+  <TabNav tabs={tabItems} activeTab={activeTab} onChange={setActiveTab} />
 </div>
+
 
 {/* --- MAIN SHELL --- */}
 <div className="entity-detail-shell">
