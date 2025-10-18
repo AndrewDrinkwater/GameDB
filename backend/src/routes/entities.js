@@ -9,7 +9,12 @@ import {
   searchEntities,
   updateEntity,
 } from '../controllers/entityController.js'
-import { Entity, EntityRelationship, EntityType } from '../models/index.js'
+import {
+  Entity,
+  EntityRelationship,
+  EntityRelationshipType,
+  EntityType,
+} from '../models/index.js'
 import { Op } from 'sequelize'
 
 const router = express.Router({ mergeParams: true })
@@ -60,6 +65,13 @@ router.get('/:id/explore', async (req, res) => {
             relationship_type_id: relationshipTypes,
           }),
         },
+        include: [
+          {
+            model: EntityRelationshipType,
+            as: 'relationshipType',
+            attributes: ['id', 'name', 'from_name', 'to_name'],
+          },
+        ],
       })
 
       const newEntityIds = new Set()
@@ -69,10 +81,21 @@ router.get('/:id/explore', async (req, res) => {
         const tgt = rel.to_entity
 
         edges.push({
+          id: rel.id,
           source: src,
           target: tgt,
           type: rel.relationship_type_id,
+          relationshipTypeId: rel.relationship_type_id,
           label: rel.label || rel.relationship_type_id,
+          context: rel.context || {},
+          relationshipType: rel.relationshipType
+            ? {
+                id: rel.relationshipType.id,
+                name: rel.relationshipType.name,
+                fromName: rel.relationshipType.from_name,
+                toName: rel.relationshipType.to_name,
+              }
+            : null,
         })
 
         if (!visited.has(src)) newEntityIds.add(src)
