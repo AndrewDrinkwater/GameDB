@@ -67,6 +67,9 @@ const EntitySelect = ({
   disabled = false,
   onEntityResolved,
   limit = DEFAULT_LIMIT,
+  id,
+  autoFocus = false,
+  'aria-required': ariaRequired,
 }) => {
   const [inputValue, setInputValue] = useState('')
   const [results, setResults] = useState([])
@@ -83,7 +86,7 @@ const EntitySelect = ({
   const listRef = useRef(null)
   const currentFetchRef = useRef(0)
 
-  const isDisabled = disabled || !worldId || allowedTypeIds.length === 0
+  const isDisabled = disabled || !worldId
 
   const resetSearchState = useCallback(() => {
     setResults([])
@@ -177,7 +180,7 @@ const EntitySelect = ({
 
   const fetchResults = useCallback(
     async ({ append = false } = {}) => {
-      if (!worldId || allowedTypeIds.length === 0) {
+      if (!worldId) {
         resetSearchState()
         return
       }
@@ -313,6 +316,10 @@ const EntitySelect = ({
           onFocus={handleInputFocus}
           placeholder={resolvedPlaceholder}
           disabled={isDisabled}
+          id={id}
+          data-autofocus={autoFocus ? true : undefined}
+          autoFocus={autoFocus}
+          aria-required={ariaRequired}
           aria-autocomplete="list"
           aria-expanded={open}
           aria-haspopup="listbox"
@@ -390,6 +397,9 @@ EntitySelect.propTypes = {
   disabled: PropTypes.bool,
   onEntityResolved: PropTypes.func,
   limit: PropTypes.number,
+  id: PropTypes.string,
+  autoFocus: PropTypes.bool,
+  'aria-required': PropTypes.bool,
 }
 
 export default EntitySelect
