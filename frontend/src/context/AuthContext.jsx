@@ -1,6 +1,17 @@
 // src/context/AuthContext.jsx
 import { createContext, useContext, useState, useEffect } from 'react'
 
+function authHeaders() {
+  const session = localStorage.getItem('gamedb_session')
+  if (!session) return {}
+  try {
+    const { token } = JSON.parse(session)
+    return { 'gamedb_session': token }
+  } catch {
+    return {}
+  }
+}
+
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {

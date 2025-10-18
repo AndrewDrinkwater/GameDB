@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import express from 'express'
 import { authenticate } from '../middleware/authMiddleware.js'
 import {
   createEntity,
@@ -12,8 +12,7 @@ import {
 import { Entity, EntityRelationship, EntityType } from '../models/index.js'
 import { Op } from 'sequelize'
 
-const router = Router()
-
+const router = express.Router({ mergeParams: true })
 router.use(authenticate)
 
 // ─────────────────────────────────────────────
@@ -50,28 +49,28 @@ router.get('/:id/explore', async (req, res) => {
     let currentLevel = [entityId]
 
     for (let i = 0; i < depth; i++) {
+      // ✅ FIXED: use actual DB column mappings
       const rels = await EntityRelationship.findAll({
         where: {
-          worldId,
           [Op.or]: [
-            { sourceEntityId: currentLevel },
-            { targetEntityId: currentLevel },
+            { fromEntity: currentLevel },
+            { toEntity: currentLevel },
           ],
-          ...(relationshipTypes && { type: relationshipTypes }),
+          ...(relationshipTypes && { relationshipTypeId: relationshipTypes }),
         },
       })
 
       const newEntityIds = new Set()
 
       for (const rel of rels) {
-        const src = rel.sourceEntityId
-        const tgt = rel.targetEntityId
+        const src = rel.fromEntity
+        const tgt = rel.toEntity
 
         edges.push({
           source: src,
           target: tgt,
-          type: rel.type,
-          label: rel.label || rel.type,
+          type: rel.relationshipTypeId,
+          label: rel.label || rel.relationshipTypeId,
         })
 
         if (!visited.has(src)) newEntityIds.add(src)
@@ -81,10 +80,7 @@ router.get('/:id/explore', async (req, res) => {
       if (newEntityIds.size === 0) break
 
       const newEntities = await Entity.findAll({
-        where: {
-          id: Array.from(newEntityIds),
-          worldId,
-        },
+        where: { id: Array.from(newEntityIds) },
         include: [{ model: EntityType, as: 'entityType' }],
       })
 
@@ -101,10 +97,11 @@ router.get('/:id/explore', async (req, res) => {
       currentLevel = Array.from(newEntityIds)
     }
 
-    // Add the starting entity if missing
+    // Add the root entity if missing
     const rootEntity = await Entity.findByPk(entityId, {
       include: [{ model: EntityType, as: 'entityType' }],
     })
+
     if (rootEntity && !nodes.some((n) => n.id === rootEntity.id)) {
       nodes.push({
         id: rootEntity.id,

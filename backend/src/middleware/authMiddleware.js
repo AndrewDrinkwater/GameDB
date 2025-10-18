@@ -2,17 +2,29 @@
 import jwt from 'jsonwebtoken'
 import { cfg } from '../config/env.js'
 
-// 🔍 Auth middleware with detailed debug logging
+// 🔍 Auth middleware supporting both Bearer and gamedb_session tokens
 export function authenticate(req, res, next) {
+  // Capture all possible token sources
   const authHeader = req.headers.authorization
-  console.log('🔐 Incoming auth header:', authHeader)
+  const sessionHeader = req.headers['gamedb_session']
+  const cookieToken = req.cookies?.gamedb_session
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.log('❌ Missing or malformed Authorization header')
-    return res.status(401).json({ success: false, message: 'Missing or invalid token' })
+  console.log('🔐 Incoming headers:', {
+    authorization: authHeader,
+    gamedb_session: sessionHeader,
+  })
+
+  // Extract the token from whichever source exists
+  const token = authHeader?.startsWith('Bearer ')
+    ? authHeader.split(' ')[1]
+    : sessionHeader || cookieToken
+
+  if (!token) {
+    console.log('❌ Missing or malformed token (Authorization or gamedb_session)')
+    return res
+      .status(401)
+      .json({ success: false, message: 'Missing or invalid token' })
   }
-
-  const token = authHeader.split(' ')[1]
 
   try {
     console.log('🧩 Using JWT secret:', cfg.jwtSecret)
@@ -22,7 +34,9 @@ export function authenticate(req, res, next) {
     next()
   } catch (err) {
     console.log('❌ JWT verification failed:', err.message)
-    return res.status(401).json({ success: false, message: 'Invalid or expired token' })
+    return res
+      .status(401)
+      .json({ success: false, message: 'Invalid or expired token' })
   }
 }
 
@@ -32,7 +46,9 @@ export function requireRole(...roles) {
     console.log('🧭 Role check - required:', roles, 'current user:', req.user?.role)
     if (!req.user || !roles.includes(req.user.role)) {
       console.log('🚫 Access denied - insufficient role')
-      return res.status(403).json({ success: false, message: 'Forbidden' })
+      return res
+        .status(403)
+        .json({ success: false, message: 'Forbidden' })
     }
     console.log('✅ Role check passed')
     next()

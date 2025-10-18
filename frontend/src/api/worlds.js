@@ -11,27 +11,28 @@ async function waitForToken(retries = 5, delay = 200) {
   for (let i = 0; i < retries; i++) {
     const token = getAuthToken()
     if (token) return token
-    await new Promise(res => setTimeout(res, delay))
+    await new Promise((res) => setTimeout(res, delay))
   }
   return null
 }
 
-// Build request headers with auth, safely
+// 🔒 Build request headers using `gamedb_session`
 async function authHeaders() {
   const token = await waitForToken()
 
   if (!token) {
-    if (import.meta.env.DEV) console.warn('⚠️ Missing or invalid auth token after wait')
+    if (import.meta.env.DEV)
+      console.warn('⚠️ Missing or invalid auth token after wait')
     throw new Error('Missing or invalid token')
   }
 
   return {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
+    gamedb_session: token, // ✅ updated: backend expects this, not Bearer
   }
 }
 
-// Handle API responses consistently
+// 🔁 Handle API responses consistently
 async function handleResponse(res, action = 'request') {
   if (res.status === 401) {
     console.warn(`🔒 Unauthorized during ${action}, clearing session`)
@@ -48,7 +49,7 @@ async function handleResponse(res, action = 'request') {
   return res.json()
 }
 
-// === API methods ===
+// === 🌍 API methods ===
 
 export async function fetchWorlds() {
   const headers = await authHeaders()
