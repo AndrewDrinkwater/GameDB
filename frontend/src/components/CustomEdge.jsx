@@ -2,8 +2,19 @@
 
 import React from 'react';
 import { BaseEdge, EdgeLabelRenderer, getBezierPath } from 'reactflow';
+import './graphStyles.css';
 
-const CustomEdge = ({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, label }) => {
+const CustomEdge = ({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  markerEnd,
+  label,
+}) => {
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -19,12 +30,10 @@ const CustomEdge = ({ id, sourceX, sourceY, targetX, targetY, sourcePosition, ta
       {label ? (
         <EdgeLabelRenderer>
           <div
-            className="rounded-full border border-cyan-400/40 bg-slate-950/90 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-cyan-100 shadow-md"
+            className="custom-edge-label"
             style={{
               position: 'absolute',
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-              pointerEvents: 'auto',
-              whiteSpace: 'nowrap',
             }}
           >
             {label}
