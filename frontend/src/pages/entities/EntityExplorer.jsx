@@ -13,6 +13,7 @@ import { getEntityGraph } from '../../api/entities';
 import { Filter, Info } from 'lucide-react';
 import EntityInfoPreview from "../../components/entities/EntityInfoPreview.jsx";
 import { nodeTypes, edgeTypes } from '../../components/graphTypes';
+import '../../components/graphStyles.css';
 
 const HORIZONTAL_SPACING = 240;
 const VERTICAL_SPACING = 220;
@@ -155,7 +156,7 @@ const buildLayout = (graphData, rootId) => {
 
 export default function EntityExplorer() {
   const { worldId, entityId } = useParams();
-  
+
   const [filters, setFilters] = useState({
     relationshipTypes: [],
     depth: 1,
@@ -164,6 +165,8 @@ export default function EntityExplorer() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedEntity, setSelectedEntity] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [rootPosition, setRootPosition] = useState(null);
+  const [shouldAutoFit, setShouldAutoFit] = useState(false);
 
   const fetchGraph = useCallback(async () => {
     setLoading(true);
@@ -220,6 +223,11 @@ export default function EntityExplorer() {
       setNodes(flowNodes);
       setEdges(flowEdges);
       setSelectedEntity(rootId);
+      const initialRoot = flowNodes.find((node) => node.id === rootId);
+      if (initialRoot) {
+        setRootPosition(initialRoot.position);
+      }
+      setShouldAutoFit(true);
     } catch (err) {
       console.error('Error loading graph', err);
     } finally {
@@ -231,14 +239,30 @@ export default function EntityExplorer() {
 
   useEffect(() => {
     if (!reactFlowInstance) return;
+    if (!shouldAutoFit) return;
     if (!nodes.length) return;
 
     const timeout = setTimeout(() => {
       reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
+      setShouldAutoFit(false);
     }, 0);
 
     return () => clearTimeout(timeout);
-  }, [reactFlowInstance, nodes, edges]);
+  }, [reactFlowInstance, shouldAutoFit, nodes]);
+
+  useEffect(() => {
+    if (!nodes.length) return;
+
+    const rootNode = nodes.find((node) => node.id === String(entityId));
+    if (!rootNode) return;
+
+    setRootPosition((prev) => {
+      if (prev && prev.x === rootNode.position.x && prev.y === rootNode.position.y) {
+        return prev;
+      }
+      return rootNode.position;
+    });
+  }, [nodes, entityId]);
 
   useEffect(() => {
     fetchGraph();
@@ -286,10 +310,32 @@ export default function EntityExplorer() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
-            fitView
             onInit={setReactFlowInstance}
             style={{ width: '100%', height: '100%' }}  // Ensure proper dimensions
           >
+            <div className="graph-toolbar">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!reactFlowInstance || !rootPosition) return;
+                  reactFlowInstance.setCenter(rootPosition.x, rootPosition.y, {
+                    zoom: 1.8,
+                    duration: 400,
+                  });
+                }}
+              >
+                Refocus Target
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!reactFlowInstance) return;
+                  reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
+                }}
+              >
+                Zoom to Fit
+              </button>
+            </div>
             <MiniMap />
             <Controls />
             <Background color="#222" gap={16} />
