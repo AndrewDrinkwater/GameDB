@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import ReactFlow, {
   MiniMap,
@@ -11,37 +11,7 @@ import 'reactflow/dist/style.css'
 import { getEntityGraph } from '../../api/entities'
 import { Filter, Info } from 'lucide-react'
 import EntityInfoPreview from "../../components/entities/EntityInfoPreview.jsx"
-
-// Custom Node Component
-const CustomNode = ({ data }) => {
-  return (
-    <div className="custom-node p-2 rounded-lg border bg-blue-500 text-white">
-      <div className="text-sm font-bold">{data.label}</div>
-      <div className="text-xs">{data.type}</div>
-    </div>
-  )
-}
-
-// Custom Edge Component
-const CustomEdge = ({ id, sourceX, sourceY, targetX, targetY, style }) => {
-  return (
-    <path
-      id={id}
-      className="react-flow__edge-path"
-      d={`M${sourceX},${sourceY}C${(sourceX + targetX) / 2},${sourceY} ${(sourceX + targetX) / 2},${targetY} ${targetX},${targetY}`}
-      style={{ ...style, stroke: 'lightgray', strokeWidth: 2 }}
-    />
-  )
-}
-
-// Define nodeTypes and edgeTypes outside of the component to avoid re-creation
-const nodeTypes = {
-  customNode: CustomNode,  // Your custom node component
-}
-
-const edgeTypes = {
-  customEdge: CustomEdge,  // Your custom edge component
-}
+import CustomNode from "../../components/CustomNode.jsx" // Import the custom node
 
 export default function EntityExplorer() {
   const { worldId, entityId } = useParams()
@@ -88,6 +58,11 @@ export default function EntityExplorer() {
     setSelectedEntity(node.id)
   }, [])
 
+  // Register the custom node
+  const nodeTypes = {
+    customNode: CustomNode, // Register your custom node here
+  }
+
   return (
     <div className="flex h-full w-full">
       {/* Left filter panel */}
@@ -114,20 +89,18 @@ export default function EntityExplorer() {
       </div>
 
       {/* Main graph area */}
-      <div className="flex-1 relative bg-gray-950" style={{ height: 'calc(100vh - 50px)' }}>
+      <div className="flex-1 relative bg-gray-950">
         {loading ? (
           <div className="text-gray-400 text-sm p-4">Loading graph...</div>
         ) : (
           <ReactFlow
-            nodeTypes={nodeTypes}  // Apply memoized nodeTypes
-            edgeTypes={edgeTypes}  // Apply memoized edgeTypes
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
+            nodeTypes={nodeTypes} // Pass nodeTypes to ReactFlow
             fitView
-            style={{ height: '100%' }}  // Ensure ReactFlow has a height
           >
             <MiniMap />
             <Controls />
@@ -139,14 +112,14 @@ export default function EntityExplorer() {
       {/* Entity detail drawer */}
       <div className="w-80 bg-gray-900 text-gray-100 border-l border-gray-700">
         {selectedEntity ? (
-          <EntityInfoPreview
-            entityId={selectedEntity}
-            onClose={() => setSelectedEntity(null)}
-          />
+            <EntityInfoPreview
+                entityId={selectedEntity}
+                onClose={() => setSelectedEntity(null)}
+            />
         ) : (
-          <div className="flex items-center justify-center h-full text-gray-500 text-sm">
-            <Info size={14} className="mr-2" /> Select a node to view details
-          </div>
+            <div className="flex items-center justify-center h-full text-gray-500 text-sm">
+                <Info size={14} className="mr-2" /> Select a node to view details
+            </div>
         )}
       </div>
     </div>
