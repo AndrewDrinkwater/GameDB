@@ -3378,6 +3378,52 @@ th {
   color: #111827; /* Tailwind gray-900 */
 }
 
+.relationship-count-button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: #2563eb; /* Tailwind blue-600 */
+  cursor: pointer;
+}
+
+.relationship-count-button:hover,
+.relationship-count-button:focus {
+  text-decoration: underline;
+}
+
+.relationship-group-details td {
+  background: #f8fafc;
+  padding-top: 0;
+}
+
+.relationship-details-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.relationship-details-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: #334155;
+}
+
+.relationship-detail-label {
+  font-weight: 500;
+}
+
+.relationship-detail-type {
+  color: #475569;
+}
+
 .entity-relationship-link {
   color: #2563eb; /* Tailwind blue-600 */
   text-decoration: none;

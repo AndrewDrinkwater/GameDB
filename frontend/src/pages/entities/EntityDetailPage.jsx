@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Network } from 'lucide-react'
 
@@ -179,6 +179,7 @@ export default function EntityDetailPage() {
   const [relationshipsLoading, setRelationshipsLoading] = useState(false)
   const [showRelationshipForm, setShowRelationshipForm] = useState(false)
   const [relationshipPerspective, setRelationshipPerspective] = useState('source')
+  const [expandedRelationshipGroupId, setExpandedRelationshipGroupId] = useState('')
   const [toast, setToast] = useState(null)
   const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
   const fromEntitiesSearch = location.state?.fromEntities?.search || ''
@@ -700,6 +701,54 @@ export default function EntityDetailPage() {
     [relationshipsByPerspective, relationshipPerspective],
   )
 
+  const groupedRelationships = useMemo(() => {
+    if (!Array.isArray(relationshipsToDisplay) || relationshipsToDisplay.length === 0) {
+      return []
+    }
+
+    const entityId = entity?.id ? String(entity.id) : ''
+    const groups = new Map()
+
+    relationshipsToDisplay.forEach((relationship) => {
+      const fromId = relationship.fromId ? String(relationship.fromId) : ''
+      const isSource = fromId && entityId && fromId === entityId
+      const relatedId = isSource ? relationship.toId : relationship.fromId
+      const relatedName = isSource ? relationship.toName : relationship.fromName
+      const label = isSource
+        ? relationship.sourceLabel || relationship.source_relationship_label || ''
+        : relationship.targetLabel || relationship.target_relationship_label || ''
+      const typeName = relationship.typeName || '—'
+      const direction = isSource ? 'Outgoing' : 'Incoming'
+      const key = `${direction}-${relatedId || relationship.id}`
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          direction,
+          relatedId,
+          relatedName,
+          relationships: [],
+        })
+      }
+
+      groups.get(key).relationships.push({
+        id: relationship.id,
+        label: label || '—',
+        typeName,
+      })
+    })
+
+    return Array.from(groups.values())
+  }, [entity?.id, relationshipsToDisplay])
+
+  const toggleRelationshipGroup = useCallback((groupId) => {
+    setExpandedRelationshipGroupId((current) => (current === groupId ? '' : groupId))
+  }, [])
+
+  useEffect(() => {
+    setExpandedRelationshipGroupId('')
+  }, [relationshipPerspective, entity?.id])
+
   const relationshipsToggleLabel = useMemo(() => {
     const name = entity?.name || 'this entity'
     return relationshipPerspective === 'source'
@@ -877,7 +926,7 @@ export default function EntityDetailPage() {
           <div className="alert error" role="alert">
             {relationshipsError}
           </div>
-        ) : normalisedRelationships.length === 0 ? (
+        ) : relationshipsToDisplay.length === 0 ? (
           <p className="entity-empty-state">
             No relationships found for this entity.
           </p>
@@ -892,46 +941,82 @@ export default function EntityDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {normalisedRelationships.map((relationship) => {
-                  const isSource = String(relationship.fromId) === String(entity.id)
-                  const relatedName = isSource ? relationship.toName : relationship.fromName
-                  const relatedId = isSource ? relationship.toId : relationship.fromId
+                {groupedRelationships.map((group) => {
+                  const { key, direction, relatedId, relatedName, relationships: relationshipList } = group
+                  const hasMultiple = relationshipList.length > 1
+                  const firstRelationship = relationshipList[0]
+                  const uniqueTypeNames = Array.from(
+                    new Set(
+                      relationshipList
+                        .map((item) => item.typeName)
+                        .filter((name) => name && name !== '—'),
+                    ),
+                  )
+                  const typeDisplay = hasMultiple
+                    ? uniqueTypeNames.length > 0
+                      ? uniqueTypeNames.join(', ')
+                      : 'Multiple'
+                    : firstRelationship?.typeName || '—'
 
-                  // Grab relationship type and directional labels
-                  const typeName = relationship.typeName || '—'
-                  const sourceLabel = relationship.sourceLabel || relationship.source_relationship_label || ''
-                  const targetLabel = relationship.targetLabel || relationship.target_relationship_label || ''
-
-                  // Build contextual phrase
-                  const currentName = entity.name || 'Entity'
-                  const phrase = isSource
-                    ? `${currentName} ${sourceLabel || ''} ${relatedName || ''}`.trim()
-                    : `${currentName} ${targetLabel || ''} ${relatedName || ''}`.trim()
+                  const relatedEntityContent = relatedId ? (
+                    <Link to={`/entities/${relatedId}`} className="entity-relationship-link">
+                      {relatedName || '—'}
+                    </Link>
+                  ) : (
+                    <span>{relatedName || '—'}</span>
+                  )
 
                   return (
-                    <tr key={relationship.id}>
-                      <td>
-                        <span className="relationship-phrase">
-                          {isSource ? (
-                            <>
-                              <strong>{entity.name}</strong> {sourceLabel || '—'}{' '}
-                              <Link to={`/entities/${relatedId}`} className="entity-relationship-link">
-                                {relatedName || '—'}
-                              </Link>
-                            </>
-                          ) : (
-                            <>
-                              <strong>{entity.name}</strong> {targetLabel || '—'}{' '}
-                              <Link to={`/entities/${relatedId}`} className="entity-relationship-link">
-                                {relatedName || '—'}
-                              </Link>
-                            </>
-                          )}
-                        </span>
-                      </td>
-                      <td>{typeName}</td>
-                      <td>{isSource ? 'Outgoing' : 'Incoming'}</td>
-                    </tr>
+                    <Fragment key={key}>
+                      <tr>
+                        <td>
+                          <span className="relationship-phrase">
+                            {hasMultiple ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="relationship-count-button"
+                                  onClick={() => toggleRelationshipGroup(key)}
+                                  aria-expanded={expandedRelationshipGroupId === key}
+                                  aria-controls={`${key}-details`}
+                                >
+                                  {relationshipList.length} Relationships
+                                </button>{' '}
+                                {relatedEntityContent}
+                              </>
+                            ) : (
+                              <>
+                                <strong>{firstRelationship?.label || '—'}</strong>{' '}
+                                {relatedEntityContent}
+                              </>
+                            )}
+                          </span>
+                        </td>
+                        <td>{typeDisplay || '—'}</td>
+                        <td>{direction}</td>
+                      </tr>
+                      {hasMultiple && expandedRelationshipGroupId === key && (
+                        <tr className="relationship-group-details">
+                          <td colSpan={3}>
+                            <ul
+                              id={`${key}-details`}
+                              className="relationship-details-list"
+                            >
+                              {relationshipList.map((relationship) => (
+                                <li key={relationship.id}>
+                                  <span className="relationship-detail-label">
+                                    {relationship.label || '—'}
+                                  </span>
+                                  <span className="relationship-detail-type">
+                                    {relationship.typeName || '—'}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   )
                 })}
               </tbody>
