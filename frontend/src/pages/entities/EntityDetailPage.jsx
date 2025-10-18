@@ -157,12 +157,6 @@ const initialMetadataValue = (field) => {
   return value
 }
 
-// Helper to choose the correct directional label based on perspective
-const getRelationshipLabel = (rel) => (
-  rel.effectiveFromLabel || rel.typeFromName || rel.typeName
-)
-
-
 export default function EntityDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -178,7 +172,6 @@ export default function EntityDetailPage() {
   const [relationshipsError, setRelationshipsError] = useState('')
   const [relationshipsLoading, setRelationshipsLoading] = useState(false)
   const [showRelationshipForm, setShowRelationshipForm] = useState(false)
-  const [relationshipPerspective, setRelationshipPerspective] = useState('source')
   const [expandedRelationshipGroupId, setExpandedRelationshipGroupId] = useState('')
   const [toast, setToast] = useState(null)
   const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
@@ -342,10 +335,6 @@ export default function EntityDetailPage() {
 
   useEffect(() => {
     setIsEditing(false)
-  }, [entity?.id])
-
-  useEffect(() => {
-    setRelationshipPerspective('source')
   }, [entity?.id])
 
   const visibilityLabel = useMemo(() => {
@@ -676,70 +665,75 @@ export default function EntityDetailPage() {
     })
   }, [relationships])
 
-  const relationshipsByPerspective = useMemo(() => {
-    const entityId = entity?.id
-    if (!entityId) {
-      return { source: [], target: [] }
-    }
-
-    const entityIdString = String(entityId)
-    const source = normalisedRelationships.filter((relationship) => {
-      if (!relationship.fromId) return false
-      return String(relationship.fromId) === entityIdString
-    })
-
-    const target = normalisedRelationships.filter((relationship) => {
-      if (!relationship.toId) return false
-      return String(relationship.toId) === entityIdString
-    })
-
-    return { source, target }
-  }, [entity?.id, normalisedRelationships])
-
-  const relationshipsToDisplay = useMemo(
-    () => relationshipsByPerspective[relationshipPerspective] || [],
-    [relationshipsByPerspective, relationshipPerspective],
-  )
-
   const groupedRelationships = useMemo(() => {
-    if (!Array.isArray(relationshipsToDisplay) || relationshipsToDisplay.length === 0) {
+    if (!entity?.id || !Array.isArray(normalisedRelationships)) {
       return []
     }
 
     const entityId = entity?.id ? String(entity.id) : ''
     const groups = new Map()
 
-    relationshipsToDisplay.forEach((relationship) => {
+    normalisedRelationships.forEach((relationship) => {
       const fromId = relationship.fromId ? String(relationship.fromId) : ''
+      const toId = relationship.toId ? String(relationship.toId) : ''
       const isSource = fromId && entityId && fromId === entityId
-      const relatedId = isSource ? relationship.toId : relationship.fromId
-      const relatedName = isSource ? relationship.toName : relationship.fromName
-      const label = isSource
-        ? relationship.sourceLabel || relationship.source_relationship_label || ''
-        : relationship.targetLabel || relationship.target_relationship_label || ''
-      const typeName = relationship.typeName || '—'
-      const direction = isSource ? 'Outgoing' : 'Incoming'
-      const key = `${direction}-${relatedId || relationship.id}`
+      const isTarget = toId && entityId && toId === entityId
 
-      if (!groups.has(key)) {
-        groups.set(key, {
-          key,
-          direction,
-          relatedId,
-          relatedName,
-          relationships: [],
+      if (!isSource && !isTarget) return
+
+      const roles = []
+
+      if (isSource) {
+        roles.push({
+          direction: 'Outgoing',
+          relatedId: relationship.toId,
+          relatedName: relationship.toName,
+          label:
+            relationship.effectiveFromLabel ||
+            relationship.sourceLabel ||
+            relationship.typeFromName ||
+            relationship.typeName ||
+            '—',
         })
       }
 
-      groups.get(key).relationships.push({
-        id: relationship.id,
-        label: label || '—',
-        typeName,
+      if (isTarget) {
+        roles.push({
+          direction: 'Incoming',
+          relatedId: relationship.fromId,
+          relatedName: relationship.fromName,
+          label:
+            relationship.effectiveToLabel ||
+            relationship.targetLabel ||
+            relationship.typeToName ||
+            relationship.typeName ||
+            '—',
+        })
+      }
+
+      roles.forEach(({ direction, relatedId, relatedName, label }) => {
+        const key = `${direction}-${relatedId || relationship.id}`
+
+        if (!groups.has(key)) {
+          groups.set(key, {
+            key,
+            direction,
+            relatedId,
+            relatedName,
+            relationships: [],
+          })
+        }
+
+        groups.get(key).relationships.push({
+          id: relationship.id,
+          label: label || '—',
+          typeName: relationship.typeName || '—',
+        })
       })
     })
 
     return Array.from(groups.values())
-  }, [entity?.id, relationshipsToDisplay])
+  }, [entity?.id, normalisedRelationships])
 
   const toggleRelationshipGroup = useCallback((groupId) => {
     setExpandedRelationshipGroupId((current) => (current === groupId ? '' : groupId))
@@ -747,35 +741,12 @@ export default function EntityDetailPage() {
 
   useEffect(() => {
     setExpandedRelationshipGroupId('')
-  }, [relationshipPerspective, entity?.id])
-
-  const relationshipsToggleLabel = useMemo(() => {
-    const name = entity?.name || 'this entity'
-    return relationshipPerspective === 'source'
-      ? `Showing relationships where ${name} is the source.`
-      : `Showing relationships where ${name} is the target.`
-  }, [entity?.name, relationshipPerspective])
-
-  const relationshipsToggleActionLabel = useMemo(
-    () =>
-      relationshipPerspective === 'source'
-        ? 'Show incoming relationships'
-        : 'Show outgoing relationships',
-    [relationshipPerspective],
-  )
-
-  const handleRelationshipPerspectiveToggle = useCallback(() => {
-    setRelationshipPerspective((current) =>
-      current === 'source' ? 'target' : 'source',
-    )
-  }, [])
+  }, [entity?.id, groupedRelationships.length])
 
   const relationshipsEmptyMessage = useMemo(() => {
     const name = entity?.name || 'this entity'
-    return relationshipPerspective === 'source'
-      ? `No relationships found where ${name} is the source.`
-      : `No relationships found where ${name} is the target.`
-  }, [entity?.name, relationshipPerspective])
+    return `No relationships found for ${name}.`
+  }, [entity?.name])
 
   const handleRelationshipCreated = useCallback(
     (mode, relationship) => {
@@ -926,26 +897,13 @@ export default function EntityDetailPage() {
       </div>
 
       <div className="entity-card-body">
-        <div className="entity-relationships-toggle">
-          <p className="entity-relationships-toggle-label">
-            {relationshipsToggleLabel}
-          </p>
-          <button
-            type="button"
-            className="btn"
-            onClick={handleRelationshipPerspectiveToggle}
-          >
-            {relationshipsToggleActionLabel}
-          </button>
-        </div>
-
         {relationshipsLoading ? (
           <p>Loading relationships...</p>
         ) : relationshipsError ? (
           <div className="alert error" role="alert">
             {relationshipsError}
           </div>
-        ) : relationshipsToDisplay.length === 0 ? (
+        ) : groupedRelationships.length === 0 ? (
           <p className="entity-empty-state">
             {relationshipsEmptyMessage}
           </p>
