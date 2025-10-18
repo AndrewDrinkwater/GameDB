@@ -41,3 +41,17 @@ export const createEntity = (data) => api.post('/entities', data)
 export const updateEntity = (id, data) => api.patch(`/entities/${id}`, data)
 
 export const deleteEntity = (id) => api.delete(`/entities/${id}`)
+
+//helpers for entitiy explorer
+export async function getEntityGraph(worldId, entityId, filters = {}) {
+  const params = new URLSearchParams()
+  if (filters.depth) params.append('depth', filters.depth)
+  if (filters.relationshipTypes?.length)
+    params.append('relationshipTypes', filters.relationshipTypes.join(','))
+
+  const res = await fetch(
+    `/api/worlds/${worldId}/entities/${entityId}/explore?${params.toString()}`
+  )
+  if (!res.ok) throw new Error('Failed to fetch entity graph')
+  return res.json()
+}

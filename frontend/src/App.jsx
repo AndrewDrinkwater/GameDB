@@ -14,6 +14,7 @@ import UsersPage from './pages/UsersPage.jsx'
 import Login from './pages/Login.jsx'
 import EntityList from './pages/entities/EntityList.jsx'
 import EntityDetailPage from './pages/entities/EntityDetailPage.jsx'
+import EntityExplorer from './pages/entities/EntityExplorer.jsx'
 import EntityTypeList from './pages/entityTypes/EntityTypeList.jsx'
 import EntityTypeFields from './pages/entityTypes/EntityTypeFields.jsx'
 import CreateEntityType from './pages/entityTypes/CreateEntityType.jsx'
@@ -46,6 +47,31 @@ const router = createBrowserRouter(
         <Route path="worlds" element={<WorldsPage />} />
         <Route path="worlds/:id" element={<WorldDetailPage />} />
 
+        {/* Entity routes */}
+        <Route path="entities" element={<EntityList />} />
+        <Route path="entities/:id" element={<EntityDetailPage />} />
+        {/* Entity Explorer (visual relationship view) */}
+        <Route
+          path="worlds/:worldId/entities/:entityId/explore"
+          element={<EntityExplorer />}
+        />
+
+        {/* Entity Type routes */}
+        <Route path="entity-types">
+          <Route index element={<EntityTypeList />} />
+          <Route path="new" element={<CreateEntityType />} />
+          <Route path=":id/fields" element={<EntityTypeFields />} />
+        </Route>
+
+        {/* Relationship routes */}
+        <Route path="relationship-types">
+          <Route index element={<RelationshipTypeList />} />
+          <Route path="new" element={<CreateRelationshipType />} />
+          <Route path=":id/edit" element={<EditRelationshipType />} />
+        </Route>
+        <Route path="entity-relationships" element={<EntityRelationshipList />} />
+        <Route path="entity-secrets" element={<EntitySecretList />} />
+
         {/* Campaign routes */}
         <Route path="campaigns">
           <Route index element={<Navigate to="/campaigns/my" replace />} />
@@ -54,20 +80,8 @@ const router = createBrowserRouter(
           <Route path="all" element={<CampaignsPage scope="all" />} />
           <Route path="all/:id" element={<CampaignsPage scope="all" />} />
         </Route>
-        <Route path="entities" element={<EntityList />} />
-        <Route path="entities/:id" element={<EntityDetailPage />} />
-        <Route path="entity-types">
-          <Route index element={<EntityTypeList />} />
-          <Route path="new" element={<CreateEntityType />} />
-          <Route path=":id/fields" element={<EntityTypeFields />} />
-        </Route>
-        <Route path="relationship-types">
-          <Route index element={<RelationshipTypeList />} />
-          <Route path="new" element={<CreateRelationshipType />} />
-          <Route path=":id/edit" element={<EditRelationshipType />} />
-        </Route>
-        <Route path="entity-relationships" element={<EntityRelationshipList />} />
-        <Route path="entity-secrets" element={<EntitySecretList />} />
+
+        {/* Character routes */}
         <Route path="characters">
           <Route index element={<Navigate to="/characters/my" replace />} />
           <Route path="my" element={<CharactersPage scope="my" />} />
@@ -75,7 +89,10 @@ const router = createBrowserRouter(
           <Route path="others" element={<CharactersPage scope="others" />} />
           <Route path="others/:id" element={<CharactersPage scope="others" />} />
           <Route path="companions" element={<CharactersPage scope="companions" />} />
-          <Route path="companions/:id" element={<CharactersPage scope="companions" />} />
+          <Route
+            path="companions/:id"
+            element={<CharactersPage scope="companions" />}
+          />
           <Route path="all" element={<CharactersPage scope="all" />} />
           <Route path="all/:id" element={<CharactersPage scope="all" />} />
         </Route>
@@ -86,8 +103,8 @@ const router = createBrowserRouter(
 
       {/* Fallback: redirect anything unknown */}
       <Route path="*" element={<Navigate to="/" replace />} />
-    </>,
-  ),
+    </>
+  )
 )
 
 export default function App() {
