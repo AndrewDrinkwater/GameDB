@@ -41,6 +41,8 @@ const CustomEdge = ({
 
   const labelLines = typeof label === 'string' ? label.split('\n') : [label];
   const tooltip = data?.tooltip;
+  const isInteractive =
+    Array.isArray(data?.relationships) && data.relationships.length > 0;
 
   const opacity = isHovered ? 1 : isDimmed ? 0.35 : 0.8;
   const strokeWidth = isHovered ? 3.2 : 2.2;
@@ -70,6 +72,7 @@ const CustomEdge = ({
               background: labelBackground,
               borderColor: `${stroke}55`,
               opacity: isDimmed && !isHovered ? 0.7 : 1,
+              cursor: isInteractive ? 'pointer' : 'default',
             }}
             title={tooltip}
           >
