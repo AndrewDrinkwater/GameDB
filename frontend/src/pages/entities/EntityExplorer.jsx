@@ -212,9 +212,34 @@ const buildLayout = (graphData, rootId) => {
   }
 }
 
-const applyLayerFilters = (nodes, edges, { layerMode, depthLimit, rootId }) => {
+const applyLayerFilters = (
+  nodes,
+  edges,
+  { layerMode, depthLimit, rootId, hiddenRelationshipTypes = [] },
+) => {
   if (!Array.isArray(nodes) || nodes.length === 0) {
     return { nodes: [], edges: [] }
+  }
+
+  const hiddenTypeSet = new Set(
+    hiddenRelationshipTypes.map((value) => String(value)).filter(Boolean),
+  )
+
+  let filteredEdges = Array.isArray(edges) ? edges.slice() : []
+
+  if (hiddenTypeSet.size > 0) {
+    filteredEdges = filteredEdges.filter((edge) => {
+      const typeId =
+        edge?.data?.relationshipTypeId ??
+        edge?.relationshipTypeId ??
+        edge?.type ??
+        edge?.data?.relationshipType?.id ??
+        null
+      if (typeId === null || typeId === undefined) {
+        return true
+      }
+      return !hiddenTypeSet.has(String(typeId))
+    })
   }
 
   const nodeMap = new Map(nodes.map((node) => [String(node.id), node]))
@@ -224,8 +249,6 @@ const applyLayerFilters = (nodes, edges, { layerMode, depthLimit, rootId }) => {
     const node = nodeMap.get(String(id))
     return node?.data?.depth ?? Infinity
   }
-
-  let filteredEdges = Array.isArray(edges) ? edges.slice() : []
 
   if (layerMode === 'direct') {
     filteredEdges = filteredEdges.filter(
@@ -284,7 +307,7 @@ export default function EntityExplorer() {
   const rootId = String(entityId)
 
   const [filters, setFilters] = useState({
-    relationshipTypes: [],
+    hiddenRelationshipTypes: [],
     depth: 1,
     layerMode: 'direct',
   })
@@ -301,7 +324,7 @@ export default function EntityExplorer() {
   const [availableRelationshipTypes, setAvailableRelationshipTypes] = useState([])
 
   const depth = filters.depth
-  const relationshipTypes = filters.relationshipTypes
+  const hiddenRelationshipTypes = filters.hiddenRelationshipTypes
   const layerMode = filters.layerMode
 
   useEffect(() => {
@@ -312,7 +335,6 @@ export default function EntityExplorer() {
       try {
         const data = await getEntityGraph(worldId, entityId, {
           depth,
-          relationshipTypes,
         })
         if (cancelled) return
 
@@ -398,7 +420,7 @@ export default function EntityExplorer() {
     return () => {
       cancelled = true
     }
-  }, [worldId, entityId, depth, relationshipTypes, rootId])
+  }, [worldId, entityId, depth, rootId])
 
   const filteredGraph = useMemo(
     () =>
@@ -406,9 +428,31 @@ export default function EntityExplorer() {
         layerMode,
         depthLimit: depth,
         rootId,
+        hiddenRelationshipTypes,
       }),
-    [rawNodes, rawEdges, layerMode, depth, rootId],
+    [rawNodes, rawEdges, layerMode, depth, rootId, hiddenRelationshipTypes],
   )
+
+  useEffect(() => {
+    if (!availableRelationshipTypes.length) return
+
+    setFilters((prev) => {
+      const currentHidden = prev.hiddenRelationshipTypes || []
+      if (!currentHidden.length) {
+        return prev
+      }
+
+      const validIds = new Set(
+        availableRelationshipTypes.map((type) => String(type.id)),
+      )
+      const filteredHidden = currentHidden.filter((id) => validIds.has(id))
+      if (filteredHidden.length === currentHidden.length) {
+        return prev
+      }
+
+      return { ...prev, hiddenRelationshipTypes: filteredHidden }
+    })
+  }, [availableRelationshipTypes])
 
   useEffect(() => {
     setNodes(filteredGraph.nodes)
@@ -490,15 +534,16 @@ export default function EntityExplorer() {
     setFilters((prev) => ({ ...prev, depth: safeValue }))
   }
 
-  const toggleRelationshipType = (typeId) => {
+  const toggleHiddenRelationshipType = (typeId) => {
     setFilters((prev) => {
       const id = String(typeId)
-      const exists = prev.relationshipTypes.includes(id)
+      const hidden = prev.hiddenRelationshipTypes || []
+      const exists = hidden.includes(id)
       return {
         ...prev,
-        relationshipTypes: exists
-          ? prev.relationshipTypes.filter((value) => value !== id)
-          : [...prev.relationshipTypes, id],
+        hiddenRelationshipTypes: exists
+          ? hidden.filter((value) => value !== id)
+          : [...hidden, id],
       }
     })
   }
@@ -535,49 +580,51 @@ export default function EntityExplorer() {
             <div className="text-gray-400 text-sm p-4">Loading graph...</div>
           ) : (
             <>
-              <ReactFlow
-                nodeTypes={nodeTypes}
-                edgeTypes={edgeTypes}
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onNodeClick={onNodeClick}
-                onNodeContextMenu={onNodeContextMenu}
-                onPaneClick={() => setContextMenu(CONTEXT_MENU_INITIAL_STATE)}
-                onPaneContextMenu={() => setContextMenu(CONTEXT_MENU_INITIAL_STATE)}
-                onInit={setReactFlowInstance}
-                style={{ width: '100%', height: '100%' }}
-              >
-                <div className="graph-toolbar">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!reactFlowInstance || !rootPosition) return
-                      reactFlowInstance.setCenter(rootPosition.x, rootPosition.y, {
-                        zoom: 1.8,
-                        duration: 400,
-                      })
-                    }}
-                  >
-                    Refocus Target
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!reactFlowInstance) return
-                      reactFlowInstance.fitView({ padding: 0.2, duration: 400 })
-                    }}
-                  >
-                    Zoom to Fit
-                  </button>
-                </div>
-                <MiniMap />
-                <Controls />
-                <Background color="#222" gap={16} />
-              </ReactFlow>
+              <div className="graph-canvas-container">
+                <ReactFlow
+                  nodeTypes={nodeTypes}
+                  edgeTypes={edgeTypes}
+                  nodes={nodes}
+                  edges={edges}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onNodeClick={onNodeClick}
+                  onNodeContextMenu={onNodeContextMenu}
+                  onPaneClick={() => setContextMenu(CONTEXT_MENU_INITIAL_STATE)}
+                  onPaneContextMenu={() => setContextMenu(CONTEXT_MENU_INITIAL_STATE)}
+                  onInit={setReactFlowInstance}
+                  style={{ width: '100%', height: '100%' }}
+                >
+                  <div className="graph-toolbar">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!reactFlowInstance || !rootPosition) return
+                        reactFlowInstance.setCenter(rootPosition.x, rootPosition.y, {
+                          zoom: 1.8,
+                          duration: 400,
+                        })
+                      }}
+                    >
+                      Refocus Target
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!reactFlowInstance) return
+                        reactFlowInstance.fitView({ padding: 0.2, duration: 400 })
+                      }}
+                    >
+                      Zoom to Fit
+                    </button>
+                  </div>
+                  <MiniMap />
+                  <Controls />
+                  <Background color="#222" gap={16} />
+                </ReactFlow>
+              </div>
 
-              <div className="graph-filter-sidebar">
+              <aside className="graph-filter-sidebar">
                 <div className="graph-filter-header">
                   <Filter size={14} /> Filters
                 </div>
@@ -651,29 +698,35 @@ export default function EntityExplorer() {
                 <div className="graph-filter-group">
                   <div className="graph-filter-group-header">
                     <span className="graph-filter-label">Relationship Types</span>
-                    {relationshipTypes.length > 0 ? (
+                    {hiddenRelationshipTypes.length > 0 ? (
                       <button
                         type="button"
-                        onClick={() => setFilters((prev) => ({ ...prev, relationshipTypes: [] }))}
+                        onClick={() =>
+                          setFilters((prev) => ({ ...prev, hiddenRelationshipTypes: [] }))
+                        }
                         className="graph-filter-clear"
                       >
-                        Clear
+                        Reset
                       </button>
                     ) : null}
                   </div>
+                  <p className="graph-filter-description">
+                    Check a type to hide its relationships from the graph.
+                  </p>
 
                   {availableRelationshipTypes.length ? (
                     <div className="graph-filter-type-list">
                       {availableRelationshipTypes.map((type) => {
                         const id = String(type.id)
-                        const isChecked = relationshipTypes.includes(id)
+                        const isChecked = hiddenRelationshipTypes.includes(id)
                         return (
                           <label key={id} className="graph-filter-type">
                             <div className="graph-filter-type-row">
                               <input
                                 type="checkbox"
                                 checked={isChecked}
-                                onChange={() => toggleRelationshipType(id)}
+                                onChange={() => toggleHiddenRelationshipType(id)}
+                                aria-label={`Hide ${type.name} relationships`}
                               />
                               <span>
                                 {type.name}
@@ -691,17 +744,19 @@ export default function EntityExplorer() {
                   ) : (
                     <p className="graph-filter-empty">No relationship types loaded yet.</p>
                   )}
-                  {relationshipTypes.length > 0 ? (
+                  {hiddenRelationshipTypes.length > 0 ? (
                     <button
                       type="button"
-                      onClick={() => setFilters((prev) => ({ ...prev, relationshipTypes: [] }))}
+                      onClick={() =>
+                        setFilters((prev) => ({ ...prev, hiddenRelationshipTypes: [] }))
+                      }
                       className="graph-filter-reset"
                     >
                       Show all relationship types
                     </button>
                   ) : null}
                 </div>
-              </div>
+              </aside>
             </>
           )}
         </div>
