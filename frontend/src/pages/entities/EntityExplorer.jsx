@@ -1156,6 +1156,7 @@ export default function EntityExplorer() {
   })
   const [isClusterWindowDragging, setIsClusterWindowDragging] = useState(false)
   const clusterWindowDragOffsetRef = useRef({ x: 0, y: 0 })
+  const pendingClusterTargetRef = useRef(null)
   const [draggedClusterTargetId, setDraggedClusterTargetId] = useState(null)
 
   const resetClusterWindowState = useCallback(() => {
@@ -1723,13 +1724,16 @@ export default function EntityExplorer() {
     [navigate, rootId, worldId],
   )
 
-  const promoteClusterTarget = useCallback(
-    ({ clusterId, targetId, position, clusterNode }) => {
-      if (!clusterId) return
-      if (targetId === undefined || targetId === null) return
+  const collectClusterTargetSnapshot = useCallback(
+    ({ clusterId, targetId }) => {
+      if (!clusterId) return null
+      if (targetId === undefined || targetId === null) return null
 
       const nodeId = String(targetId)
+      const resolvedClusterId = String(clusterId)
       const detailSnapshot = {
+        clusterId: resolvedClusterId,
+        targetId: nodeId,
         sourceId: null,
         targetInfo: null,
         style: null,
@@ -1742,6 +1746,8 @@ export default function EntityExplorer() {
         nextDetail: null,
         nextClusterCount: 0,
       }
+
+      let didUpdate = false
 
       setClusterDetails((prev) => {
         if (!prev.has(clusterId)) return prev
@@ -1788,8 +1794,6 @@ export default function EntityExplorer() {
         const nextClusterCount = Math.max(0, (currentDetail.count || 0) - 1)
 
         detailSnapshot.sourceId = sourceId
-        detailSnapshot.targetInfo = targetInfo
-        detailSnapshot.style = currentDetail.style || null
         detailSnapshot.typeId =
           currentDetail.typeId !== undefined && currentDetail.typeId !== null
             ? String(currentDetail.typeId)
@@ -1797,6 +1801,13 @@ export default function EntityExplorer() {
         detailSnapshot.typeName = currentDetail.typeName || ''
         detailSnapshot.label = currentDetail.label || ''
         detailSnapshot.tooltip = currentDetail.tooltip || null
+        detailSnapshot.style = currentDetail.style || null
+        detailSnapshot.targetInfo = {
+          ...targetInfo,
+          id: nodeId,
+          name: targetInfo.name || `Entity ${nodeId}`,
+          type: targetInfo.type || null,
+        }
         detailSnapshot.relationships = relationshipsForTarget
         detailSnapshot.relationshipCounts = relationshipCounts
         detailSnapshot.nextClusterCount = nextClusterCount
@@ -1810,18 +1821,44 @@ export default function EntityExplorer() {
         }
 
         detailSnapshot.nextDetail = updatedDetail
+        didUpdate = true
 
         const next = new Map(prev)
         next.set(clusterId, updatedDetail)
         return next
       })
 
-      if (!detailSnapshot.targetInfo || !detailSnapshot.sourceId) {
-        return
+      if (!didUpdate || !detailSnapshot.targetInfo || !detailSnapshot.sourceId) {
+        return null
       }
 
       if (activeClusterId === clusterId && detailSnapshot.nextDetail) {
         setActiveClusterDetails(detailSnapshot.nextDetail)
+      }
+
+      return detailSnapshot
+    },
+    [activeClusterId, setActiveClusterDetails, setClusterDetails],
+  )
+
+  const promoteClusterTarget = useCallback(
+    ({
+      clusterId,
+      targetId,
+      position,
+      clusterNode,
+      detailSnapshotOverride = null,
+    }) => {
+      if (!clusterId) return
+      if (targetId === undefined || targetId === null) return
+
+      const nodeId = String(targetId)
+      const detailSnapshot =
+        detailSnapshotOverride ||
+        collectClusterTargetSnapshot({ clusterId, targetId })
+
+      if (!detailSnapshot || !detailSnapshot.targetInfo || !detailSnapshot.sourceId) {
+        return
       }
 
       const resolvedClusterNode =
@@ -2068,6 +2105,7 @@ export default function EntityExplorer() {
     },
     [
       activeClusterId,
+      collectClusterTargetSnapshot,
       nodes,
       reactFlowInstance,
       setActiveClusterDetails,
@@ -2281,10 +2319,55 @@ export default function EntityExplorer() {
     ],
   )
 
+  const restoreClusterTargetFromSnapshot = useCallback(
+    (snapshot) => {
+      if (!snapshot) return
+
+      const nodeId = snapshot.targetId || snapshot.targetInfo?.id
+      if (!nodeId) return
+
+      const syntheticNode = {
+        id: nodeId,
+        data: {
+          label:
+            snapshot.targetInfo?.name ||
+            `Entity ${snapshot.targetInfo?.id || nodeId}`,
+          type: snapshot.targetInfo?.type || null,
+          originClusterId: snapshot.clusterId,
+          originClusterSourceId: snapshot.sourceId,
+          originClusterTypeId: snapshot.typeId,
+          originTarget:
+            snapshot.targetInfo || {
+              id: nodeId,
+              name: snapshot.targetInfo?.name || `Entity ${nodeId}`,
+              type: snapshot.targetInfo?.type || null,
+            },
+          originRelationships: snapshot.relationships || [],
+          originRelationshipCounts: snapshot.relationshipCounts || {},
+        },
+        position: snapshot.position || { x: 0, y: 0 },
+        type: 'customNode',
+      }
+
+      returnClusterTarget(syntheticNode)
+    },
+    [returnClusterTarget],
+  )
+
   const handleClusterEntityDragStart = useCallback(
     (event, target) => {
       if (!target) return
       if (!reactFlowInstance) return
+
+      let snapshot = null
+      if (activeClusterId) {
+        snapshot = collectClusterTargetSnapshot({
+          clusterId: activeClusterId,
+          targetId: target.id,
+        })
+      }
+      pendingClusterTargetRef.current = snapshot
+
       event.stopPropagation()
       setDraggedClusterTargetId(String(target.id))
       if (event.dataTransfer) {
@@ -2305,16 +2388,36 @@ export default function EntityExplorer() {
         }, 0)
       }
     },
-    [reactFlowInstance],
+    [activeClusterId, collectClusterTargetSnapshot, reactFlowInstance],
   )
 
   const handleClusterEntityDragEnd = useCallback(
     (event, target) => {
       setDraggedClusterTargetId(null)
-      if (!target) return
-      if (!reactFlowInstance) return
-      if (!reactFlowWrapperRef.current) return
-      if (!activeClusterId) return
+      const snapshot = pendingClusterTargetRef.current
+      pendingClusterTargetRef.current = null
+
+      if (!target) {
+        if (snapshot) {
+          restoreClusterTargetFromSnapshot(snapshot)
+        }
+        return
+      }
+
+      if (!reactFlowInstance || !reactFlowWrapperRef.current) {
+        if (snapshot) {
+          restoreClusterTargetFromSnapshot(snapshot)
+        }
+        return
+      }
+
+      const clusterId = snapshot?.clusterId || activeClusterId
+      if (!clusterId) {
+        if (snapshot) {
+          restoreClusterTargetFromSnapshot(snapshot)
+        }
+        return
+      }
 
       const containerRect = reactFlowWrapperRef.current.getBoundingClientRect()
       const withinFlow =
@@ -2323,7 +2426,12 @@ export default function EntityExplorer() {
         event.clientY >= containerRect.top &&
         event.clientY <= containerRect.bottom
 
-      if (!withinFlow) return
+      if (!withinFlow) {
+        if (snapshot) {
+          restoreClusterTargetFromSnapshot(snapshot)
+        }
+        return
+      }
 
       if (clusterWindowRef.current) {
         const windowBounds = clusterWindowRef.current.getBoundingClientRect()
@@ -2333,6 +2441,9 @@ export default function EntityExplorer() {
           event.clientY >= windowBounds.top &&
           event.clientY <= windowBounds.bottom
         if (insideWindow) {
+          if (snapshot) {
+            restoreClusterTargetFromSnapshot(snapshot)
+          }
           return
         }
       }
@@ -2343,18 +2454,25 @@ export default function EntityExplorer() {
       })
 
       const clusterNode =
-        nodes.find((node) => String(node.id) === String(activeClusterId)) ||
-        reactFlowInstance.getNode?.(String(activeClusterId)) ||
+        nodes.find((node) => String(node.id) === String(clusterId)) ||
+        reactFlowInstance.getNode?.(String(clusterId)) ||
         null
 
       promoteClusterTarget({
-        clusterId: activeClusterId,
-        targetId: target.id,
+        clusterId,
+        targetId: snapshot?.targetId || target.id,
         position: graphPosition,
         clusterNode,
+        detailSnapshotOverride: snapshot || undefined,
       })
     },
-    [activeClusterId, nodes, promoteClusterTarget, reactFlowInstance],
+    [
+      activeClusterId,
+      nodes,
+      promoteClusterTarget,
+      reactFlowInstance,
+      restoreClusterTargetFromSnapshot,
+    ],
   )
 
   const handleExpandAllTargets = useCallback(() => {
