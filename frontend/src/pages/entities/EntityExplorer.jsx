@@ -1829,6 +1829,7 @@ export default function EntityExplorer() {
       position,
       clusterNode,
       detailSnapshotOverride = null,
+      manualPlacement = false,
     }) => {
       if (!clusterId) return
       if (targetId === undefined || targetId === null) return
@@ -1922,12 +1923,27 @@ export default function EntityExplorer() {
           name: detailSnapshot.targetInfo.name || `Entity ${nodeId}`,
         })
 
-      const { positions: layoutPositions, clusterPosition, targetLayerY } =
-        computeClusterChildLayout({
+      let layoutPositions = new Map()
+      let clusterPosition = null
+      let targetLayerY = Number.isFinite(position?.y)
+        ? position.y
+        : Number.isFinite(sourcePosition?.y)
+        ? sourcePosition.y
+        : 0
+
+      if (!manualPlacement) {
+        const layoutResult = computeClusterChildLayout({
           sourcePosition,
           orientation,
           targets: layoutTargets,
         })
+
+        layoutPositions = layoutResult.positions || new Map()
+        clusterPosition = layoutResult.clusterPosition || null
+        targetLayerY = Number.isFinite(layoutResult.targetLayerY)
+          ? layoutResult.targetLayerY
+          : targetLayerY
+      }
 
       const nextDepthBase =
         Number.isFinite(sourceDepthValue) && sourceDepthValue !== null
@@ -1987,10 +2003,14 @@ export default function EntityExplorer() {
           originRelationshipCounts: detailSnapshot.relationshipCounts,
           isClusterReveal: true,
         },
-        position: layoutPositions.get(nodeId) || {
-          x: Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0,
-          y: targetLayerY,
-        },
+        position:
+          layoutPositions.get(nodeId) ||
+          (manualPlacement && fallbackPosition
+            ? { ...fallbackPosition }
+            : {
+                x: Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0,
+                y: targetLayerY,
+              }),
         type: 'customNode',
       }
 
@@ -2001,12 +2021,13 @@ export default function EntityExplorer() {
             return {
               ...entry,
               data: { ...entry.data, count: detailSnapshot.nextClusterCount },
-              position: clusterPosition
-                ? { ...clusterPosition }
-                : entry.position,
+              position:
+                !manualPlacement && clusterPosition
+                  ? { ...clusterPosition }
+                  : entry.position,
             }
           }
-          if (layoutPositions.has(entryId)) {
+          if (!manualPlacement && layoutPositions.has(entryId)) {
             const layoutPosition = layoutPositions.get(entryId)
             return {
               ...entry,
@@ -2209,52 +2230,6 @@ export default function EntityExplorer() {
         detailSnapshot.typeId || 'relationship'
       }`
 
-      const resolvedClusterNode =
-        nodes.find((entry) => String(entry.id) === String(clusterId)) ||
-        reactFlowInstance?.getNode?.(clusterId) ||
-        null
-
-      const resolvedSourceNode =
-        nodes.find((entry) => String(entry.id) === detailSnapshot.sourceId) ||
-        reactFlowInstance?.getNode?.(detailSnapshot.sourceId) ||
-        null
-
-      const sourcePosition =
-        resolvedSourceNode?.position ||
-        resolvedSourceNode?.positionAbsolute ||
-        resolvedClusterNode?.position ||
-        resolvedClusterNode?.positionAbsolute || {
-          x: node.position?.x ?? node.positionAbsolute?.x ?? 0,
-          y: node.position?.y ?? node.positionAbsolute?.y ?? 0,
-        }
-
-      const orientation =
-        resolvedSourceNode?.data?.orientation === 'top'
-          ? 'top'
-          : resolvedClusterNode?.data?.orientation === 'top'
-          ? 'top'
-          : 'bottom'
-
-      const remainingSiblings = nodes.filter((entry) => {
-        if (!entry) return false
-        if (entry.id === clusterId) return false
-        if (String(entry.id) === nodeId) return false
-        if (entry?.data?.isClusterPreview) return false
-        return String(entry?.data?.originClusterId || '') === String(clusterId)
-      })
-
-      const layoutTargets = remainingSiblings.map((entry) => ({
-        id: String(entry.id),
-        name: entry?.data?.label || `Entity ${entry.id}`,
-      }))
-
-      const { positions: layoutPositions, clusterPosition } =
-        computeClusterChildLayout({
-          sourcePosition,
-          orientation,
-          targets: layoutTargets,
-        })
-
       setRawNodes((prev) =>
         prev
           .filter((entry) => String(entry.id) !== nodeId)
@@ -2264,16 +2239,6 @@ export default function EntityExplorer() {
               return {
                 ...entry,
                 data: { ...entry.data, count: detailSnapshot.nextClusterCount },
-                position: clusterPosition
-                  ? { ...clusterPosition }
-                  : entry.position,
-              }
-            }
-            if (layoutPositions.has(entryId)) {
-              const layoutPosition = layoutPositions.get(entryId)
-              return {
-                ...entry,
-                position: { ...layoutPosition },
               }
             }
             return entry
@@ -2305,8 +2270,6 @@ export default function EntityExplorer() {
     },
     [
       activeClusterId,
-      nodes,
-      reactFlowInstance,
       setActiveClusterDetails,
       setClusterDetails,
       setRawEdges,
@@ -2386,6 +2349,7 @@ export default function EntityExplorer() {
         position: graphPosition,
         clusterNode,
         detailSnapshotOverride: snapshot || undefined,
+        manualPlacement: true,
       })
 
       pendingClusterTargetRef.current = null
