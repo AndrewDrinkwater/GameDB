@@ -1065,17 +1065,29 @@ const applyLayerFilters = (
   }
 
   if (layerMode === 'direct') {
-    filteredEdges = filteredEdges.filter(
-      (edge) => edge.source === rootId || edge.target === rootId,
-    )
+    filteredEdges = filteredEdges.filter((edge) => {
+      if (!edge) return false
+      if (edge?.data?.isClusterRevealEdge) {
+        return true
+      }
+      return edge.source === rootId || edge.target === rootId
+    })
   } else if (layerMode === 'board') {
     filteredEdges = filteredEdges.filter((edge) => {
+      if (!edge) return false
+      if (edge?.data?.isClusterRevealEdge) {
+        return true
+      }
       const sourceDepth = getDepth(edge.source)
       const targetDepth = getDepth(edge.target)
       return sourceDepth <= 1 && targetDepth <= 1
     })
   } else {
     filteredEdges = filteredEdges.filter((edge) => {
+      if (!edge) return false
+      if (edge?.data?.isClusterRevealEdge) {
+        return true
+      }
       const sourceDepth = getDepth(edge.source)
       const targetDepth = getDepth(edge.target)
       return sourceDepth <= safeDepth && targetDepth <= safeDepth
@@ -1861,6 +1873,18 @@ export default function EntityExplorer() {
         return
       }
 
+      if (detailSnapshot.nextDetail) {
+        setClusterDetails((prev) => {
+          const next = new Map(prev)
+          next.set(clusterId, detailSnapshot.nextDetail)
+          return next
+        })
+
+        if (String(activeClusterId) === String(clusterId)) {
+          setActiveClusterDetails(detailSnapshot.nextDetail)
+        }
+      }
+
       const resolvedClusterNode =
         clusterNode ||
         nodes.find((entry) => String(entry.id) === String(clusterId)) ||
@@ -1992,6 +2016,7 @@ export default function EntityExplorer() {
           },
           originRelationships: dedupedRelationships,
           originRelationshipCounts: detailSnapshot.relationshipCounts,
+          isClusterReveal: true,
         },
         position: layoutPositions.get(nodeId) || {
           x: Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0,
@@ -2073,6 +2098,7 @@ export default function EntityExplorer() {
           sourceName: detailSnapshot.nextDetail?.sourceName || '',
           targetName:
             detailSnapshot.targetInfo.name || `Entity ${nodeId}`,
+          isClusterRevealEdge: true,
         },
         animated: false,
         type: 'customEdge',
