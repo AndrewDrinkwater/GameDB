@@ -25,10 +25,10 @@ const CANVAS_PADDING = 48
 const MAX_LAYOUT_EXTENT = 2400
 const DEFAULT_NODE_WIDTH = 260
 const DEFAULT_NODE_HEIGHT = 160
-const DEFAULT_CLUSTER_WIDTH = 380
-const DEFAULT_CLUSTER_HEIGHT = 260
-const CLUSTER_PADDING_X = 48
-const CLUSTER_PADDING_Y = 48
+const DEFAULT_CLUSTER_WIDTH = 300
+const DEFAULT_CLUSTER_HEIGHT = 220
+const CLUSTER_PADDING_X = 24
+const CLUSTER_PADDING_Y = 24
 
 const DEFAULT_LAYOUT_BOUNDS = {
   minX: -MAX_LAYOUT_EXTENT,
@@ -3528,7 +3528,12 @@ export default function EntityExplorer() {
             <div className="text-gray-400 text-sm p-4">Loading graph...</div>
           ) : (
             <>
-              <div className="graph-canvas-container" ref={reactFlowWrapperRef}>
+              <div
+                className="graph-canvas-container"
+                ref={reactFlowWrapperRef}
+                onDrop={handleClusterEntityDrop}
+                onDragOver={handleClusterEntityDragOver}
+              >
                 <ReactFlow
                   nodeTypes={nodeTypes}
                   edgeTypes={edgeTypes}
@@ -3544,8 +3549,6 @@ export default function EntityExplorer() {
                   onEdgeMouseLeave={onEdgeMouseLeave}
                   onPaneClick={handlePaneInteraction}
                   onPaneContextMenu={handlePaneInteraction}
-                  onDrop={handleClusterEntityDrop}
-                  onDragOver={handleClusterEntityDragOver}
                   onInit={setReactFlowInstance}
                   onMoveEnd={handleViewportMove}
                   style={{ width: '100%', height: '100%' }}
