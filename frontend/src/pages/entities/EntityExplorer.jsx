@@ -1169,6 +1169,7 @@ export default function EntityExplorer() {
   const [isClusterWindowDragging, setIsClusterWindowDragging] = useState(false)
   const clusterWindowDragOffsetRef = useRef({ x: 0, y: 0 })
   const pendingClusterTargetRef = useRef(null)
+  const clusterDragCompletedRef = useRef(false)
   const [draggedClusterTargetId, setDraggedClusterTargetId] = useState(null)
 
   const resetClusterWindowState = useCallback(() => {
@@ -2393,6 +2394,7 @@ export default function EntityExplorer() {
         })
       }
       pendingClusterTargetRef.current = snapshot
+      clusterDragCompletedRef.current = false
 
       event.stopPropagation()
       setDraggedClusterTargetId(String(target.id))
@@ -2417,63 +2419,24 @@ export default function EntityExplorer() {
     [activeClusterId, collectClusterTargetSnapshot, reactFlowInstance],
   )
 
-  const handleClusterEntityDragEnd = useCallback(
-    (event, target) => {
-      setDraggedClusterTargetId(null)
+  const handleClusterEntityDrop = useCallback(
+    (event) => {
+      if (!pendingClusterTargetRef.current) return
+      if (!reactFlowInstance || !reactFlowWrapperRef.current) return
+
+      event.preventDefault()
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move'
+      }
+
       const snapshot = pendingClusterTargetRef.current
-      pendingClusterTargetRef.current = null
-
-      if (!target) {
-        if (snapshot) {
-          restoreClusterTargetFromSnapshot(snapshot)
-        }
-        return
-      }
-
-      if (!reactFlowInstance || !reactFlowWrapperRef.current) {
-        if (snapshot) {
-          restoreClusterTargetFromSnapshot(snapshot)
-        }
-        return
-      }
-
       const clusterId = snapshot?.clusterId || activeClusterId
-      if (!clusterId) {
-        if (snapshot) {
-          restoreClusterTargetFromSnapshot(snapshot)
-        }
+      const targetId = snapshot?.targetId || snapshot?.targetInfo?.id
+      if (!clusterId || targetId === undefined || targetId === null) {
         return
       }
 
       const containerRect = reactFlowWrapperRef.current.getBoundingClientRect()
-      const withinFlow =
-        event.clientX >= containerRect.left &&
-        event.clientX <= containerRect.right &&
-        event.clientY >= containerRect.top &&
-        event.clientY <= containerRect.bottom
-
-      if (!withinFlow) {
-        if (snapshot) {
-          restoreClusterTargetFromSnapshot(snapshot)
-        }
-        return
-      }
-
-      if (clusterWindowRef.current) {
-        const windowBounds = clusterWindowRef.current.getBoundingClientRect()
-        const insideWindow =
-          event.clientX >= windowBounds.left &&
-          event.clientX <= windowBounds.right &&
-          event.clientY >= windowBounds.top &&
-          event.clientY <= windowBounds.bottom
-        if (insideWindow) {
-          if (snapshot) {
-            restoreClusterTargetFromSnapshot(snapshot)
-          }
-          return
-        }
-      }
-
       const graphPosition = reactFlowInstance.project({
         x: event.clientX - containerRect.left,
         y: event.clientY - containerRect.top,
@@ -2486,19 +2449,45 @@ export default function EntityExplorer() {
 
       promoteClusterTarget({
         clusterId,
-        targetId: snapshot?.targetId || target.id,
+        targetId,
         position: graphPosition,
         clusterNode,
         detailSnapshotOverride: snapshot || undefined,
       })
+
+      pendingClusterTargetRef.current = null
+      clusterDragCompletedRef.current = true
+      setDraggedClusterTargetId(null)
     },
-    [
-      activeClusterId,
-      nodes,
-      promoteClusterTarget,
-      reactFlowInstance,
-      restoreClusterTargetFromSnapshot,
-    ],
+    [activeClusterId, nodes, promoteClusterTarget, reactFlowInstance],
+  )
+
+  const handleClusterEntityDragOver = useCallback((event) => {
+    if (!pendingClusterTargetRef.current) return
+    event.preventDefault()
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move'
+    }
+  }, [])
+
+  const handleClusterEntityDragEnd = useCallback(
+    () => {
+      const snapshot = pendingClusterTargetRef.current
+      const didCompleteDrop = clusterDragCompletedRef.current
+
+      pendingClusterTargetRef.current = null
+      clusterDragCompletedRef.current = false
+      setDraggedClusterTargetId(null)
+
+      if (didCompleteDrop) {
+        return
+      }
+
+      if (snapshot) {
+        restoreClusterTargetFromSnapshot(snapshot)
+      }
+    },
+    [restoreClusterTargetFromSnapshot],
   )
 
   const handleExpandAllTargets = useCallback(() => {
@@ -2785,6 +2774,8 @@ export default function EntityExplorer() {
                   onEdgeMouseLeave={onEdgeMouseLeave}
                   onPaneClick={handlePaneInteraction}
                   onPaneContextMenu={handlePaneInteraction}
+                  onDrop={handleClusterEntityDrop}
+                  onDragOver={handleClusterEntityDragOver}
                   onInit={setReactFlowInstance}
                   style={{ width: '100%', height: '100%' }}
                 >
@@ -2977,9 +2968,7 @@ export default function EntityExplorer() {
                               onDragStart={(event) =>
                                 handleClusterEntityDragStart(event, target)
                               }
-                              onDragEnd={(event) =>
-                                handleClusterEntityDragEnd(event, target)
-                              }
+                              onDragEnd={handleClusterEntityDragEnd}
                             >
                               <div className="graph-cluster-detail-row">
                                 <span className="graph-cluster-detail-entity">
