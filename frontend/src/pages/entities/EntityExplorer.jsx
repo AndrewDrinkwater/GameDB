@@ -894,10 +894,20 @@ const buildLayout = (graphData, rootId) => {
     })
   })
 
+  const clustersWithPosition = clusterDefinitions.map((cluster) => {
+    const clusterPosition = positions.get(cluster.id) || { x: 0, y: 0 }
+
+    return {
+      ...cluster,
+      position: { x: clusterPosition.x, y: clusterPosition.y },
+      positionAbsolute: { x: clusterPosition.x, y: clusterPosition.y },
+    }
+  })
+
   return {
     nodes: laidOutNodes,
     edges: laidOutEdges,
-    clusters: clusterDefinitions,
+    clusters: clustersWithPosition,
   }
 }
 
@@ -1832,23 +1842,69 @@ export default function EntityExplorer() {
         return
       }
 
+      const resolvedClusterNode =
+        clusterNode ||
+        reactFlowInstance?.getNode?.(String(clusterId)) ||
+        nodes.find((entry) => String(entry.id) === String(clusterId)) ||
+        null
+
+      const manualClusterPosition = resolvedClusterNode?.position
+        ? { ...resolvedClusterNode.position }
+        : resolvedClusterNode?.positionAbsolute
+        ? { ...resolvedClusterNode.positionAbsolute }
+        : null
+
+      const manualClusterAbsolutePosition = resolvedClusterNode?.positionAbsolute
+        ? { ...resolvedClusterNode.positionAbsolute }
+        : null
+
+      const clusterHasManualPlacement = Boolean(
+        resolvedClusterNode?.data?.hasManualPosition,
+      )
+
       if (detailSnapshot.nextDetail) {
+        const nextDetail = {
+          ...detailSnapshot.nextDetail,
+        }
+
+        if (clusterHasManualPlacement && manualClusterPosition) {
+          nextDetail.position = { ...manualClusterPosition }
+        } else if (nextDetail.position) {
+          nextDetail.position = {
+            x: Number.isFinite(nextDetail.position.x) ? nextDetail.position.x : 0,
+            y: Number.isFinite(nextDetail.position.y) ? nextDetail.position.y : 0,
+          }
+        }
+
+        if (clusterHasManualPlacement && manualClusterAbsolutePosition) {
+          nextDetail.positionAbsolute = { ...manualClusterAbsolutePosition }
+        } else if (nextDetail.positionAbsolute) {
+          nextDetail.positionAbsolute = {
+            x: Number.isFinite(nextDetail.positionAbsolute.x)
+              ? nextDetail.positionAbsolute.x
+              : nextDetail.position?.x || 0,
+            y: Number.isFinite(nextDetail.positionAbsolute.y)
+              ? nextDetail.positionAbsolute.y
+              : nextDetail.position?.y || 0,
+          }
+        }
+
+        if (clusterHasManualPlacement || nextDetail.hasManualPosition) {
+          nextDetail.hasManualPosition = true
+        }
+
+        detailSnapshot.nextDetail = nextDetail
+
         setClusterDetails((prev) => {
           const next = new Map(prev)
-          next.set(clusterId, detailSnapshot.nextDetail)
+          next.set(clusterId, nextDetail)
           return next
         })
 
         if (String(activeClusterId) === String(clusterId)) {
-          setActiveClusterDetails(detailSnapshot.nextDetail)
+          setActiveClusterDetails(nextDetail)
         }
       }
-
-      const resolvedClusterNode =
-        clusterNode ||
-        nodes.find((entry) => String(entry.id) === String(clusterId)) ||
-        reactFlowInstance?.getNode?.(clusterId) ||
-        null
 
       const resolvedClusterPosition = resolvedClusterNode?.position
         ? { ...resolvedClusterNode.position }
@@ -2486,8 +2542,8 @@ export default function EntityExplorer() {
       })
 
       const clusterNode =
-        nodes.find((node) => String(node.id) === String(clusterId)) ||
         reactFlowInstance.getNode?.(String(clusterId)) ||
+        nodes.find((node) => String(node.id) === String(clusterId)) ||
         null
 
       promoteClusterTarget({
@@ -2828,8 +2884,74 @@ export default function EntityExplorer() {
           }
         }),
       )
+
+      setClusterDetails((prev) => {
+        if (!prev.size) {
+          return prev
+        }
+
+        let hasChanges = false
+        const next = new Map(prev)
+
+        clusterUpdates.forEach((update, id) => {
+          if (!next.has(id)) {
+            return
+          }
+
+          const existing = next.get(id)
+          if (!existing) {
+            return
+          }
+
+          const normalizedPosition = update.position
+            ? { x: update.position.x, y: update.position.y }
+            : null
+          const normalizedAbsolute = update.positionAbsolute
+            ? { x: update.positionAbsolute.x, y: update.positionAbsolute.y }
+            : null
+
+          const nextDetail = { ...existing }
+          let detailChanged = false
+
+          if (normalizedPosition) {
+            const { position: currentPosition } = existing
+            if (
+              !currentPosition ||
+              currentPosition.x !== normalizedPosition.x ||
+              currentPosition.y !== normalizedPosition.y
+            ) {
+              nextDetail.position = { ...normalizedPosition }
+              detailChanged = true
+            }
+          }
+
+          if (normalizedAbsolute) {
+            const currentAbsolute = existing.positionAbsolute
+            if (
+              !currentAbsolute ||
+              currentAbsolute.x !== normalizedAbsolute.x ||
+              currentAbsolute.y !== normalizedAbsolute.y
+            ) {
+              nextDetail.positionAbsolute = { ...normalizedAbsolute }
+              detailChanged = true
+            }
+          }
+
+          if (!existing.hasManualPosition) {
+            nextDetail.hasManualPosition = true
+            detailChanged = true
+          }
+
+          if (detailChanged) {
+            next.set(id, nextDetail)
+            hasChanges = true
+          }
+        })
+
+        return hasChanges ? next : prev
+      })
     },
-    [onNodesChange, setNodes, setRawNodes],
+    [onNodesChange, setClusterDetails, setNodes, setRawNodes],
   )
 
   const handleSearchSubmit = (event) => {
