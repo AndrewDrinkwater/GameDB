@@ -18,6 +18,8 @@ import '../../components/graphStyles.css'
 const HORIZONTAL_SPACING = 240
 const VERTICAL_SPACING = 220
 const MAX_DEPTH = 3
+const CLUSTER_HORIZONTAL_STEP = HORIZONTAL_SPACING * 0.7
+const CLUSTER_VERTICAL_OFFSET = VERTICAL_SPACING
 
 const RELATIONSHIP_COLOR_PALETTE = [
   '#38bdf8',
@@ -160,18 +162,17 @@ const computeClusterPreviewLayout = (clusterNode, targets) => {
     return layout
   }
 
-  const centerX = clusterNode.position.x
-  const centerY = clusterNode.position.y
-  const radius = Math.max(70, Math.min(150, 48 + targets.length * 12))
-  const angleStep = targets.length > 1 ? (2 * Math.PI) / targets.length : 0
+  const orientation = clusterNode?.data?.orientation === 'top' ? 'top' : 'bottom'
+  const direction = orientation === 'top' ? -1 : 1
+  const baseX = clusterNode.position.x
+  const baseY = clusterNode.position.y + direction * CLUSTER_VERTICAL_OFFSET
+  const horizontalStep = Math.max(120, CLUSTER_HORIZONTAL_STEP)
+  const startX = baseX - ((targets.length - 1) * horizontalStep) / 2
 
   targets.forEach((target, index) => {
-    const angle = targets.length > 1 ? angleStep * index - Math.PI / 2 : -Math.PI / 2
-    const offsetX = Math.cos(angle) * radius
-    const offsetY = Math.sin(angle) * radius
     layout.set(target.id, {
-      x: centerX + offsetX,
-      y: centerY + offsetY,
+      x: startX + index * horizontalStep,
+      y: baseY,
     })
   })
 
@@ -490,9 +491,6 @@ const buildLayout = (graphData, rootId) => {
     clustersBySource.get(cluster.sourceId).push(cluster)
   })
 
-  const CLUSTER_HORIZONTAL_STEP = HORIZONTAL_SPACING * 0.7
-  const CLUSTER_VERTICAL_OFFSET = VERTICAL_SPACING * 0.6
-
   clustersBySource.forEach((clusters, sourceId) => {
     const sourcePosition = positions.get(sourceId) || { x: 0, y: 0 }
     const sourceMeta = nodeMeta.get(sourceId)
@@ -510,7 +508,7 @@ const buildLayout = (graphData, rootId) => {
         }
 
         nodeMeta.set(cluster.id, {
-          depth: (sourceMeta?.depth ?? 0) + 0.5,
+          depth: (sourceMeta?.depth ?? 0) + 1,
           orientation: orientationSign >= 0 ? 'bottom' : 'top',
           firstDirection: orientationSign >= 0 ? 'bottom' : 'top',
         })
@@ -523,7 +521,7 @@ const buildLayout = (graphData, rootId) => {
             type: cluster.typeName,
             typeName: cluster.typeName,
             count: cluster.count,
-            depth: (sourceMeta?.depth ?? 0) + 0.5,
+            depth: (sourceMeta?.depth ?? 0) + 1,
             orientation: orientationSign >= 0 ? 'bottom' : 'top',
             isCluster: true,
             cluster,
@@ -1028,7 +1026,33 @@ export default function EntityExplorer() {
           entityId,
         )
 
-        setRawNodes(laidOutNodes)
+        setRawNodes((prevNodes) => {
+          const previousPositions = new Map(
+            (Array.isArray(prevNodes) ? prevNodes : []).map((node) => [
+              String(node.id),
+              node,
+            ]),
+          )
+
+          return laidOutNodes.map((node) => {
+            const previous = previousPositions.get(String(node.id))
+            const nextNode = { ...node }
+
+            if (previous?.position) {
+              nextNode.position = { ...previous.position }
+            } else if (node.position) {
+              nextNode.position = { ...node.position }
+            }
+
+            if (previous?.positionAbsolute) {
+              nextNode.positionAbsolute = { ...previous.positionAbsolute }
+            } else if (node.positionAbsolute) {
+              nextNode.positionAbsolute = { ...node.positionAbsolute }
+            }
+
+            return nextNode
+          })
+        })
         setRawEdges(laidOutEdges)
         setClusterDetails(
           new Map(
@@ -1522,25 +1546,41 @@ export default function EntityExplorer() {
         null
 
       const clusterDepth = resolvedClusterNode?.data?.depth ?? 0
-      const orientation = resolvedClusterNode?.data?.orientation ?? 'bottom'
+      const orientation =
+        resolvedClusterNode?.data?.orientation === 'top' ? 'top' : 'bottom'
       const baseStyle =
         detail.style || getRelationshipStyle(detail.typeId || `${sourceId}-${nodeId}`)
       const nextClusterCount = Math.max(0, (detail.count || 0) - 1)
 
-      const fallbackPosition =
-        position ||
+      const clusterBasePosition =
         resolvedClusterNode?.position ||
         resolvedClusterNode?.positionAbsolute || {
           x: 0,
           y: 0,
         }
+      const targetLayerY =
+        clusterBasePosition.y +
+        (orientation === 'top' ? -CLUSTER_VERTICAL_OFFSET : CLUSTER_VERTICAL_OFFSET)
+
+      const fallbackPosition = {
+        x:
+          position && Number.isFinite(position.x)
+            ? position.x
+            : clusterBasePosition.x,
+        y: targetLayerY,
+      }
+
+      const nextDepthBase = (clusterDepth ?? 0) + 1
+      const nextDepth = Number.isFinite(nextDepthBase)
+        ? Math.max(Math.ceil(nextDepthBase), 0)
+        : 0
 
       const promotedNode = {
         id: nodeId,
         data: {
           label: targetInfo.name || `Entity ${nodeId}`,
           type: targetInfo.type || null,
-          depth: Math.ceil(clusterDepth + 0.5),
+          depth: nextDepth,
           orientation,
           isRoot: false,
           originClusterId: clusterId,
@@ -1921,12 +1961,31 @@ export default function EntityExplorer() {
   const handleNodeDragStop = useCallback(
     (event, node) => {
       if (!node) return
-      if (!node?.data?.originClusterId) return
+      const clusterId = node?.data?.originClusterId
+      if (!clusterId) return
+
+      const { clientX, clientY } = event
+
+      if (reactFlowWrapperRef.current) {
+        const safeId = String(clusterId).replace(/"/g, '\\"')
+        const clusterElement = reactFlowWrapperRef.current.querySelector(
+          `.react-flow__node[data-id="${safeId}"]`,
+        )
+        if (clusterElement) {
+          const rect = clusterElement.getBoundingClientRect()
+          const withinNode =
+            clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
+          if (withinNode) {
+            returnClusterTarget(node)
+            return
+          }
+        }
+      }
+
       if (!clusterWindowRef.current) return
-      if (clusterWindowState.clusterId !== node.data.originClusterId) return
+      if (clusterWindowState.clusterId !== clusterId) return
 
       const bounds = clusterWindowRef.current.getBoundingClientRect()
-      const { clientX, clientY } = event
       const withinX = clientX >= bounds.left && clientX <= bounds.right
       const withinY = clientY >= bounds.top && clientY <= bounds.bottom
       if (!withinX || !withinY) return
