@@ -20,6 +20,114 @@ const VERTICAL_SPACING = 220
 const MAX_DEPTH = 3
 const CLUSTER_HORIZONTAL_STEP = HORIZONTAL_SPACING * 0.7
 const CLUSTER_VERTICAL_OFFSET = VERTICAL_SPACING
+const GRID_SIZE = 24
+const CANVAS_PADDING = 48
+const MAX_LAYOUT_EXTENT = 2400
+const DEFAULT_NODE_WIDTH = 260
+const DEFAULT_NODE_HEIGHT = 160
+const DEFAULT_CLUSTER_WIDTH = 380
+const DEFAULT_CLUSTER_HEIGHT = 260
+const CLUSTER_PADDING_X = 48
+const CLUSTER_PADDING_Y = 48
+
+const DEFAULT_LAYOUT_BOUNDS = {
+  minX: -MAX_LAYOUT_EXTENT,
+  maxX: MAX_LAYOUT_EXTENT,
+  minY: -MAX_LAYOUT_EXTENT,
+  maxY: MAX_LAYOUT_EXTENT,
+}
+
+const snapValueToGrid = (value, gridSize = GRID_SIZE) => {
+  if (!Number.isFinite(value)) return 0
+  if (!Number.isFinite(gridSize) || gridSize <= 0) {
+    return value
+  }
+  return Math.round(value / gridSize) * gridSize
+}
+
+const snapPositionToGrid = (position, gridSize = GRID_SIZE) => {
+  if (!position || typeof position !== 'object') {
+    return { x: 0, y: 0 }
+  }
+  const x = snapValueToGrid(position.x ?? 0, gridSize)
+  const y = snapValueToGrid(position.y ?? 0, gridSize)
+  return { x, y }
+}
+
+const clampValue = (value, minValue, maxValue) => {
+  if (!Number.isFinite(value)) return minValue
+  if (Number.isFinite(minValue) && value < minValue) return minValue
+  if (Number.isFinite(maxValue) && value > maxValue) return maxValue
+  return value
+}
+
+const clampPositionWithSize = (
+  position,
+  size = { width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT },
+  bounds = DEFAULT_LAYOUT_BOUNDS,
+) => {
+  const normalizedSize = {
+    width:
+      Number.isFinite(size?.width) && size.width > 0
+        ? size.width
+        : DEFAULT_NODE_WIDTH,
+    height:
+      Number.isFinite(size?.height) && size.height > 0
+        ? size.height
+        : DEFAULT_NODE_HEIGHT,
+  }
+
+  const normalizedBounds = {
+    minX: Number.isFinite(bounds?.minX) ? bounds.minX : DEFAULT_LAYOUT_BOUNDS.minX,
+    maxX: Number.isFinite(bounds?.maxX) ? bounds.maxX : DEFAULT_LAYOUT_BOUNDS.maxX,
+    minY: Number.isFinite(bounds?.minY) ? bounds.minY : DEFAULT_LAYOUT_BOUNDS.minY,
+    maxY: Number.isFinite(bounds?.maxY) ? bounds.maxY : DEFAULT_LAYOUT_BOUNDS.maxY,
+  }
+
+  const effectiveMaxX = normalizedBounds.maxX - normalizedSize.width - CANVAS_PADDING
+  const effectiveMaxY = normalizedBounds.maxY - normalizedSize.height - CANVAS_PADDING
+  const effectiveMinX = normalizedBounds.minX + CANVAS_PADDING
+  const effectiveMinY = normalizedBounds.minY + CANVAS_PADDING
+
+  return {
+    x: clampValue(position.x ?? 0, effectiveMinX, effectiveMaxX),
+    y: clampValue(position.y ?? 0, effectiveMinY, effectiveMaxY),
+  }
+}
+
+const normalizePosition = (
+  position,
+  { size, bounds, gridSize } = {},
+) => {
+  const snapped = snapPositionToGrid(position, gridSize)
+  return clampPositionWithSize(snapped, size, bounds)
+}
+
+const computeClusterGridMetrics = (count = 0) => {
+  const safeCount = Math.max(Number.isFinite(count) ? count : 0, 0)
+  if (safeCount === 0) {
+    return {
+      columns: 1,
+      rows: 1,
+      width: DEFAULT_CLUSTER_WIDTH,
+      height: DEFAULT_CLUSTER_HEIGHT,
+    }
+  }
+
+  const columns = Math.max(1, Math.ceil(Math.sqrt(safeCount)))
+  const rows = Math.max(1, Math.ceil(safeCount / columns))
+
+  const width = Math.max(
+    DEFAULT_CLUSTER_WIDTH,
+    columns * HORIZONTAL_SPACING + CLUSTER_PADDING_X * 2,
+  )
+  const height = Math.max(
+    DEFAULT_CLUSTER_HEIGHT,
+    rows * VERTICAL_SPACING + CLUSTER_PADDING_Y * 2,
+  )
+
+  return { columns, rows, width, height }
+}
 
 const RELATIONSHIP_COLOR_PALETTE = [
   '#38bdf8',
@@ -171,6 +279,7 @@ const computeClusterChildLayout = ({
   orientation,
   targets,
   clusterPosition,
+  bounds = DEFAULT_LAYOUT_BOUNDS,
 }) => {
   const layout = new Map()
   const safeTargets = Array.isArray(targets)
@@ -189,6 +298,12 @@ const computeClusterChildLayout = ({
         .filter((target) => target.id)
     : []
 
+  const sourceX = Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0
+  const sourceY = Number.isFinite(sourcePosition?.y) ? sourcePosition.y : 0
+  const direction = orientation === 'top' ? -1 : 1
+
+  const metrics = computeClusterGridMetrics(safeTargets.length)
+
   const normalizedClusterPosition =
     clusterPosition &&
     Number.isFinite(clusterPosition.x) &&
@@ -196,22 +311,22 @@ const computeClusterChildLayout = ({
       ? { x: clusterPosition.x, y: clusterPosition.y }
       : null
 
-  const sourceX = Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0
-  const sourceY = Number.isFinite(sourcePosition?.y) ? sourcePosition.y : 0
-  const direction = orientation === 'top' ? -1 : 1
-
   if (safeTargets.length === 0) {
-    const baseX = normalizedClusterPosition ? normalizedClusterPosition.x : sourceX
-    const baseY = normalizedClusterPosition
-      ? normalizedClusterPosition.y
-      : sourceY + direction * CLUSTER_VERTICAL_OFFSET
-    const targetLayerY = baseY
+    const fallbackPosition = normalizedClusterPosition
+      ? normalizedClusterPosition
+      : {
+          x: sourceX - metrics.width / 2,
+          y: sourceY + direction * CLUSTER_VERTICAL_OFFSET,
+        }
+    const snappedCluster = normalizePosition(fallbackPosition, {
+      size: { width: metrics.width, height: metrics.height },
+      bounds,
+    })
+    const targetLayerY = snappedCluster.y + CLUSTER_PADDING_Y
     return {
       positions: layout,
-      clusterPosition: normalizedClusterPosition || {
-        x: baseX,
-        y: targetLayerY,
-      },
+      clusterPosition: snappedCluster,
+      clusterSize: { width: metrics.width, height: metrics.height },
       targetLayerY,
     }
   }
@@ -222,33 +337,36 @@ const computeClusterChildLayout = ({
     return nameA.localeCompare(nameB)
   })
 
-  const horizontalStep = Math.max(120, CLUSTER_HORIZONTAL_STEP)
-  const centerX = normalizedClusterPosition ? normalizedClusterPosition.x : sourceX
-  const targetLayerY = normalizedClusterPosition
-    ? normalizedClusterPosition.y
-    : sourceY + direction * CLUSTER_VERTICAL_OFFSET
-  const slotCount = sortedTargets.length + 1
-  const clusterSlotIndex = Math.floor(slotCount / 2)
-  const startX = centerX - clusterSlotIndex * horizontalStep
+  const fallbackPosition = normalizedClusterPosition
+    ? normalizedClusterPosition
+    : {
+        x: sourceX - metrics.width / 2,
+        y: sourceY + direction * CLUSTER_VERTICAL_OFFSET,
+      }
 
-  sortedTargets.forEach((target, index) => {
-    let slotIndex = index
-    if (slotIndex >= clusterSlotIndex) {
-      slotIndex += 1
-    }
-    layout.set(target.id, {
-      x: startX + slotIndex * horizontalStep,
-      y: targetLayerY,
-    })
+  const clusterOrigin = normalizePosition(fallbackPosition, {
+    size: { width: metrics.width, height: metrics.height },
+    bounds,
   })
 
-  const nextClusterPosition =
-    normalizedClusterPosition || {
-      x: startX + clusterSlotIndex * horizontalStep,
-      y: targetLayerY,
+  sortedTargets.forEach((target, index) => {
+    const column = index % metrics.columns
+    const row = Math.floor(index / metrics.columns)
+    const childPosition = {
+      x: clusterOrigin.x + CLUSTER_PADDING_X + column * HORIZONTAL_SPACING,
+      y: clusterOrigin.y + CLUSTER_PADDING_Y + row * VERTICAL_SPACING,
     }
+    layout.set(target.id, snapPositionToGrid(childPosition))
+  })
 
-  return { positions: layout, clusterPosition: nextClusterPosition, targetLayerY }
+  const targetLayerY = clusterOrigin.y + CLUSTER_PADDING_Y
+
+  return {
+    positions: layout,
+    clusterPosition: clusterOrigin,
+    clusterSize: { width: metrics.width, height: metrics.height },
+    targetLayerY,
+  }
 }
 
 const CONTEXT_MENU_INITIAL_STATE = {
@@ -269,7 +387,8 @@ const sortNodeIdsByName = (nodesMap, ids) =>
       return (nodeA?.name || '').localeCompare(nodeB?.name || '')
     })
 
-const buildLayout = (graphData, rootId) => {
+const buildLayout = (graphData, rootId, options = {}) => {
+  const bounds = options?.bounds || DEFAULT_LAYOUT_BOUNDS
   if (!graphData || !Array.isArray(graphData.nodes)) {
     return { nodes: [], edges: [], clusters: [] }
   }
@@ -447,6 +566,7 @@ const buildLayout = (graphData, rootId) => {
       style: clusterStyle,
       sourceName:
         sourceNode?.name || sourceNode?.data?.label || `Entity ${group.sourceId}`,
+      layout: computeClusterGridMetrics(clusterTargets.length),
     })
 
     group.targets.forEach((target) => {
@@ -525,7 +645,13 @@ const buildLayout = (graphData, rootId) => {
   })
 
   const positions = new Map()
-  positions.set(rootKey, { x: 0, y: 0 })
+  positions.set(
+    rootKey,
+    normalizePosition(
+      { x: 0, y: 0 },
+      { bounds, size: { width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT } },
+    ),
+  )
 
   const sortedRowKeys = Array.from(groupedByRow.keys()).sort((a, b) => {
     const [, depthAStr = '1'] = a.split('-')
@@ -595,10 +721,19 @@ const buildLayout = (graphData, rootId) => {
       }
 
       sortedChildren.forEach((id, index) => {
-        positions.set(id, {
-          x: left + index * HORIZONTAL_SPACING,
-          y: yOffset,
-        })
+        positions.set(
+          id,
+          normalizePosition(
+            {
+              x: left + index * HORIZONTAL_SPACING,
+              y: yOffset,
+            },
+            {
+              bounds,
+              size: { width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT },
+            },
+          ),
+        )
       })
 
       lastRight = left + (count - 1) * HORIZONTAL_SPACING
@@ -609,10 +744,19 @@ const buildLayout = (graphData, rootId) => {
   let unplacedIndex = 0
   nodesMap.forEach((node, id) => {
     if (positions.has(id)) return
-    positions.set(id, {
-      x: (unplacedIndex - 0.5) * HORIZONTAL_SPACING,
-      y: VERTICAL_SPACING * 2,
-    })
+    positions.set(
+      id,
+      normalizePosition(
+        {
+          x: (unplacedIndex - 0.5) * HORIZONTAL_SPACING,
+          y: VERTICAL_SPACING * 2,
+        },
+        {
+          bounds,
+          size: { width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT },
+        },
+      ),
+    )
     unplacedIndex += 1
   })
 
@@ -683,10 +827,14 @@ const buildLayout = (graphData, rootId) => {
       .slice()
       .sort((a, b) => (a.label || '').localeCompare(b.label || ''))
       .forEach((cluster, index) => {
-        const clusterPosition = {
-          x: startX + index * CLUSTER_HORIZONTAL_STEP,
-          y: sourcePosition.y + CLUSTER_VERTICAL_OFFSET,
-        }
+        const metrics = cluster.layout || computeClusterGridMetrics(cluster.count)
+        const clusterPosition = normalizePosition(
+          {
+            x: startX + index * CLUSTER_HORIZONTAL_STEP - metrics.width / 2,
+            y: sourcePosition.y + CLUSTER_VERTICAL_OFFSET,
+          },
+          { bounds, size: { width: metrics.width, height: metrics.height } },
+        )
 
         nodeMeta.set(cluster.id, {
           depth: (sourceMeta?.depth ?? 0) + 1,
@@ -706,8 +854,18 @@ const buildLayout = (graphData, rootId) => {
             orientation: 'bottom',
             isCluster: true,
             cluster,
+            bounds: {
+              width: metrics.width,
+              height: metrics.height,
+              paddingX: CLUSTER_PADDING_X,
+              paddingY: CLUSTER_PADDING_Y,
+            },
           },
           position: clusterPosition,
+          style: {
+            width: metrics.width,
+            height: metrics.height,
+          },
           type: 'relationshipCluster',
         })
       })
@@ -895,11 +1053,18 @@ const buildLayout = (graphData, rootId) => {
 
   const clustersWithPosition = clusterDefinitions.map((cluster) => {
     const clusterPosition = positions.get(cluster.id) || { x: 0, y: 0 }
+    const metrics = cluster.layout || computeClusterGridMetrics(cluster.count)
 
     return {
       ...cluster,
       position: { x: clusterPosition.x, y: clusterPosition.y },
       positionAbsolute: { x: clusterPosition.x, y: clusterPosition.y },
+      bounds: {
+        width: metrics.width,
+        height: metrics.height,
+        paddingX: CLUSTER_PADDING_X,
+        paddingY: CLUSTER_PADDING_Y,
+      },
     }
   })
 
@@ -1148,6 +1313,7 @@ export default function EntityExplorer() {
   const [searchValue, setSearchValue] = useState('')
   const lastGraphIdentityRef = useRef({ worldId: null, entityId: null })
   const reactFlowWrapperRef = useRef(null)
+  const layoutBoundsRef = useRef({ ...DEFAULT_LAYOUT_BOUNDS })
   const clusterWindowRef = useRef(null)
   const [clusterWindowState, setClusterWindowState] = useState({
     clusterId: null,
@@ -1159,6 +1325,54 @@ export default function EntityExplorer() {
   const pendingClusterTargetRef = useRef(null)
   const clusterDragCompletedRef = useRef(false)
   const [draggedClusterTargetId, setDraggedClusterTargetId] = useState(null)
+
+  const computeViewportBounds = useCallback(() => {
+    if (!reactFlowInstance || !reactFlowWrapperRef.current) {
+      return { ...DEFAULT_LAYOUT_BOUNDS }
+    }
+
+    const viewport = reactFlowInstance.getViewport?.()
+    const rect = reactFlowWrapperRef.current.getBoundingClientRect()
+
+    if (!viewport || !rect || rect.width === 0 || rect.height === 0) {
+      return { ...DEFAULT_LAYOUT_BOUNDS }
+    }
+
+    const zoom = viewport.zoom || 1
+    const visibleWidth = rect.width / zoom
+    const visibleHeight = rect.height / zoom
+    const minX = -viewport.x / zoom - CANVAS_PADDING
+    const minY = -viewport.y / zoom - CANVAS_PADDING
+    const maxX = minX + visibleWidth + CANVAS_PADDING * 2
+    const maxY = minY + visibleHeight + CANVAS_PADDING * 2
+
+    return {
+      minX: Number.isFinite(minX) ? minX : DEFAULT_LAYOUT_BOUNDS.minX,
+      maxX: Number.isFinite(maxX) ? maxX : DEFAULT_LAYOUT_BOUNDS.maxX,
+      minY: Number.isFinite(minY) ? minY : DEFAULT_LAYOUT_BOUNDS.minY,
+      maxY: Number.isFinite(maxY) ? maxY : DEFAULT_LAYOUT_BOUNDS.maxY,
+    }
+  }, [reactFlowInstance])
+
+  const updateLayoutBounds = useCallback(() => {
+    layoutBoundsRef.current = computeViewportBounds()
+  }, [computeViewportBounds])
+
+  useEffect(() => {
+    updateLayoutBounds()
+  }, [updateLayoutBounds, reactFlowInstance])
+
+  useEffect(() => {
+    const handleResize = () => updateLayoutBounds()
+    window.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [updateLayoutBounds])
+
+  const handleViewportMove = useCallback(() => {
+    updateLayoutBounds()
+  }, [updateLayoutBounds])
 
   const resetClusterWindowState = useCallback(() => {
     setClusterWindowState({ clusterId: null, x: 0, y: 0 })
@@ -1229,6 +1443,7 @@ export default function EntityExplorer() {
         const { nodes: laidOutNodes, edges: laidOutEdges, clusters } = buildLayout(
           data,
           entityId,
+          { bounds: layoutBoundsRef.current },
         )
 
         setRawNodes((prevNodes) => {
@@ -1279,6 +1494,19 @@ export default function EntityExplorer() {
               const id = String(cluster.id)
               const existing = previous.get(id)
               const nextDetail = { ...cluster }
+
+              if (existing?.bounds) {
+                nextDetail.bounds = { ...existing.bounds }
+              } else if (cluster.bounds) {
+                nextDetail.bounds = { ...cluster.bounds }
+              } else {
+                nextDetail.bounds = {
+                  width: cluster.layout?.width ?? DEFAULT_CLUSTER_WIDTH,
+                  height: cluster.layout?.height ?? DEFAULT_CLUSTER_HEIGHT,
+                  paddingX: CLUSTER_PADDING_X,
+                  paddingY: CLUSTER_PADDING_Y,
+                }
+              }
 
               if (existing?.hasManualPosition) {
                 if (existing.position) {
@@ -1903,6 +2131,17 @@ export default function EntityExplorer() {
           ...detailSnapshot.nextDetail,
         }
 
+        if (nextBounds) {
+          nextDetail.bounds = { ...nextBounds }
+        } else if (!nextDetail.bounds) {
+          nextDetail.bounds = {
+            width: DEFAULT_CLUSTER_WIDTH,
+            height: DEFAULT_CLUSTER_HEIGHT,
+            paddingX: CLUSTER_PADDING_X,
+            paddingY: CLUSTER_PADDING_Y,
+          }
+        }
+
         if (clusterHasManualPlacement && manualClusterPosition) {
           nextDetail.position = { ...manualClusterPosition }
         } else if (nextDetail.position) {
@@ -2030,6 +2269,8 @@ export default function EntityExplorer() {
         !manualPlacement &&
         (layoutOverrides instanceof Map || Array.isArray(layoutOverrides))
 
+      let nextBounds = null
+
       if (hasLayoutOverrides) {
         const overrideEntries =
           layoutOverrides instanceof Map
@@ -2052,6 +2293,7 @@ export default function EntityExplorer() {
           targets: layoutTargets,
           clusterPosition:
             normalizedClusterPositionOverride || resolvedClusterPosition,
+          bounds: layoutBoundsRef.current,
         })
 
         layoutPositions = layoutResult.positions || new Map()
@@ -2063,6 +2305,15 @@ export default function EntityExplorer() {
         targetLayerY = Number.isFinite(layoutResult.targetLayerY)
           ? layoutResult.targetLayerY
           : targetLayerY
+
+        if (layoutResult.clusterSize) {
+          nextBounds = {
+            width: layoutResult.clusterSize.width,
+            height: layoutResult.clusterSize.height,
+            paddingX: CLUSTER_PADDING_X,
+            paddingY: CLUSTER_PADDING_Y,
+          }
+        }
       }
 
       if (!manualPlacement) {
@@ -2136,14 +2387,19 @@ export default function EntityExplorer() {
           isClusterReveal: true,
           hasManualPosition: manualPlacement || false,
         },
-        position:
+        position: normalizePosition(
           layoutPositions.get(nodeId) ||
-          (manualPlacement && fallbackPosition
-            ? { ...fallbackPosition }
-            : {
-                x: Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0,
-                y: targetLayerY,
-              }),
+            (manualPlacement && fallbackPosition
+              ? { ...fallbackPosition }
+              : {
+                  x: Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0,
+                  y: targetLayerY,
+                }),
+          {
+            bounds: layoutBoundsRef.current,
+            size: { width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT },
+          },
+        ),
         type: 'customNode',
       }
 
@@ -2155,23 +2411,47 @@ export default function EntityExplorer() {
               entry?.data?.hasManualPosition,
             )
 
+            const clusterDimensions = {
+              width:
+                nextBounds?.width ||
+                entry?.data?.bounds?.width ||
+                entry?.style?.width ||
+                DEFAULT_CLUSTER_WIDTH,
+              height:
+                nextBounds?.height ||
+                entry?.data?.bounds?.height ||
+                entry?.style?.height ||
+                DEFAULT_CLUSTER_HEIGHT,
+            }
+
             if (manualPlacement) {
+              const manualBasePosition = entry.position
+                ? { ...entry.position }
+                : entry.positionAbsolute
+                ? { ...entry.positionAbsolute }
+                : resolvedClusterPosition
+                ? { ...resolvedClusterPosition }
+                : {
+                    x: Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0,
+                    y: Number.isFinite(targetLayerY) ? targetLayerY : 0,
+                  }
+
+              const normalizedClusterPosition = normalizePosition(
+                manualBasePosition,
+                {
+                  bounds: layoutBoundsRef.current,
+                  size: clusterDimensions,
+                },
+              )
+
               const nextEntry = {
                 ...entry,
-                data: { ...entry.data, count: detailSnapshot.nextClusterCount },
-              }
-
-              if (entry.position) {
-                nextEntry.position = { ...entry.position }
-              } else if (entry.positionAbsolute) {
-                nextEntry.position = { ...entry.positionAbsolute }
-              } else if (resolvedClusterPosition) {
-                nextEntry.position = { ...resolvedClusterPosition }
-              } else {
-                nextEntry.position = {
-                  x: Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0,
-                  y: Number.isFinite(targetLayerY) ? targetLayerY : 0,
-                }
+                data: {
+                  ...entry.data,
+                  count: detailSnapshot.nextClusterCount,
+                  ...(nextBounds ? { bounds: { ...nextBounds } } : {}),
+                },
+                position: normalizedClusterPosition,
               }
 
               if (entry.positionAbsolute) {
@@ -2179,6 +2459,14 @@ export default function EntityExplorer() {
               } else if (resolvedClusterNode?.positionAbsolute) {
                 nextEntry.positionAbsolute = {
                   ...resolvedClusterNode.positionAbsolute,
+                }
+              }
+
+              if (nextBounds) {
+                nextEntry.style = {
+                  ...(entry.style || {}),
+                  width: nextBounds.width,
+                  height: nextBounds.height,
                 }
               }
 
@@ -2212,12 +2500,22 @@ export default function EntityExplorer() {
                   y: Number.isFinite(targetLayerY) ? targetLayerY : 0,
                 }
 
+            const normalizedClusterPosition = normalizePosition(
+              manualPosition ? manualPosition : fallbackPosition,
+              {
+                bounds: layoutBoundsRef.current,
+                size: clusterDimensions,
+              },
+            )
+
             const nextEntry = {
               ...entry,
-              data: { ...entry.data, count: detailSnapshot.nextClusterCount },
-              position: manualPosition
-                ? { x: manualPosition.x, y: manualPosition.y }
-                : fallbackPosition,
+              data: {
+                ...entry.data,
+                count: detailSnapshot.nextClusterCount,
+                ...(nextBounds ? { bounds: { ...nextBounds } } : {}),
+              },
+              position: normalizedClusterPosition,
             }
 
             if (manualAbsolutePosition) {
@@ -2230,6 +2528,14 @@ export default function EntityExplorer() {
             } else if (resolvedClusterNode?.positionAbsolute) {
               nextEntry.positionAbsolute = {
                 ...resolvedClusterNode.positionAbsolute,
+              }
+            }
+
+            if (nextBounds) {
+              nextEntry.style = {
+                ...(entry.style || {}),
+                width: nextBounds.width,
+                height: nextBounds.height,
               }
             }
 
@@ -2447,6 +2753,15 @@ export default function EntityExplorer() {
           count: nextClusterCount,
         }
 
+        const metrics = computeClusterGridMetrics(updatedTargets.length)
+        updatedDetail.bounds = {
+          width: metrics.width,
+          height: metrics.height,
+          paddingX: CLUSTER_PADDING_X,
+          paddingY: CLUSTER_PADDING_Y,
+        }
+        updatedDetail.layout = metrics
+
         detailSnapshot.nextDetail = updatedDetail
 
         const next = new Map(prev)
@@ -2470,9 +2785,30 @@ export default function EntityExplorer() {
           .map((entry) => {
             const entryId = String(entry.id)
             if (entryId === String(clusterId)) {
+              const clusterBounds = detailSnapshot.nextDetail?.bounds || {
+                width:
+                  entry?.data?.bounds?.width ||
+                  entry?.style?.width ||
+                  DEFAULT_CLUSTER_WIDTH,
+                height:
+                  entry?.data?.bounds?.height ||
+                  entry?.style?.height ||
+                  DEFAULT_CLUSTER_HEIGHT,
+                paddingX: CLUSTER_PADDING_X,
+                paddingY: CLUSTER_PADDING_Y,
+              }
               return {
                 ...entry,
-                data: { ...entry.data, count: detailSnapshot.nextClusterCount },
+                data: {
+                  ...entry.data,
+                  count: detailSnapshot.nextClusterCount,
+                  bounds: clusterBounds,
+                },
+                style: {
+                  ...(entry.style || {}),
+                  width: clusterBounds.width,
+                  height: clusterBounds.height,
+                },
               }
             }
             return entry
@@ -2674,6 +3010,7 @@ export default function EntityExplorer() {
       orientation,
       targets: layoutTargets,
       clusterPosition: clusterBasePosition,
+      bounds: layoutBoundsRef.current,
     })
 
     const layoutPositions = layoutResult.positions || new Map()
@@ -2780,11 +3117,29 @@ export default function EntityExplorer() {
       setRawNodes((prev) =>
         prev.map((entry) => {
           if (String(entry.id) !== nodeId) return entry
-          const nextPosition = node.position
+          const basePosition = node.position
             ? { ...node.position }
             : entry.position
             ? { ...entry.position }
             : { x: 0, y: 0 }
+          const isClusterNode =
+            node?.type === 'relationshipCluster' || Boolean(node?.data?.isCluster)
+          const size = isClusterNode
+            ? {
+                width:
+                  node?.style?.width ||
+                  node?.data?.bounds?.width ||
+                  DEFAULT_CLUSTER_WIDTH,
+                height:
+                  node?.style?.height ||
+                  node?.data?.bounds?.height ||
+                  DEFAULT_CLUSTER_HEIGHT,
+              }
+            : { width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT }
+          const nextPosition = normalizePosition(basePosition, {
+            bounds: layoutBoundsRef.current,
+            size,
+          })
           const nextAbsolute = node.positionAbsolute
             ? { ...node.positionAbsolute }
             : entry.positionAbsolute
@@ -2838,18 +3193,48 @@ export default function EntityExplorer() {
           y: Number.isFinite(change.position.y) ? change.position.y : 0,
         }
 
+        const existingNode =
+          nodes.find((entry) => String(entry.id) === id) ||
+          reactFlowInstance?.getNode?.(id) ||
+          null
+
+        const isClusterNode =
+          existingNode?.type === 'relationshipCluster' ||
+          Boolean(existingNode?.data?.isCluster)
+
+        const size = isClusterNode
+          ? {
+              width:
+                existingNode?.style?.width ||
+                existingNode?.data?.bounds?.width ||
+                DEFAULT_CLUSTER_WIDTH,
+              height:
+                existingNode?.style?.height ||
+                existingNode?.data?.bounds?.height ||
+                DEFAULT_CLUSTER_HEIGHT,
+            }
+          : { width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT }
+
+        const normalizedPosition = normalizePosition(nextPosition, {
+          bounds: layoutBoundsRef.current,
+          size,
+        })
+
         const nextAbsolute = change.positionAbsolute
           ? {
               x: Number.isFinite(change.positionAbsolute.x)
                 ? change.positionAbsolute.x
-                : nextPosition.x,
+                : normalizedPosition.x,
               y: Number.isFinite(change.positionAbsolute.y)
                 ? change.positionAbsolute.y
-                : nextPosition.y,
+                : normalizedPosition.y,
             }
           : null
 
-        clusterUpdates.set(id, { position: nextPosition, positionAbsolute: nextAbsolute })
+        clusterUpdates.set(id, {
+          position: normalizedPosition,
+          positionAbsolute: nextAbsolute,
+        })
       })
 
       if (!clusterUpdates.size) {
@@ -2977,7 +3362,14 @@ export default function EntityExplorer() {
         return hasChanges ? next : prev
       })
     },
-    [onNodesChange, setClusterDetails, setNodes, setRawNodes],
+    [
+      nodes,
+      onNodesChange,
+      reactFlowInstance,
+      setClusterDetails,
+      setNodes,
+      setRawNodes,
+    ],
   )
 
   const handleSearchSubmit = (event) => {
@@ -3155,6 +3547,7 @@ export default function EntityExplorer() {
                   onDrop={handleClusterEntityDrop}
                   onDragOver={handleClusterEntityDragOver}
                   onInit={setReactFlowInstance}
+                  onMoveEnd={handleViewportMove}
                   style={{ width: '100%', height: '100%' }}
                 >
                   <div className="graph-toolbar">
