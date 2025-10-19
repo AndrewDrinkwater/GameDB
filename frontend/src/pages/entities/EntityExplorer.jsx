@@ -1267,6 +1267,13 @@ export default function EntityExplorer() {
               nextNode.positionAbsolute = { ...node.positionAbsolute }
             }
 
+            if (previous?.data?.hasManualPosition) {
+              nextNode.data = {
+                ...(node.data || {}),
+                hasManualPosition: true,
+              }
+            }
+
             return nextNode
           })
         })
@@ -1913,6 +1920,12 @@ export default function EntityExplorer() {
         return String(node?.data?.originClusterId || '') === String(clusterId)
       })
 
+      const manualSiblingIds = new Set(
+        existingSiblings
+          .filter((node) => node?.data?.hasManualPosition)
+          .map((node) => String(node.id)),
+      )
+
       const layoutTargets = existingSiblings
         .map((node) => ({
           id: String(node.id),
@@ -1943,6 +1956,12 @@ export default function EntityExplorer() {
         targetLayerY = Number.isFinite(layoutResult.targetLayerY)
           ? layoutResult.targetLayerY
           : targetLayerY
+      }
+
+      if (!manualPlacement && manualSiblingIds.size > 0) {
+        manualSiblingIds.forEach((id) => {
+          layoutPositions.delete(id)
+        })
       }
 
       const nextDepthBase =
@@ -2002,6 +2021,7 @@ export default function EntityExplorer() {
           originRelationships: dedupedRelationships,
           originRelationshipCounts: detailSnapshot.relationshipCounts,
           isClusterReveal: true,
+          hasManualPosition: manualPlacement || false,
         },
         position:
           layoutPositions.get(nodeId) ||
@@ -2027,7 +2047,11 @@ export default function EntityExplorer() {
                   : entry.position,
             }
           }
-          if (!manualPlacement && layoutPositions.has(entryId)) {
+          if (
+            !manualPlacement &&
+            layoutPositions.has(entryId) &&
+            !entry?.data?.hasManualPosition
+          ) {
             const layoutPosition = layoutPositions.get(entryId)
             return {
               ...entry,
@@ -2039,13 +2063,35 @@ export default function EntityExplorer() {
 
         const existingIndex = next.findIndex((entry) => String(entry.id) === nodeId)
         if (existingIndex >= 0) {
+          const existingNode = next[existingIndex] || {}
+          const existingData = existingNode.data || {}
           const layoutPosition = layoutPositions.get(nodeId)
+          const shouldPreservePosition =
+            existingData.hasManualPosition && !manualPlacement
+          const nextPosition = shouldPreservePosition
+            ? {
+                ...(existingNode.position || promotedNode.position || { x: 0, y: 0 }),
+              }
+            : layoutPosition
+            ? { ...layoutPosition }
+            : { ...promotedNode.position }
+          const nextData = {
+            ...existingData,
+            ...(promotedNode.data || {}),
+            hasManualPosition:
+              existingData.hasManualPosition ||
+              Boolean(promotedNode.data?.hasManualPosition),
+          }
           const nextEntry = {
-            ...next[existingIndex],
+            ...existingNode,
             ...promotedNode,
-            position: layoutPosition
-              ? { ...layoutPosition }
-              : { ...promotedNode.position },
+            data: nextData,
+            position: nextPosition,
+          }
+          if (shouldPreservePosition && existingNode.positionAbsolute) {
+            nextEntry.positionAbsolute = { ...existingNode.positionAbsolute }
+          } else if (layoutPosition) {
+            nextEntry.positionAbsolute = { ...layoutPosition }
           }
           const nextNodes = next.slice()
           nextNodes[existingIndex] = nextEntry
@@ -2456,6 +2502,9 @@ export default function EntityExplorer() {
 
       const { clientX, clientY } = event
 
+      const nodeId = String(node.id)
+      let shouldReturn = false
+
       if (reactFlowWrapperRef.current) {
         const safeId = String(clusterId).replace(/"/g, '\\"')
         const clusterElement = reactFlowWrapperRef.current.querySelector(
@@ -2465,24 +2514,61 @@ export default function EntityExplorer() {
           const rect = clusterElement.getBoundingClientRect()
           const withinNode =
             clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
-          if (withinNode) {
-            returnClusterTarget(node)
-            return
-          }
+          shouldReturn = shouldReturn || withinNode
         }
       }
 
-      if (!clusterWindowRef.current) return
-      if (clusterWindowState.clusterId !== clusterId) return
+      if (clusterWindowRef.current && clusterWindowState.clusterId === clusterId) {
+        const bounds = clusterWindowRef.current.getBoundingClientRect()
+        const withinX = clientX >= bounds.left && clientX <= bounds.right
+        const withinY = clientY >= bounds.top && clientY <= bounds.bottom
+        shouldReturn = shouldReturn || (withinX && withinY)
+      }
 
-      const bounds = clusterWindowRef.current.getBoundingClientRect()
-      const withinX = clientX >= bounds.left && clientX <= bounds.right
-      const withinY = clientY >= bounds.top && clientY <= bounds.bottom
-      if (!withinX || !withinY) return
+      if (shouldReturn) {
+        returnClusterTarget(node)
+        return
+      }
 
-      returnClusterTarget(node)
+      setRawNodes((prev) =>
+        prev.map((entry) => {
+          if (String(entry.id) !== nodeId) return entry
+          const nextPosition = node.position
+            ? { ...node.position }
+            : entry.position
+            ? { ...entry.position }
+            : { x: 0, y: 0 }
+          const nextAbsolute = node.positionAbsolute
+            ? { ...node.positionAbsolute }
+            : entry.positionAbsolute
+            ? { ...entry.positionAbsolute }
+            : undefined
+          return {
+            ...entry,
+            position: nextPosition,
+            ...(nextAbsolute ? { positionAbsolute: nextAbsolute } : {}),
+            data: {
+              ...entry.data,
+              hasManualPosition: true,
+            },
+          }
+        }),
+      )
+
+      setNodes((prev) =>
+        prev.map((entry) => {
+          if (entry.id !== node.id) return entry
+          return {
+            ...entry,
+            data: {
+              ...entry.data,
+              hasManualPosition: true,
+            },
+          }
+        }),
+      )
     },
-    [clusterWindowState.clusterId, returnClusterTarget],
+    [clusterWindowState.clusterId, returnClusterTarget, setNodes, setRawNodes],
   )
 
   const handleSearchSubmit = (event) => {
