@@ -279,6 +279,17 @@ const CONTEXT_MENU_INITIAL_STATE = {
   node: null,
 }
 
+const NO_PARENT_GROUP = '__no_parent__'
+
+const sortNodeIdsByName = (nodesMap, ids) =>
+  ids
+    .slice()
+    .sort((a, b) => {
+      const nodeA = nodesMap.get(a)
+      const nodeB = nodesMap.get(b)
+      return (nodeA?.name || '').localeCompare(nodeB?.name || '')
+    })
+
 const buildLayout = (graphData, rootId) => {
   if (!graphData || !Array.isArray(graphData.nodes)) {
     return { nodes: [], edges: [], clusters: [] }
@@ -484,7 +495,10 @@ const buildLayout = (graphData, rootId) => {
 
   const visited = new Set([rootKey])
   const nodeMeta = new Map([
-    [rootKey, { depth: 0, orientation: 'center', firstDirection: null }],
+    [
+      rootKey,
+      { depth: 0, orientation: 'center', firstDirection: null, parentId: null },
+    ],
   ])
   const queue = [rootKey]
 
@@ -506,6 +520,7 @@ const buildLayout = (graphData, rootId) => {
         depth: nextDepth,
         orientation,
         firstDirection: nextFirstDirection,
+        parentId: currentId,
       })
       queue.push(neighborId)
     })
@@ -515,17 +530,36 @@ const buildLayout = (graphData, rootId) => {
   nodeMeta.forEach((meta, id) => {
     if (id === rootKey) return
     if (!meta || !meta.orientation || meta.orientation === 'center') return
+    if (!meta.depth) return
+
     const key = `${meta.orientation}-${meta.depth}`
     if (!groupedByRow.has(key)) {
-      groupedByRow.set(key, [])
+      groupedByRow.set(key, new Map())
     }
-    groupedByRow.get(key).push(id)
+
+    const parentKey = meta.parentId ? String(meta.parentId) : NO_PARENT_GROUP
+    const rowGroups = groupedByRow.get(key)
+    if (!rowGroups.has(parentKey)) {
+      rowGroups.set(parentKey, [])
+    }
+    rowGroups.get(parentKey).push(id)
   })
 
   const positions = new Map()
   positions.set(rootKey, { x: 0, y: 0 })
 
-  groupedByRow.forEach((ids, key) => {
+  const sortedRowKeys = Array.from(groupedByRow.keys()).sort((a, b) => {
+    const [, depthAStr = '1'] = a.split('-')
+    const [, depthBStr = '1'] = b.split('-')
+    const depthA = Number.parseInt(depthAStr, 10) || 1
+    const depthB = Number.parseInt(depthBStr, 10) || 1
+    if (depthA !== depthB) return depthA - depthB
+    if (a.startsWith('top') && b.startsWith('bottom')) return -1
+    if (a.startsWith('bottom') && b.startsWith('top')) return 1
+    return a.localeCompare(b)
+  })
+
+  sortedRowKeys.forEach((key) => {
     const [orientation, depthStr] = key.split('-')
     const depth = Number.parseInt(depthStr, 10) || 1
     const yOffset =
@@ -533,18 +567,62 @@ const buildLayout = (graphData, rootId) => {
         ? -depth * VERTICAL_SPACING
         : depth * VERTICAL_SPACING
 
-    ids.sort((a, b) => {
-      const nodeA = nodesMap.get(a)
-      const nodeB = nodesMap.get(b)
-      return (nodeA?.name || '').localeCompare(nodeB?.name || '')
+    const rowGroups = groupedByRow.get(key)
+    if (!rowGroups) return
+
+    const groupEntries = Array.from(rowGroups.entries()).sort((a, b) => {
+      const parentA = a[0]
+      const parentB = b[0]
+      const positionA = positions.get(parentA)
+      const positionB = positions.get(parentB)
+
+      if (positionA && positionB) return positionA.x - positionB.x
+      if (positionA) return -1
+      if (positionB) return 1
+      if (parentA === NO_PARENT_GROUP && parentB !== NO_PARENT_GROUP) return 1
+      if (parentB === NO_PARENT_GROUP && parentA !== NO_PARENT_GROUP) return -1
+      return parentA.localeCompare(parentB)
     })
 
-    const startX = -((ids.length - 1) * HORIZONTAL_SPACING) / 2
-    ids.forEach((id, index) => {
-      positions.set(id, {
-        x: startX + index * HORIZONTAL_SPACING,
-        y: yOffset,
+    let lastRight = -Infinity
+
+    groupEntries.forEach(([parentId, childIds]) => {
+      if (!Array.isArray(childIds) || childIds.length === 0) {
+        return
+      }
+
+      const sortedChildren = sortNodeIdsByName(nodesMap, childIds)
+      const count = sortedChildren.length
+      const halfWidth = ((count - 1) * HORIZONTAL_SPACING) / 2
+      const parentPosition =
+        parentId && parentId !== NO_PARENT_GROUP ? positions.get(parentId) : null
+
+      let centerX = parentPosition ? parentPosition.x : null
+      if (centerX === null || Number.isNaN(centerX)) {
+        centerX =
+          Number.isFinite(lastRight)
+            ? lastRight + HORIZONTAL_SPACING + halfWidth
+            : 0
+      }
+
+      let left = centerX - halfWidth
+      if (Number.isFinite(lastRight)) {
+        const minLeft = lastRight + HORIZONTAL_SPACING
+        if (left < minLeft) {
+          const shift = minLeft - left
+          centerX += shift
+          left += shift
+        }
+      }
+
+      sortedChildren.forEach((id, index) => {
+        positions.set(id, {
+          x: left + index * HORIZONTAL_SPACING,
+          y: yOffset,
+        })
       })
+
+      lastRight = left + (count - 1) * HORIZONTAL_SPACING
     })
   })
 
