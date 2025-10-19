@@ -491,9 +491,9 @@ const buildLayout = (graphData, rootId) => {
       visited.add(neighborId)
 
       const nextDepth = (currentMeta?.depth ?? 0) + 1
-      const nextFirstDirection =
-        currentMeta?.firstDirection ?? (direction === 'in' ? 'top' : 'bottom')
-      const orientation = nextFirstDirection ?? 'center'
+      const edgeOrientation = direction === 'in' ? 'top' : 'bottom'
+      const nextFirstDirection = currentMeta?.firstDirection ?? edgeOrientation
+      const orientation = edgeOrientation || 'bottom'
 
       nodeMeta.set(neighborId, {
         depth: nextDepth,
@@ -676,7 +676,6 @@ const buildLayout = (graphData, rootId) => {
   clustersBySource.forEach((clusters, sourceId) => {
     const sourcePosition = positions.get(sourceId) || { x: 0, y: 0 }
     const sourceMeta = nodeMeta.get(sourceId)
-    const orientationSign = sourceMeta?.orientation === 'top' ? -1 : 1
     const startX =
       sourcePosition.x - ((clusters.length - 1) * CLUSTER_HORIZONTAL_STEP) / 2
 
@@ -686,13 +685,13 @@ const buildLayout = (graphData, rootId) => {
       .forEach((cluster, index) => {
         const clusterPosition = {
           x: startX + index * CLUSTER_HORIZONTAL_STEP,
-          y: sourcePosition.y + orientationSign * CLUSTER_VERTICAL_OFFSET,
+          y: sourcePosition.y + CLUSTER_VERTICAL_OFFSET,
         }
 
         nodeMeta.set(cluster.id, {
           depth: (sourceMeta?.depth ?? 0) + 1,
-          orientation: orientationSign >= 0 ? 'bottom' : 'top',
-          firstDirection: orientationSign >= 0 ? 'bottom' : 'top',
+          orientation: 'bottom',
+          firstDirection: 'bottom',
         })
         positions.set(cluster.id, clusterPosition)
 
@@ -704,7 +703,7 @@ const buildLayout = (graphData, rootId) => {
             typeName: cluster.typeName,
             count: cluster.count,
             depth: (sourceMeta?.depth ?? 0) + 1,
-            orientation: orientationSign >= 0 ? 'bottom' : 'top',
+            orientation: 'bottom',
             isCluster: true,
             cluster,
           },
@@ -1267,13 +1266,50 @@ export default function EntityExplorer() {
           })
         })
         setRawEdges(laidOutEdges)
-        setClusterDetails(
-          new Map(
-            Array.isArray(clusters)
-              ? clusters.map((cluster) => [cluster.id, cluster])
-              : [],
-          ),
-        )
+        setClusterDetails((prev) => {
+          const previous = prev instanceof Map ? prev : new Map()
+          const next = new Map()
+
+          if (Array.isArray(clusters)) {
+            clusters.forEach((cluster) => {
+              if (!cluster || cluster.id === undefined || cluster.id === null) {
+                return
+              }
+
+              const id = String(cluster.id)
+              const existing = previous.get(id)
+              const nextDetail = { ...cluster }
+
+              if (existing?.hasManualPosition) {
+                if (existing.position) {
+                  nextDetail.position = {
+                    x: Number.isFinite(existing.position.x)
+                      ? existing.position.x
+                      : cluster.position?.x ?? 0,
+                    y: Number.isFinite(existing.position.y)
+                      ? existing.position.y
+                      : cluster.position?.y ?? 0,
+                  }
+                }
+                if (existing.positionAbsolute) {
+                  nextDetail.positionAbsolute = {
+                    x: Number.isFinite(existing.positionAbsolute.x)
+                      ? existing.positionAbsolute.x
+                      : nextDetail.position?.x ?? 0,
+                    y: Number.isFinite(existing.positionAbsolute.y)
+                      ? existing.positionAbsolute.y
+                      : nextDetail.position?.y ?? 0,
+                  }
+                }
+                nextDetail.hasManualPosition = true
+              }
+
+              next.set(id, nextDetail)
+            })
+          }
+
+          return next
+        })
 
         const graphIdentityChanged =
           lastGraphIdentityRef.current.worldId !== worldId ||
@@ -1949,12 +1985,7 @@ export default function EntityExplorer() {
         resolvedClusterNode?.positionAbsolute ||
         fallbackPosition
 
-      const orientation =
-        resolvedSourceNode?.data?.orientation === 'top'
-          ? 'top'
-          : resolvedClusterNode?.data?.orientation === 'top'
-          ? 'top'
-          : 'bottom'
+      const orientation = 'bottom'
 
       const existingSiblings = nodes.filter((node) => {
         if (!node) return false
@@ -2611,12 +2642,7 @@ export default function EntityExplorer() {
       clusterNode?.position ||
       clusterNode?.positionAbsolute || { x: 0, y: 0 }
 
-    const orientation =
-      sourceNode?.data?.orientation === 'top'
-        ? 'top'
-        : clusterNode?.data?.orientation === 'top'
-        ? 'top'
-        : 'bottom'
+    const orientation = 'bottom'
 
     const existingSiblings = baseNodes.filter((node) => {
       if (!node) return false
