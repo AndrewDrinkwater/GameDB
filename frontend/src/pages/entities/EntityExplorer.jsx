@@ -2068,6 +2068,36 @@ export default function EntityExplorer() {
               entry?.data?.hasManualPosition,
             )
 
+            if (manualPlacement) {
+              const nextEntry = {
+                ...entry,
+                data: { ...entry.data, count: detailSnapshot.nextClusterCount },
+              }
+
+              if (entry.position) {
+                nextEntry.position = { ...entry.position }
+              } else if (entry.positionAbsolute) {
+                nextEntry.position = { ...entry.positionAbsolute }
+              } else if (resolvedClusterPosition) {
+                nextEntry.position = { ...resolvedClusterPosition }
+              } else {
+                nextEntry.position = {
+                  x: Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0,
+                  y: Number.isFinite(targetLayerY) ? targetLayerY : 0,
+                }
+              }
+
+              if (entry.positionAbsolute) {
+                nextEntry.positionAbsolute = { ...entry.positionAbsolute }
+              } else if (resolvedClusterNode?.positionAbsolute) {
+                nextEntry.positionAbsolute = {
+                  ...resolvedClusterNode.positionAbsolute,
+                }
+              }
+
+              return nextEntry
+            }
+
             const manualPosition = clusterHadManualPosition
               ? resolvedClusterNode?.position ||
                 entry.position ||
