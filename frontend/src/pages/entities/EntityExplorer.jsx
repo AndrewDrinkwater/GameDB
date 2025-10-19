@@ -231,47 +231,6 @@ const computeClusterChildLayout = ({
   return { positions: layout, clusterPosition, targetLayerY }
 }
 
-const computeClusterPreviewLayout = (clusterNode, targets, existingNodes = []) => {
-  const layout = new Map()
-  if (!clusterNode || !Array.isArray(targets) || !targets.length) {
-    return layout
-  }
-
-  const sourceId =
-    clusterNode?.data?.cluster?.sourceId !== undefined &&
-    clusterNode?.data?.cluster?.sourceId !== null
-      ? String(clusterNode.data.cluster.sourceId)
-      : null
-
-  const sourceNode = sourceId
-    ? (existingNodes || []).find((node) => String(node.id) === sourceId) || null
-    : null
-
-  const basePosition =
-    sourceNode?.position ||
-    sourceNode?.positionAbsolute ||
-    clusterNode?.position ||
-    clusterNode?.positionAbsolute || {
-      x: 0,
-      y: 0,
-    }
-
-  const orientation =
-    sourceNode?.data?.orientation === 'top'
-      ? 'top'
-      : clusterNode?.data?.orientation === 'top'
-      ? 'top'
-      : 'bottom'
-
-  const { positions } = computeClusterChildLayout({
-    sourcePosition: basePosition,
-    orientation,
-    targets,
-  })
-
-  return positions
-}
-
 const CONTEXT_MENU_INITIAL_STATE = {
   visible: false,
   x: 0,
@@ -1837,6 +1796,9 @@ export default function EntityExplorer() {
       clusterNode,
       detailSnapshotOverride = null,
       manualPlacement = false,
+      layoutOverrides = null,
+      clusterPositionOverride = null,
+      targetLayerOverride = null,
     }) => {
       if (!clusterId) return
       if (targetId === undefined || targetId === null) return
@@ -1944,7 +1906,26 @@ export default function EntityExplorer() {
         ? sourcePosition.y
         : 0
 
-      if (!manualPlacement) {
+      const hasLayoutOverrides =
+        !manualPlacement &&
+        (layoutOverrides instanceof Map || Array.isArray(layoutOverrides))
+
+      if (hasLayoutOverrides) {
+        const overrideEntries =
+          layoutOverrides instanceof Map
+            ? Array.from(layoutOverrides.entries())
+            : Array.isArray(layoutOverrides)
+            ? layoutOverrides
+            : []
+        layoutPositions = new Map(
+          overrideEntries.map(([key, value]) => {
+            const pos = value || {}
+            const x = Number.isFinite(pos.x) ? pos.x : 0
+            const y = Number.isFinite(pos.y) ? pos.y : 0
+            return [String(key), { x, y }]
+          }),
+        )
+      } else if (!manualPlacement) {
         const layoutResult = computeClusterChildLayout({
           sourcePosition,
           orientation,
@@ -1956,6 +1937,23 @@ export default function EntityExplorer() {
         targetLayerY = Number.isFinite(layoutResult.targetLayerY)
           ? layoutResult.targetLayerY
           : targetLayerY
+      }
+
+      if (!manualPlacement) {
+        if (
+          clusterPositionOverride &&
+          Number.isFinite(clusterPositionOverride.x) &&
+          Number.isFinite(clusterPositionOverride.y)
+        ) {
+          clusterPosition = {
+            x: clusterPositionOverride.x,
+            y: clusterPositionOverride.y,
+          }
+        }
+
+        if (Number.isFinite(targetLayerOverride)) {
+          targetLayerY = targetLayerOverride
+        }
       }
 
       if (!manualPlacement && manualSiblingIds.size > 0) {
@@ -2038,12 +2036,17 @@ export default function EntityExplorer() {
         const next = prev.map((entry) => {
           const entryId = String(entry.id)
           if (entryId === String(clusterId)) {
+            const hasManualClusterPosition = Boolean(entry?.data?.hasManualPosition)
             return {
               ...entry,
               data: { ...entry.data, count: detailSnapshot.nextClusterCount },
               position:
-                !manualPlacement && clusterPosition
+                !manualPlacement &&
+                !hasManualClusterPosition &&
+                clusterPosition
                   ? { ...clusterPosition }
+                  : entry.position
+                  ? { ...entry.position }
                   : entry.position,
             }
           }
@@ -2436,10 +2439,64 @@ export default function EntityExplorer() {
     const targets = getClusterPreviewTargets(activeClusterDetails, baseNodes)
     if (!targets.length) return
 
-    const layout = computeClusterPreviewLayout(clusterNode, targets, baseNodes)
+    const sourceId =
+      clusterNode?.data?.cluster?.sourceId !== undefined &&
+      clusterNode?.data?.cluster?.sourceId !== null
+        ? String(clusterNode.data.cluster.sourceId)
+        : null
+
+    const sourceNode = sourceId
+      ? baseNodes.find((node) => String(node.id) === sourceId) ||
+        reactFlowInstance?.getNode?.(sourceId) ||
+        null
+      : null
+
+    const sourcePosition =
+      sourceNode?.position ||
+      sourceNode?.positionAbsolute ||
+      clusterNode?.position ||
+      clusterNode?.positionAbsolute || { x: 0, y: 0 }
+
+    const orientation =
+      sourceNode?.data?.orientation === 'top'
+        ? 'top'
+        : clusterNode?.data?.orientation === 'top'
+        ? 'top'
+        : 'bottom'
+
+    const existingSiblings = baseNodes.filter((node) => {
+      if (!node) return false
+      if (node.id === clusterNode.id) return false
+      if (node?.data?.isClusterPreview) return false
+      return String(node?.data?.originClusterId || '') === String(activeClusterId)
+    })
+
+    const layoutTargets = existingSiblings
+      .map((node) => ({
+        id: String(node.id),
+        name: node?.data?.label || `Entity ${node.id}`,
+      }))
+      .concat(
+        targets.map((target) => ({
+          id: target.id,
+          name: target.name,
+        })),
+      )
+
+    const layoutResult = computeClusterChildLayout({
+      sourcePosition,
+      orientation,
+      targets: layoutTargets,
+    })
+
+    const layoutPositions = layoutResult.positions || new Map()
+    const clusterPositionOverride = layoutResult.clusterPosition || null
+    const targetLayerOverride = Number.isFinite(layoutResult.targetLayerY)
+      ? layoutResult.targetLayerY
+      : null
 
     targets.forEach((target, index) => {
-      const basePosition = layout.get(target.id)
+      const basePosition = layoutPositions.get(target.id)
       const fallback =
         basePosition || {
           x:
@@ -2452,6 +2509,9 @@ export default function EntityExplorer() {
         targetId: target.id,
         position: fallback,
         clusterNode,
+        layoutOverrides: layoutPositions,
+        clusterPositionOverride,
+        targetLayerOverride,
       })
     })
   }, [
@@ -2569,6 +2629,102 @@ export default function EntityExplorer() {
       )
     },
     [clusterWindowState.clusterId, returnClusterTarget, setNodes, setRawNodes],
+  )
+
+  const handleNodesChange = useCallback(
+    (changes) => {
+      onNodesChange(changes)
+
+      if (!Array.isArray(changes) || changes.length === 0) {
+        return
+      }
+
+      const clusterUpdates = new Map()
+      changes.forEach((change) => {
+        if (!change || change.type !== 'position') return
+        if (!change.position) return
+        if (change.dragging) return
+
+        const id = String(change.id)
+        const nextPosition = {
+          x: Number.isFinite(change.position.x) ? change.position.x : 0,
+          y: Number.isFinite(change.position.y) ? change.position.y : 0,
+        }
+
+        const nextAbsolute = change.positionAbsolute
+          ? {
+              x: Number.isFinite(change.positionAbsolute.x)
+                ? change.positionAbsolute.x
+                : nextPosition.x,
+              y: Number.isFinite(change.positionAbsolute.y)
+                ? change.positionAbsolute.y
+                : nextPosition.y,
+            }
+          : null
+
+        clusterUpdates.set(id, { position: nextPosition, positionAbsolute: nextAbsolute })
+      })
+
+      if (!clusterUpdates.size) {
+        return
+      }
+
+      setRawNodes((prev) =>
+        prev.map((entry) => {
+          const entryId = String(entry.id)
+          if (!clusterUpdates.has(entryId)) {
+            return entry
+          }
+
+          const isClusterNode =
+            entry?.type === 'relationshipCluster' || Boolean(entry?.data?.isCluster)
+          if (!isClusterNode) {
+            return entry
+          }
+
+          const update = clusterUpdates.get(entryId) || {}
+          const nextPosition = update.position || entry.position || { x: 0, y: 0 }
+          const nextEntry = {
+            ...entry,
+            position: { ...nextPosition },
+            data: {
+              ...(entry.data || {}),
+              hasManualPosition: true,
+            },
+          }
+
+          if (update.positionAbsolute) {
+            nextEntry.positionAbsolute = { ...update.positionAbsolute }
+          }
+
+          return nextEntry
+        }),
+      )
+
+      setNodes((prev) =>
+        prev.map((entry) => {
+          const entryId = String(entry.id)
+          if (!clusterUpdates.has(entryId)) {
+            return entry
+          }
+
+          const isClusterNode =
+            entry?.type === 'relationshipCluster' || Boolean(entry?.data?.isCluster)
+          if (!isClusterNode) {
+            return entry
+          }
+
+          return {
+            ...entry,
+            data: {
+              ...(entry.data || {}),
+              hasManualPosition: true,
+            },
+          }
+        }),
+      )
+    },
+    [onNodesChange, setNodes, setRawNodes],
   )
 
   const handleSearchSubmit = (event) => {
@@ -2733,7 +2889,7 @@ export default function EntityExplorer() {
                   edgeTypes={edgeTypes}
                   nodes={nodes}
                   edges={edges}
-                  onNodesChange={onNodesChange}
+                  onNodesChange={handleNodesChange}
                   onEdgesChange={onEdgesChange}
                   onNodeClick={onNodeClick}
                   onNodeContextMenu={onNodeContextMenu}
