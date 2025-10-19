@@ -166,27 +166,110 @@ const getClusterPreviewTargets = (clusterDetail, existingNodes) => {
     .filter((target) => target.id && !blockedIds.has(target.id))
 }
 
-const computeClusterPreviewLayout = (clusterNode, targets) => {
+const computeClusterChildLayout = ({
+  sourcePosition,
+  orientation,
+  targets,
+}) => {
   const layout = new Map()
-  if (!clusterNode || !clusterNode?.position || !Array.isArray(targets) || !targets.length) {
-    return layout
+  const safeTargets = Array.isArray(targets)
+    ? targets
+        .map((target) => ({
+          id:
+            target?.id !== undefined && target?.id !== null
+              ? String(target.id)
+              : null,
+          name:
+            target?.name ||
+            (target?.id !== undefined && target?.id !== null
+              ? `Entity ${target.id}`
+              : 'Entity'),
+        }))
+        .filter((target) => target.id)
+    : []
+
+  if (safeTargets.length === 0) {
+    const baseX = Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0
+    const baseY = Number.isFinite(sourcePosition?.y) ? sourcePosition.y : 0
+    const direction = orientation === 'top' ? -1 : 1
+    const targetLayerY = baseY + direction * CLUSTER_VERTICAL_OFFSET
+    return {
+      positions: layout,
+      clusterPosition: {
+        x: baseX,
+        y: targetLayerY,
+      },
+      targetLayerY,
+    }
   }
 
-  const orientation = clusterNode?.data?.orientation === 'top' ? 'top' : 'bottom'
-  const direction = orientation === 'top' ? -1 : 1
-  const baseX = clusterNode.position.x
-  const baseY = clusterNode.position.y + direction * CLUSTER_VERTICAL_OFFSET
-  const horizontalStep = Math.max(120, CLUSTER_HORIZONTAL_STEP)
-  const startX = baseX - ((targets.length - 1) * horizontalStep) / 2
+  const sortedTargets = safeTargets.slice().sort((a, b) => {
+    const nameA = a.name || ''
+    const nameB = b.name || ''
+    return nameA.localeCompare(nameB)
+  })
 
-  targets.forEach((target, index) => {
+  const horizontalStep = Math.max(120, CLUSTER_HORIZONTAL_STEP)
+  const baseX = Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0
+  const baseY = Number.isFinite(sourcePosition?.y) ? sourcePosition.y : 0
+  const direction = orientation === 'top' ? -1 : 1
+  const targetLayerY = baseY + direction * CLUSTER_VERTICAL_OFFSET
+  const startX = baseX - ((sortedTargets.length - 1) * horizontalStep) / 2
+
+  sortedTargets.forEach((target, index) => {
     layout.set(target.id, {
       x: startX + index * horizontalStep,
-      y: baseY,
+      y: targetLayerY,
     })
   })
 
-  return layout
+  const clusterPosition = {
+    x: startX + sortedTargets.length * horizontalStep,
+    y: targetLayerY,
+  }
+
+  return { positions: layout, clusterPosition, targetLayerY }
+}
+
+const computeClusterPreviewLayout = (clusterNode, targets, existingNodes = []) => {
+  const layout = new Map()
+  if (!clusterNode || !Array.isArray(targets) || !targets.length) {
+    return layout
+  }
+
+  const sourceId =
+    clusterNode?.data?.cluster?.sourceId !== undefined &&
+    clusterNode?.data?.cluster?.sourceId !== null
+      ? String(clusterNode.data.cluster.sourceId)
+      : null
+
+  const sourceNode = sourceId
+    ? (existingNodes || []).find((node) => String(node.id) === sourceId) || null
+    : null
+
+  const basePosition =
+    sourceNode?.position ||
+    sourceNode?.positionAbsolute ||
+    clusterNode?.position ||
+    clusterNode?.positionAbsolute || {
+      x: 0,
+      y: 0,
+    }
+
+  const orientation =
+    sourceNode?.data?.orientation === 'top'
+      ? 'top'
+      : clusterNode?.data?.orientation === 'top'
+      ? 'top'
+      : 'bottom'
+
+  const { positions } = computeClusterChildLayout({
+    sourcePosition: basePosition,
+    orientation,
+    targets,
+  })
+
+  return positions
 }
 
 const CONTEXT_MENU_INITIAL_STATE = {
@@ -1669,31 +1752,49 @@ export default function EntityExplorer() {
         reactFlowInstance?.getNode?.(clusterId) ||
         null
 
-      const clusterDepth = resolvedClusterNode?.data?.depth ?? 0
-      const orientation =
-        resolvedClusterNode?.data?.orientation === 'top' ? 'top' : 'bottom'
+      const resolvedSourceNode =
+        nodes.find((entry) => String(entry.id) === detailSnapshot.sourceId) ||
+        reactFlowInstance?.getNode?.(detailSnapshot.sourceId) ||
+        null
+
+      const clusterDepth =
+        resolvedClusterNode?.data?.depth !== undefined &&
+        resolvedClusterNode?.data?.depth !== null
+          ? resolvedClusterNode.data.depth
+          : null
+
+      const sourceDepthValue =
+        resolvedSourceNode?.data?.depth !== undefined &&
+        resolvedSourceNode?.data?.depth !== null
+          ? resolvedSourceNode.data.depth
+          : clusterDepth !== null
+          ? clusterDepth - 1
+          : null
+
       const baseStyle =
         detailSnapshot.style ||
         getRelationshipStyle(
           detailSnapshot.typeId || `${detailSnapshot.sourceId}-${nodeId}`,
         )
 
-      const clusterBasePosition =
-        resolvedClusterNode?.position ||
-        resolvedClusterNode?.positionAbsolute || {
-          x:
-            position && Number.isFinite(position.x)
-              ? position.x
-              : 0,
-          y:
-            position && Number.isFinite(position.y)
-              ? position.y
-              : 0,
-        }
+      const fallbackPosition =
+        position && Number.isFinite(position.x) && Number.isFinite(position.y)
+          ? { x: position.x, y: position.y }
+          : { x: 0, y: 0 }
 
-      const targetLayerY =
-        clusterBasePosition.y +
-        (orientation === 'top' ? -CLUSTER_VERTICAL_OFFSET : CLUSTER_VERTICAL_OFFSET)
+      const sourcePosition =
+        resolvedSourceNode?.position ||
+        resolvedSourceNode?.positionAbsolute ||
+        resolvedClusterNode?.position ||
+        resolvedClusterNode?.positionAbsolute ||
+        fallbackPosition
+
+      const orientation =
+        resolvedSourceNode?.data?.orientation === 'top'
+          ? 'top'
+          : resolvedClusterNode?.data?.orientation === 'top'
+          ? 'top'
+          : 'bottom'
 
       const existingSiblings = nodes.filter((node) => {
         if (!node) return false
@@ -1712,21 +1813,18 @@ export default function EntityExplorer() {
           id: nodeId,
           name: detailSnapshot.targetInfo.name || `Entity ${nodeId}`,
         })
-        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
 
-      const horizontalStep = Math.max(120, CLUSTER_HORIZONTAL_STEP)
-      const startX =
-        clusterBasePosition.x - ((layoutTargets.length - 1) * horizontalStep) / 2
-
-      const layoutPositions = new Map()
-      layoutTargets.forEach((target, index) => {
-        layoutPositions.set(target.id, {
-          x: startX + index * horizontalStep,
-          y: targetLayerY,
+      const { positions: layoutPositions, clusterPosition, targetLayerY } =
+        computeClusterChildLayout({
+          sourcePosition,
+          orientation,
+          targets: layoutTargets,
         })
-      })
 
-      const nextDepthBase = (clusterDepth ?? 0) + 1
+      const nextDepthBase =
+        Number.isFinite(sourceDepthValue) && sourceDepthValue !== null
+          ? sourceDepthValue + 1
+          : clusterDepth
       const nextDepth = Number.isFinite(nextDepthBase)
         ? Math.max(Math.ceil(nextDepthBase), 0)
         : 0
@@ -1781,7 +1879,7 @@ export default function EntityExplorer() {
           originRelationshipCounts: detailSnapshot.relationshipCounts,
         },
         position: layoutPositions.get(nodeId) || {
-          x: clusterBasePosition.x,
+          x: Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0,
           y: targetLayerY,
         },
         type: 'customNode',
@@ -1794,6 +1892,9 @@ export default function EntityExplorer() {
             return {
               ...entry,
               data: { ...entry.data, count: detailSnapshot.nextClusterCount },
+              position: clusterPosition
+                ? { ...clusterPosition }
+                : entry.position,
             }
           }
           if (layoutPositions.has(entryId)) {
@@ -2002,18 +2103,26 @@ export default function EntityExplorer() {
         reactFlowInstance?.getNode?.(clusterId) ||
         null
 
-      const orientation =
-        resolvedClusterNode?.data?.orientation === 'top' ? 'top' : 'bottom'
-      const clusterBasePosition =
+      const resolvedSourceNode =
+        nodes.find((entry) => String(entry.id) === detailSnapshot.sourceId) ||
+        reactFlowInstance?.getNode?.(detailSnapshot.sourceId) ||
+        null
+
+      const sourcePosition =
+        resolvedSourceNode?.position ||
+        resolvedSourceNode?.positionAbsolute ||
         resolvedClusterNode?.position ||
         resolvedClusterNode?.positionAbsolute || {
           x: node.position?.x ?? node.positionAbsolute?.x ?? 0,
           y: node.position?.y ?? node.positionAbsolute?.y ?? 0,
         }
 
-      const targetLayerY =
-        clusterBasePosition.y +
-        (orientation === 'top' ? -CLUSTER_VERTICAL_OFFSET : CLUSTER_VERTICAL_OFFSET)
+      const orientation =
+        resolvedSourceNode?.data?.orientation === 'top'
+          ? 'top'
+          : resolvedClusterNode?.data?.orientation === 'top'
+          ? 'top'
+          : 'bottom'
 
       const remainingSiblings = nodes.filter((entry) => {
         if (!entry) return false
@@ -2023,24 +2132,17 @@ export default function EntityExplorer() {
         return String(entry?.data?.originClusterId || '') === String(clusterId)
       })
 
-      const horizontalStep = Math.max(120, CLUSTER_HORIZONTAL_STEP)
-      const layoutTargets = remainingSiblings
-        .map((entry) => ({
-          id: String(entry.id),
-          name: entry?.data?.label || `Entity ${entry.id}`,
-        }))
-        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      const layoutTargets = remainingSiblings.map((entry) => ({
+        id: String(entry.id),
+        name: entry?.data?.label || `Entity ${entry.id}`,
+      }))
 
-      const startX =
-        clusterBasePosition.x - ((layoutTargets.length - 1) * horizontalStep) / 2
-
-      const layoutPositions = new Map()
-      layoutTargets.forEach((target, index) => {
-        layoutPositions.set(target.id, {
-          x: startX + index * horizontalStep,
-          y: targetLayerY,
+      const { positions: layoutPositions, clusterPosition } =
+        computeClusterChildLayout({
+          sourcePosition,
+          orientation,
+          targets: layoutTargets,
         })
-      })
 
       setRawNodes((prev) =>
         prev
@@ -2051,6 +2153,9 @@ export default function EntityExplorer() {
               return {
                 ...entry,
                 data: { ...entry.data, count: detailSnapshot.nextClusterCount },
+                position: clusterPosition
+                  ? { ...clusterPosition }
+                  : entry.position,
               }
             }
             if (layoutPositions.has(entryId)) {
@@ -2191,7 +2296,7 @@ export default function EntityExplorer() {
     const targets = getClusterPreviewTargets(activeClusterDetails, baseNodes)
     if (!targets.length) return
 
-    const layout = computeClusterPreviewLayout(clusterNode, targets)
+    const layout = computeClusterPreviewLayout(clusterNode, targets, baseNodes)
 
     targets.forEach((target, index) => {
       const basePosition = layout.get(target.id)
