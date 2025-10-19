@@ -138,6 +138,16 @@ const dedupeRelationshipSummaries = (relationships) => {
   return result
 }
 
+const getRelationshipCountKey = (relationship) => {
+  if (!relationship) return 'relationship'
+  const typeId = relationship.typeId ?? null
+  if (typeId !== null && typeId !== undefined && typeId !== '') {
+    return `type:${String(typeId)}`
+  }
+  const label = relationship.label || relationship.typeName || 'relationship'
+  return `label:${label}`
+}
+
 const getClusterPreviewTargets = (clusterDetail, existingNodes) => {
   if (!clusterDetail || !Array.isArray(clusterDetail.targets)) return []
 
@@ -272,7 +282,10 @@ const buildLayout = (graphData, rootId) => {
     const clusterId = `cluster:${group.sourceId}:${group.typeId}`
     const sourceNode = nodesMap.get(group.sourceId)
 
-    const summaries = group.relationships.map((edge, index) => {
+    const targetRelationshipDetails = new Map()
+    const summaries = []
+
+    group.relationships.forEach((edge, index) => {
       const typeId = getEdgeTypeId(edge) || group.typeId
       const relationshipType = edge.relationshipType || {}
       const targetId = String(edge.target)
@@ -290,7 +303,7 @@ const buildLayout = (graphData, rootId) => {
         targetNode,
       })
 
-      return {
+      const summary = {
         id: String(
           edge.id ?? `${group.sourceId}-${targetId}-${typeId ?? 'rel'}-${index}`,
         ),
@@ -301,9 +314,36 @@ const buildLayout = (graphData, rootId) => {
         tooltip,
         style: getRelationshipStyle(typeId || `${group.sourceId}-${targetId}`),
       }
+
+      const countKey = getRelationshipCountKey(summary)
+      if (!targetRelationshipDetails.has(targetId)) {
+        targetRelationshipDetails.set(targetId, {
+          summaries: [],
+          counts: new Map(),
+        })
+      }
+      const detailEntry = targetRelationshipDetails.get(targetId)
+      detailEntry.summaries.push(summary)
+      detailEntry.counts.set(
+        countKey,
+        (detailEntry.counts.get(countKey) || 0) + 1,
+      )
+
+      summaries.push(summary)
     })
 
     const relationshipSummaries = dedupeRelationshipSummaries(summaries)
+    const targetRelationships = {}
+    const targetRelationshipCounts = {}
+
+    targetRelationshipDetails.forEach((detailEntry, targetId) => {
+      targetRelationships[targetId] = dedupeRelationshipSummaries(
+        detailEntry.summaries,
+      )
+      targetRelationshipCounts[targetId] = Object.fromEntries(
+        detailEntry.counts,
+      )
+    })
     const clusterStyle =
       relationshipSummaries[0]?.style || getRelationshipStyle(group.typeId)
     const clusterLabel =
@@ -329,6 +369,8 @@ const buildLayout = (graphData, rootId) => {
       count: clusterTargets.length,
       relationships: relationshipSummaries,
       targets: clusterTargets,
+      targetRelationships,
+      targetRelationshipCounts,
       style: clusterStyle,
       sourceName:
         sourceNode?.name || sourceNode?.data?.label || `Entity ${group.sourceId}`,
@@ -1524,20 +1566,102 @@ export default function EntityExplorer() {
     ({ clusterId, targetId, position, clusterNode }) => {
       if (!clusterId) return
       if (targetId === undefined || targetId === null) return
-      const detail = clusterDetails.get(clusterId)
-      if (!detail) return
 
       const nodeId = String(targetId)
-      const targetInfo = (detail.targets || []).find(
-        (target) => String(target.id) === nodeId,
-      )
-      if (!targetInfo) return
+      const detailSnapshot = {
+        sourceId: null,
+        targetInfo: null,
+        style: null,
+        typeId: null,
+        typeName: '',
+        label: '',
+        tooltip: null,
+        relationships: [],
+        relationshipCounts: {},
+        nextDetail: null,
+        nextClusterCount: 0,
+      }
 
-      const sourceId =
-        detail.sourceId !== undefined && detail.sourceId !== null
-          ? String(detail.sourceId)
-          : null
-      if (!sourceId) return
+      setClusterDetails((prev) => {
+        if (!prev.has(clusterId)) return prev
+
+        const currentDetail = prev.get(clusterId)
+        if (!currentDetail) return prev
+
+        const sourceId =
+          currentDetail.sourceId !== undefined && currentDetail.sourceId !== null
+            ? String(currentDetail.sourceId)
+            : null
+        if (!sourceId) return prev
+
+        const targetInfo = (currentDetail.targets || []).find(
+          (target) => String(target.id) === nodeId,
+        )
+        if (!targetInfo) return prev
+
+        const relationshipsForTarget = Array.isArray(
+          currentDetail.targetRelationships?.[nodeId],
+        )
+          ? currentDetail.targetRelationships[nodeId]
+          : Array.isArray(currentDetail.relationships)
+            ? currentDetail.relationships
+            : []
+
+        const relationshipCounts =
+          currentDetail.targetRelationshipCounts?.[nodeId] || {}
+
+        const remainingTargets = (currentDetail.targets || []).filter(
+          (target) => String(target.id) !== nodeId,
+        )
+
+        const nextTargetRelationships = {
+          ...(currentDetail.targetRelationships || {}),
+        }
+        delete nextTargetRelationships[nodeId]
+
+        const nextTargetRelationshipCounts = {
+          ...(currentDetail.targetRelationshipCounts || {}),
+        }
+        delete nextTargetRelationshipCounts[nodeId]
+
+        const nextClusterCount = Math.max(0, (currentDetail.count || 0) - 1)
+
+        detailSnapshot.sourceId = sourceId
+        detailSnapshot.targetInfo = targetInfo
+        detailSnapshot.style = currentDetail.style || null
+        detailSnapshot.typeId =
+          currentDetail.typeId !== undefined && currentDetail.typeId !== null
+            ? String(currentDetail.typeId)
+            : null
+        detailSnapshot.typeName = currentDetail.typeName || ''
+        detailSnapshot.label = currentDetail.label || ''
+        detailSnapshot.tooltip = currentDetail.tooltip || null
+        detailSnapshot.relationships = relationshipsForTarget
+        detailSnapshot.relationshipCounts = relationshipCounts
+        detailSnapshot.nextClusterCount = nextClusterCount
+
+        const updatedDetail = {
+          ...currentDetail,
+          targets: remainingTargets,
+          targetRelationships: nextTargetRelationships,
+          targetRelationshipCounts: nextTargetRelationshipCounts,
+          count: nextClusterCount,
+        }
+
+        detailSnapshot.nextDetail = updatedDetail
+
+        const next = new Map(prev)
+        next.set(clusterId, updatedDetail)
+        return next
+      })
+
+      if (!detailSnapshot.targetInfo || !detailSnapshot.sourceId) {
+        return
+      }
+
+      if (activeClusterId === clusterId && detailSnapshot.nextDetail) {
+        setActiveClusterDetails(detailSnapshot.nextDetail)
+      }
 
       const resolvedClusterNode =
         clusterNode ||
@@ -1549,114 +1673,190 @@ export default function EntityExplorer() {
       const orientation =
         resolvedClusterNode?.data?.orientation === 'top' ? 'top' : 'bottom'
       const baseStyle =
-        detail.style || getRelationshipStyle(detail.typeId || `${sourceId}-${nodeId}`)
-      const nextClusterCount = Math.max(0, (detail.count || 0) - 1)
+        detailSnapshot.style ||
+        getRelationshipStyle(
+          detailSnapshot.typeId || `${detailSnapshot.sourceId}-${nodeId}`,
+        )
 
       const clusterBasePosition =
         resolvedClusterNode?.position ||
         resolvedClusterNode?.positionAbsolute || {
-          x: 0,
-          y: 0,
+          x:
+            position && Number.isFinite(position.x)
+              ? position.x
+              : 0,
+          y:
+            position && Number.isFinite(position.y)
+              ? position.y
+              : 0,
         }
+
       const targetLayerY =
         clusterBasePosition.y +
         (orientation === 'top' ? -CLUSTER_VERTICAL_OFFSET : CLUSTER_VERTICAL_OFFSET)
 
-      const fallbackPosition = {
-        x:
-          position && Number.isFinite(position.x)
-            ? position.x
-            : clusterBasePosition.x,
-        y: targetLayerY,
-      }
+      const existingSiblings = nodes.filter((node) => {
+        if (!node) return false
+        if (node.id === clusterId) return false
+        if (String(node.id) === nodeId) return false
+        if (node?.data?.isClusterPreview) return false
+        return String(node?.data?.originClusterId || '') === String(clusterId)
+      })
+
+      const layoutTargets = existingSiblings
+        .map((node) => ({
+          id: String(node.id),
+          name: node?.data?.label || `Entity ${node.id}`,
+        }))
+        .concat({
+          id: nodeId,
+          name: detailSnapshot.targetInfo.name || `Entity ${nodeId}`,
+        })
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+
+      const horizontalStep = Math.max(120, CLUSTER_HORIZONTAL_STEP)
+      const startX =
+        clusterBasePosition.x - ((layoutTargets.length - 1) * horizontalStep) / 2
+
+      const layoutPositions = new Map()
+      layoutTargets.forEach((target, index) => {
+        layoutPositions.set(target.id, {
+          x: startX + index * horizontalStep,
+          y: targetLayerY,
+        })
+      })
 
       const nextDepthBase = (clusterDepth ?? 0) + 1
       const nextDepth = Number.isFinite(nextDepthBase)
         ? Math.max(Math.ceil(nextDepthBase), 0)
         : 0
 
+      const dedupedRelationships = dedupeRelationshipSummaries(
+        detailSnapshot.relationships,
+      )
+      const primaryRelationship = dedupedRelationships[0] || null
+      const primaryCountKey = getRelationshipCountKey(primaryRelationship)
+      const primaryCount =
+        detailSnapshot.relationshipCounts?.[primaryCountKey] || 0
+
+      let edgeLabel = ''
+      if (primaryRelationship) {
+        edgeLabel =
+          primaryRelationship.label ||
+          primaryRelationship.typeName ||
+          detailSnapshot.typeName ||
+          detailSnapshot.label ||
+          ''
+        if (primaryCount > 1) {
+          edgeLabel = `${edgeLabel} (${primaryCount})`
+        }
+      } else if (detailSnapshot.typeName || detailSnapshot.label) {
+        edgeLabel = detailSnapshot.typeName || detailSnapshot.label
+      } else {
+        edgeLabel = 'Relationship'
+      }
+
+      const relationshipTypeIds = dedupedRelationships
+        .map((relationship) => relationship.typeId)
+        .filter((value) => value !== null && value !== undefined)
+        .map((value) => String(value))
+
       const promotedNode = {
         id: nodeId,
         data: {
-          label: targetInfo.name || `Entity ${nodeId}`,
-          type: targetInfo.type || null,
+          label: detailSnapshot.targetInfo.name || `Entity ${nodeId}`,
+          type: detailSnapshot.targetInfo.type || null,
           depth: nextDepth,
           orientation,
           isRoot: false,
           originClusterId: clusterId,
-          originClusterSourceId: sourceId,
-          originClusterTypeId:
-            detail.typeId !== undefined && detail.typeId !== null
-              ? String(detail.typeId)
-              : null,
+          originClusterSourceId: detailSnapshot.sourceId,
+          originClusterTypeId: detailSnapshot.typeId,
           originTarget: {
             id: nodeId,
-            name: targetInfo.name || `Entity ${nodeId}`,
-            type: targetInfo.type || null,
+            name: detailSnapshot.targetInfo.name || `Entity ${nodeId}`,
+            type: detailSnapshot.targetInfo.type || null,
           },
+          originRelationships: dedupedRelationships,
+          originRelationshipCounts: detailSnapshot.relationshipCounts,
         },
-        position: fallbackPosition,
+        position: layoutPositions.get(nodeId) || {
+          x: clusterBasePosition.x,
+          y: targetLayerY,
+        },
         type: 'customNode',
       }
 
       setRawNodes((prev) => {
-        const updated = prev.map((entry) => {
-          if (String(entry.id) === String(clusterId)) {
+        const next = prev.map((entry) => {
+          const entryId = String(entry.id)
+          if (entryId === String(clusterId)) {
             return {
               ...entry,
-              data: { ...entry.data, count: nextClusterCount },
+              data: { ...entry.data, count: detailSnapshot.nextClusterCount },
+            }
+          }
+          if (layoutPositions.has(entryId)) {
+            const layoutPosition = layoutPositions.get(entryId)
+            return {
+              ...entry,
+              position: { ...layoutPosition },
             }
           }
           return entry
         })
-        const index = updated.findIndex((entry) => String(entry.id) === nodeId)
-        if (index >= 0) {
-          const next = updated.slice()
-          next[index] = { ...updated[index], ...promotedNode }
-          return next
+
+        const existingIndex = next.findIndex((entry) => String(entry.id) === nodeId)
+        if (existingIndex >= 0) {
+          const layoutPosition = layoutPositions.get(nodeId)
+          const nextEntry = {
+            ...next[existingIndex],
+            ...promotedNode,
+            position: layoutPosition
+              ? { ...layoutPosition }
+              : { ...promotedNode.position },
+          }
+          const nextNodes = next.slice()
+          nextNodes[existingIndex] = nextEntry
+          return nextNodes
         }
-        return [...updated, promotedNode]
+
+        const layoutPosition = layoutPositions.get(nodeId)
+        return [
+          ...next,
+          {
+            ...promotedNode,
+            position: layoutPosition
+              ? { ...layoutPosition }
+              : { ...promotedNode.position },
+          },
+        ]
       })
 
-      const edgeId = `cluster-revealed:${sourceId}:${nodeId}:${
-        detail.typeId !== undefined && detail.typeId !== null
-          ? String(detail.typeId)
-          : 'relationship'
+      const edgeId = `cluster-revealed:${detailSnapshot.sourceId}:${nodeId}:${
+        detailSnapshot.typeId || 'relationship'
       }`
-
-      const primaryRelationship =
-        Array.isArray(detail.relationships) && detail.relationships.length === 1
-          ? detail.relationships[0]
-          : null
-
-      const edgeLabel = primaryRelationship
-        ? primaryRelationship.label ||
-          primaryRelationship.typeName ||
-          detail.label ||
-          detail.typeName ||
-          ''
-        : detail.label || detail.typeName || String(detail.relationships?.length || '')
 
       const newEdge = {
         id: edgeId,
-        source: sourceId,
+        source: detailSnapshot.sourceId,
         target: nodeId,
         label: edgeLabel,
         data: {
           relationshipTypeId:
-            detail.typeId !== undefined && detail.typeId !== null
-              ? String(detail.typeId)
-              : null,
-          relationshipTypeIds:
-            detail.typeId !== undefined && detail.typeId !== null
-              ? [String(detail.typeId)]
-              : [],
-          relationshipTypeName: detail.typeName || null,
-          tooltip: detail.tooltip || null,
+            detailSnapshot.typeId !== null ? detailSnapshot.typeId : null,
+          relationshipTypeIds,
+          relationshipTypeName:
+            primaryRelationship?.typeName || detailSnapshot.typeName || null,
+          tooltip:
+            primaryRelationship?.tooltip ||
+            detailSnapshot.tooltip ||
+            null,
           style: baseStyle,
-          relationships: detail.relationships || [],
-          sourceName: detail.sourceName || '',
-          targetName: targetInfo.name || `Entity ${nodeId}`,
+          relationships: dedupedRelationships,
+          sourceName: detailSnapshot.nextDetail?.sourceName || '',
+          targetName:
+            detailSnapshot.targetInfo.name || `Entity ${nodeId}`,
         },
         animated: false,
         type: 'customEdge',
@@ -1675,10 +1875,10 @@ export default function EntityExplorer() {
             if (edge.id === `${clusterId}-edge`) {
               return {
                 ...edge,
-                label: String(nextClusterCount),
+                label: String(detailSnapshot.nextClusterCount),
                 data: {
                   ...edge.data,
-                  clusterCount: nextClusterCount,
+                  clusterCount: detailSnapshot.nextClusterCount,
                 },
               }
             }
@@ -1686,29 +1886,9 @@ export default function EntityExplorer() {
           })
         return [...next, newEdge]
       })
-
-      setClusterDetails((prev) => {
-        if (!prev.has(clusterId)) return prev
-        const next = new Map(prev)
-        const currentDetail = next.get(clusterId)
-        const remainingTargets = (currentDetail?.targets || []).filter(
-          (target) => String(target.id) !== nodeId,
-        )
-        const updatedDetail = {
-          ...currentDetail,
-          targets: remainingTargets,
-          count: nextClusterCount,
-        }
-        next.set(clusterId, updatedDetail)
-        if (activeClusterId === clusterId) {
-          setActiveClusterDetails(updatedDetail)
-        }
-        return next
-      })
     },
     [
       activeClusterId,
-      clusterDetails,
       nodes,
       reactFlowInstance,
       setActiveClusterDetails,
@@ -1723,40 +1903,161 @@ export default function EntityExplorer() {
       if (!node) return
       const clusterId = node?.data?.originClusterId
       if (!clusterId) return
-      const detail = clusterDetails.get(clusterId)
-      if (!detail) return
 
       const nodeId = String(node.id)
-      const sourceId =
-        node?.data?.originClusterSourceId ||
-        (detail.sourceId !== undefined && detail.sourceId !== null
-          ? String(detail.sourceId)
-          : null)
-      if (!sourceId) return
 
-      const typeId =
-        node?.data?.originClusterTypeId ||
-        (detail.typeId !== undefined && detail.typeId !== null
-          ? String(detail.typeId)
-          : null)
-
-      const nextClusterCount = (detail.count || 0) + 1
-      const edgeId = `cluster-revealed:${sourceId}:${nodeId}:${typeId || 'relationship'}`
-
-      const targetInfo = node?.data?.originTarget || {
-        id: nodeId,
-        name: node?.data?.label || `Entity ${nodeId}`,
-        type: node?.data?.type || null,
+      const detailSnapshot = {
+        sourceId: node?.data?.originClusterSourceId || null,
+        typeId: node?.data?.originClusterTypeId || null,
+        relationships:
+          Array.isArray(node?.data?.originRelationships)
+            ? node.data.originRelationships
+            : [],
+        relationshipCounts:
+          typeof node?.data?.originRelationshipCounts === 'object' &&
+          node.data.originRelationshipCounts
+            ? node.data.originRelationshipCounts
+            : {},
+        targetInfo:
+          node?.data?.originTarget || {
+            id: nodeId,
+            name: node?.data?.label || `Entity ${nodeId}`,
+            type: node?.data?.type || null,
+          },
+        nextDetail: null,
+        nextClusterCount: 0,
       }
+
+      setClusterDetails((prev) => {
+        if (!prev.has(clusterId)) return prev
+        const currentDetail = prev.get(clusterId)
+        if (!currentDetail) return prev
+
+        const resolvedSourceId =
+          detailSnapshot.sourceId ||
+          (currentDetail.sourceId !== undefined && currentDetail.sourceId !== null
+            ? String(currentDetail.sourceId)
+            : null)
+        if (!resolvedSourceId) return prev
+
+        detailSnapshot.sourceId = resolvedSourceId
+
+        const resolvedTypeId =
+          detailSnapshot.typeId ||
+          (currentDetail.typeId !== undefined && currentDetail.typeId !== null
+            ? String(currentDetail.typeId)
+            : null)
+        detailSnapshot.typeId = resolvedTypeId
+
+        const nextClusterCount = (currentDetail.count || 0) + 1
+        detailSnapshot.nextClusterCount = nextClusterCount
+
+        const existingTargets = Array.isArray(currentDetail.targets)
+          ? currentDetail.targets.filter((target) => String(target.id) !== nodeId)
+          : []
+        const updatedTargets = [...existingTargets, detailSnapshot.targetInfo].sort(
+          (a, b) =>
+            (a.name || `Entity ${a.id || ''}`).localeCompare(
+              b.name || `Entity ${b.id || ''}`,
+            ),
+        )
+
+        const nextTargetRelationships = {
+          ...(currentDetail.targetRelationships || {}),
+          [nodeId]: detailSnapshot.relationships,
+        }
+
+        const nextTargetRelationshipCounts = {
+          ...(currentDetail.targetRelationshipCounts || {}),
+          [nodeId]: detailSnapshot.relationshipCounts,
+        }
+
+        const updatedDetail = {
+          ...currentDetail,
+          targets: updatedTargets,
+          targetRelationships: nextTargetRelationships,
+          targetRelationshipCounts: nextTargetRelationshipCounts,
+          count: nextClusterCount,
+        }
+
+        detailSnapshot.nextDetail = updatedDetail
+
+        const next = new Map(prev)
+        next.set(clusterId, updatedDetail)
+        return next
+      })
+
+      if (!detailSnapshot.sourceId) return
+
+      if (activeClusterId === clusterId && detailSnapshot.nextDetail) {
+        setActiveClusterDetails(detailSnapshot.nextDetail)
+      }
+
+      const edgeId = `cluster-revealed:${detailSnapshot.sourceId}:${nodeId}:${
+        detailSnapshot.typeId || 'relationship'
+      }`
+
+      const resolvedClusterNode =
+        nodes.find((entry) => String(entry.id) === String(clusterId)) ||
+        reactFlowInstance?.getNode?.(clusterId) ||
+        null
+
+      const orientation =
+        resolvedClusterNode?.data?.orientation === 'top' ? 'top' : 'bottom'
+      const clusterBasePosition =
+        resolvedClusterNode?.position ||
+        resolvedClusterNode?.positionAbsolute || {
+          x: node.position?.x ?? node.positionAbsolute?.x ?? 0,
+          y: node.position?.y ?? node.positionAbsolute?.y ?? 0,
+        }
+
+      const targetLayerY =
+        clusterBasePosition.y +
+        (orientation === 'top' ? -CLUSTER_VERTICAL_OFFSET : CLUSTER_VERTICAL_OFFSET)
+
+      const remainingSiblings = nodes.filter((entry) => {
+        if (!entry) return false
+        if (entry.id === clusterId) return false
+        if (String(entry.id) === nodeId) return false
+        if (entry?.data?.isClusterPreview) return false
+        return String(entry?.data?.originClusterId || '') === String(clusterId)
+      })
+
+      const horizontalStep = Math.max(120, CLUSTER_HORIZONTAL_STEP)
+      const layoutTargets = remainingSiblings
+        .map((entry) => ({
+          id: String(entry.id),
+          name: entry?.data?.label || `Entity ${entry.id}`,
+        }))
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+
+      const startX =
+        clusterBasePosition.x - ((layoutTargets.length - 1) * horizontalStep) / 2
+
+      const layoutPositions = new Map()
+      layoutTargets.forEach((target, index) => {
+        layoutPositions.set(target.id, {
+          x: startX + index * horizontalStep,
+          y: targetLayerY,
+        })
+      })
 
       setRawNodes((prev) =>
         prev
           .filter((entry) => String(entry.id) !== nodeId)
           .map((entry) => {
-            if (String(entry.id) === String(clusterId)) {
+            const entryId = String(entry.id)
+            if (entryId === String(clusterId)) {
               return {
                 ...entry,
-                data: { ...entry.data, count: nextClusterCount },
+                data: { ...entry.data, count: detailSnapshot.nextClusterCount },
+              }
+            }
+            if (layoutPositions.has(entryId)) {
+              const layoutPosition = layoutPositions.get(entryId)
+              return {
+                ...entry,
+                position: { ...layoutPosition },
               }
             }
             return entry
@@ -1765,46 +2066,36 @@ export default function EntityExplorer() {
 
       setRawEdges((prev) =>
         prev
-          .filter((edge) => edge.id !== edgeId && String(edge.source) !== nodeId && String(edge.target) !== nodeId)
+          .filter(
+            (edge) =>
+              edge.id !== edgeId &&
+              String(edge.source) !== nodeId &&
+              String(edge.target) !== nodeId,
+          )
           .map((edge) => {
             if (edge.id === `${clusterId}-edge`) {
               return {
                 ...edge,
-                label: String(nextClusterCount),
+                label: String(detailSnapshot.nextClusterCount),
                 data: {
                   ...edge.data,
-                  clusterCount: nextClusterCount,
+                  clusterCount: detailSnapshot.nextClusterCount,
                 },
               }
             }
             return edge
           }),
       )
-
-      setClusterDetails((prev) => {
-        if (!prev.has(clusterId)) return prev
-        const next = new Map(prev)
-        const currentDetail = next.get(clusterId) || detail
-        const existingTargets = Array.isArray(currentDetail.targets)
-          ? currentDetail.targets.filter((target) => String(target.id) !== nodeId)
-          : []
-        const updatedTargets = [...existingTargets, targetInfo].sort((a, b) =>
-          (a.name || `Entity ${a.id || ''}`).localeCompare(b.name || `Entity ${b.id || ''}`),
-        )
-
-        const updatedDetail = {
-          ...currentDetail,
-          targets: updatedTargets,
-          count: nextClusterCount,
-        }
-        next.set(clusterId, updatedDetail)
-        if (activeClusterId === clusterId) {
-          setActiveClusterDetails(updatedDetail)
-        }
-        return next
-      })
     },
-    [activeClusterId, clusterDetails, setActiveClusterDetails, setClusterDetails, setRawEdges, setRawNodes],
+    [
+      activeClusterId,
+      nodes,
+      reactFlowInstance,
+      setActiveClusterDetails,
+      setClusterDetails,
+      setRawEdges,
+      setRawNodes,
+    ],
   )
 
   const handleClusterEntityDragStart = useCallback(
