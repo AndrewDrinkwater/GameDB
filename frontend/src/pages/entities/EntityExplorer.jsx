@@ -170,6 +170,7 @@ const computeClusterChildLayout = ({
   sourcePosition,
   orientation,
   targets,
+  clusterPosition,
 }) => {
   const layout = new Map()
   const safeTargets = Array.isArray(targets)
@@ -188,14 +189,26 @@ const computeClusterChildLayout = ({
         .filter((target) => target.id)
     : []
 
+  const normalizedClusterPosition =
+    clusterPosition &&
+    Number.isFinite(clusterPosition.x) &&
+    Number.isFinite(clusterPosition.y)
+      ? { x: clusterPosition.x, y: clusterPosition.y }
+      : null
+
+  const sourceX = Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0
+  const sourceY = Number.isFinite(sourcePosition?.y) ? sourcePosition.y : 0
+  const direction = orientation === 'top' ? -1 : 1
+
   if (safeTargets.length === 0) {
-    const baseX = Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0
-    const baseY = Number.isFinite(sourcePosition?.y) ? sourcePosition.y : 0
-    const direction = orientation === 'top' ? -1 : 1
-    const targetLayerY = baseY + direction * CLUSTER_VERTICAL_OFFSET
+    const baseX = normalizedClusterPosition ? normalizedClusterPosition.x : sourceX
+    const baseY = normalizedClusterPosition
+      ? normalizedClusterPosition.y
+      : sourceY + direction * CLUSTER_VERTICAL_OFFSET
+    const targetLayerY = baseY
     return {
       positions: layout,
-      clusterPosition: {
+      clusterPosition: normalizedClusterPosition || {
         x: baseX,
         y: targetLayerY,
       },
@@ -210,25 +223,32 @@ const computeClusterChildLayout = ({
   })
 
   const horizontalStep = Math.max(120, CLUSTER_HORIZONTAL_STEP)
-  const baseX = Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0
-  const baseY = Number.isFinite(sourcePosition?.y) ? sourcePosition.y : 0
-  const direction = orientation === 'top' ? -1 : 1
-  const targetLayerY = baseY + direction * CLUSTER_VERTICAL_OFFSET
-  const startX = baseX - ((sortedTargets.length - 1) * horizontalStep) / 2
+  const centerX = normalizedClusterPosition ? normalizedClusterPosition.x : sourceX
+  const targetLayerY = normalizedClusterPosition
+    ? normalizedClusterPosition.y
+    : sourceY + direction * CLUSTER_VERTICAL_OFFSET
+  const slotCount = sortedTargets.length + 1
+  const clusterSlotIndex = Math.floor(slotCount / 2)
+  const startX = centerX - clusterSlotIndex * horizontalStep
 
   sortedTargets.forEach((target, index) => {
+    let slotIndex = index
+    if (slotIndex >= clusterSlotIndex) {
+      slotIndex += 1
+    }
     layout.set(target.id, {
-      x: startX + index * horizontalStep,
+      x: startX + slotIndex * horizontalStep,
       y: targetLayerY,
     })
   })
 
-  const clusterPosition = {
-    x: startX + sortedTargets.length * horizontalStep,
-    y: targetLayerY,
-  }
+  const nextClusterPosition =
+    normalizedClusterPosition || {
+      x: startX + clusterSlotIndex * horizontalStep,
+      y: targetLayerY,
+    }
 
-  return { positions: layout, clusterPosition, targetLayerY }
+  return { positions: layout, clusterPosition: nextClusterPosition, targetLayerY }
 }
 
 const CONTEXT_MENU_INITIAL_STATE = {
@@ -1830,6 +1850,12 @@ export default function EntityExplorer() {
         reactFlowInstance?.getNode?.(clusterId) ||
         null
 
+      const resolvedClusterPosition = resolvedClusterNode?.position
+        ? { ...resolvedClusterNode.position }
+        : resolvedClusterNode?.positionAbsolute
+        ? { ...resolvedClusterNode.positionAbsolute }
+        : null
+
       const resolvedSourceNode =
         nodes.find((entry) => String(entry.id) === detailSnapshot.sourceId) ||
         reactFlowInstance?.getNode?.(detailSnapshot.sourceId) ||
@@ -1906,6 +1932,13 @@ export default function EntityExplorer() {
         ? sourcePosition.y
         : 0
 
+      const normalizedClusterPositionOverride =
+        clusterPositionOverride &&
+        Number.isFinite(clusterPositionOverride.x) &&
+        Number.isFinite(clusterPositionOverride.y)
+          ? { x: clusterPositionOverride.x, y: clusterPositionOverride.y }
+          : null
+
       const hasLayoutOverrides =
         !manualPlacement &&
         (layoutOverrides instanceof Map || Array.isArray(layoutOverrides))
@@ -1930,27 +1963,22 @@ export default function EntityExplorer() {
           sourcePosition,
           orientation,
           targets: layoutTargets,
+          clusterPosition:
+            normalizedClusterPositionOverride || resolvedClusterPosition,
         })
 
         layoutPositions = layoutResult.positions || new Map()
-        clusterPosition = layoutResult.clusterPosition || null
+        clusterPosition =
+          layoutResult.clusterPosition ||
+          normalizedClusterPositionOverride ||
+          resolvedClusterPosition ||
+          null
         targetLayerY = Number.isFinite(layoutResult.targetLayerY)
           ? layoutResult.targetLayerY
           : targetLayerY
       }
 
       if (!manualPlacement) {
-        if (
-          clusterPositionOverride &&
-          Number.isFinite(clusterPositionOverride.x) &&
-          Number.isFinite(clusterPositionOverride.y)
-        ) {
-          clusterPosition = {
-            x: clusterPositionOverride.x,
-            y: clusterPositionOverride.y,
-          }
-        }
-
         if (Number.isFinite(targetLayerOverride)) {
           targetLayerY = targetLayerOverride
         }
@@ -2036,19 +2064,31 @@ export default function EntityExplorer() {
         const next = prev.map((entry) => {
           const entryId = String(entry.id)
           if (entryId === String(clusterId)) {
-            const hasManualClusterPosition = Boolean(entry?.data?.hasManualPosition)
-            return {
+            const existingPosition = entry.position
+              ? { ...entry.position }
+              : entry.positionAbsolute
+              ? { ...entry.positionAbsolute }
+              : resolvedClusterPosition
+              ? { ...resolvedClusterPosition }
+              : clusterPosition
+              ? { ...clusterPosition }
+              : {
+                  x: Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0,
+                  y: Number.isFinite(targetLayerY) ? targetLayerY : 0,
+                }
+            const nextEntry = {
               ...entry,
               data: { ...entry.data, count: detailSnapshot.nextClusterCount },
-              position:
-                !manualPlacement &&
-                !hasManualClusterPosition &&
-                clusterPosition
-                  ? { ...clusterPosition }
-                  : entry.position
-                  ? { ...entry.position }
-                  : entry.position,
+              position: existingPosition,
             }
+            if (entry.positionAbsolute) {
+              nextEntry.positionAbsolute = { ...entry.positionAbsolute }
+            } else if (resolvedClusterNode?.positionAbsolute) {
+              nextEntry.positionAbsolute = {
+                ...resolvedClusterNode.positionAbsolute,
+              }
+            }
+            return nextEntry
           }
           if (
             !manualPlacement &&
@@ -2483,10 +2523,17 @@ export default function EntityExplorer() {
         })),
       )
 
+    const clusterBasePosition = clusterNode.position
+      ? { ...clusterNode.position }
+      : clusterNode.positionAbsolute
+      ? { ...clusterNode.positionAbsolute }
+      : null
+
     const layoutResult = computeClusterChildLayout({
       sourcePosition,
       orientation,
       targets: layoutTargets,
+      clusterPosition: clusterBasePosition,
     })
 
     const layoutPositions = layoutResult.positions || new Map()
