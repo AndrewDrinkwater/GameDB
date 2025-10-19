@@ -2064,7 +2064,25 @@ export default function EntityExplorer() {
         const next = prev.map((entry) => {
           const entryId = String(entry.id)
           if (entryId === String(clusterId)) {
-            const existingPosition = entry.position
+            const clusterHadManualPosition = Boolean(
+              entry?.data?.hasManualPosition,
+            )
+
+            const manualPosition = clusterHadManualPosition
+              ? resolvedClusterNode?.position ||
+                entry.position ||
+                resolvedClusterNode?.positionAbsolute ||
+                entry.positionAbsolute ||
+                null
+              : null
+
+            const manualAbsolutePosition = clusterHadManualPosition
+              ? resolvedClusterNode?.positionAbsolute ||
+                entry.positionAbsolute ||
+                null
+              : null
+
+            const fallbackPosition = entry.position
               ? { ...entry.position }
               : entry.positionAbsolute
               ? { ...entry.positionAbsolute }
@@ -2076,18 +2094,28 @@ export default function EntityExplorer() {
                   x: Number.isFinite(sourcePosition?.x) ? sourcePosition.x : 0,
                   y: Number.isFinite(targetLayerY) ? targetLayerY : 0,
                 }
+
             const nextEntry = {
               ...entry,
               data: { ...entry.data, count: detailSnapshot.nextClusterCount },
-              position: existingPosition,
+              position: manualPosition
+                ? { x: manualPosition.x, y: manualPosition.y }
+                : fallbackPosition,
             }
-            if (entry.positionAbsolute) {
+
+            if (manualAbsolutePosition) {
+              nextEntry.positionAbsolute = {
+                x: manualAbsolutePosition.x,
+                y: manualAbsolutePosition.y,
+              }
+            } else if (entry.positionAbsolute) {
               nextEntry.positionAbsolute = { ...entry.positionAbsolute }
             } else if (resolvedClusterNode?.positionAbsolute) {
               nextEntry.positionAbsolute = {
                 ...resolvedClusterNode.positionAbsolute,
               }
             }
+
             return nextEntry
           }
           if (
