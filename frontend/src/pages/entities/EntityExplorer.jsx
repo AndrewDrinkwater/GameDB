@@ -1744,114 +1744,82 @@ export default function EntityExplorer() {
 
       const nodeId = String(targetId)
       const resolvedClusterId = String(clusterId)
+      const currentDetail =
+        clusterDetails.get(clusterId) || clusterDetails.get(resolvedClusterId)
+
+      if (!currentDetail) return null
+
+      const sourceId =
+        currentDetail.sourceId !== undefined && currentDetail.sourceId !== null
+          ? String(currentDetail.sourceId)
+          : null
+      if (!sourceId) return null
+
+      const targetInfo = (currentDetail.targets || []).find(
+        (target) => String(target.id) === nodeId,
+      )
+      if (!targetInfo) return null
+
+      const relationshipsForTarget = Array.isArray(
+        currentDetail.targetRelationships?.[nodeId],
+      )
+        ? currentDetail.targetRelationships[nodeId]
+        : Array.isArray(currentDetail.relationships)
+          ? currentDetail.relationships
+          : []
+
+      const relationshipCounts =
+        currentDetail.targetRelationshipCounts?.[nodeId] || {}
+
+      const remainingTargets = (currentDetail.targets || []).filter(
+        (target) => String(target.id) !== nodeId,
+      )
+
+      const nextTargetRelationships = {
+        ...(currentDetail.targetRelationships || {}),
+      }
+      delete nextTargetRelationships[nodeId]
+
+      const nextTargetRelationshipCounts = {
+        ...(currentDetail.targetRelationshipCounts || {}),
+      }
+      delete nextTargetRelationshipCounts[nodeId]
+
+      const nextClusterCount = Math.max(0, (currentDetail.count || 0) - 1)
+
       const detailSnapshot = {
         clusterId: resolvedClusterId,
         targetId: nodeId,
-        sourceId: null,
-        targetInfo: null,
-        style: null,
-        typeId: null,
-        typeName: '',
-        label: '',
-        tooltip: null,
-        relationships: [],
-        relationshipCounts: {},
-        nextDetail: null,
-        nextClusterCount: 0,
-      }
-
-      let didUpdate = false
-
-      setClusterDetails((prev) => {
-        if (!prev.has(clusterId)) return prev
-
-        const currentDetail = prev.get(clusterId)
-        if (!currentDetail) return prev
-
-        const sourceId =
-          currentDetail.sourceId !== undefined && currentDetail.sourceId !== null
-            ? String(currentDetail.sourceId)
-            : null
-        if (!sourceId) return prev
-
-        const targetInfo = (currentDetail.targets || []).find(
-          (target) => String(target.id) === nodeId,
-        )
-        if (!targetInfo) return prev
-
-        const relationshipsForTarget = Array.isArray(
-          currentDetail.targetRelationships?.[nodeId],
-        )
-          ? currentDetail.targetRelationships[nodeId]
-          : Array.isArray(currentDetail.relationships)
-            ? currentDetail.relationships
-            : []
-
-        const relationshipCounts =
-          currentDetail.targetRelationshipCounts?.[nodeId] || {}
-
-        const remainingTargets = (currentDetail.targets || []).filter(
-          (target) => String(target.id) !== nodeId,
-        )
-
-        const nextTargetRelationships = {
-          ...(currentDetail.targetRelationships || {}),
-        }
-        delete nextTargetRelationships[nodeId]
-
-        const nextTargetRelationshipCounts = {
-          ...(currentDetail.targetRelationshipCounts || {}),
-        }
-        delete nextTargetRelationshipCounts[nodeId]
-
-        const nextClusterCount = Math.max(0, (currentDetail.count || 0) - 1)
-
-        detailSnapshot.sourceId = sourceId
-        detailSnapshot.typeId =
-          currentDetail.typeId !== undefined && currentDetail.typeId !== null
-            ? String(currentDetail.typeId)
-            : null
-        detailSnapshot.typeName = currentDetail.typeName || ''
-        detailSnapshot.label = currentDetail.label || ''
-        detailSnapshot.tooltip = currentDetail.tooltip || null
-        detailSnapshot.style = currentDetail.style || null
-        detailSnapshot.targetInfo = {
+        sourceId,
+        targetInfo: {
           ...targetInfo,
           id: nodeId,
           name: targetInfo.name || `Entity ${nodeId}`,
           type: targetInfo.type || null,
-        }
-        detailSnapshot.relationships = relationshipsForTarget
-        detailSnapshot.relationshipCounts = relationshipCounts
-        detailSnapshot.nextClusterCount = nextClusterCount
-
-        const updatedDetail = {
+        },
+        style: currentDetail.style || null,
+        typeId:
+          currentDetail.typeId !== undefined && currentDetail.typeId !== null
+            ? String(currentDetail.typeId)
+            : null,
+        typeName: currentDetail.typeName || '',
+        label: currentDetail.label || '',
+        tooltip: currentDetail.tooltip || null,
+        relationships: relationshipsForTarget,
+        relationshipCounts,
+        nextDetail: {
           ...currentDetail,
           targets: remainingTargets,
           targetRelationships: nextTargetRelationships,
           targetRelationshipCounts: nextTargetRelationshipCounts,
           count: nextClusterCount,
-        }
-
-        detailSnapshot.nextDetail = updatedDetail
-        didUpdate = true
-
-        const next = new Map(prev)
-        next.set(clusterId, updatedDetail)
-        return next
-      })
-
-      if (!didUpdate || !detailSnapshot.targetInfo || !detailSnapshot.sourceId) {
-        return null
-      }
-
-      if (activeClusterId === clusterId && detailSnapshot.nextDetail) {
-        setActiveClusterDetails(detailSnapshot.nextDetail)
+        },
+        nextClusterCount,
       }
 
       return detailSnapshot
     },
-    [activeClusterId, setActiveClusterDetails, setClusterDetails],
+    [clusterDetails],
   )
 
   const promoteClusterTarget = useCallback(
@@ -2346,41 +2314,6 @@ export default function EntityExplorer() {
     ],
   )
 
-  const restoreClusterTargetFromSnapshot = useCallback(
-    (snapshot) => {
-      if (!snapshot) return
-
-      const nodeId = snapshot.targetId || snapshot.targetInfo?.id
-      if (!nodeId) return
-
-      const syntheticNode = {
-        id: nodeId,
-        data: {
-          label:
-            snapshot.targetInfo?.name ||
-            `Entity ${snapshot.targetInfo?.id || nodeId}`,
-          type: snapshot.targetInfo?.type || null,
-          originClusterId: snapshot.clusterId,
-          originClusterSourceId: snapshot.sourceId,
-          originClusterTypeId: snapshot.typeId,
-          originTarget:
-            snapshot.targetInfo || {
-              id: nodeId,
-              name: snapshot.targetInfo?.name || `Entity ${nodeId}`,
-              type: snapshot.targetInfo?.type || null,
-            },
-          originRelationships: snapshot.relationships || [],
-          originRelationshipCounts: snapshot.relationshipCounts || {},
-        },
-        position: snapshot.position || { x: 0, y: 0 },
-        type: 'customNode',
-      }
-
-      returnClusterTarget(syntheticNode)
-    },
-    [returnClusterTarget],
-  )
-
   const handleClusterEntityDragStart = useCallback(
     (event, target) => {
       if (!target) return
@@ -2470,25 +2403,11 @@ export default function EntityExplorer() {
     }
   }, [])
 
-  const handleClusterEntityDragEnd = useCallback(
-    () => {
-      const snapshot = pendingClusterTargetRef.current
-      const didCompleteDrop = clusterDragCompletedRef.current
-
-      pendingClusterTargetRef.current = null
-      clusterDragCompletedRef.current = false
-      setDraggedClusterTargetId(null)
-
-      if (didCompleteDrop) {
-        return
-      }
-
-      if (snapshot) {
-        restoreClusterTargetFromSnapshot(snapshot)
-      }
-    },
-    [restoreClusterTargetFromSnapshot],
-  )
+  const handleClusterEntityDragEnd = useCallback(() => {
+    pendingClusterTargetRef.current = null
+    clusterDragCompletedRef.current = false
+    setDraggedClusterTargetId(null)
+  }, [])
 
   const handleExpandAllTargets = useCallback(() => {
     if (!activeClusterId) return
