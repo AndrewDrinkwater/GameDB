@@ -41,3 +41,11 @@ export const createEntity = (data) => api.post('/entities', data)
 export const updateEntity = (id, data) => api.patch(`/entities/${id}`, data)
 
 export const deleteEntity = (id) => api.delete(`/entities/${id}`)
+
+export const getEntityGraph = async (entityId) => {
+  const response = await api.get(`/entities/${entityId}/graph`)
+  if (!response?.success) {
+    throw new Error(response?.message || 'Failed to load graph')
+  }
+  return response.data
+}
