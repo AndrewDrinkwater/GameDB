@@ -89,11 +89,6 @@ const router = createBrowserRouter(
           <Route path="entities/relationship-viewer" element={<RelationshipViewerPage />} />
 
           <Route path="entities/:id" element={<EntityDetailPage />} />
-          <Route
-            path="worlds/:worldId/entities/:entityId/explore"
-            element={<EntityExplorer />}
-          />
-
         {/* Admin-only route */}
         <Route path="users" element={<UsersPage />} />
       </Route>
