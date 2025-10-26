@@ -1,8 +1,9 @@
 import { getAuthToken } from '../utils/authHelpers.js'
 
-const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api`
-  : 'http://localhost:3000/api'
+const apiEnv = typeof import.meta !== 'undefined' ? import.meta.env : undefined
+const apiBase = apiEnv?.VITE_API_URL || apiEnv?.VITE_API_BASE
+
+const API_BASE = apiBase ? `${apiBase}/api` : 'http://localhost:3000/api'
 
 async function request(method, url, data, config = {}) {
   const { headers: extraHeaders, ...restConfig } = config || {}
