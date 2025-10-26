@@ -3,7 +3,18 @@ import { getAuthToken } from '../utils/authHelpers.js'
 const apiEnv = typeof import.meta !== 'undefined' ? import.meta.env : undefined
 const apiBase = apiEnv?.VITE_API_URL || apiEnv?.VITE_API_BASE
 
-const API_BASE = apiBase ? `${apiBase}/api` : 'http://localhost:3000/api'
+function normalizeApiBase(base) {
+  if (!base) return null
+
+  const trimmed = base.replace(/\/+$/, '')
+  if (trimmed.endsWith('/api')) {
+    return trimmed
+  }
+
+  return `${trimmed}/api`
+}
+
+const API_BASE = normalizeApiBase(apiBase) || 'http://localhost:3000/api'
 
 async function request(method, url, data, config = {}) {
   const { headers: extraHeaders, ...restConfig } = config || {}
