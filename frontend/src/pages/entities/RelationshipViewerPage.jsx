@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import ReactFlow, {
-  Background,
-  Controls,
-  MiniMap,
-  Panel,
-  applyEdgeChanges,
-  applyNodeChanges,
-} from 'reactflow'
+import ReactFlow, { Background, Controls, MiniMap, applyEdgeChanges, applyNodeChanges } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { getEntityGraph } from '../../api/entities.js'
 import ClusterNode from '../../components/nodes/ClusterNode.jsx'
@@ -400,8 +393,16 @@ export default function RelationshipViewerPage() {
         <h1 className="text-2xl font-bold text-gray-800">Relationship Explorer</h1>
       </header>
 
-      <div className="flex-1 min-h-0 relative">
-        <div className="w-full h-full relative" style={{ height: 'calc(100vh - 80px)' }}>
+      <div className="flex-1 min-h-0 flex flex-col bg-slate-100">
+        <RelationshipToolbar
+          onRefocus={handleRefocusView}
+          onZoomToFit={handleZoomToFit}
+          depth={relationshipDepth}
+          onIncreaseDepth={handleIncreaseDepth}
+          onDecreaseDepth={handleDecreaseDepth}
+        />
+
+        <div className="flex-1 min-h-0 relative">
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -413,15 +414,6 @@ export default function RelationshipViewerPage() {
             fitView
             onInit={setReactFlowInstance}
           >
-            <Panel position="top-left">
-              <RelationshipToolbar
-                onRefocus={handleRefocusView}
-                onZoomToFit={handleZoomToFit}
-                depth={relationshipDepth}
-                onIncreaseDepth={handleIncreaseDepth}
-                onDecreaseDepth={handleDecreaseDepth}
-              />
-            </Panel>
             <MiniMap />
             <Controls />
             <Background gap={16} />
