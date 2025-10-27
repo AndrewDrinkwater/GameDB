@@ -141,7 +141,8 @@
 
 .cluster-popup-entity.is-dragging {
   opacity: 0.7;
-  transform: scale(0.98);
+  transform: translate(8px, 8px) scale(0.98);
+  transition: transform 0.15s ease, opacity 0.15s ease;
   background: #f8fafc;
   border-color: rgba(148, 163, 184, 0.6);
   box-shadow: none;
@@ -149,7 +150,7 @@
 
 .cluster-popup-drag-preview {
   position: fixed;
-  pointer-events: none;
+  pointer-events: auto;
   z-index: 4000;
   width: 200px;
 }
