@@ -24,6 +24,7 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
   const panelRef = useRef(null)
   const dragState = useRef(null)
   const dragContainerRectRef = useRef(null)
+  const suppressBoardPanRef = useRef(false)
 
   // --- container bounds ---------------------------------------------------
   const getContainerRect = useCallback(() => {
@@ -125,6 +126,41 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [handleClose])
 
+  const emitClusterDragPhase = useCallback((phase) => {
+    try {
+      window.dispatchEvent(new CustomEvent('cluster-drag-phase', { detail: { phase } }))
+    } catch {}
+  }, [])
+
+  const releasePointerPanSuppression = useCallback(() => {
+    if (!suppressBoardPanRef.current) return false
+    suppressBoardPanRef.current = false
+    return true
+  }, [])
+
+  const handleCardPointerDown = useCallback(
+    (event) => {
+      if (event.button !== 0) return
+      event.stopPropagation()
+
+      if (!suppressBoardPanRef.current) {
+        suppressBoardPanRef.current = true
+        emitClusterDragPhase('start')
+      }
+
+      const handleRelease = () => {
+        const released = releasePointerPanSuppression()
+        if (released) emitClusterDragPhase('end')
+        window.removeEventListener('pointerup', handleRelease, true)
+        window.removeEventListener('pointercancel', handleRelease, true)
+      }
+
+      window.addEventListener('pointerup', handleRelease, true)
+      window.addEventListener('pointercancel', handleRelease, true)
+    },
+    [emitClusterDragPhase, releasePointerPanSuppression]
+  )
+
   // --- drag cards ---------------------------------------------------------
   const handleDragStart = (e, entity) => {
     e.stopPropagation()
@@ -161,11 +197,8 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     })
 
     // 🔊 Tell the page a cluster drag started
-    try {
-      window.dispatchEvent(
-        new CustomEvent('cluster-drag-phase', { detail: { phase: 'start' } })
-      )
-    } catch {}
+    if (!suppressBoardPanRef.current) suppressBoardPanRef.current = true
+    emitClusterDragPhase('start')
   }
 
   const handleDragEnd = (e, entity) => {
@@ -174,12 +207,9 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     setDraggingEntity(null)
     setDragPreview(null)
     dragContainerRectRef.current = null
+    releasePointerPanSuppression()
     // 🔊 Tell the page the cluster drag finished (drop or cancel)
-    try {
-      window.dispatchEvent(
-        new CustomEvent('cluster-drag-phase', { detail: { phase: 'end' } })
-      )
-    } catch {}
+    emitClusterDragPhase('end')
     if (e.dataTransfer.dropEffect !== 'none') {
       onDragEntity?.('remove', entity)
     }
@@ -241,10 +271,7 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
               <div
                 key={entity.id}
                 draggable={true}
-                onPointerDown={(e) => {
-                  // Prevent ReactFlow from initiating a pan when a card starts dragging
-                  e.stopPropagation()
-                }}
+                onPointerDownCapture={handleCardPointerDown}
                 onDragStart={(e) => handleDragStart(e, entity)}
                 onDragEnd={(e) => handleDragEnd(e, entity)}
                 className={`cluster-popup-entity ${draggingId === entity.id ? 'is-dragging' : ''}`}
