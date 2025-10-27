@@ -5,8 +5,8 @@ export const DEFAULT_ENTITY_HEIGHT = 120
 export const CLUSTER_ENTITY_GAP = 40
 export const DEFAULT_CLUSTER_THRESHOLD = 5
 
-const HIERARCHY_HORIZONTAL_PADDING = 160
-const HIERARCHY_VERTICAL_PADDING = 200
+const HIERARCHY_HORIZONTAL_PADDING = 40
+const HIERARCHY_VERTICAL_PADDING = 80
 const LEVEL_HORIZONTAL_SPACING =
   Math.max(DEFAULT_ENTITY_WIDTH, DEFAULT_CLUSTER_WIDTH) + HIERARCHY_HORIZONTAL_PADDING
 const LEVEL_VERTICAL_SPACING =
@@ -458,57 +458,68 @@ export function buildReactFlowGraph(
     if (!group?.edges?.length) return
     if (group.edges.length < clusterThreshold) return
 
-    if (group.anchorId) protectedNodeIds.add(group.anchorId)
-    clusterGroups.push(group)
+    const anchorLevel = group.anchorId != null ? levelMap.get(String(group.anchorId)) ?? Infinity : Infinity
+    clusterGroups.push({ ...group, anchorLevel })
   })
 
-  clusterGroups.forEach(({ typeName, anchorId, edges: edgesForGroup }) => {
-    const nodeIds = new Set()
-    edgesForGroup.forEach((edge) => {
-      nodeIds.add(edge.source)
-      nodeIds.add(edge.target)
-      consumedEdgeIds.add(edge.id)
+  clusterGroups
+    .sort((a, b) => {
+      const levelA = a.anchorLevel ?? Infinity
+      const levelB = b.anchorLevel ?? Infinity
+      if (levelA !== levelB) return levelA - levelB
+      return (a.typeName || '').localeCompare(b.typeName || '', undefined, { sensitivity: 'base' })
+    })
+    .forEach(({ typeName, anchorId, edges: edgesForGroup }) => {
+      const nodeIds = new Set()
+      edgesForGroup.forEach((edge) => {
+        nodeIds.add(edge.source)
+        nodeIds.add(edge.target)
+        consumedEdgeIds.add(edge.id)
     })
 
-    const containedIds = [...nodeIds].filter((id) => {
-      if (id === centerKey) return false
-      if (anchorId && id === anchorId) return false
-      if (protectedNodeIds.has(id)) return false
-      return true
+      const containedIds = [...nodeIds].filter((id) => {
+        if (id === centerKey) return false
+        if (anchorId && id === anchorId) return false
+        if (protectedNodeIds.has(id)) return false
+        return true
+      })
+
+      if (!containedIds.length) return
+
+      containedIds.forEach((id) => hiddenNodeIds.add(id))
+
+      if (anchorId && hiddenNodeIds.has(String(anchorId))) {
+        return
+      }
+
+      const clusterId = `cluster-${anchorId ?? 'unknown'}-${slugifyTypeName(typeName)}`
+      const entityCount = containedIds.length
+
+      clusterNodes.push({
+        id: clusterId,
+        type: 'cluster',
+        data: {
+          label: `${entityCount} ${typeName}${entityCount === 1 ? '' : 's'}`,
+          relationshipType: typeName,
+          count: entityCount,
+          containedIds,
+          sourceId: anchorId || centerKey,
+          allNodes: enrichedNodes,
+        },
+        position: { x: 0, y: 0 },
+      })
+
+      clusterEdges.push({
+        id: `edge-${clusterId}`,
+        source: anchorId || centerKey,
+        target: clusterId,
+        type: 'smoothstep',
+        label: `${typeName} (${entityCount})`,
+        animated: false,
+        sourceHandle: 'bottom',
+        targetHandle: 'top',
+      })
     })
-
-    if (!containedIds.length) return
-
-    containedIds.forEach((id) => hiddenNodeIds.add(id))
-
-    const clusterId = `cluster-${anchorId ?? 'unknown'}-${slugifyTypeName(typeName)}`
-    const entityCount = containedIds.length
-
-    clusterNodes.push({
-      id: clusterId,
-      type: 'cluster',
-      data: {
-        label: `${entityCount} ${typeName}${entityCount === 1 ? '' : 's'}`,
-        relationshipType: typeName,
-        count: entityCount,
-        containedIds,
-        sourceId: anchorId || centerKey,
-        allNodes: enrichedNodes,
-      },
-      position: { x: 0, y: 0 },
-    })
-
-    clusterEdges.push({
-      id: `edge-${clusterId}`,
-      source: anchorId || centerKey,
-      target: clusterId,
-      type: 'smoothstep',
-      label: `${typeName} (${entityCount})`,
-      animated: false,
-      sourceHandle: 'bottom',
-      targetHandle: 'top',
-    })
-  })
 
   const baseNodes = enrichedNodes
     .filter((n) => !hiddenNodeIds.has(String(n.id)))
