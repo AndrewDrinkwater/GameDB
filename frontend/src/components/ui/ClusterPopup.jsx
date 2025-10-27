@@ -199,7 +199,6 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
       x: e.clientX - containerRect.left,
       y: e.clientY - containerRect.top,
     })
-    onDragEntity?.('remove', entity)
   }
 
   const handleDragEnd = (e, entity) => {
@@ -208,8 +207,8 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     setDraggingEntity(null)
     setDragPreview(null)
     dragContainerRectRef.current = null
-    if (e.dataTransfer.dropEffect === 'none') {
-      onDragEntity?.('add', entity)
+    if (e.dataTransfer.dropEffect !== 'none') {
+      onDragEntity?.('remove', entity)
     }
   }
 

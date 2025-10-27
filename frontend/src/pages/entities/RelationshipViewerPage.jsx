@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import ReactFlow, {
   Background,
@@ -191,73 +191,60 @@ export default function RelationshipViewerPage() {
   const [nodes, setNodes] = useState([])
   const [edges, setEdges] = useState([])
   const [isDragging, setIsDragging] = useState(false)
-  const [reactFlowInstance, setReactFlowInstance] = useState(null)
-  const reactFlowWrapperRef = useRef(null)
 
   const onNodesChange = useCallback((changes) => setNodes((n) => applyNodeChanges(changes, n)), [])
   const onEdgesChange = useCallback((changes) => setEdges((e) => applyEdgeChanges(changes, e)), [])
 
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
   const handleDropOnBoard = (e) => {
     e.preventDefault()
     const raw = e.dataTransfer.getData('application/x-entity')
+    const clusterCtx = e.dataTransfer.getData('application/x-cluster-context')
     if (!raw) return
 
     try {
       const entity = JSON.parse(raw)
-      const contextRaw = e.dataTransfer.getData('application/x-cluster-context')
-      const clusterContext = contextRaw ? JSON.parse(contextRaw) : null
-      if (!reactFlowWrapperRef.current || !reactFlowInstance) {
-        throw new Error('Board is not ready for dropping entities')
-      }
-      const bounds = reactFlowWrapperRef.current.getBoundingClientRect()
-      const position = reactFlowInstance.project({
-        x: e.clientX - bounds.left,
-        y: e.clientY - bounds.top,
-      })
+      const ctx = clusterCtx ? JSON.parse(clusterCtx) : {}
+      const bounds = e.currentTarget.getBoundingClientRect()
+      const x = e.clientX - bounds.left
+      const y = e.clientY - bounds.top
+
       const newNode = {
         id: String(entity.id),
-        type: 'entity',
-        position,
-        data: {
-          label: entity.name || `Entity ${entity.id}`,
-          isCenter: false,
-          typeName: entity?.type?.name || entity?.typeName || 'Entity',
+        type: 'default',
+        position: { x, y },
+        data: { label: entity.name || `Entity ${entity.id}` },
+        style: {
+          border: '1px solid #cbd5f5',
+          background: '#ffffff',
+          color: '#0f172a',
+          fontWeight: 600,
         },
       }
 
-      setNodes((prev) => {
-        if (prev.some((node) => node.id === newNode.id)) {
-          return prev
-        }
-        return [...prev, newNode]
-      })
+      setNodes((prev) => [...prev, newNode])
 
-      const sourceId = clusterContext?.sourceId
-      const relationshipLabel =
-        clusterContext?.relationshipType || 'Membership'
-      if (sourceId) {
-        const newEdge = {
-          id: `edge-${sourceId}-${entity.id}`,
-          source: String(sourceId),
-          target: String(entity.id),
-          type: 'smoothstep',
-          label: relationshipLabel,
-        }
-        setEdges((prev) => {
-          if (prev.some((edge) => edge.id === newEdge.id)) {
-            return prev
-          }
-          return [...prev, newEdge]
-        })
+      if (ctx?.sourceId && ctx?.relationshipType) {
+        setEdges((prev) => [
+          ...prev,
+          {
+            id: `edge-${ctx.sourceId}-${entity.id}`,
+            source: ctx.sourceId,
+            target: String(entity.id),
+            type: 'smoothstep',
+            label: ctx.relationshipType,
+          },
+        ])
       }
     } catch (err) {
-      console.error('Failed to drop entity on relationship board', err)
+      console.error('Drop parse failed', err)
     }
     setIsDragging(false)
-    e.dataTransfer.dropEffect = 'copy'
   }
-
-  const handleDragOver = (e) => e.preventDefault()
 
   useEffect(() => {
     if (!entityId) return
@@ -306,7 +293,6 @@ export default function RelationshipViewerPage() {
           onDragOver={handleDragOver}
           onDragEnter={() => setIsDragging(true)}
           onDragLeave={() => setIsDragging(false)}
-          ref={reactFlowWrapperRef}
         >
           <ReactFlow
             nodes={nodes}
@@ -316,7 +302,6 @@ export default function RelationshipViewerPage() {
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             fitView
-            onInit={setReactFlowInstance}
           >
             <MiniMap />
             <Controls />
