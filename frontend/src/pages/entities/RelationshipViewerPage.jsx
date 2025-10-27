@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useMemo } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import ReactFlow, {
   Background,
@@ -14,6 +14,65 @@ import ClusterNode from '../../components/nodes/ClusterNode.jsx'
 const CLUSTER_THRESHOLD = 5
 const nodeTypes = { cluster: ClusterNode }
 const edgeTypes = {}
+
+function slugifyTypeName(name) {
+  return String(name ?? 'group')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function layoutNodesHierarchically(nodes, edges, centerId) {
+  const centerKey = String(centerId)
+  const levels = new Map()
+  const visited = new Set()
+
+  levels.set(centerKey, 0)
+  visited.add(centerKey)
+
+  let queue = [centerKey]
+  while (queue.length > 0) {
+    const current = queue.shift()
+    const currentLevel = levels.get(current)
+    const connectedEdges = edges.filter(
+      (e) => e.source === current || e.target === current
+    )
+
+    for (const edge of connectedEdges) {
+      const isParent = edge.target === current
+      const other = edge.source === current ? edge.target : edge.source
+      if (!visited.has(other)) {
+        visited.add(other)
+        const nextLevel = isParent ? currentLevel - 1 : currentLevel + 1
+        levels.set(other, nextLevel)
+        queue.push(other)
+      }
+    }
+  }
+
+  const minLevel = Math.min(...levels.values())
+  for (const [id, lvl] of levels.entries()) levels.set(id, lvl - minLevel)
+
+  const grouped = {}
+  for (const [id, level] of levels.entries()) {
+    if (!grouped[level]) grouped[level] = []
+    grouped[level].push(id)
+  }
+
+  const layouted = nodes.map((node) => {
+    const level = levels.get(node.id) ?? 0
+    const siblings = grouped[level] ?? []
+    const index = siblings.indexOf(node.id)
+    const spacingX = 220
+    const spacingY = 200
+    const totalWidth = (siblings.length - 1) * spacingX
+    const x = index * spacingX - totalWidth / 2
+    const y = level * spacingY
+    return { ...node, position: { x, y } }
+  })
+
+  return layouted
+}
 
 function buildReactFlowGraph(data, entityId, clusterThreshold = CLUSTER_THRESHOLD) {
   const centerKey = String(entityId)
@@ -35,75 +94,75 @@ function buildReactFlowGraph(data, entityId, clusterThreshold = CLUSTER_THRESHOL
 
   const groupedByType = new Map()
   parsedEdges.forEach((edge) => {
-    const { source, target, typeName } = edge
-    let counterpart = null
-    if (source === centerKey && target !== centerKey) counterpart = target
-    else if (target === centerKey && source !== centerKey) counterpart = source
-    if (!counterpart) return
-
-    if (!groupedByType.has(typeName)) groupedByType.set(typeName, { edges: [], nodeIds: new Set() })
-    const group = groupedByType.get(typeName)
-    group.edges.push(edge)
-    group.nodeIds.add(counterpart)
+    const key = edge.typeName
+    if (!groupedByType.has(key)) groupedByType.set(key, [])
+    groupedByType.get(key).push(edge)
   })
 
-  const hiddenNodeIds = new Set()
-  const consumedEdgeIds = new Set()
   const clusterNodes = []
   const clusterEdges = []
-  const generatedClusterIds = new Set()
+  const hiddenNodeIds = new Set()
+  const consumedEdgeIds = new Set()
 
-  for (const [typeName, group] of groupedByType.entries()) {
-    const nodeIds = Array.from(group.nodeIds)
-    const count = nodeIds.length
-    if (count >= clusterThreshold) {
-      group.edges.forEach((e) => consumedEdgeIds.add(e.id))
-      nodeIds.forEach((id) => hiddenNodeIds.add(id))
+  for (const [type, edges] of groupedByType.entries()) {
+    if (edges.length >= clusterThreshold) {
+      const nodeIds = new Set()
+      edges.forEach((e) => {
+        nodeIds.add(e.source)
+        nodeIds.add(e.target)
+        consumedEdgeIds.add(e.id)
+      })
 
-      const baseId = typeName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-      let clusterId = `cluster-${baseId}`
-      let suffix = 1
-      while (generatedClusterIds.has(clusterId)) {
-        suffix += 1
-        clusterId = `cluster-${baseId}-${suffix}`
-      }
-      generatedClusterIds.add(clusterId)
+      const containedIds = [...nodeIds].filter((id) => id !== centerKey)
+      containedIds.forEach((id) => hiddenNodeIds.add(id))
 
+      const clusterId = `cluster-${slugifyTypeName(type)}`
       clusterNodes.push({
         id: clusterId,
         type: 'cluster',
         data: {
-          label: `${count} ${typeName}${count === 1 ? '' : 's'}`,
-          relationshipType: typeName,
-          count,
-          containedIds: nodeIds,
-          allNodes: rawNodes, // ✅ Pass all nodes
+          label: `${containedIds.length} ${type}${containedIds.length === 1 ? '' : 's'}`,
+          relationshipType: type,
+          count: containedIds.length,
+          containedIds,
           sourceId: centerKey,
+          allNodes: rawNodes,
         },
         position: { x: 0, y: 0 },
       })
 
       clusterEdges.push({
-        id: `cluster-edge-${clusterId}`,
+        id: `edge-${clusterId}`,
         source: centerKey,
         target: clusterId,
         type: 'smoothstep',
-        label: `${typeName} (${count})`,
+        label: `${type} (${containedIds.length})`,
         animated: false,
-        data: { relationshipType: typeName, count, isClusterEdge: true },
-        style: { strokeWidth: 2 },
       })
     }
   }
 
   const baseNodes = rawNodes
     .filter((n) => !hiddenNodeIds.has(String(n.id)))
-    .map((node) => ({
-      id: String(node.id),
-      type: 'default',
-      data: { label: node.name || `Entity ${node.id}` },
-      position: { x: 0, y: 0 },
-    }))
+    .map((node) => {
+      const id = String(node.id)
+      const label = node?.name || `Entity ${id}`
+      const isCenter = id === centerKey
+      const style = isCenter
+        ? {
+            border: '2px solid #2563eb',
+            background: '#dbeafe',
+            color: '#1d4ed8',
+            fontWeight: 700,
+          }
+        : {
+            border: '1px solid #cbd5f5',
+            background: '#ffffff',
+            color: '#0f172a',
+            fontWeight: 600,
+          }
+      return { id, type: 'default', data: { label, isCenter }, position: { x: 0, y: 0 }, style }
+    })
 
   const standardEdges = parsedEdges
     .filter((e) => !consumedEdgeIds.has(e.id))
@@ -114,9 +173,16 @@ function buildReactFlowGraph(data, entityId, clusterThreshold = CLUSTER_THRESHOL
       type: 'smoothstep',
       label: e.label,
       animated: true,
+      data: { relationshipType: e.typeName },
+      style: { strokeWidth: 1.5 },
     }))
 
-  return { nodes: [...baseNodes, ...clusterNodes], edges: [...standardEdges, ...clusterEdges] }
+  const layoutedNodes = layoutNodesHierarchically(
+    [...baseNodes, ...clusterNodes],
+    [...standardEdges, ...clusterEdges],
+    centerKey
+  )
+  return { nodes: layoutedNodes, edges: [...standardEdges, ...clusterEdges] }
 }
 
 export default function RelationshipViewerPage() {
@@ -125,36 +191,69 @@ export default function RelationshipViewerPage() {
   const [error, setError] = useState(null)
   const [nodes, setNodes] = useState([])
   const [edges, setEdges] = useState([])
+  const [isDragging, setIsDragging] = useState(false)
 
-  const onNodesChange = useCallback((changes) => setNodes((current) => applyNodeChanges(changes, current)), [])
-  const onEdgesChange = useCallback((changes) => setEdges((current) => applyEdgeChanges(changes, current)), [])
+  const onNodesChange = useCallback((changes) => setNodes((n) => applyNodeChanges(changes, n)), [])
+  const onEdgesChange = useCallback((changes) => setEdges((e) => applyEdgeChanges(changes, e)), [])
 
-  const memoNodeTypes = useMemo(() => nodeTypes, [])
-  const memoEdgeTypes = useMemo(() => edgeTypes, [])
+  const handleDropOnBoard = (e) => {
+    e.preventDefault()
+    const raw = e.dataTransfer.getData('application/x-entity')
+    if (!raw) return
+
+    try {
+      const entity = JSON.parse(raw)
+
+      const newNode = {
+        id: entity.id,
+        type: 'default',
+        position: { x: e.clientX - 150, y: e.clientY - 100 },
+        data: { label: entity.name || `Entity ${entity.id}` },
+      }
+
+      setNodes((prev) => [...prev, newNode])
+
+      const sourceCluster = nodes.find((n) => n.type === 'cluster')
+      if (sourceCluster?.data?.sourceId) {
+        setEdges((prev) => [
+          ...prev,
+          {
+            id: `edge-${sourceCluster.data.sourceId}-${entity.id}`,
+            source: sourceCluster.data.sourceId,
+            target: entity.id,
+            type: 'smoothstep',
+            label: sourceCluster.data.relationshipType || 'Membership',
+          },
+        ])
+      }
+    } catch {}
+    setIsDragging(false)
+  }
+
+  const handleDragOver = (e) => e.preventDefault()
 
   useEffect(() => {
     if (!entityId) return
-    let isActive = true
-
+    let active = true
     async function fetchData() {
       setLoading(true)
       setError(null)
       try {
         const graph = await getEntityGraph(entityId)
         const layouted = buildReactFlowGraph(graph, entityId)
-        if (isActive) {
+        if (active) {
           setNodes(layouted.nodes)
           setEdges(layouted.edges)
         }
       } catch (err) {
-        if (isActive) setError(err.message || 'Failed to load graph')
+        if (active) setError(err.message || 'Failed to load graph')
       } finally {
-        if (isActive) setLoading(false)
+        if (active) setLoading(false)
       }
     }
     fetchData()
     return () => {
-      isActive = false
+      active = false
     }
   }, [entityId])
 
@@ -165,22 +264,38 @@ export default function RelationshipViewerPage() {
   return (
     <div className="flex flex-col h-screen w-full bg-gray-100">
       <header className="p-4 border-b bg-white shadow-sm">
-        <h1 className="text-2xl font-bold text-gray-800">Relationship Viewer</h1>
+        <h1 className="text-2xl font-bold text-gray-800">
+          Relationship Viewer (Hierarchical + Clustering)
+        </h1>
       </header>
-      <div className="flex-1 min-h-0">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          nodeTypes={memoNodeTypes}
-          edgeTypes={memoEdgeTypes}
-          fitView
+
+      <div className="flex-1 min-h-0 relative">
+        {isDragging && (
+          <div className="absolute inset-0 bg-blue-100/30 border-2 border-blue-400 border-dashed z-[10]" />
+        )}
+
+        <div
+          className="w-full h-full relative"
+          style={{ height: 'calc(100vh - 80px)' }}
+          onDrop={handleDropOnBoard}
+          onDragOver={handleDragOver}
+          onDragEnter={() => setIsDragging(true)}
+          onDragLeave={() => setIsDragging(false)}
         >
-          <MiniMap />
-          <Controls />
-          <Background gap={16} />
-        </ReactFlow>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            fitView
+          >
+            <MiniMap />
+            <Controls />
+            <Background gap={16} />
+          </ReactFlow>
+        </div>
       </div>
     </div>
   )
