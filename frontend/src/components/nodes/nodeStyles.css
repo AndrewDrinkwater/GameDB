@@ -225,3 +225,42 @@
 .entity-node__action:disabled svg {
   opacity: 0.9;
 }
+
+/* --------------------------------------------------------
+   Entity Node Icon Fix
+-------------------------------------------------------- */
+
+.entity-node__action svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor !important;
+  fill: none !important;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.entity-node__action.is-primary {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+.entity-node__action.is-primary svg {
+  stroke: #ffffff !important;
+}
+
+.entity-node__action:hover:not(:disabled),
+.entity-node__action:focus-visible:not(:disabled) {
+  background: #e2e8f0;
+  transform: translateY(-1px);
+}
+
+.entity-node__action.is-primary:hover:not(:disabled),
+.entity-node__action.is-primary:focus-visible:not(:disabled) {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.entity-node__action:active:not(:disabled) {
+  transform: translateY(1px);
+}

@@ -5,8 +5,6 @@
 .cluster-popup-overlay {
   position: absolute;
   inset: 0;
-  /* allow clicks to pass through the transparent overlay,
-     but the panel itself can still handle pointer events */
   pointer-events: none;
   font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont,
     'Helvetica Neue', Arial, sans-serif;
@@ -14,7 +12,7 @@
 
 .cluster-popup-panel {
   position: absolute;
-  pointer-events: auto; /* ✅ re-enable interactivity for contents */
+  pointer-events: auto;
   width: 420px;
   max-height: 70vh;
   display: flex;
@@ -30,7 +28,6 @@
   z-index: 2600;
 }
 
-/* Dim panel slightly while dragging (but still clickable) */
 /* --------------------------------------------------------
    Header
 -------------------------------------------------------- */
@@ -133,7 +130,6 @@
   gap: 12px;
 }
 
-
 .cluster-popup-entity {
   border-radius: 14px;
   border: 1px solid rgba(203, 213, 225, 0.6);
@@ -178,7 +174,8 @@
 .cluster-popup-entity-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .cluster-popup-entity:hover {
@@ -204,6 +201,10 @@
   box-shadow: none;
 }
 
+/* --------------------------------------------------------
+   Action Buttons (Icons)
+-------------------------------------------------------- */
+
 .cluster-popup-entity-action {
   display: inline-flex;
   align-items: center;
@@ -214,6 +215,7 @@
   border: 1px solid #e2e8f0;
   background: #f8fafc;
   color: #334155;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
   transition:
     background-color 120ms ease,
     color 120ms ease,
@@ -221,10 +223,23 @@
     transform 100ms ease;
 }
 
+.cluster-popup-entity-action svg {
+  stroke: currentColor !important;
+  fill: none !important;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: inherit;
+}
+
 .cluster-popup-entity-action.is-primary {
   background: #3b82f6;
   border-color: #3b82f6;
   color: #ffffff;
+}
+
+.cluster-popup-entity-action.is-primary svg {
+  stroke: #ffffff !important;
 }
 
 .cluster-popup-entity-action:hover:not(:disabled),
