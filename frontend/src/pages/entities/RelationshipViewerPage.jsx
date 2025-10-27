@@ -9,6 +9,7 @@ import {
   buildReactFlowGraph,
   createAdHocEntityNode,
   positionEntitiesBelowCluster,
+  layoutNodesHierarchically,
 } from '../../utils/entityPositioning.js'
 import RelationshipToolbar from '../../components/relationshipViewer/RelationshipToolbar.jsx'
 
@@ -562,6 +563,94 @@ export default function RelationshipViewerPage() {
     reactFlowInstance.fitView({ padding: 0.2, duration: 500 })
   }, [nodes.length, reactFlowInstance])
 
+  const handleAutoArrange = useCallback(() => {
+    if (!entityId) return
+
+    setNodes((currentNodes) => {
+      if (!currentNodes?.length) return currentNodes
+
+      const layouted = layoutNodesHierarchically(
+        currentNodes,
+        edgesRef.current || [],
+        entityId
+      )
+
+      const positionMap = new Map(
+        layouted.map((node) => [String(node.id), { ...node.position }])
+      )
+
+      const withPositions = currentNodes.map((node) => {
+        const layoutPosition = positionMap.get(String(node.id))
+        if (!layoutPosition) return node
+
+        const hasSamePosition =
+          node?.position?.x === layoutPosition.x &&
+          node?.position?.y === layoutPosition.y
+
+        if (hasSamePosition) return node
+
+        return {
+          ...node,
+          position: { ...layoutPosition },
+        }
+      })
+
+      const clusterToEntities = Object.entries(boardEntities).reduce(
+        (acc, [entityKey, info]) => {
+          const clusterId = info?.clusterId
+          if (!clusterId) return acc
+          const key = String(clusterId)
+          if (!acc[key]) acc[key] = []
+          acc[key].push(String(entityKey))
+          return acc
+        },
+        {}
+      )
+
+      if (!Object.keys(clusterToEntities).length) return withPositions
+
+      let arrangedNodes = withPositions.map((node) => {
+        if (node.type !== 'cluster') return node
+        const placed = clusterToEntities[node.id] || []
+        const existingPlaced = (node.data?.placedEntityIds || []).map(String)
+
+        const changed =
+          placed.length !== existingPlaced.length ||
+          placed.some((id, index) => id !== existingPlaced[index])
+
+        if (!changed) return node
+
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            placedEntityIds: placed,
+          },
+        }
+      })
+
+      for (const [clusterId, entityIds] of Object.entries(clusterToEntities)) {
+        const clusterNode = arrangedNodes.find(
+          (node) => node.id === clusterId && node.type === 'cluster'
+        )
+        if (!clusterNode) continue
+        arrangedNodes = positionEntitiesBelowCluster(
+          arrangedNodes,
+          clusterNode,
+          entityIds
+        )
+      }
+
+      return arrangedNodes
+    })
+
+    if (reactFlowInstance) {
+      requestAnimationFrame(() => {
+        reactFlowInstance.fitView({ padding: 0.2, duration: 400 })
+      })
+    }
+  }, [boardEntities, entityId, reactFlowInstance])
+
   const handleIncreaseDepth = useCallback(() => {
     setRelationshipDepth((current) => Math.min(3, current + 1))
   }, [])
@@ -584,6 +673,7 @@ export default function RelationshipViewerPage() {
         <RelationshipToolbar
           onRefocus={handleRefocusView}
           onZoomToFit={handleZoomToFit}
+          onAutoArrange={handleAutoArrange}
           depth={relationshipDepth}
           onIncreaseDepth={handleIncreaseDepth}
           onDecreaseDepth={handleDecreaseDepth}
