@@ -427,6 +427,15 @@ export function buildReactFlowGraph(
 
   const levelMap = computeNodeLevels(parsedEdges, centerKey)
 
+  const adjacencyMap = new Map()
+
+  parsedEdges.forEach((edge) => {
+    if (!adjacencyMap.has(edge.source)) adjacencyMap.set(edge.source, new Set())
+    if (!adjacencyMap.has(edge.target)) adjacencyMap.set(edge.target, new Set())
+    adjacencyMap.get(edge.source).add(edge.target)
+    adjacencyMap.get(edge.target).add(edge.source)
+  })
+
   const groupedByTypeAndAnchor = new Map()
 
   parsedEdges.forEach((edge) => {
@@ -451,6 +460,10 @@ export function buildReactFlowGraph(
   const consumedEdgeIds = new Set()
 
   const protectedNodeIds = new Set([centerKey])
+  const extraProtected = Array.isArray(data?.protectedNodeIds)
+    ? data.protectedNodeIds.map((value) => String(value))
+    : []
+  extraProtected.forEach((id) => protectedNodeIds.add(id))
 
   const clusterGroups = []
 
@@ -551,25 +564,62 @@ export function buildReactFlowGraph(
       targetHandle: 'top',
     }))
 
-  const nodeSuppressedBy = new Map()
-  const suppressedNodeIds = new Set()
+  const reachableWithoutHidden = new Set()
+  const reachableQueue = []
 
-  for (const edge of standardEdges) {
-    const sourceHidden = hiddenNodeIds.has(edge.source)
-    const targetHidden = hiddenNodeIds.has(edge.target)
-
-    if (sourceHidden && !targetHidden) {
-      suppressedNodeIds.add(edge.target)
-      if (!nodeSuppressedBy.has(edge.target)) nodeSuppressedBy.set(edge.target, new Set())
-      nodeSuppressedBy.get(edge.target).add(edge.source)
+  protectedNodeIds.forEach((id) => {
+    const key = String(id)
+    if (hiddenNodeIds.has(key)) return
+    if (!reachableWithoutHidden.has(key)) {
+      reachableWithoutHidden.add(key)
+      reachableQueue.push(key)
     }
+  })
 
-    if (targetHidden && !sourceHidden) {
-      suppressedNodeIds.add(edge.source)
-      if (!nodeSuppressedBy.has(edge.source)) nodeSuppressedBy.set(edge.source, new Set())
-      nodeSuppressedBy.get(edge.source).add(edge.target)
-    }
+  while (reachableQueue.length) {
+    const current = reachableQueue.shift()
+    const neighbors = adjacencyMap.get(current)
+    if (!neighbors) continue
+
+    neighbors.forEach((neighbor) => {
+      if (hiddenNodeIds.has(neighbor)) return
+      if (reachableWithoutHidden.has(neighbor)) return
+      reachableWithoutHidden.add(neighbor)
+      reachableQueue.push(neighbor)
+    })
   }
+
+  const suppressedNodeIds = new Set()
+  const nodeSuppressedBy = new Map()
+
+  hiddenNodeIds.forEach((hiddenId) => {
+    const visited = new Set([hiddenId])
+    const queue = [hiddenId]
+
+    while (queue.length) {
+      const current = queue.shift()
+      const neighbors = adjacencyMap.get(current)
+      if (!neighbors) continue
+
+      neighbors.forEach((neighbor) => {
+        if (visited.has(neighbor)) return
+        visited.add(neighbor)
+
+        if (hiddenNodeIds.has(neighbor)) {
+          queue.push(neighbor)
+          return
+        }
+
+        if (protectedNodeIds.has(neighbor)) return
+        if (reachableWithoutHidden.has(neighbor)) return
+
+        suppressedNodeIds.add(neighbor)
+        if (!nodeSuppressedBy.has(neighbor)) nodeSuppressedBy.set(neighbor, new Set())
+        nodeSuppressedBy.get(neighbor).add(hiddenId)
+        queue.push(neighbor)
+      })
+    }
+  })
 
   const layoutedNodes = layoutNodesHierarchically(
     [...baseNodes, ...clusterNodes],
