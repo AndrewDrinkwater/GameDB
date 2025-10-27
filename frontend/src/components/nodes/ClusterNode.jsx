@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Handle, Position } from 'reactflow'
 import ClusterPopup from '../ui/ClusterPopup'
+import './nodeStyles.css'
 
 export default function ClusterNode({ data }) {
   const [open, setOpen] = useState(false)
@@ -46,32 +47,51 @@ export default function ClusterNode({ data }) {
 
   return (
     <>
-      <div
-        className="relative flex cursor-pointer flex-col gap-2 rounded-3xl border border-amber-300/80 bg-gradient-to-b from-amber-50 via-white to-amber-100 px-5 py-4 text-sm text-amber-900 shadow-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-2xl"
-        onClick={handleOpen}
-      >
-        <Handle type="target" position={Position.Top} />
-        <div className="flex items-center justify-between gap-2">
-          <div className="rounded-full bg-amber-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+      <div className="cluster-node" onClick={handleOpen}>
+        <Handle
+          type="target"
+          position={Position.Top}
+          style={{
+            width: 12,
+            height: 12,
+            background: '#fcd34d',
+            border: '1px solid #fff',
+            borderRadius: '999px',
+            boxShadow: '0 1px 2px rgba(120, 53, 15, 0.2)',
+          }}
+        />
+        <div className="cluster-node__header">
+          <div className="cluster-node__badge">
             Cluster
           </div>
-          <div className="flex items-center gap-1 rounded-full bg-amber-500/20 px-3 py-1 text-[11px] font-semibold text-amber-800">
-            <span className="h-2 w-2 rounded-full bg-amber-500" />
+          <div className="cluster-node__meta">
+            <span className="cluster-node__meta-dot" />
             {relationshipCount} relationships
           </div>
         </div>
-        <div className="text-base font-semibold leading-tight text-center">
+        <div className="cluster-node__label">
           {data?.label || 'Cluster'}
         </div>
         {data?.relationshipType && (
-          <div className="text-xs font-medium uppercase tracking-wide text-amber-700 text-center">
+          <div className="cluster-node__relationship">
             {data.relationshipType}
           </div>
         )}
-        <div className="text-[11px] text-center text-amber-700">
+        <div className="cluster-node__count">
           {containedEntities.length} entities inside
         </div>
-        <Handle type="source" position={Position.Bottom} />
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          style={{
+            width: 12,
+            height: 12,
+            background: '#fcd34d',
+            border: '1px solid #fff',
+            borderRadius: '999px',
+            boxShadow: '0 1px 2px rgba(120, 53, 15, 0.2)',
+          }}
+        />
       </div>
 
       {open && (
