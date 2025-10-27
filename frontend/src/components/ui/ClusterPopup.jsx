@@ -256,7 +256,21 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
                 draggable
                 onDragStart={(e) => handleDragStart(e, entity)}
                 onDragEnd={(e) => handleDragEnd(e, entity)}
-                onPointerDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                }}
+                onPointerDownCapture={(e) => {
+                  e.stopPropagation()
+                }}
+                onMouseDownCapture={(e) => {
+                  e.stopPropagation()
+                  if (typeof e.preventDefault === 'function') {
+                    e.preventDefault()
+                  }
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation()
+                }}
                 className={`cluster-popup-entity ${draggingId === entity.id ? 'is-dragging' : ''}`}
                 title={entity.name || `Entity ${entity.id}`}
               >
