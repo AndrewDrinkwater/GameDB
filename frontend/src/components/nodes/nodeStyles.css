@@ -2,7 +2,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
   gap: 0.75rem;
   min-width: 200px;
@@ -46,8 +46,22 @@
   width: 100%;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  gap: 0.55rem;
+}
+
+.entity-node__row {
+  display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.5rem;
+}
+
+.entity-node__row--title {
+  justify-content: center;
+}
+
+.entity-node__row--meta {
+  justify-content: space-between;
 }
 
 .entity-node__label {
@@ -72,6 +86,8 @@
   text-transform: uppercase;
   background: rgba(226, 232, 240, 0.9);
   color: #475569;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .entity-node__type-pill.is-center {
@@ -153,20 +169,10 @@
 }
 
 .entity-node__actions {
-  position: absolute;
-  top: 10px;
-  right: 10px;
   display: flex;
+  align-items: center;
   gap: 6px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease;
-}
-
-.entity-node:hover .entity-node__actions,
-.entity-node:focus-within .entity-node__actions {
-  opacity: 1;
-  pointer-events: auto;
+  margin-left: auto;
 }
 
 .entity-node__action {
@@ -176,8 +182,8 @@
   width: 28px;
   height: 28px;
   border-radius: 999px;
-  border: 1px solid rgba(100, 116, 139, 0.35);
-  background: rgba(248, 250, 252, 0.95);
+  border: 1px solid rgba(100, 116, 139, 0.45);
+  background: rgba(226, 232, 240, 0.95);
   color: #0f172a;
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
   transition:

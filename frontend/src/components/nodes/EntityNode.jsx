@@ -42,40 +42,43 @@ export default function EntityNode({ data }) {
         }}
       />
 
-      <div className="entity-node__actions" aria-hidden={!data?.onSetTarget && !data?.onOpenInfo}>
-        <button
-          type="button"
-          className="entity-node__action"
-          onClick={handleSetTarget}
-          onPointerDown={(event) => event.stopPropagation()}
-          aria-label="Use as relationship source"
-          disabled={isCenter || !data?.onSetTarget}
-        >
-          <Target size={14} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className="entity-node__action"
-          onClick={handleOpenInfo}
-          onPointerDown={(event) => event.stopPropagation()}
-          aria-label="Open entity in new window"
-          disabled={!data?.onOpenInfo}
-        >
-          <Info size={14} aria-hidden="true" />
-        </button>
-      </div>
-
       {isCenter && <span className="entity-node__center-indicator" />}
 
       <div className="entity-node__content">
-        <div className="entity-node__label" title={label}>
-          {label}
-        </div>
-        {typeName && (
-          <div className={`entity-node__type-pill ${isCenter ? 'is-center' : ''}`}>
-            {typeName}
+        <div className="entity-node__row entity-node__row--title">
+          <div className="entity-node__label" title={label}>
+            {label}
           </div>
-        )}
+        </div>
+        <div className="entity-node__row entity-node__row--meta">
+          {typeName && (
+            <div className={`entity-node__type-pill ${isCenter ? 'is-center' : ''}`}>
+              {typeName}
+            </div>
+          )}
+          <div className="entity-node__actions" aria-hidden={!data?.onSetTarget && !data?.onOpenInfo}>
+            <button
+              type="button"
+              className="entity-node__action"
+              onClick={handleSetTarget}
+              onPointerDown={(event) => event.stopPropagation()}
+              aria-label="Use as relationship source"
+              disabled={isCenter || !data?.onSetTarget}
+            >
+              <Target size={14} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="entity-node__action"
+              onClick={handleOpenInfo}
+              onPointerDown={(event) => event.stopPropagation()}
+              aria-label="Open entity in new window"
+              disabled={!data?.onOpenInfo}
+            >
+              <Info size={14} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
       </div>
 
       <Handle
