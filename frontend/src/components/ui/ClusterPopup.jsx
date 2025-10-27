@@ -24,6 +24,7 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
   })
   const panelRef = useRef(null)
   const dragState = useRef(null)
+  const dragContainerRectRef = useRef(null)
 
   const getContainerRect = useCallback(() => {
     const parent = portalEl?.parentElement
@@ -192,7 +193,12 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     }
     setDraggingId(entity.id)
     setDraggingEntity(entity)
-    setDragPreview({ x: e.clientX, y: e.clientY })
+    const containerRect = getContainerRect()
+    dragContainerRectRef.current = containerRect
+    setDragPreview({
+      x: e.clientX - containerRect.left,
+      y: e.clientY - containerRect.top,
+    })
     onDragEntity?.('remove', entity)
   }
 
@@ -201,15 +207,24 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     setDraggingId(null)
     setDraggingEntity(null)
     setDragPreview(null)
+    dragContainerRectRef.current = null
     if (e.dataTransfer.dropEffect === 'none') {
       onDragEntity?.('add', entity)
     }
   }
 
-  const updateDragPreview = useCallback((event) => {
-    if (!draggingEntity) return
-    setDragPreview({ x: event.clientX, y: event.clientY })
-  }, [draggingEntity])
+  const updateDragPreview = useCallback(
+    (event) => {
+      if (!draggingEntity) return
+      const containerRect =
+        dragContainerRectRef.current || getContainerRect()
+      setDragPreview({
+        x: event.clientX - containerRect.left,
+        y: event.clientY - containerRect.top,
+      })
+    },
+    [draggingEntity, getContainerRect]
+  )
 
   const suppressPopupDrag = useCallback((event) => {
     if (typeof event.button === 'number' && event.button !== 0) return
