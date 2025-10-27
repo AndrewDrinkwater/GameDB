@@ -402,22 +402,26 @@ export default function RelationshipViewerPage() {
           onDecreaseDepth={handleDecreaseDepth}
         />
 
+        {/* IMPORTANT: This wrapper ensures React Flow receives explicit dimensions. Removing it breaks the canvas. */}
         <div className="flex-1 min-h-0 relative">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onNodeDragStop={handleNodeDragStop}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            fitView
-            onInit={setReactFlowInstance}
-          >
-            <MiniMap />
-            <Controls />
-            <Background gap={16} />
-          </ReactFlow>
+          <div className="w-full h-full relative" style={{ height: 'calc(100vh - 80px)' }}>
+            {/* IMPORTANT: Do not remove the wrapper above or the canvas will disappear. */}
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onNodeDragStop={handleNodeDragStop}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              fitView
+              onInit={setReactFlowInstance}
+            >
+              <MiniMap />
+              <Controls />
+              <Background gap={16} />
+            </ReactFlow>
+          </div>
         </div>
       </div>
     </div>
