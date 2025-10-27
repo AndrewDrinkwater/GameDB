@@ -24,9 +24,34 @@ export default function ClusterNode({ data }) {
 
   const handleOpen = (e) => {
     e.stopPropagation()
-    const rect = e.currentTarget.getBoundingClientRect()
-    // Position popup beside cluster node
-    setPopupPos({ x: rect.right + window.scrollX + 10, y: rect.top + window.scrollY })
+
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+    const scrollX = window.scrollX
+    const scrollY = window.scrollY
+    const panelWidth = 420
+    const panelHeight = Math.min(viewportHeight * 0.7, 520)
+    const offset = 16
+
+    let x = e.clientX + scrollX + offset
+    let y = e.clientY + scrollY - panelHeight / 2
+
+    const maxX = scrollX + viewportWidth - panelWidth - offset
+    const minX = scrollX + offset
+    if (x > maxX) {
+      x = Math.max(minX, e.clientX + scrollX - panelWidth - offset)
+    }
+    x = Math.max(minX, Math.min(x, maxX))
+
+    const maxY = scrollY + viewportHeight - panelHeight - offset
+    const minY = scrollY + offset
+    if (y < minY) {
+      y = minY
+    } else if (y > maxY) {
+      y = maxY
+    }
+
+    setPopupPos({ x, y })
     setOpen(true)
   }
 
@@ -95,23 +120,17 @@ export default function ClusterNode({ data }) {
       </div>
 
       {open && (
-        <>
-          <div
-            className="fixed inset-0 z-[999] bg-black/20 backdrop-blur-sm"
-            onClick={handleClose}
-          />
-          <ClusterPopup
-            position={popupPos}
-            cluster={{
-              label: data?.label,
-              entities: containedEntities,
-              relationshipType: data?.relationshipType,
-              sourceId: data?.sourceId,
-            }}
-            onClose={handleClose}
-            onDragEntity={handleDragEntity}
-          />
-        </>
+        <ClusterPopup
+          position={popupPos}
+          cluster={{
+            label: data?.label,
+            entities: containedEntities,
+            relationshipType: data?.relationshipType,
+            sourceId: data?.sourceId,
+          }}
+          onClose={handleClose}
+          onDragEntity={handleDragEntity}
+        />
       )}
     </>
   )
