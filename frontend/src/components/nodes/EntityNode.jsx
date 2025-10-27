@@ -1,4 +1,5 @@
 import { Handle, Position } from 'reactflow'
+import { Info, Target } from 'lucide-react'
 import './nodeStyles.css'
 
 export default function EntityNode({ data }) {
@@ -6,6 +7,21 @@ export default function EntityNode({ data }) {
   const label = data?.label || 'Entity'
   const typeName = data?.typeName || 'Entity'
   const inheritedStyle = data?.style || {}
+  const entityId = data?.entityId || data?.id
+
+  const handleSetTarget = (event) => {
+    event?.preventDefault()
+    event?.stopPropagation()
+    if (!data?.onSetTarget || !entityId || isCenter) return
+    data.onSetTarget(String(entityId))
+  }
+
+  const handleOpenInfo = (event) => {
+    event?.preventDefault()
+    event?.stopPropagation()
+    if (!data?.onOpenInfo || !entityId) return
+    data.onOpenInfo(String(entityId))
+  }
 
   return (
     <div
@@ -26,9 +42,30 @@ export default function EntityNode({ data }) {
         }}
       />
 
-      {isCenter && (
-        <span className="entity-node__center-indicator" />
-      )}
+      <div className="entity-node__actions" aria-hidden={!data?.onSetTarget && !data?.onOpenInfo}>
+        <button
+          type="button"
+          className="entity-node__action"
+          onClick={handleSetTarget}
+          onPointerDown={(event) => event.stopPropagation()}
+          aria-label="Use as relationship source"
+          disabled={isCenter || !data?.onSetTarget}
+        >
+          <Target size={14} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className="entity-node__action"
+          onClick={handleOpenInfo}
+          onPointerDown={(event) => event.stopPropagation()}
+          aria-label="Open entity in new window"
+          disabled={!data?.onOpenInfo}
+        >
+          <Info size={14} aria-hidden="true" />
+        </button>
+      </div>
+
+      {isCenter && <span className="entity-node__center-indicator" />}
 
       <div className="entity-node__content">
         <div className="entity-node__label" title={label}>

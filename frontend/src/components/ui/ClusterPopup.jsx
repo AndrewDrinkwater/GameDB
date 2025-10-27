@@ -1,5 +1,6 @@
 import ReactDOM from 'react-dom'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { Info, Plus, Target } from 'lucide-react'
 import './ClusterPopup.css'
 
 const PANEL_WIDTH = 420
@@ -15,8 +16,16 @@ export default function ClusterPopup({
   onClose,
   onAddToBoard,
   onReturnToGroup,
+  onSetTargetEntity,
+  onOpenEntityInfo,
 }) {
-  const { label, relationshipType, entities = [], placedEntityIds = [] } = cluster || {}
+  const {
+    label,
+    relationshipType,
+    entities = [],
+    placedEntityIds = [],
+    sourceId,
+  } = cluster || {}
   const [portalEl, setPortalEl] = useState(null)
   const [selectedEntityId, setSelectedEntityId] = useState(null)
   const entityCount = Array.isArray(entities) ? entities.length : 0
@@ -190,52 +199,91 @@ export default function ClusterPopup({
         </div>
 
         <div className="cluster-popup-instructions">
-          Select an entity to reveal quick actions. Choose <strong>Add to board</strong>{' '}
-          or <strong>Return to group</strong>.
+          Select an entity to reveal quick actions. Choose the <strong>+</strong>{' '}
+          icon to add it to the board or <strong>Return to group</strong>.
         </div>
 
         <div className="cluster-popup-entities">
           {entities.length ? (
-            entities.map((entity) => (
-              <div
-                key={entity.id}
-                className={`cluster-popup-entity ${
-                  placedIds.has(String(entity.id)) ? 'is-placed' : ''
-                } ${selectedEntityId === String(entity.id) ? 'is-selected' : ''}`}
-                title={entity.name || `Entity ${entity.id}`}
-                onClick={() => handleSelectEntity(String(entity.id), placedIds.has(String(entity.id)))}
-              >
-                <div className="cluster-popup-entity-name">
-                  {entity.name || `Entity ${entity.id}`}
+            entities.map((entity) => {
+              const entityKey = String(entity.id)
+              const isPlaced = placedIds.has(entityKey)
+              const isSelected = selectedEntityId === entityKey
+              const isCurrentSource = sourceId != null && entityKey === String(sourceId)
+
+              return (
+                <div
+                  key={entity.id}
+                  className={`cluster-popup-entity ${isPlaced ? 'is-placed' : ''} ${
+                    isSelected ? 'is-selected' : ''
+                  }`}
+                  title={entity.name || `Entity ${entity.id}`}
+                  onClick={() => handleSelectEntity(entityKey, isPlaced)}
+                >
+                  <div className="cluster-popup-entity-header">
+                    <div className="cluster-popup-entity-name">
+                      {entity.name || `Entity ${entity.id}`}
+                    </div>
+                    <div className="cluster-popup-entity-actions">
+                      <button
+                        type="button"
+                        className="cluster-popup-entity-action-icon"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onSetTargetEntity?.(entityKey)
+                        }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        aria-label="Use as relationship source"
+                        disabled={!onSetTargetEntity || isCurrentSource}
+                      >
+                        <Target size={14} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className="cluster-popup-entity-action-icon"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onOpenEntityInfo?.(entityKey)
+                        }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        aria-label="Open entity in new window"
+                        disabled={!onOpenEntityInfo}
+                      >
+                        <Info size={14} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="cluster-popup-entity-meta">
+                    Type: {getEntityTypeName(entity)}
+                  </div>
+                  {isPlaced ? (
+                    <button
+                      type="button"
+                      className="cluster-popup-entity-action"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handleReturnEntity(entity)
+                      }}
+                    >
+                      Return to group
+                    </button>
+                  ) : isSelected ? (
+                    <button
+                      type="button"
+                      className="cluster-popup-entity-action cluster-popup-entity-action--icon"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handleAddEntity(entity)
+                      }}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      aria-label="Add entity to board"
+                    >
+                      <Plus size={16} aria-hidden="true" />
+                    </button>
+                  ) : null}
                 </div>
-                <div className="cluster-popup-entity-meta">
-                  Type: {getEntityTypeName(entity)}
-                </div>
-                {placedIds.has(String(entity.id)) ? (
-                  <button
-                    type="button"
-                    className="cluster-popup-entity-action"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      handleReturnEntity(entity)
-                    }}
-                  >
-                    Return to group
-                  </button>
-                ) : selectedEntityId === String(entity.id) ? (
-                  <button
-                    type="button"
-                    className="cluster-popup-entity-action"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      handleAddEntity(entity)
-                    }}
-                  >
-                    Add to board
-                  </button>
-                ) : null}
-              </div>
-            ))
+              )
+            })
           ) : (
             <div className="cluster-popup-empty">No entities in this cluster.</div>
           )}

@@ -154,6 +154,27 @@
     opacity 150ms ease;
 }
 
+.cluster-popup-entity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cluster-popup-entity-actions {
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.cluster-popup-entity:hover .cluster-popup-entity-actions,
+.cluster-popup-entity:focus-within .cluster-popup-entity-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .cluster-popup-entity:hover {
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
   transform: translateY(-1px);
@@ -207,6 +228,62 @@
 .cluster-popup-entity-action:focus-visible {
   outline: 3px solid rgba(37, 99, 235, 0.45);
   outline-offset: 2px;
+}
+
+.cluster-popup-entity-action--icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  padding: 0;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+
+.cluster-popup-entity-action--icon:hover,
+.cluster-popup-entity-action--icon:focus-visible {
+  background: #1d4ed8;
+  color: #f8fafc;
+}
+
+.cluster-popup-entity-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(100, 116, 139, 0.35);
+  background: rgba(248, 250, 252, 0.95);
+  color: #0f172a;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.cluster-popup-entity-action-icon:hover:not(:disabled),
+.cluster-popup-entity-action-icon:focus-visible:not(:disabled) {
+  background: #1f2937;
+  color: #f8fafc;
+  border-color: #1f2937;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.24);
+  transform: translateY(-1px);
+}
+
+.cluster-popup-entity-action-icon:focus-visible {
+  outline: 3px solid rgba(96, 165, 250, 0.6);
+  outline-offset: 2px;
+}
+
+.cluster-popup-entity-action-icon:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 /* --------------------------------------------------------

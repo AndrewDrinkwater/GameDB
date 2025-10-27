@@ -155,7 +155,7 @@ export function buildReactFlowGraph(
       return {
         id,
         type: 'entity',
-        data: { label, isCenter, typeName },
+        data: { label, isCenter, typeName, entityId: id },
         position: { x: 0, y: 0 },
       }
     })
@@ -200,6 +200,7 @@ export function createAdHocEntityNode(clusterNode, entity) {
       typeName: entity?.type?.name || entity?.typeName || 'Entity',
       isCenter: false,
       isAdHoc: true,
+      entityId,
     },
   }
 }

@@ -127,6 +127,8 @@ export default function ClusterNode({ id, data }) {
           onClose={handleClose}
           onAddToBoard={data?.onAddToBoard}
           onReturnToGroup={data?.onReturnToGroup}
+          onSetTargetEntity={data?.onSetTargetEntity}
+          onOpenEntityInfo={data?.onOpenEntityInfo}
         />
       )}
     </>
