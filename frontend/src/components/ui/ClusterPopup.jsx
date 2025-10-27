@@ -9,7 +9,13 @@ const VIEWPORT_OFFSET = 16
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 const getEntityTypeName = (entity) => entity?.type?.name || entity?.typeName || 'Entity'
 
-export default function ClusterPopup({ position, cluster, onClose, onAddToBoard }) {
+export default function ClusterPopup({
+  position,
+  cluster,
+  onClose,
+  onAddToBoard,
+  onReturnToGroup,
+}) {
   const { label, relationshipType, entities = [], placedEntityIds = [] } = cluster || {}
   const [portalEl, setPortalEl] = useState(null)
   const [selectedEntityId, setSelectedEntityId] = useState(null)
@@ -151,6 +157,15 @@ export default function ClusterPopup({ position, cluster, onClose, onAddToBoard 
     [cluster, onAddToBoard]
   )
 
+  const handleReturnEntity = useCallback(
+    (entity) => {
+      if (!entity) return
+      onReturnToGroup?.(cluster, entity)
+      setSelectedEntityId(null)
+    },
+    [cluster, onReturnToGroup]
+  )
+
   // --- render -------------------------------------------------------------
   if (!portalEl) return null
 
@@ -175,7 +190,8 @@ export default function ClusterPopup({ position, cluster, onClose, onAddToBoard 
         </div>
 
         <div className="cluster-popup-instructions">
-          Select an entity to reveal quick actions, then choose <strong>Add to board</strong>.
+          Select an entity to reveal quick actions. Choose <strong>Add to board</strong>{' '}
+          or <strong>Return to group</strong>.
         </div>
 
         <div className="cluster-popup-entities">
@@ -196,7 +212,16 @@ export default function ClusterPopup({ position, cluster, onClose, onAddToBoard 
                   Type: {getEntityTypeName(entity)}
                 </div>
                 {placedIds.has(String(entity.id)) ? (
-                  <div className="cluster-popup-entity-status">Already added to board</div>
+                  <button
+                    type="button"
+                    className="cluster-popup-entity-action"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      handleReturnEntity(entity)
+                    }}
+                  >
+                    Return to group
+                  </button>
                 ) : selectedEntityId === String(entity.id) ? (
                   <button
                     type="button"

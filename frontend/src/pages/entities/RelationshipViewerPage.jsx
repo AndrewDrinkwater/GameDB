@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import ReactFlow, {
   Background,
@@ -245,7 +245,7 @@ export default function RelationshipViewerPage() {
 
         return nextNodes.map((node) => {
           if (node.id !== clusterInfo.id || node.type !== 'cluster') return node
-          const existingPlaced = new Set(node.data?.placedEntityIds || [])
+          const existingPlaced = new Set((node.data?.placedEntityIds || []).map(String))
           if (existingPlaced.has(entityId)) return node
           const updatedData = {
             ...node.data,
@@ -279,27 +279,68 @@ export default function RelationshipViewerPage() {
     []
   )
 
-  const placedEntityIds = useMemo(() => Object.keys(boardEntities), [boardEntities])
+  const handleReturnEntityToCluster = useCallback((clusterInfo, entity) => {
+    if (!clusterInfo || !entity) return
+    const entityId = String(entity.id)
 
-  useEffect(() => {
-    if (!placedEntityIds.length) return
-    setNodes((prevNodes) =>
-      prevNodes.map((node) => {
-        if (node.type !== 'cluster') return node
-        const merged = Array.from(
-          new Set([...(node.data?.placedEntityIds || []), ...placedEntityIds])
-        )
-        if (merged.length === (node.data?.placedEntityIds || []).length) return node
+    setBoardEntities((prev) => {
+      if (!prev[entityId]) return prev
+      const next = { ...prev }
+      delete next[entityId]
+      return next
+    })
+
+    setNodes((prevNodes) => {
+      const filteredNodes = prevNodes.filter((node) => {
+        if (node.id !== entityId) return true
+        if (node.type !== 'entity') return true
+        return !node.data?.isAdHoc
+      })
+
+      return filteredNodes.map((node) => {
+        if (node.id !== clusterInfo.id || node.type !== 'cluster') return node
+        const existingPlaced = new Set((node.data?.placedEntityIds || []).map(String))
+        if (!existingPlaced.has(entityId)) return node
+        existingPlaced.delete(entityId)
         return {
           ...node,
           data: {
             ...node.data,
-            placedEntityIds: merged,
+            placedEntityIds: Array.from(existingPlaced),
+          },
+        }
+      })
+    })
+
+    setEdges((prevEdges) => {
+      const sourceId = clusterInfo?.sourceId ? String(clusterInfo.sourceId) : null
+      if (!sourceId) return prevEdges
+      const edgeId = `edge-${sourceId}-${entityId}`
+      return prevEdges.filter((edge) => edge.id !== edgeId)
+    })
+  }, [])
+
+  useEffect(() => {
+    setNodes((prevNodes) =>
+      prevNodes.map((node) => {
+        if (node.type !== 'cluster') return node
+        const clusterPlaced = Object.entries(boardEntities)
+          .filter(([, info]) => info.clusterId === node.id)
+          .map(([entityId]) => entityId)
+        const hasChanged =
+          clusterPlaced.length !== (node.data?.placedEntityIds?.length ?? 0) ||
+          clusterPlaced.some((id) => !(node.data?.placedEntityIds || []).includes(id))
+        if (!hasChanged) return node
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            placedEntityIds: clusterPlaced,
           },
         }
       })
     )
-  }, [placedEntityIds])
+  }, [boardEntities])
 
   useEffect(() => {
     if (!entityId) return
@@ -320,6 +361,7 @@ export default function RelationshipViewerPage() {
                 data: {
                   ...node.data,
                   onAddToBoard: handleAddEntityFromCluster,
+                  onReturnToGroup: handleReturnEntityToCluster,
                   placedEntityIds: [],
                 },
               }
@@ -337,7 +379,7 @@ export default function RelationshipViewerPage() {
     return () => {
       active = false
     }
-  }, [entityId, handleAddEntityFromCluster])
+  }, [entityId, handleAddEntityFromCluster, handleReturnEntityToCluster])
 
   if (loading) return <p className="p-4">Loading graph...</p>
   if (error) return <p className="p-4 text-red-500">Error: {error}</p>
