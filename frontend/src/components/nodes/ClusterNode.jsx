@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Handle, Position, useReactFlow } from 'reactflow'
+import { Handle, Position } from 'reactflow'
 import ClusterPopup from '../ui/ClusterPopup'
 
-export default function ClusterNode({ id, data }) {
-  const { project } = useReactFlow()
+export default function ClusterNode({ data }) {
   const [open, setOpen] = useState(false)
   const [popupPos, setPopupPos] = useState({ x: 0, y: 0 })
   const [containedEntities, setContainedEntities] = useState([])
@@ -43,24 +42,34 @@ export default function ClusterNode({ id, data }) {
     }
   }
 
+  const relationshipCount = data?.count ?? containedEntities.length
+
   return (
     <>
       <div
-        className="relative rounded-2xl border border-amber-400 bg-amber-100/80 px-4 py-3 
-                   text-sm text-amber-900 shadow-lg cursor-pointer hover:bg-amber-200 transition"
+        className="relative flex cursor-pointer flex-col gap-2 rounded-3xl border border-amber-300/80 bg-gradient-to-b from-amber-50 via-white to-amber-100 px-5 py-4 text-sm text-amber-900 shadow-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-2xl"
         onClick={handleOpen}
       >
         <Handle type="target" position={Position.Top} />
+        <div className="flex items-center justify-between gap-2">
+          <div className="rounded-full bg-amber-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+            Cluster
+          </div>
+          <div className="flex items-center gap-1 rounded-full bg-amber-500/20 px-3 py-1 text-[11px] font-semibold text-amber-800">
+            <span className="h-2 w-2 rounded-full bg-amber-500" />
+            {relationshipCount} relationships
+          </div>
+        </div>
         <div className="text-base font-semibold leading-tight text-center">
           {data?.label || 'Cluster'}
         </div>
         {data?.relationshipType && (
-          <div className="mt-1 text-xs font-medium uppercase tracking-wide text-amber-700 text-center">
+          <div className="text-xs font-medium uppercase tracking-wide text-amber-700 text-center">
             {data.relationshipType}
           </div>
         )}
-        <div className="text-[11px] text-center text-amber-800 mt-2">
-          {containedEntities.length} entities
+        <div className="text-[11px] text-center text-amber-700">
+          {containedEntities.length} entities inside
         </div>
         <Handle type="source" position={Position.Bottom} />
       </div>
