@@ -158,6 +158,13 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
       x: e.clientX - containerRect.left,
       y: e.clientY - containerRect.top,
     })
+
+    // 🔊 Tell the page a cluster drag started
+    try {
+      window.dispatchEvent(
+        new CustomEvent('cluster-drag-phase', { detail: { phase: 'start' } })
+      )
+    } catch {}
   }
 
   const handleDragEnd = (e, entity) => {
@@ -166,6 +173,12 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     setDraggingEntity(null)
     setDragPreview(null)
     dragContainerRectRef.current = null
+    // 🔊 Tell the page the cluster drag finished (drop or cancel)
+    try {
+      window.dispatchEvent(
+        new CustomEvent('cluster-drag-phase', { detail: { phase: 'end' } })
+      )
+    } catch {}
     if (e.dataTransfer.dropEffect !== 'none') {
       onDragEntity?.('remove', entity)
     }

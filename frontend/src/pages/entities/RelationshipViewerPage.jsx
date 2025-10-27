@@ -191,13 +191,18 @@ export default function RelationshipViewerPage() {
   const [nodes, setNodes] = useState([])
   const [edges, setEdges] = useState([])
   const [isDragging, setIsDragging] = useState(false)
-
   const [isClusterDragging, setIsClusterDragging] = useState(false)
 
-const handleDragEntity = useCallback((phase, entity) => {
-  if (phase === 'start') setIsClusterDragging(true)
-  if (['end', 'remove', 'add'].includes(phase)) setIsClusterDragging(false)
-}, [])
+  // 🔊 Listen for cluster drag start/end from the popup (no prop wiring needed)
+  useEffect(() => {
+    const onPhase = (e) => {
+      const phase = e?.detail?.phase
+      if (phase === 'start') setIsClusterDragging(true)
+      if (phase === 'end') setIsClusterDragging(false)
+    }
+    window.addEventListener('cluster-drag-phase', onPhase)
+    return () => window.removeEventListener('cluster-drag-phase', onPhase)
+  }, [])
 
 
   const onNodesChange = useCallback((changes) => setNodes((n) => applyNodeChanges(changes, n)), [])
@@ -303,17 +308,18 @@ const handleDragEntity = useCallback((phase, entity) => {
           onDragLeave={() => setIsDragging(false)}
         >
           <ReactFlow
-           nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        fitView
-        panOnDrag={!isClusterDragging}
-        zoomOnScroll={!isClusterDragging}
-        selectionOnDrag={!isClusterDragging}
->
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            fitView
+            panOnDrag={!isClusterDragging}
+            selectionOnDrag={!isClusterDragging}
+            zoomOnScroll={!isClusterDragging}
+            panOnScroll={!isClusterDragging}
+          >
             <MiniMap />
             <Controls />
             <Background gap={16} />
