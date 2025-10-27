@@ -269,9 +269,7 @@ export default function RelationshipViewerPage() {
   return (
     <div className="flex flex-col h-screen w-full bg-gray-100">
       <header className="p-4 border-b bg-white shadow-sm">
-        <h1 className="text-2xl font-bold text-gray-800">
-          Relationship Viewer (Hierarchical + Clustering)
-        </h1>
+        <h1 className="text-2xl font-bold text-gray-800">Relationship Explorer</h1>
       </header>
 
       <div className="flex-1 min-h-0 relative">
