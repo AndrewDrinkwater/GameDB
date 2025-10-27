@@ -300,7 +300,7 @@ export default function RelationshipViewerPage() {
       setLoading(true)
       setError(null)
       try {
-        const graph = await getEntityGraph(entityId)
+        const graph = await getEntityGraph(entityId, relationshipDepth)
         const layouted = buildReactFlowGraph(graph, entityId)
         if (active) {
           const decoratedNodes = layouted.nodes.map((node) => {
@@ -347,6 +347,7 @@ export default function RelationshipViewerPage() {
     }
   }, [
     entityId,
+    relationshipDepth,
     handleAddEntityFromCluster,
     handleOpenEntityInfo,
     handleReturnEntityToCluster,
