@@ -211,6 +211,11 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     setDragPreview({ x: event.clientX, y: event.clientY })
   }, [draggingEntity])
 
+  const suppressPopupDrag = useCallback((event) => {
+    if (typeof event.button === 'number' && event.button !== 0) return
+    event.stopPropagation()
+  }, [])
+
   useEffect(() => {
     if (!draggingEntity) return
     const handleDrag = (event) => updateDragPreview(event)
@@ -256,21 +261,10 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
                 draggable
                 onDragStart={(e) => handleDragStart(e, entity)}
                 onDragEnd={(e) => handleDragEnd(e, entity)}
-                onPointerDown={(e) => {
-                  e.stopPropagation()
-                }}
-                onPointerDownCapture={(e) => {
-                  e.stopPropagation()
-                }}
-                onMouseDownCapture={(e) => {
-                  e.stopPropagation()
-                  if (typeof e.preventDefault === 'function') {
-                    e.preventDefault()
-                  }
-                }}
-                onMouseDown={(e) => {
-                  e.stopPropagation()
-                }}
+                onPointerDownCapture={suppressPopupDrag}
+                onPointerDown={suppressPopupDrag}
+                onMouseDownCapture={suppressPopupDrag}
+                onMouseDown={suppressPopupDrag}
                 className={`cluster-popup-entity ${draggingId === entity.id ? 'is-dragging' : ''}`}
                 title={entity.name || `Entity ${entity.id}`}
               >
