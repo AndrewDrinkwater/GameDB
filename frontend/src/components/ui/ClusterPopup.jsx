@@ -10,10 +10,13 @@ const VIEWPORT_OFFSET = 16
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
+const getEntityTypeName = (entity) => entity?.type?.name || entity?.typeName || 'Entity'
+
 export default function ClusterPopup({ position, cluster, onClose, onDragEntity }) {
   const { label, relationshipType, entities = [] } = cluster || {}
   const [draggingId, setDraggingId] = useState(null)
   const [portalEl, setPortalEl] = useState(null)
+  const entityCount = Array.isArray(entities) ? entities.length : 0
   const [currentPos, setCurrentPos] = useState({
     x: position?.x ?? 100,
     y: position?.y ?? 100,
@@ -55,7 +58,7 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
       maxY: Math.max(offset, rect.height - height - offset),
       containerRect: rect,
     }
-  }, [entities, getContainerRect])
+  }, [entityCount, getContainerRect])
 
   useEffect(() => {
     const target =
@@ -153,6 +156,7 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
   }, [handleClose])
 
   const handleDragStart = (e, entity) => {
+    e.stopPropagation()
     e.dataTransfer.setData('application/x-entity', JSON.stringify(entity))
     e.dataTransfer.effectAllowed = 'copyMove'
     setDraggingId(entity.id)
@@ -160,6 +164,7 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
   }
 
   const handleDragEnd = (e, entity) => {
+    e.stopPropagation()
     setDraggingId(null)
     if (e.dataTransfer.dropEffect === 'none') {
       onDragEntity?.('add', entity)
@@ -200,10 +205,12 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
                 draggable
                 onDragStart={(e) => handleDragStart(e, entity)}
                 onDragEnd={(e) => handleDragEnd(e, entity)}
+                onPointerDown={(e) => e.stopPropagation()}
                 className={`cluster-popup-entity ${draggingId === entity.id ? 'is-dragging' : ''}`}
+                title={entity.name || `Entity ${entity.id}`}
               >
                 <div className="cluster-popup-entity-name">{entity.name || `Entity ${entity.id}`}</div>
-                <div className="cluster-popup-entity-meta">ID: {entity.id}</div>
+                <div className="cluster-popup-entity-meta">Type: {getEntityTypeName(entity)}</div>
               </div>
             ))
           ) : (
