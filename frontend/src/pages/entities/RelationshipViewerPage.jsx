@@ -16,6 +16,46 @@ const CLUSTER_THRESHOLD = 5
 const nodeTypes = { cluster: ClusterNode, entity: EntityNode }
 const edgeTypes = {}
 
+const DEFAULT_CLUSTER_WIDTH = 220
+const DEFAULT_CLUSTER_HEIGHT = 160
+const DEFAULT_ENTITY_WIDTH = 220
+const DEFAULT_ENTITY_HEIGHT = 120
+const CLUSTER_ENTITY_GAP = 40
+const CLUSTER_ENTITY_VERTICAL_SPACING = DEFAULT_ENTITY_HEIGHT + CLUSTER_ENTITY_GAP
+
+function positionEntitiesBelowCluster(nodes, clusterNode, placedIds = []) {
+  if (!clusterNode || !Array.isArray(placedIds) || placedIds.length === 0) return nodes
+
+  const order = placedIds.map((id) => String(id))
+  const orderIndex = new Map(order.map((id, index) => [id, index]))
+
+  const baseX = clusterNode?.position?.x ?? 0
+  const baseY = clusterNode?.position?.y ?? 0
+  const clusterWidth = clusterNode?.width ?? DEFAULT_CLUSTER_WIDTH
+  const clusterHeight = clusterNode?.height ?? DEFAULT_CLUSTER_HEIGHT
+  const startY = baseY + clusterHeight + CLUSTER_ENTITY_GAP
+
+  let didChange = false
+  const nextNodes = nodes.map((node) => {
+    if (node.type !== 'entity' || !node.data?.isAdHoc) return node
+    const index = orderIndex.get(String(node.id))
+    if (index == null) return node
+
+    const entityWidth = node?.width ?? DEFAULT_ENTITY_WIDTH
+    const x = baseX + (clusterWidth - entityWidth) / 2
+    const y = startY + index * CLUSTER_ENTITY_VERTICAL_SPACING
+
+    if (node?.position?.x === x && node?.position?.y === y) return node
+    didChange = true
+    return {
+      ...node,
+      position: { x, y },
+    }
+  })
+
+  return didChange ? nextNodes : nodes
+}
+
 function slugifyTypeName(name) {
   return String(name ?? 'group')
     .toLowerCase()
@@ -218,25 +258,31 @@ export default function RelationshipViewerPage() {
       })
 
       setNodes((prevNodes) => {
-        let nextNodes = prevNodes
+        const clusterNode = prevNodes.find((node) => node.id === clusterInfo.id)
+        const initialPlaced = Array.from(
+          new Set(
+            (
+              clusterNode?.data?.placedEntityIds ||
+              clusterInfo?.placedEntityIds ||
+              []
+            ).map((value) => String(value))
+          )
+        )
+
+        const placedWithNew = initialPlaced.includes(entityId)
+          ? initialPlaced
+          : [...initialPlaced, entityId]
+
         const entityExists = prevNodes.some((node) => node.id === entityId)
+        let nextNodes = prevNodes
+
         if (!entityExists) {
-          const clusterNode = prevNodes.find((node) => node.id === clusterInfo.id)
           const baseX = clusterNode?.position?.x ?? 0
           const baseY = clusterNode?.position?.y ?? 0
-          const existingPlacedCount = prevNodes.filter((node) => node.data?.isAdHoc).length
-          const column = existingPlacedCount % 3
-          const row = Math.floor(existingPlacedCount / 3)
-          const offsetX = 200 + column * 60
-          const offsetY = row * 90 - 40
-
           const newNode = {
             id: entityId,
             type: 'entity',
-            position: {
-              x: baseX + offsetX,
-              y: baseY + offsetY,
-            },
+            position: { x: baseX, y: baseY },
             data: {
               label: entity.name || `Entity ${entityId}`,
               typeName: entity?.type?.name || entity?.typeName || 'Entity',
@@ -247,16 +293,29 @@ export default function RelationshipViewerPage() {
           nextNodes = [...prevNodes, newNode]
         }
 
-        return nextNodes.map((node) => {
+        nextNodes = nextNodes.map((node) => {
           if (node.id !== clusterInfo.id || node.type !== 'cluster') return node
-          const existingPlaced = new Set((node.data?.placedEntityIds || []).map(String))
-          if (existingPlaced.has(entityId)) return node
-          const updatedData = {
-            ...node.data,
-            placedEntityIds: [...existingPlaced, entityId],
+          const existingPlaced = (node.data?.placedEntityIds || []).map((value) => String(value))
+          const hasSamePlacement =
+            existingPlaced.length === placedWithNew.length &&
+            placedWithNew.every((value, index) => value === existingPlaced[index])
+
+          if (hasSamePlacement) return node
+
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              placedEntityIds: placedWithNew,
+            },
           }
-          return { ...node, data: updatedData }
         })
+
+        const updatedClusterNode = nextNodes.find(
+          (node) => node.id === clusterInfo.id && node.type === 'cluster'
+        )
+
+        return positionEntitiesBelowCluster(nextNodes, updatedClusterNode || clusterNode, placedWithNew)
       })
 
       setEdges((prevEdges) => {
@@ -297,13 +356,15 @@ export default function RelationshipViewerPage() {
     })
 
     setNodes((prevNodes) => {
+      const clusterNode = prevNodes.find((node) => node.id === clusterInfo.id)
+
       const filteredNodes = prevNodes.filter((node) => {
         if (node.id !== entityId) return true
         if (node.type !== 'entity') return true
         return !node.data?.isAdHoc
       })
 
-      return filteredNodes.map((node) => {
+      let nextNodes = filteredNodes.map((node) => {
         if (node.id !== clusterInfo.id || node.type !== 'cluster') return node
         const existingPlaced = new Set((node.data?.placedEntityIds || []).map(String))
         if (!existingPlaced.has(entityId)) return node
@@ -316,6 +377,18 @@ export default function RelationshipViewerPage() {
           },
         }
       })
+
+      const updatedClusterNode = nextNodes.find(
+        (node) => node.id === clusterInfo.id && node.type === 'cluster'
+      )
+      const remainingPlaced =
+        updatedClusterNode?.data?.placedEntityIds?.map((value) => String(value)) || []
+
+      return positionEntitiesBelowCluster(
+        nextNodes,
+        updatedClusterNode || clusterNode,
+        remainingPlaced
+      )
     })
 
     setEdges((prevEdges) => {
@@ -373,16 +446,26 @@ export default function RelationshipViewerPage() {
   )
 
   useEffect(() => {
-    setNodes((prevNodes) =>
-      prevNodes.map((node) => {
+    setNodes((prevNodes) => {
+      const clusterToEntities = Object.entries(boardEntities).reduce((acc, [entity, info]) => {
+        const clusterId = info?.clusterId
+        if (!clusterId) return acc
+        const key = String(clusterId)
+        if (!acc[key]) acc[key] = []
+        acc[key].push(String(entity))
+        return acc
+      }, {})
+
+      let nextNodes = prevNodes.map((node) => {
         if (node.type !== 'cluster') return node
-        const clusterPlaced = Object.entries(boardEntities)
-          .filter(([, info]) => info.clusterId === node.id)
-          .map(([entityId]) => entityId)
+        const clusterPlaced = clusterToEntities[node.id] || []
+        const existingPlaced = (node.data?.placedEntityIds || []).map((value) => String(value))
         const hasChanged =
-          clusterPlaced.length !== (node.data?.placedEntityIds?.length ?? 0) ||
-          clusterPlaced.some((id) => !(node.data?.placedEntityIds || []).includes(id))
+          clusterPlaced.length !== existingPlaced.length ||
+          clusterPlaced.some((id, index) => id !== existingPlaced[index])
+
         if (!hasChanged) return node
+
         return {
           ...node,
           data: {
@@ -391,7 +474,17 @@ export default function RelationshipViewerPage() {
           },
         }
       })
-    )
+
+      for (const [clusterId, entityIds] of Object.entries(clusterToEntities)) {
+        const clusterNode = nextNodes.find(
+          (node) => node.id === clusterId && node.type === 'cluster'
+        )
+        if (!clusterNode) continue
+        nextNodes = positionEntitiesBelowCluster(nextNodes, clusterNode, entityIds)
+      }
+
+      return nextNodes
+    })
   }, [boardEntities])
 
   useEffect(() => {
