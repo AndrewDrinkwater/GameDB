@@ -82,11 +82,15 @@ const router = createBrowserRouter(
           <Route path="all/:id" element={<CharactersPage scope="all" />} />
         </Route>
 
-          {/* Entity routes */}
-          <Route path="entities" element={<EntityList />} />
+{/* Entity routes */}
+<Route path="entities" element={<EntityList />} />
 
-          {/* ✅ Relationship viewer BEFORE the :id route */}
-          <Route path="entities/relationship-viewer" element={<RelationshipViewerPage />} />
+{/* ✅ Relationship viewer route */}
+<Route path="entities/:entityId/relationship-viewer" element={<RelationshipViewerPage />} />
+
+{/* ✅ Entity details route */}
+<Route path="entities/:id" element={<EntityDetailPage />} />
+
 
           <Route path="entities/:id" element={<EntityDetailPage />} />
         {/* Admin-only route */}

@@ -2,13 +2,36 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
-import { initDB, sequelize, User, World } from './src/models/index.js'
+import { initDB, sequelize } from './src/models/index.js'
 import router from './src/routes/index.js'
 
 dotenv.config()
 
 const app = express()
-app.use(cors())
+
+// ✅ Proper CORS configuration for authenticated frontend
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://your-production-domain.com', // add your deployed frontend if needed
+]
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow Postman or local scripts with no origin
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true)
+      } else {
+        console.warn('🚫 Blocked by CORS:', origin)
+        callback(new Error('Not allowed by CORS'))
+      }
+    },
+    credentials: true, // ✅ allows cookies / Authorization header
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+)
+
 app.use(express.json())
 
 // Simple request logger for debugging
@@ -33,7 +56,9 @@ app.use((req, res) => {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error('🔥 Unhandled error:', err)
-  res.status(500).json({ success: false, message: err.message || 'Internal Server Error' })
+  res
+    .status(500)
+    .json({ success: false, message: err.message || 'Internal Server Error' })
 })
 
 const PORT = process.env.PORT || 3000
