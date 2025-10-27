@@ -25,26 +25,32 @@ export default function ClusterNode({ data }) {
   const handleOpen = (e) => {
     e.stopPropagation()
 
-    const viewportWidth = window.innerWidth
-    const viewportHeight = window.innerHeight
-    const scrollX = window.scrollX
-    const scrollY = window.scrollY
+    const boardEl =
+      document.querySelector('.react-flow__renderer') ||
+      document.querySelector('.react-flow')
+
+    const boardRect = boardEl?.getBoundingClientRect()
+    const viewportWidth = boardRect?.width ?? window.innerWidth
+    const viewportHeight = boardRect?.height ?? window.innerHeight
     const panelWidth = 420
     const panelHeight = Math.min(viewportHeight * 0.7, 520)
     const offset = 16
 
-    let x = e.clientX + scrollX + offset
-    let y = e.clientY + scrollY - panelHeight / 2
+    const baseX = e.clientX - (boardRect?.left ?? 0)
+    const baseY = e.clientY - (boardRect?.top ?? 0)
 
-    const maxX = scrollX + viewportWidth - panelWidth - offset
-    const minX = scrollX + offset
+    let x = baseX + offset
+    let y = baseY - panelHeight / 2
+
+    const maxX = viewportWidth - panelWidth - offset
+    const minX = offset
     if (x > maxX) {
-      x = Math.max(minX, e.clientX + scrollX - panelWidth - offset)
+      x = Math.max(minX, baseX - panelWidth - offset)
     }
     x = Math.max(minX, Math.min(x, maxX))
 
-    const maxY = scrollY + viewportHeight - panelHeight - offset
-    const minY = scrollY + offset
+    const maxY = viewportHeight - panelHeight - offset
+    const minY = offset
     if (y < minY) {
       y = minY
     } else if (y > maxY) {

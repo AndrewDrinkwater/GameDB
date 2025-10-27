@@ -1,6 +1,8 @@
 import ReactDOM from 'react-dom'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { X } from 'lucide-react'
+
+import './ClusterPopup.css'
 
 const PANEL_WIDTH = 420
 const PANEL_MAX_HEIGHT = 520
@@ -19,44 +21,85 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
   const panelRef = useRef(null)
   const dragState = useRef(null)
 
-  const getBounds = () => {
+  const getContainerRect = useCallback(() => {
+    const parent = portalEl?.parentElement
+    if (parent) {
+      const rect = parent.getBoundingClientRect()
+      return {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+      }
+    }
+
+    return {
+      left: 0,
+      top: 0,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    }
+  }, [portalEl])
+
+  const bounds = useMemo(() => {
+    const rect = getContainerRect()
     const width = panelRef.current?.offsetWidth ?? PANEL_WIDTH
     const height =
-      panelRef.current?.offsetHeight ?? Math.min(window.innerHeight * 0.7, PANEL_MAX_HEIGHT)
+      panelRef.current?.offsetHeight ?? Math.min(rect.height * 0.7, PANEL_MAX_HEIGHT)
     const offset = VIEWPORT_OFFSET
 
     return {
       minX: offset,
       minY: offset,
-      maxX: Math.max(offset, window.innerWidth - width - offset),
-      maxY: Math.max(offset, window.innerHeight - height - offset),
+      maxX: Math.max(offset, rect.width - width - offset),
+      maxY: Math.max(offset, rect.height - height - offset),
+      containerRect: rect,
     }
-  }
+  }, [entities, getContainerRect])
 
   useEffect(() => {
+    const target =
+      document.querySelector('.react-flow__renderer') ||
+      document.querySelector('.react-flow') ||
+      document.body
+
     const el = document.createElement('div')
-    el.style.position = 'fixed'
-    el.style.inset = '0'
+    el.style.position = target === document.body ? 'fixed' : 'absolute'
+    el.style.top = '0'
+    el.style.left = '0'
+    el.style.right = '0'
+    el.style.bottom = '0'
     el.style.zIndex = '2500'
     el.style.pointerEvents = 'none'
-    document.body.appendChild(el)
+    target.appendChild(el)
     setPortalEl(el)
-    return () => document.body.removeChild(el)
+
+    return () => {
+      target.removeChild(el)
+    }
   }, [])
 
   useEffect(() => {
     setCurrentPos({
-      x: position?.x ?? 100,
-      y: position?.y ?? 100,
+      x: clamp(position?.x ?? 100, bounds.minX, bounds.maxX),
+      y: clamp(position?.y ?? 100, bounds.minY, bounds.maxY),
     })
-  }, [position?.x, position?.y])
+  }, [bounds.maxX, bounds.maxY, bounds.minX, bounds.minY, position?.x, position?.y])
 
   const handlePointerMove = useCallback((event) => {
     if (!dragState.current) return
 
-    const { offsetX, offsetY, bounds } = dragState.current
-    const x = clamp(event.clientX - offsetX, bounds.minX, bounds.maxX)
-    const y = clamp(event.clientY - offsetY, bounds.minY, bounds.maxY)
+    const { offsetX, offsetY, bounds: dragBounds, containerRect } = dragState.current
+    const x = clamp(
+      event.clientX - containerRect.left - offsetX,
+      dragBounds.minX,
+      dragBounds.maxX
+    )
+    const y = clamp(
+      event.clientY - containerRect.top - offsetY,
+      dragBounds.minY,
+      dragBounds.maxY
+    )
     setCurrentPos({ x, y })
   }, [])
 
@@ -74,14 +117,16 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     event.preventDefault()
     event.stopPropagation()
 
-    const bounds = getBounds()
-    const offsetX = event.clientX - (currentPos?.x ?? bounds.minX)
-    const offsetY = event.clientY - (currentPos?.y ?? bounds.minY)
+    const dragBounds = bounds
+    const containerRect = dragBounds.containerRect || getContainerRect()
+    const offsetX = event.clientX - containerRect.left - (currentPos?.x ?? dragBounds.minX)
+    const offsetY = event.clientY - containerRect.top - (currentPos?.y ?? dragBounds.minY)
 
     dragState.current = {
       offsetX,
       offsetY,
-      bounds,
+      bounds: dragBounds,
+      containerRect,
     }
 
     window.addEventListener('pointermove', handlePointerMove)
@@ -124,41 +169,30 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
   if (!portalEl) return null
 
   return ReactDOM.createPortal(
-    <div className="pointer-events-none fixed inset-0">
+    <div className="cluster-popup-overlay">
       <div
         ref={panelRef}
-        className="pointer-events-auto absolute z-[2500] w-[420px] max-h-[70vh] rounded-2xl border border-slate-200 bg-white/95 backdrop-blur shadow-2xl overflow-hidden transition-transform animate-[fadeIn_0.15s_ease]"
+        className="cluster-popup-panel"
         style={{
           top: `${currentPos?.y ?? 100}px`,
           left: `${currentPos?.x ?? 100}px`,
         }}
       >
-        {/* Header */}
-        <div
-          className="sticky top-0 flex items-center justify-between bg-white/95 backdrop-blur px-4 py-3 border-b border-slate-200 cursor-grab active:cursor-grabbing select-none"
-          onPointerDown={handleDragStartPopup}
-        >
-          <div className="pr-3">
-            <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
-              {relationshipType || 'Cluster'}
-            </div>
-            <div className="text-base font-bold text-slate-800 truncate">
-              {label || 'Entities'}
-            </div>
+        <div className="cluster-popup-header" onPointerDown={handleDragStartPopup}>
+          <div className="cluster-popup-title">
+            <div className="cluster-popup-relationship">{relationshipType || 'Cluster'}</div>
+            <div className="cluster-popup-label">{label || 'Entities'}</div>
           </div>
-          <button
-            onClick={handleClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-800"
-          >
+          <button onClick={handleClose} className="cluster-popup-close" aria-label="Close cluster">
             <X size={16} />
           </button>
         </div>
 
-        <div className="px-4 py-2 text-[11px] text-slate-600 bg-slate-50 border-b border-slate-200">
+        <div className="cluster-popup-instructions">
           Drag a card onto the board to place it; drop back here to re-cluster.
         </div>
 
-        <div className="p-4 grid grid-cols-2 gap-3 overflow-y-auto max-h-[calc(70vh-92px)]">
+        <div className="cluster-popup-entities">
           {entities.length ? (
             entities.map((entity) => (
               <div
@@ -166,20 +200,14 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
                 draggable
                 onDragStart={(e) => handleDragStart(e, entity)}
                 onDragEnd={(e) => handleDragEnd(e, entity)}
-                className={`rounded-xl border border-slate-200 bg-white p-3 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing ${draggingId === entity.id ? 'opacity-70 bg-slate-100 scale-[0.98]' : ''}`}
+                className={`cluster-popup-entity ${draggingId === entity.id ? 'is-dragging' : ''}`}
               >
-                <div className="text-sm font-semibold text-slate-800 truncate">
-                  {entity.name || `Entity ${entity.id}`}
-                </div>
-                <div className="text-[11px] text-slate-500 mt-0.5 truncate">
-                  ID: {entity.id}
-                </div>
+                <div className="cluster-popup-entity-name">{entity.name || `Entity ${entity.id}`}</div>
+                <div className="cluster-popup-entity-meta">ID: {entity.id}</div>
               </div>
             ))
           ) : (
-            <div className="p-4 text-sm text-slate-600 text-center">
-              No entities in this cluster.
-            </div>
+            <div className="cluster-popup-empty">No entities in this cluster.</div>
           )}
         </div>
       </div>
