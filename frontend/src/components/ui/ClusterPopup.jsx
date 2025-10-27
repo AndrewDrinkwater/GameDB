@@ -21,24 +21,23 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     e.dataTransfer.setData('application/x-entity', JSON.stringify(entity))
     e.dataTransfer.effectAllowed = 'copyMove'
     setDraggingId(entity.id)
+    onDragEntity?.('remove', entity)
   }
 
   const handleDragEnd = (e, entity) => {
-    // when drag actually ends outside this popup, ReactFlow will handle the drop
     setDraggingId(null)
+    if (e.dataTransfer.dropEffect === 'none') {
+      onDragEntity?.('add', entity)
+    }
   }
 
   if (!portalEl) return null
 
   return ReactDOM.createPortal(
     <>
+      <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[2499]" onClick={onClose} />
       <div
-        className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[2499]"
-        onClick={onClose}
-      />
-      <div
-        className="absolute z-[2500] w-[420px] max-h-[70vh] rounded-2xl border border-slate-200 
-                   bg-white/95 backdrop-blur shadow-2xl overflow-hidden transition-transform animate-[fadeIn_0.15s_ease]"
+        className="absolute z-[2500] w-[420px] max-h-[70vh] rounded-2xl border border-slate-200 bg-white/95 backdrop-blur shadow-2xl overflow-hidden transition-transform animate-[fadeIn_0.15s_ease]"
         style={{
           top: `${position?.y ?? 100}px`,
           left: `${position?.x ?? 100}px`,
