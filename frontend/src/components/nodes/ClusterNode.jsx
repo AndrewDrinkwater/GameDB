@@ -3,7 +3,7 @@ import { Handle, Position } from 'reactflow'
 import ClusterPopup from '../ui/ClusterPopup'
 import './nodeStyles.css'
 
-export default function ClusterNode({ data }) {
+export default function ClusterNode({ id, data }) {
   const [open, setOpen] = useState(false)
   const [popupPos, setPopupPos] = useState({ x: 0, y: 0 })
   const [containedEntities, setContainedEntities] = useState([])
@@ -129,6 +129,7 @@ export default function ClusterNode({ data }) {
         <ClusterPopup
           position={popupPos}
           cluster={{
+            id,
             label: data?.label,
             entities: containedEntities,
             relationshipType: data?.relationshipType,
