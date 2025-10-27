@@ -100,6 +100,11 @@ function buildReactFlowGraph(data, entityId, clusterThreshold = CLUSTER_THRESHOL
     groupedByType.get(key).push(edge)
   })
 
+  const enrichedNodes = rawNodes.map((node) => ({
+    ...node,
+    typeName: node?.type?.name || node?.typeName || null,
+  }))
+
   const clusterNodes = []
   const clusterEdges = []
   const hiddenNodeIds = new Set()
@@ -127,7 +132,7 @@ function buildReactFlowGraph(data, entityId, clusterThreshold = CLUSTER_THRESHOL
           count: containedIds.length,
           containedIds,
           sourceId: centerKey,
-          allNodes: rawNodes,
+          allNodes: enrichedNodes,
         },
         position: { x: 0, y: 0 },
       })
@@ -143,16 +148,17 @@ function buildReactFlowGraph(data, entityId, clusterThreshold = CLUSTER_THRESHOL
     }
   }
 
-  const baseNodes = rawNodes
+  const baseNodes = enrichedNodes
     .filter((n) => !hiddenNodeIds.has(String(n.id)))
     .map((node) => {
       const id = String(node.id)
       const label = node?.name || `Entity ${id}`
       const isCenter = id === centerKey
+      const typeName = node?.typeName || 'Entity'
       return {
         id,
         type: 'entity',
-        data: { label, isCenter },
+        data: { label, isCenter, typeName },
         position: { x: 0, y: 0 },
       }
     })
@@ -201,7 +207,11 @@ export default function RelationshipViewerPage() {
         id: entity.id,
         type: 'entity',
         position: { x: e.clientX - 150, y: e.clientY - 100 },
-        data: { label: entity.name || `Entity ${entity.id}`, isCenter: false },
+        data: {
+          label: entity.name || `Entity ${entity.id}`,
+          isCenter: false,
+          typeName: entity?.type?.name || entity?.typeName || 'Entity',
+        },
       }
 
       setNodes((prev) => [...prev, newNode])
@@ -219,7 +229,9 @@ export default function RelationshipViewerPage() {
           },
         ])
       }
-    } catch {}
+    } catch (err) {
+      console.error('Failed to drop entity on relationship board', err)
+    }
     setIsDragging(false)
   }
 
