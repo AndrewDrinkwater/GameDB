@@ -31,10 +31,6 @@
 }
 
 /* Dim panel slightly while dragging (but still clickable) */
-.cluster-popup-panel.dragging {
-  opacity: 0.96;
-}
-
 /* --------------------------------------------------------
    Header
 -------------------------------------------------------- */
@@ -137,18 +133,19 @@
   gap: 12px;
 }
 
+
 .cluster-popup-entity {
   border-radius: 16px;
   border: 1px solid rgba(203, 213, 225, 0.9);
   background: #ffffff;
   padding: 12px;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
-  cursor: grab;
+  cursor: pointer;
   pointer-events: auto;
   user-select: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   transition:
     box-shadow 150ms ease,
     transform 150ms ease,
@@ -162,35 +159,66 @@
   transform: translateY(-1px);
 }
 
-.cluster-popup-entity:active {
-  cursor: grabbing;
+.cluster-popup-entity.is-selected {
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 10px 20px rgba(59, 130, 246, 0.15);
 }
 
-.cluster-popup-entity.is-dragging {
+.cluster-popup-entity.is-placed {
   opacity: 0.6;
-  transform: scale(0.96) translateY(4px);
-  background: #f1f5f9;
-  border-color: rgba(148, 163, 184, 0.6);
+  cursor: not-allowed;
+  background: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.55);
   box-shadow: none;
-  transition: all 120ms ease;
 }
 
-/* --------------------------------------------------------
-   Drag Preview
--------------------------------------------------------- */
-
-.cluster-popup-drag-preview {
-  position: fixed;
-  pointer-events: none;
-  z-index: 4000;
-  width: 200px;
+.cluster-popup-entity.is-placed:hover {
+  transform: none;
+  box-shadow: none;
 }
 
-.cluster-popup-entity--preview {
-  opacity: 0.95;
-  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.2);
-  border-color: rgba(148, 163, 184, 0.6);
-  transform: rotate(-2deg);
+.cluster-popup-entity-action {
+  margin-top: 4px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.28);
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    background-position 120ms ease,
+    filter 120ms ease;
+}
+
+.cluster-popup-entity-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.32);
+}
+
+.cluster-popup-entity-action:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.45);
+  outline-offset: 2px;
+}
+
+.cluster-popup-entity-status {
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  background: rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
 }
 
 /* --------------------------------------------------------
