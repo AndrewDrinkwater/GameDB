@@ -14,6 +14,8 @@ const getEntityTypeName = (entity) => entity?.type?.name || entity?.typeName || 
 export default function ClusterPopup({ position, cluster, onClose, onDragEntity }) {
   const { label, relationshipType, entities = [] } = cluster || {}
   const [draggingId, setDraggingId] = useState(null)
+  const [draggingEntity, setDraggingEntity] = useState(null)
+  const [dragPreview, setDragPreview] = useState(null)
   const [portalEl, setPortalEl] = useState(null)
   const entityCount = Array.isArray(entities) ? entities.length : 0
   const [currentPos, setCurrentPos] = useState({
@@ -154,21 +156,71 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [handleClose])
 
+  const dragImageRef = useRef(null)
+
+  const ensureDragImage = useCallback(() => {
+    if (!dragImageRef.current) {
+      const img = new Image()
+      img.src =
+        'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='
+      dragImageRef.current = img
+    }
+    return dragImageRef.current
+  }, [])
+
   const handleDragStart = (e, entity) => {
     e.stopPropagation()
     e.dataTransfer.setData('application/x-entity', JSON.stringify(entity))
+    if (cluster?.id || cluster?.sourceId || cluster?.relationshipType) {
+      e.dataTransfer.setData(
+        'application/x-cluster-context',
+        JSON.stringify({
+          clusterId: cluster?.id ?? null,
+          sourceId: cluster?.sourceId ?? null,
+          relationshipType: cluster?.relationshipType ?? null,
+        })
+      )
+    }
     e.dataTransfer.effectAllowed = 'copyMove'
+    const dragImage = ensureDragImage()
+    if (dragImage) {
+      try {
+        e.dataTransfer.setDragImage(dragImage, 0, 0)
+      } catch (err) {
+        // ignore if drag image cannot be set
+      }
+    }
     setDraggingId(entity.id)
+    setDraggingEntity(entity)
+    setDragPreview({ x: e.clientX, y: e.clientY })
     onDragEntity?.('remove', entity)
   }
 
   const handleDragEnd = (e, entity) => {
     e.stopPropagation()
     setDraggingId(null)
+    setDraggingEntity(null)
+    setDragPreview(null)
     if (e.dataTransfer.dropEffect === 'none') {
       onDragEntity?.('add', entity)
     }
   }
+
+  const updateDragPreview = useCallback((event) => {
+    if (!draggingEntity) return
+    setDragPreview({ x: event.clientX, y: event.clientY })
+  }, [draggingEntity])
+
+  useEffect(() => {
+    if (!draggingEntity) return
+    const handleDrag = (event) => updateDragPreview(event)
+    window.addEventListener('dragover', handleDrag)
+    window.addEventListener('drag', handleDrag)
+    return () => {
+      window.removeEventListener('dragover', handleDrag)
+      window.removeEventListener('drag', handleDrag)
+    }
+  }, [draggingEntity, updateDragPreview])
 
   if (!portalEl) return null
 
@@ -217,6 +269,23 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
           )}
         </div>
       </div>
+      {draggingEntity && dragPreview && (
+        <div
+          className="cluster-popup-drag-preview"
+          style={{
+            transform: `translate(calc(${dragPreview.x}px - 50%), calc(${dragPreview.y}px - 50%))`,
+          }}
+        >
+          <div className="cluster-popup-entity cluster-popup-entity--preview">
+            <div className="cluster-popup-entity-name">
+              {draggingEntity.name || `Entity ${draggingEntity.id}`}
+            </div>
+            <div className="cluster-popup-entity-meta">
+              Type: {getEntityTypeName(draggingEntity)}
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     portalEl
   )
