@@ -1,4 +1,6 @@
+import axios from 'axios'
 import api from './client.js'
+import { getAuthToken } from '../utils/authHelpers.js'
 
 export const getWorldEntities = (worldId) => api.get(`/worlds/${worldId}/entities`)
 
@@ -43,9 +45,20 @@ export const updateEntity = (id, data) => api.patch(`/entities/${id}`, data)
 export const deleteEntity = (id) => api.delete(`/entities/${id}`)
 
 export const getEntityGraph = async (entityId) => {
-  const response = await api.get(`/entities/${entityId}/graph`)
-  if (!response?.success) {
-    throw new Error(response?.message || 'Failed to load graph')
+  const token = getAuthToken()
+  const response = await axios.get(`/api/entities/${entityId}/graph`, {
+    headers: token
+      ? {
+          Authorization: `Bearer ${token}`,
+        }
+      : undefined,
+    withCredentials: true,
+  })
+
+  const payload = response?.data
+  if (!payload?.success) {
+    throw new Error(payload?.message || 'Failed to load graph')
   }
-  return response.data
+
+  return payload.data
 }
