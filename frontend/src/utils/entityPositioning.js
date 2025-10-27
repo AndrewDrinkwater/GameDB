@@ -456,6 +456,7 @@ export function buildReactFlowGraph(
 
   const clusterNodes = []
   const clusterEdges = []
+  const clusterSuppressedByAnchor = new Map()
   const hiddenNodeIds = new Set()
   const consumedEdgeIds = new Set()
 
@@ -501,9 +502,8 @@ export function buildReactFlowGraph(
 
       containedIds.forEach((id) => hiddenNodeIds.add(id))
 
-      if (anchorId && hiddenNodeIds.has(String(anchorId))) {
-        return
-      }
+      const normalizedAnchorId = anchorId != null ? String(anchorId) : null
+      const isAnchorHidden = normalizedAnchorId ? hiddenNodeIds.has(normalizedAnchorId) : false
 
       const clusterId = `cluster-${anchorId ?? 'unknown'}-${slugifyTypeName(typeName)}`
       const entityCount = containedIds.length
@@ -532,6 +532,10 @@ export function buildReactFlowGraph(
         sourceHandle: 'bottom',
         targetHandle: 'top',
       })
+
+      if (isAnchorHidden && normalizedAnchorId) {
+        clusterSuppressedByAnchor.set(clusterId, new Set([normalizedAnchorId]))
+      }
     })
 
   const baseNodes = enrichedNodes
@@ -621,6 +625,12 @@ export function buildReactFlowGraph(
     }
   })
 
+  clusterSuppressedByAnchor.forEach((blockers, clusterId) => {
+    suppressedNodeIds.add(clusterId)
+    if (!nodeSuppressedBy.has(clusterId)) nodeSuppressedBy.set(clusterId, new Set())
+    blockers.forEach((blocker) => nodeSuppressedBy.get(clusterId).add(blocker))
+  })
+
   const layoutedNodes = layoutNodesHierarchically(
     [...baseNodes, ...clusterNodes],
     [...standardEdges, ...clusterEdges],
@@ -642,16 +652,33 @@ export function buildReactFlowGraph(
 
   const suppressedEdges = []
   const visibleStandardEdges = []
+  const visibleClusterEdges = []
+
+  const isEndpointHiddenOrSuppressed = (edge) => {
+    const sourceKey = String(edge.source)
+    const targetKey = String(edge.target)
+    if (hiddenNodeIds.has(sourceKey) || hiddenNodeIds.has(targetKey)) return true
+    if (suppressedNodeIds.has(sourceKey) || suppressedNodeIds.has(targetKey)) return true
+    return false
+  }
 
   for (const edge of standardEdges) {
-    if (suppressedNodeIds.has(edge.source) || suppressedNodeIds.has(edge.target)) {
+    if (isEndpointHiddenOrSuppressed(edge)) {
       suppressedEdges.push(edge)
     } else {
       visibleStandardEdges.push(edge)
     }
   }
 
-  const finalEdges = [...visibleStandardEdges, ...clusterEdges]
+  for (const edge of clusterEdges) {
+    if (isEndpointHiddenOrSuppressed(edge)) {
+      suppressedEdges.push(edge)
+    } else {
+      visibleClusterEdges.push(edge)
+    }
+  }
+
+  const finalEdges = [...visibleStandardEdges, ...visibleClusterEdges]
 
   return {
     nodes: visibleNodes,
