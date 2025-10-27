@@ -1,4 +1,4 @@
-import PropTypes from 'prop-types'
+import PropTypes from '../../utils/propTypes'
 import { ChevronDown, ChevronUp, Maximize2, Target } from 'lucide-react'
 import './RelationshipToolbar.css'
 
