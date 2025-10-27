@@ -81,6 +81,12 @@
     box-shadow 120ms ease;
 }
 
+.cluster-popup-close span {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+
 .cluster-popup-close:hover {
   background: #1f2937;
   color: #f8fafc;
