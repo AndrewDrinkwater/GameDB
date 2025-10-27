@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import ReactFlow, {
   Background,
   Controls,
@@ -22,6 +22,7 @@ const edgeTypes = {}
 
 export default function RelationshipViewerPage() {
   const { entityId } = useParams()
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [nodes, setNodes] = useState([])
@@ -30,6 +31,20 @@ export default function RelationshipViewerPage() {
 
   const onNodesChange = useCallback((changes) => setNodes((n) => applyNodeChanges(changes, n)), [])
   const onEdgesChange = useCallback((changes) => setEdges((e) => applyEdgeChanges(changes, e)), [])
+
+  const handleSetTargetEntity = useCallback(
+    (nextEntityId) => {
+      if (!nextEntityId) return
+      navigate(`/entities/${nextEntityId}/relationship-viewer`)
+    },
+    [navigate]
+  )
+
+  const handleOpenEntityInfo = useCallback((entityToOpen) => {
+    if (!entityToOpen) return
+    const url = `/entities/${entityToOpen}`
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }, [])
 
   const handleAddEntityFromCluster = useCallback(
     (clusterInfo, entity) => {
@@ -70,7 +85,20 @@ export default function RelationshipViewerPage() {
 
         if (!entityExists) {
           const newNode = createAdHocEntityNode(clusterNode, entity)
-          nextNodes = newNode ? [...prevNodes, newNode] : prevNodes
+          nextNodes =
+            newNode
+              ? [
+                  ...prevNodes,
+                  {
+                    ...newNode,
+                    data: {
+                      ...newNode.data,
+                      onSetTarget: handleSetTargetEntity,
+                      onOpenInfo: handleOpenEntityInfo,
+                    },
+                  },
+                ]
+              : prevNodes
         }
 
         nextNodes = nextNodes.map((node) => {
@@ -121,7 +149,7 @@ export default function RelationshipViewerPage() {
         ]
       })
     },
-    []
+    [handleOpenEntityInfo, handleSetTargetEntity]
   )
 
   const handleReturnEntityToCluster = useCallback((clusterInfo, entity) => {
@@ -278,20 +306,36 @@ export default function RelationshipViewerPage() {
         const graph = await getEntityGraph(entityId)
         const layouted = buildReactFlowGraph(graph, entityId)
         if (active) {
-          setNodes(
-            layouted.nodes.map((node) => {
-              if (node.type !== 'cluster') return node
+          const decoratedNodes = layouted.nodes.map((node) => {
+            if (node.type === 'cluster') {
               return {
                 ...node,
                 data: {
                   ...node.data,
                   onAddToBoard: handleAddEntityFromCluster,
                   onReturnToGroup: handleReturnEntityToCluster,
+                  onSetTargetEntity: handleSetTargetEntity,
+                  onOpenEntityInfo: handleOpenEntityInfo,
                   placedEntityIds: [],
                 },
               }
-            })
-          )
+            }
+
+            if (node.type === 'entity') {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  onSetTarget: handleSetTargetEntity,
+                  onOpenInfo: handleOpenEntityInfo,
+                },
+              }
+            }
+
+            return node
+          })
+
+          setNodes(decoratedNodes)
           setEdges(layouted.edges)
         }
       } catch (err) {
@@ -304,7 +348,13 @@ export default function RelationshipViewerPage() {
     return () => {
       active = false
     }
-  }, [entityId, handleAddEntityFromCluster, handleReturnEntityToCluster])
+  }, [
+    entityId,
+    handleAddEntityFromCluster,
+    handleOpenEntityInfo,
+    handleReturnEntityToCluster,
+    handleSetTargetEntity,
+  ])
 
   if (loading) return <p className="p-4">Loading graph...</p>
   if (error) return <p className="p-4 text-red-500">Error: {error}</p>
