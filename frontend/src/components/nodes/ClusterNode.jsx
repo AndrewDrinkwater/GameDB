@@ -63,17 +63,6 @@ export default function ClusterNode({ id, data }) {
 
   const handleClose = () => setOpen(false)
 
-  const handleDragEntity = (action, entity) => {
-    if (!entity) return
-    if (action === 'remove') {
-      setContainedEntities((prev) => prev.filter((e) => e.id !== entity.id))
-    } else if (action === 'add') {
-      if (!containedEntities.some((e) => e.id === entity.id)) {
-        setContainedEntities((prev) => [...prev, entity])
-      }
-    }
-  }
-
   const relationshipCount = data?.count ?? containedEntities.length
 
   return (
@@ -134,9 +123,10 @@ export default function ClusterNode({ id, data }) {
             entities: containedEntities,
             relationshipType: data?.relationshipType,
             sourceId: data?.sourceId,
+            placedEntityIds: data?.placedEntityIds || [],
           }}
           onClose={handleClose}
-          onDragEntity={handleDragEntity}
+          onAddToBoard={data?.onAddToBoard}
         />
       )}
     </>

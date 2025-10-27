@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import ReactFlow, {
   Background,
@@ -190,77 +190,120 @@ export default function RelationshipViewerPage() {
   const [error, setError] = useState(null)
   const [nodes, setNodes] = useState([])
   const [edges, setEdges] = useState([])
-  const [isDragging, setIsDragging] = useState(false)
-  const [isClusterDragging, setIsClusterDragging] = useState(false)
-
-  // 🔊 Listen for cluster drag start/end from the popup (no prop wiring needed)
-  useEffect(() => {
-    const onPhase = (e) => {
-      const phase = e?.detail?.phase
-      if (phase === 'start') setIsClusterDragging(true)
-      if (phase === 'end') setIsClusterDragging(false)
-    }
-    window.addEventListener('cluster-drag-phase', onPhase)
-    return () => window.removeEventListener('cluster-drag-phase', onPhase)
-  }, [])
-
+  const [boardEntities, setBoardEntities] = useState({})
 
   const onNodesChange = useCallback((changes) => setNodes((n) => applyNodeChanges(changes, n)), [])
   const onEdgesChange = useCallback((changes) => setEdges((e) => applyEdgeChanges(changes, e)), [])
 
-  const handleDragOver = (e) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-  }
+  const handleAddEntityFromCluster = useCallback(
+    (clusterInfo, entity) => {
+      if (!clusterInfo || !entity) return
 
-  const handleDropOnBoard = (e) => {
-    e.preventDefault()
-    const raw = e.dataTransfer.getData('application/x-entity')
-    const clusterCtx = e.dataTransfer.getData('application/x-cluster-context')
-    if (!raw) return
+      const entityId = String(entity.id)
 
-    try {
-      const entity = JSON.parse(raw)
-      const ctx = clusterCtx ? JSON.parse(clusterCtx) : {}
-      const bounds = e.currentTarget.getBoundingClientRect()
-      const x = e.clientX - bounds.left
-      const y = e.clientY - bounds.top
-
-      const newNode = {
-        id: String(entity.id),
-        type: 'default',
-        position: { x, y },
-        data: { label: entity.name || `Entity ${entity.id}` },
-        style: {
-          border: '1px solid #cbd5f5',
-          background: '#ffffff',
-          color: '#0f172a',
-          fontWeight: 600,
-        },
-      }
-
-      setNodes((prev) => [...prev, newNode])
-
-      if (ctx?.sourceId && ctx?.relationshipType) {
-        setEdges((prev) => [
+      setBoardEntities((prev) => {
+        if (prev[entityId]) return prev
+        return {
           ...prev,
-          {
-            id: `edge-${ctx.sourceId}-${entity.id}`,
-            source: ctx.sourceId,
-            target: String(entity.id),
-            type: 'smoothstep',
-            label: ctx.relationshipType,
+          [entityId]: {
+            clusterId: clusterInfo.id,
+            relationshipType: clusterInfo.relationshipType || null,
+            sourceId: clusterInfo.sourceId || null,
           },
-        ])
-      }
-    } catch (err) {
-      console.error('Drop parse failed', err)
-    }
-    setIsDragging(false)
-  }
+        }
+      })
+
+      setNodes((prevNodes) => {
+        let nextNodes = prevNodes
+        const entityExists = prevNodes.some((node) => node.id === entityId)
+        if (!entityExists) {
+          const clusterNode = prevNodes.find((node) => node.id === clusterInfo.id)
+          const baseX = clusterNode?.position?.x ?? 0
+          const baseY = clusterNode?.position?.y ?? 0
+          const existingPlacedCount = prevNodes.filter((node) => node.data?.isAdHoc).length
+          const column = existingPlacedCount % 3
+          const row = Math.floor(existingPlacedCount / 3)
+          const offsetX = 200 + column * 60
+          const offsetY = row * 90 - 40
+
+          const newNode = {
+            id: entityId,
+            type: 'entity',
+            position: {
+              x: baseX + offsetX,
+              y: baseY + offsetY,
+            },
+            data: {
+              label: entity.name || `Entity ${entityId}`,
+              typeName: entity?.type?.name || entity?.typeName || 'Entity',
+              isCenter: false,
+              isAdHoc: true,
+            },
+          }
+          nextNodes = [...prevNodes, newNode]
+        }
+
+        return nextNodes.map((node) => {
+          if (node.id !== clusterInfo.id || node.type !== 'cluster') return node
+          const existingPlaced = new Set(node.data?.placedEntityIds || [])
+          if (existingPlaced.has(entityId)) return node
+          const updatedData = {
+            ...node.data,
+            placedEntityIds: [...existingPlaced, entityId],
+          }
+          return { ...node, data: updatedData }
+        })
+      })
+
+      setEdges((prevEdges) => {
+        const sourceId = clusterInfo?.sourceId ? String(clusterInfo.sourceId) : null
+        const relationshipType = clusterInfo?.relationshipType
+        if (!sourceId || !relationshipType) return prevEdges
+        const edgeId = `edge-${sourceId}-${entityId}`
+        if (prevEdges.some((edge) => edge.id === edgeId)) return prevEdges
+        return [
+          ...prevEdges,
+          {
+            id: edgeId,
+            source: sourceId,
+            target: entityId,
+            type: 'smoothstep',
+            label: relationshipType,
+            animated: true,
+            data: { relationshipType },
+            style: { strokeWidth: 1.5 },
+          },
+        ]
+      })
+    },
+    []
+  )
+
+  const placedEntityIds = useMemo(() => Object.keys(boardEntities), [boardEntities])
+
+  useEffect(() => {
+    if (!placedEntityIds.length) return
+    setNodes((prevNodes) =>
+      prevNodes.map((node) => {
+        if (node.type !== 'cluster') return node
+        const merged = Array.from(
+          new Set([...(node.data?.placedEntityIds || []), ...placedEntityIds])
+        )
+        if (merged.length === (node.data?.placedEntityIds || []).length) return node
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            placedEntityIds: merged,
+          },
+        }
+      })
+    )
+  }, [placedEntityIds])
 
   useEffect(() => {
     if (!entityId) return
+    setBoardEntities({})
     let active = true
     async function fetchData() {
       setLoading(true)
@@ -269,7 +312,19 @@ export default function RelationshipViewerPage() {
         const graph = await getEntityGraph(entityId)
         const layouted = buildReactFlowGraph(graph, entityId)
         if (active) {
-          setNodes(layouted.nodes)
+          setNodes(
+            layouted.nodes.map((node) => {
+              if (node.type !== 'cluster') return node
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  onAddToBoard: handleAddEntityFromCluster,
+                  placedEntityIds: [],
+                },
+              }
+            })
+          )
           setEdges(layouted.edges)
         }
       } catch (err) {
@@ -282,7 +337,7 @@ export default function RelationshipViewerPage() {
     return () => {
       active = false
     }
-  }, [entityId])
+  }, [entityId, handleAddEntityFromCluster])
 
   if (loading) return <p className="p-4">Loading graph...</p>
   if (error) return <p className="p-4 text-red-500">Error: {error}</p>
@@ -295,18 +350,7 @@ export default function RelationshipViewerPage() {
       </header>
 
       <div className="flex-1 min-h-0 relative">
-        {isDragging && (
-          <div className="absolute inset-0 bg-blue-100/30 border-2 border-blue-400 border-dashed z-[10]" />
-        )}
-
-        <div
-          className="w-full h-full relative"
-          style={{ height: 'calc(100vh - 80px)' }}
-          onDrop={handleDropOnBoard}
-          onDragOver={handleDragOver}
-          onDragEnter={() => setIsDragging(true)}
-          onDragLeave={() => setIsDragging(false)}
-        >
+        <div className="w-full h-full relative" style={{ height: 'calc(100vh - 80px)' }}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -315,10 +359,6 @@ export default function RelationshipViewerPage() {
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             fitView
-            panOnDrag={!isClusterDragging}
-            selectionOnDrag={!isClusterDragging}
-            zoomOnScroll={!isClusterDragging}
-            panOnScroll={!isClusterDragging}
           >
             <MiniMap />
             <Controls />

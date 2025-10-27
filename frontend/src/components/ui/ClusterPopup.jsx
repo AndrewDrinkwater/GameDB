@@ -9,12 +9,10 @@ const VIEWPORT_OFFSET = 16
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 const getEntityTypeName = (entity) => entity?.type?.name || entity?.typeName || 'Entity'
 
-export default function ClusterPopup({ position, cluster, onClose, onDragEntity }) {
-  const { label, relationshipType, entities = [] } = cluster || {}
-  const [draggingId, setDraggingId] = useState(null)
-  const [draggingEntity, setDraggingEntity] = useState(null)
-  const [dragPreview, setDragPreview] = useState(null)
+export default function ClusterPopup({ position, cluster, onClose, onAddToBoard }) {
+  const { label, relationshipType, entities = [], placedEntityIds = [] } = cluster || {}
   const [portalEl, setPortalEl] = useState(null)
+  const [selectedEntityId, setSelectedEntityId] = useState(null)
   const entityCount = Array.isArray(entities) ? entities.length : 0
   const [currentPos, setCurrentPos] = useState({
     x: position?.x ?? 100,
@@ -23,8 +21,6 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
 
   const panelRef = useRef(null)
   const dragState = useRef(null)
-  const dragContainerRectRef = useRef(null)
-  const suppressBoardPanRef = useRef(false)
 
   // --- container bounds ---------------------------------------------------
   const getContainerRect = useCallback(() => {
@@ -99,7 +95,7 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
   const handleDragStartPopup = (event) => {
     if (event.button !== 0) return
     if (event.target.closest('button')) return
-    if (event.target.closest('.cluster-popup-entity')) return // ✅ do not move popup if dragging a card
+    if (event.target.closest('.cluster-popup-entity')) return // avoid moving the popup while interacting with a card
 
     event.preventDefault()
     event.stopPropagation()
@@ -129,119 +125,31 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [handleClose])
 
-  const emitClusterDragPhase = useCallback((phase) => {
-    try {
-      window.dispatchEvent(new CustomEvent('cluster-drag-phase', { detail: { phase } }))
-    } catch {}
-  }, [])
-
-  const releasePointerPanSuppression = useCallback(() => {
-    if (!suppressBoardPanRef.current) return false
-    suppressBoardPanRef.current = false
-    return true
-  }, [])
-
-  const handleCardPointerDown = useCallback(
-    (event) => {
-      if (event.button !== 0) return
-      event.stopPropagation()
-
-    event.target.releasePointerCapture?.(event.pointerId)
-
-      if (!suppressBoardPanRef.current) {
-        suppressBoardPanRef.current = true
-        emitClusterDragPhase('start')
-      }
-
-      const handleRelease = () => {
-        const released = releasePointerPanSuppression()
-        if (released) emitClusterDragPhase('end')
-        window.removeEventListener('pointerup', handleRelease, true)
-        window.removeEventListener('pointercancel', handleRelease, true)
-      }
-
-      window.addEventListener('pointerup', handleRelease, true)
-      window.addEventListener('pointercancel', handleRelease, true)
-    },
-    [emitClusterDragPhase, releasePointerPanSuppression]
-  )
-
-  // --- drag cards ---------------------------------------------------------
-  const handleDragStart = (e, entity) => {
-    e.stopPropagation()
-    e.dataTransfer.setData('application/x-entity', JSON.stringify(entity))
-    if (cluster?.id || cluster?.sourceId || cluster?.relationshipType) {
-      e.dataTransfer.setData(
-        'application/x-cluster-context',
-        JSON.stringify({
-          clusterId: cluster?.id ?? null,
-          sourceId: cluster?.sourceId ?? null,
-          relationshipType: cluster?.relationshipType ?? null,
-        })
-      )
-    }
-    e.dataTransfer.effectAllowed = 'copyMove'
-
-    // ✅ Create visible clone drag image
-    const dragEl = e.currentTarget.cloneNode(true)
-    dragEl.style.position = 'absolute'
-    dragEl.style.top = '-9999px'
-    dragEl.style.left = '-9999px'
-    document.body.appendChild(dragEl)
-    e.dataTransfer.setDragImage(dragEl, 10, 10)
-    requestAnimationFrame(() => document.body.removeChild(dragEl))
-
-    setDraggingId(entity.id)
-    setDraggingEntity(entity)
-
-    const containerRect = getContainerRect()
-    dragContainerRectRef.current = containerRect
-    setDragPreview({
-      x: e.clientX - containerRect.left,
-      y: e.clientY - containerRect.top,
-    })
-
-    // 🔊 Tell the page a cluster drag started
-    if (!suppressBoardPanRef.current) suppressBoardPanRef.current = true
-    emitClusterDragPhase('start')
-  }
-
-  const handleDragEnd = (e, entity) => {
-    e.stopPropagation()
-    setDraggingId(null)
-    setDraggingEntity(null)
-    setDragPreview(null)
-    dragContainerRectRef.current = null
-    releasePointerPanSuppression()
-    // 🔊 Tell the page the cluster drag finished (drop or cancel)
-    emitClusterDragPhase('end')
-    if (e.dataTransfer.dropEffect !== 'none') {
-      onDragEntity?.('remove', entity)
-    }
-  }
-
-  const updateDragPreview = useCallback(
-    (event) => {
-      if (!draggingEntity) return
-      const containerRect = dragContainerRectRef.current || getContainerRect()
-      setDragPreview({
-        x: event.clientX - containerRect.left,
-        y: event.clientY - containerRect.top,
-      })
-    },
-    [draggingEntity, getContainerRect]
+  const placedIds = useMemo(
+    () => new Set((Array.isArray(placedEntityIds) ? placedEntityIds : []).map(String)),
+    [placedEntityIds]
   )
 
   useEffect(() => {
-    if (!draggingEntity) return
-    const handleDrag = (event) => updateDragPreview(event)
-    window.addEventListener('dragover', handleDrag)
-    window.addEventListener('drag', handleDrag)
-    return () => {
-      window.removeEventListener('dragover', handleDrag)
-      window.removeEventListener('drag', handleDrag)
-    }
-  }, [draggingEntity, updateDragPreview])
+    setSelectedEntityId(null)
+  }, [cluster?.id])
+
+  const handleSelectEntity = useCallback(
+    (entityId, isPlaced) => {
+      if (isPlaced) return
+      setSelectedEntityId((current) => (current === entityId ? null : entityId))
+    },
+    []
+  )
+
+  const handleAddEntity = useCallback(
+    (entity) => {
+      if (!entity) return
+      onAddToBoard?.(cluster, entity)
+      setSelectedEntityId(null)
+    },
+    [cluster, onAddToBoard]
+  )
 
   // --- render -------------------------------------------------------------
   if (!portalEl) return null
@@ -250,7 +158,7 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     <div className="cluster-popup-overlay">
       <div
         ref={panelRef}
-        className={`cluster-popup-panel ${draggingEntity ? 'dragging' : ''}`}
+        className="cluster-popup-panel"
         style={{
           top: `${currentPos?.y ?? 100}px`,
           left: `${currentPos?.x ?? 100}px`,
@@ -267,7 +175,7 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
         </div>
 
         <div className="cluster-popup-instructions">
-          Drag a card onto the board to place it; drop back here to re-cluster.
+          Select an entity to reveal quick actions, then choose <strong>Add to board</strong>.
         </div>
 
         <div className="cluster-popup-entities">
@@ -275,12 +183,11 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
             entities.map((entity) => (
               <div
                 key={entity.id}
-                draggable={true}
-                onPointerDownCapture={handleCardPointerDown}
-                onDragStart={(e) => handleDragStart(e, entity)}
-                onDragEnd={(e) => handleDragEnd(e, entity)}
-                className={`cluster-popup-entity ${draggingId === entity.id ? 'is-dragging' : ''}`}
+                className={`cluster-popup-entity ${
+                  placedIds.has(String(entity.id)) ? 'is-placed' : ''
+                } ${selectedEntityId === String(entity.id) ? 'is-selected' : ''}`}
                 title={entity.name || `Entity ${entity.id}`}
+                onClick={() => handleSelectEntity(String(entity.id), placedIds.has(String(entity.id)))}
               >
                 <div className="cluster-popup-entity-name">
                   {entity.name || `Entity ${entity.id}`}
@@ -288,6 +195,20 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
                 <div className="cluster-popup-entity-meta">
                   Type: {getEntityTypeName(entity)}
                 </div>
+                {placedIds.has(String(entity.id)) ? (
+                  <div className="cluster-popup-entity-status">Already added to board</div>
+                ) : selectedEntityId === String(entity.id) ? (
+                  <button
+                    type="button"
+                    className="cluster-popup-entity-action"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      handleAddEntity(entity)
+                    }}
+                  >
+                    Add to board
+                  </button>
+                ) : null}
               </div>
             ))
           ) : (
@@ -295,24 +216,6 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
           )}
         </div>
       </div>
-
-      {draggingEntity && dragPreview && (
-        <div
-          className="cluster-popup-drag-preview"
-          style={{
-            transform: `translate(calc(${dragPreview.x}px - 50%), calc(${dragPreview.y}px - 50%))`,
-          }}
-        >
-          <div className="cluster-popup-entity cluster-popup-entity--preview">
-            <div className="cluster-popup-entity-name">
-              {draggingEntity.name || `Entity ${draggingEntity.id}`}
-            </div>
-            <div className="cluster-popup-entity-meta">
-              Type: {getEntityTypeName(draggingEntity)}
-            </div>
-          </div>
-        </div>
-      )}
     </div>,
     portalEl
   )
