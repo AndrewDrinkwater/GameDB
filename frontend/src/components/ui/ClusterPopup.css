@@ -20,6 +20,13 @@
   overflow: hidden;
   backdrop-filter: blur(10px);
   animation: cluster-popup-fade 150ms ease;
+  transition: opacity 0.2s ease;
+}
+
+/* 🔹 Disable pointer events while dragging, so ReactFlow can receive them */
+.cluster-popup-panel.dragging {
+  pointer-events: none;
+  opacity: 0.96;
 }
 
 .cluster-popup-header {
@@ -142,17 +149,17 @@
 }
 
 .cluster-popup-entity.is-dragging {
-  opacity: 0.7;
-  transform: translate(8px, 8px) scale(0.98);
-  transition: transform 0.15s ease, opacity 0.15s ease;
-  background: #f8fafc;
+  opacity: 0.6;
+  transform: scale(0.96) translateY(4px);
+  background: #f1f5f9;
   border-color: rgba(148, 163, 184, 0.6);
   box-shadow: none;
+  transition: all 120ms ease;
 }
 
 .cluster-popup-drag-preview {
   position: fixed;
-  pointer-events: none;
+  pointer-events: none; /* ✅ important so canvas can still receive drag */
   z-index: 4000;
   width: 200px;
 }

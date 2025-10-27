@@ -192,6 +192,14 @@ export default function RelationshipViewerPage() {
   const [edges, setEdges] = useState([])
   const [isDragging, setIsDragging] = useState(false)
 
+  const [isClusterDragging, setIsClusterDragging] = useState(false)
+
+const handleDragEntity = useCallback((phase, entity) => {
+  if (phase === 'start') setIsClusterDragging(true)
+  if (['end', 'remove', 'add'].includes(phase)) setIsClusterDragging(false)
+}, [])
+
+
   const onNodesChange = useCallback((changes) => setNodes((n) => applyNodeChanges(changes, n)), [])
   const onEdgesChange = useCallback((changes) => setEdges((e) => applyEdgeChanges(changes, e)), [])
 
@@ -295,14 +303,17 @@ export default function RelationshipViewerPage() {
           onDragLeave={() => setIsDragging(false)}
         >
           <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            fitView
-          >
+           nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        fitView
+        panOnDrag={!isClusterDragging}
+        zoomOnScroll={!isClusterDragging}
+        selectionOnDrag={!isClusterDragging}
+>
             <MiniMap />
             <Controls />
             <Background gap={16} />
