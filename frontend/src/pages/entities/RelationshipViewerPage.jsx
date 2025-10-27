@@ -10,9 +10,10 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 import { getEntityGraph } from '../../api/entities.js'
 import ClusterNode from '../../components/nodes/ClusterNode.jsx'
+import EntityNode from '../../components/nodes/EntityNode.jsx'
 
 const CLUSTER_THRESHOLD = 5
-const nodeTypes = { cluster: ClusterNode }
+const nodeTypes = { cluster: ClusterNode, entity: EntityNode }
 const edgeTypes = {}
 
 function slugifyTypeName(name) {
@@ -148,20 +149,12 @@ function buildReactFlowGraph(data, entityId, clusterThreshold = CLUSTER_THRESHOL
       const id = String(node.id)
       const label = node?.name || `Entity ${id}`
       const isCenter = id === centerKey
-      const style = isCenter
-        ? {
-            border: '2px solid #2563eb',
-            background: '#dbeafe',
-            color: '#1d4ed8',
-            fontWeight: 700,
-          }
-        : {
-            border: '1px solid #cbd5f5',
-            background: '#ffffff',
-            color: '#0f172a',
-            fontWeight: 600,
-          }
-      return { id, type: 'default', data: { label, isCenter }, position: { x: 0, y: 0 }, style }
+      return {
+        id,
+        type: 'entity',
+        data: { label, isCenter },
+        position: { x: 0, y: 0 },
+      }
     })
 
   const standardEdges = parsedEdges
@@ -206,9 +199,9 @@ export default function RelationshipViewerPage() {
 
       const newNode = {
         id: entity.id,
-        type: 'default',
+        type: 'entity',
         position: { x: e.clientX - 150, y: e.clientY - 100 },
-        data: { label: entity.name || `Entity ${entity.id}` },
+        data: { label: entity.name || `Entity ${entity.id}`, isCenter: false },
       }
 
       setNodes((prev) => [...prev, newNode])
