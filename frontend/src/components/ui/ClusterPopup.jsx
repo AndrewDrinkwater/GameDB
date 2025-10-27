@@ -170,7 +170,6 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
   }, [])
 
   const handleDragStart = (e, entity) => {
-    e.stopPropagation()
     e.dataTransfer.setData('application/x-entity', JSON.stringify(entity))
     if (cluster?.id || cluster?.sourceId || cluster?.relationshipType) {
       e.dataTransfer.setData(
@@ -225,11 +224,6 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     [draggingEntity, getContainerRect]
   )
 
-  const suppressPopupDrag = useCallback((event) => {
-    if (typeof event.button === 'number' && event.button !== 0) return
-    event.stopPropagation()
-  }, [])
-
   useEffect(() => {
     if (!draggingEntity) return
     const handleDrag = (event) => updateDragPreview(event)
@@ -272,13 +266,9 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
             entities.map((entity) => (
               <div
                 key={entity.id}
-                draggable
+                draggable={true}
                 onDragStart={(e) => handleDragStart(e, entity)}
                 onDragEnd={(e) => handleDragEnd(e, entity)}
-                onPointerDownCapture={suppressPopupDrag}
-                onPointerDown={suppressPopupDrag}
-                onMouseDownCapture={suppressPopupDrag}
-                onMouseDown={suppressPopupDrag}
                 className={`cluster-popup-entity ${draggingId === entity.id ? 'is-dragging' : ''}`}
                 title={entity.name || `Entity ${entity.id}`}
               >

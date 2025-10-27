@@ -123,6 +123,8 @@
   padding: 12px;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
   cursor: grab;
+  pointer-events: auto;
+  user-select: none;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -150,7 +152,7 @@
 
 .cluster-popup-drag-preview {
   position: fixed;
-  pointer-events: auto;
+  pointer-events: none;
   z-index: 4000;
   width: 200px;
 }
