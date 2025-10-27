@@ -194,6 +194,13 @@
     transform 120ms ease;
 }
 
+.entity-node__action svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2.25px;
+}
+
 .entity-node__action:hover:not(:disabled),
 .entity-node__action:focus-visible:not(:disabled) {
   background: #1f2937;
@@ -213,4 +220,8 @@
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+}
+
+.entity-node__action:disabled svg {
+  opacity: 0.9;
 }
