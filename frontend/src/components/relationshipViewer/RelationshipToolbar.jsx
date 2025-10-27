@@ -1,10 +1,11 @@
 import PropTypes from '../../utils/propTypes'
-import { Maximize2, Minus, Plus, Target } from 'lucide-react'
+import { Maximize2, Minus, Plus, Target, Workflow } from 'lucide-react'
 import './RelationshipToolbar.css'
 
 export default function RelationshipToolbar({
   onRefocus,
   onZoomToFit,
+  onAutoArrange,
   depth,
   onIncreaseDepth,
   onDecreaseDepth,
@@ -28,6 +29,15 @@ export default function RelationshipToolbar({
         >
           <Maximize2 aria-hidden="true" />
           <span>Zoom to fit</span>
+        </button>
+
+        <button
+          type="button"
+          className="relationship-toolbar__button"
+          onClick={onAutoArrange}
+        >
+          <Workflow aria-hidden="true" />
+          <span>Auto arrange</span>
         </button>
       </div>
 
@@ -64,6 +74,7 @@ export default function RelationshipToolbar({
 RelationshipToolbar.propTypes = {
   onRefocus: PropTypes.func.isRequired,
   onZoomToFit: PropTypes.func.isRequired,
+  onAutoArrange: PropTypes.func.isRequired,
   depth: PropTypes.number.isRequired,
   onIncreaseDepth: PropTypes.func.isRequired,
   onDecreaseDepth: PropTypes.func.isRequired,

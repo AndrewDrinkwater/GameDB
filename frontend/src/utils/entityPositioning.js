@@ -82,55 +82,258 @@ export function slugifyTypeName(name) {
 }
 
 export function layoutNodesHierarchically(nodes, edges, centerId) {
-  const centerKey = String(centerId)
+  const normalizedNodes = Array.isArray(nodes)
+    ? nodes.map((node) => ({ ...node, id: String(node.id) }))
+    : []
+
+  if (!normalizedNodes.length) return nodes
+
+  const centerKey =
+    centerId != null ? String(centerId) : normalizedNodes[0]?.id ?? null
+
+  if (!centerKey) return nodes
+
+  const normalizedEdges = Array.isArray(edges)
+    ? edges.map((edge) => ({
+        ...edge,
+        source: String(edge.source),
+        target: String(edge.target),
+        data: edge?.data || {},
+      }))
+    : []
+
+  const nodeMap = new Map(normalizedNodes.map((node) => [node.id, node]))
+  const adjacency = new Map()
+
+  normalizedEdges.forEach((edge) => {
+    if (!adjacency.has(edge.source)) adjacency.set(edge.source, [])
+    if (!adjacency.has(edge.target)) adjacency.set(edge.target, [])
+
+    adjacency.get(edge.source).push({ edge, other: edge.target })
+    adjacency.get(edge.target).push({ edge, other: edge.source })
+  })
+
   const levels = new Map()
   const visited = new Set()
 
-  levels.set(centerKey, 0)
-  visited.add(centerKey)
+  if (nodeMap.has(centerKey)) {
+    levels.set(centerKey, 0)
+    visited.add(centerKey)
 
-  let queue = [centerKey]
-  while (queue.length > 0) {
-    const current = queue.shift()
-    const currentLevel = levels.get(current)
-    const connectedEdges = edges.filter(
-      (e) => e.source === current || e.target === current
-    )
+    const queue = [centerKey]
+    while (queue.length > 0) {
+      const current = queue.shift()
+      const currentLevel = levels.get(current) ?? 0
+      const neighbors = adjacency.get(current) || []
 
-    for (const edge of connectedEdges) {
-      const isParent = edge.target === current
-      const other = edge.source === current ? edge.target : edge.source
-      if (!visited.has(other)) {
+      neighbors.forEach(({ edge, other }) => {
+        if (visited.has(other)) return
         visited.add(other)
+        const isParent = edge.target === current
         const nextLevel = isParent ? currentLevel - 1 : currentLevel + 1
         levels.set(other, nextLevel)
         queue.push(other)
-      }
+      })
     }
   }
 
-  const minLevel = Math.min(...levels.values())
-  for (const [id, lvl] of levels.entries()) levels.set(id, lvl - minLevel)
-
-  const grouped = {}
-  for (const [id, level] of levels.entries()) {
-    if (!grouped[level]) grouped[level] = []
-    grouped[level].push(id)
-  }
-
-  const layouted = nodes.map((node) => {
-    const level = levels.get(node.id) ?? 0
-    const siblings = grouped[level] ?? []
-    const index = siblings.indexOf(node.id)
-    const spacingX = 220
-    const spacingY = 200
-    const totalWidth = (siblings.length - 1) * spacingX
-    const x = index * spacingX - totalWidth / 2
-    const y = level * spacingY
-    return { ...node, position: { x, y } }
+  normalizedNodes.forEach((node) => {
+    if (!levels.has(node.id)) levels.set(node.id, 0)
   })
 
-  return layouted
+  const minLevel = Math.min(...levels.values())
+  levels.forEach((value, key) => {
+    levels.set(key, value - minLevel)
+  })
+
+  const getRelationshipTypeForEdge = (edge, nodeId) => {
+    if (!edge) return null
+
+    const edgeType =
+      edge?.data?.relationshipType || edge?.data?.typeName || edge?.label || null
+
+    if (edgeType) return edgeType
+
+    const node = nodeMap.get(nodeId)
+    if (node?.data?.relationshipType) return node.data.relationshipType
+    if (node?.data?.typeName) return node.data.typeName
+
+    return null
+  }
+
+  const getGroupInfoForNode = (nodeId) => {
+    if (nodeId === centerKey) {
+      return {
+        groupKey: `${centerKey}::center`,
+        relationshipType: 'Center',
+        parentId: null,
+      }
+    }
+
+    const nodeLevel = levels.get(nodeId) ?? 0
+    const neighbors = adjacency.get(nodeId) || []
+    let bestParent = null
+    let bestParentLevel = -Infinity
+    let bestType = null
+
+    neighbors.forEach(({ edge, other }) => {
+      const otherLevel = levels.get(other)
+      if (otherLevel == null) return
+      if (otherLevel >= nodeLevel) return
+
+      if (otherLevel > bestParentLevel) {
+        bestParent = other
+        bestParentLevel = otherLevel
+        bestType = getRelationshipTypeForEdge(edge, nodeId)
+        return
+      }
+
+      if (otherLevel === bestParentLevel) {
+        const candidateType = getRelationshipTypeForEdge(edge, nodeId) || ''
+        const currentType = bestType || ''
+        const typeComparison = candidateType.localeCompare(currentType, undefined, {
+          sensitivity: 'base',
+        })
+
+        if (typeComparison < 0) {
+          bestParent = other
+          bestType = candidateType
+        } else if (typeComparison === 0) {
+          if ((other || '').localeCompare(bestParent || '') < 0) {
+            bestParent = other
+          }
+        }
+      }
+    })
+
+    if (!bestParent) {
+      const fallbackType =
+        nodeMap.get(nodeId)?.data?.relationshipType ||
+        nodeMap.get(nodeId)?.data?.typeName ||
+        'Relationship'
+
+      return {
+        groupKey: `none::${fallbackType}`,
+        relationshipType: fallbackType,
+        parentId: null,
+      }
+    }
+
+    const relationshipType =
+      bestType ||
+      nodeMap.get(nodeId)?.data?.relationshipType ||
+      nodeMap.get(nodeId)?.data?.typeName ||
+      'Relationship'
+
+    return {
+      groupKey: `${bestParent}::${relationshipType}`,
+      relationshipType,
+      parentId: bestParent,
+    }
+  }
+
+  const groupedByLevel = new Map()
+
+  normalizedNodes.forEach((node) => {
+    const id = node.id
+    const level = levels.get(id) ?? 0
+    const groupInfo = getGroupInfoForNode(id)
+
+    if (!groupedByLevel.has(level)) groupedByLevel.set(level, new Map())
+    const groupMap = groupedByLevel.get(level)
+
+    if (!groupMap.has(groupInfo.groupKey)) {
+      groupMap.set(groupInfo.groupKey, {
+        ...groupInfo,
+        nodeIds: [],
+      })
+    }
+
+    groupMap.get(groupInfo.groupKey).nodeIds.push(id)
+  })
+
+  const spacingX = 220
+  const spacingY = 200
+  const groupGap = spacingX * 0.6
+  const positionMap = new Map()
+
+  groupedByLevel.forEach((groupMap, level) => {
+    const groups = Array.from(groupMap.values()).map((group) => ({
+      ...group,
+      nodeIds: group.nodeIds.sort((a, b) => {
+        const nodeA = nodeMap.get(a)
+        const nodeB = nodeMap.get(b)
+        const labelA = nodeA?.data?.label || a
+        const labelB = nodeB?.data?.label || b
+        return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' })
+      }),
+    }))
+
+    if (!groups.length) return
+
+    const orderedGroups = groups.sort((a, b) => {
+      const parentComparison = (a.parentId || '').localeCompare(
+        b.parentId || '',
+        undefined,
+        { sensitivity: 'base' }
+      )
+
+      if (parentComparison !== 0) return parentComparison
+
+      return (a.relationshipType || '').localeCompare(
+        b.relationshipType || '',
+        undefined,
+        { sensitivity: 'base' }
+      )
+    })
+
+    if (orderedGroups.length === 1) {
+      const [singleGroup] = orderedGroups
+      const groupWidth = (singleGroup.nodeIds.length - 1) * spacingX
+      const startX = -groupWidth / 2
+
+      singleGroup.nodeIds.forEach((nodeId, index) => {
+        const x = startX + index * spacingX
+        const y = level * spacingY
+        positionMap.set(nodeId, { x, y })
+      })
+
+      return
+    }
+
+    const centers = orderedGroups.map(() => 0)
+
+    for (let i = 1; i < orderedGroups.length; i += 1) {
+      const prevGroup = orderedGroups[i - 1]
+      const currentGroup = orderedGroups[i]
+      const prevWidth = Math.max(prevGroup.nodeIds.length - 1, 0) * spacingX
+      const currentWidth = Math.max(currentGroup.nodeIds.length - 1, 0) * spacingX
+      const distance = prevWidth / 2 + currentWidth / 2 + groupGap
+      centers[i] = centers[i - 1] + distance
+    }
+
+    const minCenter = Math.min(...centers)
+    const maxCenter = Math.max(...centers)
+    const offset = (minCenter + maxCenter) / 2
+    const alignedCenters = centers.map((center) => center - offset)
+
+    orderedGroups.forEach((group, index) => {
+      const groupWidth = (group.nodeIds.length - 1) * spacingX
+      const start = alignedCenters[index] - groupWidth / 2
+
+      group.nodeIds.forEach((nodeId, nodeIndex) => {
+        const x = start + nodeIndex * spacingX
+        const y = level * spacingY
+        positionMap.set(nodeId, { x, y })
+      })
+    })
+  })
+
+  return nodes.map((node) => {
+    const position = positionMap.get(String(node.id))
+    if (!position) return node
+    return { ...node, position }
+  })
 }
 
 export function buildReactFlowGraph(
