@@ -1,6 +1,5 @@
 import ReactDOM from 'react-dom'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { X } from 'lucide-react'
 
 import './ClusterPopup.css'
 
@@ -189,7 +188,7 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
             <div className="cluster-popup-label">{label || 'Entities'}</div>
           </div>
           <button onClick={handleClose} className="cluster-popup-close" aria-label="Close cluster">
-            <X size={16} />
+            <span aria-hidden="true">×</span>
           </button>
         </div>
 
