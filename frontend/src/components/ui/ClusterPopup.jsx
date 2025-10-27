@@ -64,10 +64,9 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
     el.style.right = '0'
     el.style.bottom = '0'
     el.style.zIndex = '2500'
-    // Allow the popup panel to receive pointer events while
-    // still letting clicks fall through the transparent overlay.
-    // The overlay itself handles pointer-events via CSS.
-    el.style.pointerEvents = 'auto'
+    // Let the board beneath remain fully interactive. Individual popup
+    // elements (like the panel) opt back into pointer events via CSS.
+    el.style.pointerEvents = 'none'
     target.appendChild(el)
     setPortalEl(el)
     return () => target.removeChild(el)
