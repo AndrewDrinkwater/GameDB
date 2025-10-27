@@ -209,18 +209,6 @@
   outline-offset: 2px;
 }
 
-.cluster-popup-entity-status {
-  font-size: 11px;
-  font-weight: 600;
-  color: #475569;
-  background: rgba(148, 163, 184, 0.24);
-  border-radius: 999px;
-  padding: 4px 8px;
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-}
-
 /* --------------------------------------------------------
    Misc Elements
 -------------------------------------------------------- */

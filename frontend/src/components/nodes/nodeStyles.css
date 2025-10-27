@@ -117,56 +117,28 @@
 .cluster-node__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+  justify-content: center;
 }
 
 .cluster-node__badge {
-  padding: 0.35rem 0.75rem;
+  min-width: 3.25rem;
+  padding: 0.25rem 0.75rem;
   border-radius: 999px;
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  background: rgba(251, 191, 36, 0.2);
-  color: #b45309;
+  font-size: 1.75rem;
   font-weight: 700;
-}
-
-.cluster-node__meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.35rem 0.75rem;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  background: rgba(251, 191, 36, 0.3);
-  color: #b45309;
-}
-
-.cluster-node__meta-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #f59e0b;
-  box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+  letter-spacing: 0.04em;
+  background: rgba(251, 191, 36, 0.28);
+  color: #92400e;
 }
 
 .cluster-node__label {
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   font-weight: 700;
-  line-height: 1.2;
-}
-
-.cluster-node__relationship {
-  font-size: 0.75rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: rgba(180, 83, 9, 0.9);
+  line-height: 1.25;
 }
 
 .cluster-node__count {
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   color: rgba(120, 53, 15, 0.85);
 }
 

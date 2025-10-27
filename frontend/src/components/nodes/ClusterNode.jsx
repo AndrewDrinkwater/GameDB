@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Handle, Position } from 'reactflow'
 import ClusterPopup from '../ui/ClusterPopup'
 import './nodeStyles.css'
@@ -63,7 +63,28 @@ export default function ClusterNode({ id, data }) {
 
   const handleClose = () => setOpen(false)
 
-  const relationshipCount = data?.count ?? containedEntities.length
+  const placedIds = useMemo(
+    () => new Set((data?.placedEntityIds || []).map((value) => String(value))),
+    [data?.placedEntityIds]
+  )
+  const totalCount = data?.count ?? containedEntities.length
+  const placedCount = placedIds.size
+  const availableCount = Math.max(totalCount - placedCount, 0)
+
+  let countLabel = 'No related entities'
+  if (totalCount > 0) {
+    if (availableCount === 0) {
+      countLabel = `All ${totalCount === 1 ? 'entity' : 'entities'} on board`
+    } else if (availableCount === totalCount) {
+      countLabel = `${totalCount} ${totalCount === 1 ? 'entity' : 'entities'} inside`
+    } else {
+      countLabel = `${availableCount} of ${totalCount} ${
+        totalCount === 1 ? 'entity' : 'entities'
+      } not on board`
+    }
+  }
+
+  const relationshipLabel = data?.relationshipType || data?.label || 'Cluster'
 
   return (
     <>
@@ -81,25 +102,10 @@ export default function ClusterNode({ id, data }) {
           }}
         />
         <div className="cluster-node__header">
-          <div className="cluster-node__badge">
-            Cluster
-          </div>
-          <div className="cluster-node__meta">
-            <span className="cluster-node__meta-dot" />
-            {relationshipCount} relationships
-          </div>
+          <div className="cluster-node__badge">{availableCount}</div>
         </div>
-        <div className="cluster-node__label">
-          {data?.label || 'Cluster'}
-        </div>
-        {data?.relationshipType && (
-          <div className="cluster-node__relationship">
-            {data.relationshipType}
-          </div>
-        )}
-        <div className="cluster-node__count">
-          {containedEntities.length} entities inside
-        </div>
+        <div className="cluster-node__label">{relationshipLabel}</div>
+        <div className="cluster-node__count">{countLabel}</div>
         <Handle
           type="source"
           position={Position.Bottom}
@@ -127,6 +133,7 @@ export default function ClusterNode({ id, data }) {
           }}
           onClose={handleClose}
           onAddToBoard={data?.onAddToBoard}
+          onReturnToGroup={data?.onReturnToGroup}
         />
       )}
     </>
