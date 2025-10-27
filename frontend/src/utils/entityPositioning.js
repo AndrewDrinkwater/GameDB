@@ -5,6 +5,15 @@ export const DEFAULT_ENTITY_HEIGHT = 120
 export const CLUSTER_ENTITY_GAP = 40
 export const DEFAULT_CLUSTER_THRESHOLD = 5
 
+const HIERARCHY_HORIZONTAL_PADDING = 160
+const HIERARCHY_VERTICAL_PADDING = 200
+const LEVEL_HORIZONTAL_SPACING =
+  Math.max(DEFAULT_ENTITY_WIDTH, DEFAULT_CLUSTER_WIDTH) + HIERARCHY_HORIZONTAL_PADDING
+const LEVEL_VERTICAL_SPACING =
+  Math.max(DEFAULT_ENTITY_HEIGHT, DEFAULT_CLUSTER_HEIGHT) + HIERARCHY_VERTICAL_PADDING
+const GROUP_HORIZONTAL_GAP = LEVEL_HORIZONTAL_SPACING * 0.75
+const BASE_NODE_WIDTH = Math.max(DEFAULT_ENTITY_WIDTH, DEFAULT_CLUSTER_WIDTH)
+
 const CLUSTER_ENTITY_HORIZONTAL_SPACING = DEFAULT_ENTITY_WIDTH + CLUSTER_ENTITY_GAP
 
 function computeNodeLevels(edges, centerId) {
@@ -79,6 +88,19 @@ export function slugifyTypeName(name) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+}
+
+function getNodeDimensions(nodeMap, nodeId) {
+  const node = nodeMap.get(String(nodeId))
+  if (!node) {
+    return { width: DEFAULT_ENTITY_WIDTH, height: DEFAULT_ENTITY_HEIGHT }
+  }
+
+  const isCluster = node.type === 'cluster'
+  const width = node.width ?? (isCluster ? DEFAULT_CLUSTER_WIDTH : DEFAULT_ENTITY_WIDTH)
+  const height = node.height ?? (isCluster ? DEFAULT_CLUSTER_HEIGHT : DEFAULT_ENTITY_HEIGHT)
+
+  return { width, height }
 }
 
 export function layoutNodesHierarchically(nodes, edges, centerId) {
@@ -252,21 +274,20 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
     groupMap.get(groupInfo.groupKey).nodeIds.push(id)
   })
 
-  const spacingX = 220
-  const spacingY = 200
-  const groupGap = spacingX * 0.6
   const positionMap = new Map()
 
   groupedByLevel.forEach((groupMap, level) => {
     const groups = Array.from(groupMap.values()).map((group) => ({
       ...group,
-      nodeIds: group.nodeIds.sort((a, b) => {
-        const nodeA = nodeMap.get(a)
-        const nodeB = nodeMap.get(b)
-        const labelA = nodeA?.data?.label || a
-        const labelB = nodeB?.data?.label || b
-        return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' })
-      }),
+      nodeIds: group.nodeIds
+        .map((id) => String(id))
+        .sort((a, b) => {
+          const nodeA = nodeMap.get(a)
+          const nodeB = nodeMap.get(b)
+          const labelA = nodeA?.data?.label || a
+          const labelB = nodeB?.data?.label || b
+          return labelA.localeCompare(labelB, undefined, { sensitivity: 'base' })
+        }),
     }))
 
     if (!groups.length) return
@@ -287,44 +308,85 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
       )
     })
 
-    if (orderedGroups.length === 1) {
-      const [singleGroup] = orderedGroups
-      const groupWidth = (singleGroup.nodeIds.length - 1) * spacingX
-      const startX = -groupWidth / 2
+    const groupMetas = orderedGroups.map((group) => {
+      const maxNodeWidth = group.nodeIds.reduce((maxWidth, nodeId) => {
+        const { width } = getNodeDimensions(nodeMap, nodeId)
+        return Math.max(maxWidth, width)
+      }, 0)
 
-      singleGroup.nodeIds.forEach((nodeId, index) => {
-        const x = startX + index * spacingX
-        const y = level * spacingY
-        positionMap.set(nodeId, { x, y })
+      const preferredCenter = (() => {
+        if (!group.parentId) return null
+        const parentPosition = positionMap.get(String(group.parentId))
+        if (!parentPosition) return null
+        const parentWidth = getNodeDimensions(nodeMap, group.parentId).width
+        return parentPosition.x + parentWidth / 2
+      })()
+
+      const span =
+        Math.max(group.nodeIds.length - 1, 0) * LEVEL_HORIZONTAL_SPACING +
+        Math.max(maxNodeWidth, BASE_NODE_WIDTH)
+
+      return {
+        group,
+        span,
+        maxNodeWidth: Math.max(maxNodeWidth, BASE_NODE_WIDTH),
+        preferredCenter,
+      }
+    })
+
+    const rootMetas = groupMetas.filter((meta) => meta.preferredCenter == null)
+    if (rootMetas.length) {
+      const totalSpan =
+        rootMetas.reduce((total, meta) => total + meta.span, 0) +
+        GROUP_HORIZONTAL_GAP * Math.max(rootMetas.length - 1, 0)
+
+      let cursor = -totalSpan / 2
+      rootMetas.forEach((meta) => {
+        meta.preferredCenter = cursor + meta.span / 2
+        cursor += meta.span + GROUP_HORIZONTAL_GAP
       })
-
-      return
     }
 
-    const centers = orderedGroups.map(() => 0)
+    const sortedMetas = [...groupMetas].sort((a, b) => a.preferredCenter - b.preferredCenter)
 
-    for (let i = 1; i < orderedGroups.length; i += 1) {
-      const prevGroup = orderedGroups[i - 1]
-      const currentGroup = orderedGroups[i]
-      const prevWidth = Math.max(prevGroup.nodeIds.length - 1, 0) * spacingX
-      const currentWidth = Math.max(currentGroup.nodeIds.length - 1, 0) * spacingX
-      const distance = prevWidth / 2 + currentWidth / 2 + groupGap
-      centers[i] = centers[i - 1] + distance
+    let lastRight = null
+    sortedMetas.forEach((meta) => {
+      if (lastRight == null) {
+        meta.center = meta.preferredCenter
+      } else {
+        const minCenter = lastRight + GROUP_HORIZONTAL_GAP + meta.span / 2
+        meta.center = Math.max(meta.preferredCenter, minCenter)
+      }
+
+      meta.left = meta.center - meta.span / 2
+      meta.right = meta.center + meta.span / 2
+      lastRight = meta.right
+    })
+
+    let nextLeft = null
+    for (let index = sortedMetas.length - 1; index >= 0; index -= 1) {
+      const meta = sortedMetas[index]
+      if (nextLeft != null) {
+        const maxCenter = nextLeft - GROUP_HORIZONTAL_GAP - meta.span / 2
+        if (meta.center > maxCenter) {
+          meta.center = maxCenter
+          meta.left = meta.center - meta.span / 2
+          meta.right = meta.center + meta.span / 2
+        }
+      }
+      nextLeft = meta.left
     }
 
-    const minCenter = Math.min(...centers)
-    const maxCenter = Math.max(...centers)
-    const offset = (minCenter + maxCenter) / 2
-    const alignedCenters = centers.map((center) => center - offset)
-
-    orderedGroups.forEach((group, index) => {
-      const groupWidth = (group.nodeIds.length - 1) * spacingX
-      const start = alignedCenters[index] - groupWidth / 2
+    sortedMetas.forEach((meta) => {
+      const { group, center, span, maxNodeWidth } = meta
+      const startX = center - span / 2
+      const y = level * LEVEL_VERTICAL_SPACING
 
       group.nodeIds.forEach((nodeId, nodeIndex) => {
-        const x = start + nodeIndex * spacingX
-        const y = level * spacingY
-        positionMap.set(nodeId, { x, y })
+        const { width: nodeWidth } = getNodeDimensions(nodeMap, nodeId)
+        const slotX = startX + nodeIndex * LEVEL_HORIZONTAL_SPACING
+        const adjustedX = slotX + (maxNodeWidth - nodeWidth) / 2
+        positionMap.set(nodeId, { x: adjustedX, y })
       })
     })
   })
@@ -542,17 +604,33 @@ export function buildReactFlowGraph(
   }
 }
 
-export function createAdHocEntityNode(clusterNode, entity) {
+export function createAdHocEntityNode(clusterNode, entity, placedIds = []) {
   if (!clusterNode || !entity) return null
 
   const baseX = clusterNode?.position?.x ?? 0
   const baseY = clusterNode?.position?.y ?? 0
+  const clusterWidth = clusterNode?.width ?? DEFAULT_CLUSTER_WIDTH
+  const clusterHeight = clusterNode?.height ?? DEFAULT_CLUSTER_HEIGHT
   const entityId = String(entity.id)
+  const normalizedPlaced = Array.isArray(placedIds)
+    ? placedIds.map((value) => String(value))
+    : []
+  const placementIndex = normalizedPlaced.indexOf(entityId)
+
+  const totalWidth = Math.max(normalizedPlaced.length - 1, 0) * CLUSTER_ENTITY_HORIZONTAL_SPACING
+  const centerX = baseX + clusterWidth / 2
+  const firstCenterX = centerX - totalWidth / 2
+  const entityWidth = DEFAULT_ENTITY_WIDTH
+  const x =
+    placementIndex >= 0
+      ? firstCenterX + placementIndex * CLUSTER_ENTITY_HORIZONTAL_SPACING - entityWidth / 2
+      : centerX - entityWidth / 2
+  const y = baseY + clusterHeight + CLUSTER_ENTITY_GAP
 
   return {
     id: entityId,
     type: 'entity',
-    position: { x: baseX, y: baseY },
+    position: { x, y },
     data: {
       label: entity.name || `Entity ${entityId}`,
       typeName: entity?.type?.name || entity?.typeName || 'Entity',

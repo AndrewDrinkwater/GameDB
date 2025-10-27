@@ -120,7 +120,7 @@ export default function RelationshipViewerPage() {
         let nextNodes = prevNodes
 
         if (!entityExists) {
-          const newNode = createAdHocEntityNode(clusterNode, entity)
+          const newNode = createAdHocEntityNode(clusterNode, entity, placedWithNew)
           nextNodes =
             newNode
               ? [
