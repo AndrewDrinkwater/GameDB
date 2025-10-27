@@ -4,6 +4,7 @@ import ReactFlow, {
   Background,
   Controls,
   MiniMap,
+  Panel,
   applyEdgeChanges,
   applyNodeChanges,
 } from 'reactflow'
@@ -16,6 +17,7 @@ import {
   createAdHocEntityNode,
   positionEntitiesBelowCluster,
 } from '../../utils/entityPositioning.js'
+import RelationshipToolbar from '../../components/relationshipViewer/RelationshipToolbar.jsx'
 
 const nodeTypes = { cluster: ClusterNode, entity: EntityNode }
 const edgeTypes = {}
@@ -28,6 +30,8 @@ export default function RelationshipViewerPage() {
   const [nodes, setNodes] = useState([])
   const [edges, setEdges] = useState([])
   const [boardEntities, setBoardEntities] = useState({})
+  const [reactFlowInstance, setReactFlowInstance] = useState(null)
+  const [relationshipDepth, setRelationshipDepth] = useState(1)
 
   const onNodesChange = useCallback((changes) => setNodes((n) => applyNodeChanges(changes, n)), [])
   const onEdgesChange = useCallback((changes) => setEdges((e) => applyEdgeChanges(changes, e)), [])
@@ -356,6 +360,36 @@ export default function RelationshipViewerPage() {
     handleSetTargetEntity,
   ])
 
+  const handleRefocusView = useCallback(() => {
+    if (!reactFlowInstance || !entityId) return
+    const centerId = String(entityId)
+    const centerNode = reactFlowInstance.getNode(centerId)
+    if (!centerNode) return
+
+    const nodeWidth = centerNode.width ?? 0
+    const nodeHeight = centerNode.height ?? 0
+    const x = centerNode.position.x + nodeWidth / 2
+    const y = centerNode.position.y + nodeHeight / 2
+
+    reactFlowInstance.setCenter(x, y, {
+      zoom: Math.max(1, reactFlowInstance.getZoom()),
+      duration: 500,
+    })
+  }, [entityId, reactFlowInstance])
+
+  const handleZoomToFit = useCallback(() => {
+    if (!reactFlowInstance || !nodes.length) return
+    reactFlowInstance.fitView({ padding: 0.2, duration: 500 })
+  }, [nodes.length, reactFlowInstance])
+
+  const handleIncreaseDepth = useCallback(() => {
+    setRelationshipDepth((current) => Math.min(3, current + 1))
+  }, [])
+
+  const handleDecreaseDepth = useCallback(() => {
+    setRelationshipDepth((current) => Math.max(1, current - 1))
+  }, [])
+
   if (loading) return <p className="p-4">Loading graph...</p>
   if (error) return <p className="p-4 text-red-500">Error: {error}</p>
   if (!nodes.length) return <p className="p-4">No relationships found for this entity.</p>
@@ -377,7 +411,17 @@ export default function RelationshipViewerPage() {
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             fitView
+            onInit={setReactFlowInstance}
           >
+            <Panel position="top-left">
+              <RelationshipToolbar
+                onRefocus={handleRefocusView}
+                onZoomToFit={handleZoomToFit}
+                depth={relationshipDepth}
+                onIncreaseDepth={handleIncreaseDepth}
+                onDecreaseDepth={handleDecreaseDepth}
+              />
+            </Panel>
             <MiniMap />
             <Controls />
             <Background gap={16} />
