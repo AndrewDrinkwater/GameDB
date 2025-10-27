@@ -70,16 +70,22 @@
   width: 32px;
   height: 32px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  background: rgba(255, 255, 255, 0.9);
-  color: #475569;
-  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+  border: 1px solid rgba(30, 41, 59, 0.35);
+  background: rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .cluster-popup-close:hover {
-  background: rgba(241, 245, 249, 0.95);
-  color: #1f2937;
-  border-color: rgba(148, 163, 184, 0.6);
+  background: #1f2937;
+  color: #f8fafc;
+  border-color: #1f2937;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.24);
 }
 
 .cluster-popup-close:focus-visible {
