@@ -1,6 +1,6 @@
 import ReactDOM from 'react-dom'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Info, Plus, Target } from 'lucide-react'
+import { Info, Plus, Target, Undo2 } from 'lucide-react'
 import './ClusterPopup.css'
 
 const PANEL_WIDTH = 420
@@ -199,8 +199,8 @@ export default function ClusterPopup({
         </div>
 
         <div className="cluster-popup-instructions">
-          Select an entity to reveal quick actions. Choose the <strong>+</strong>{' '}
-          icon to add it to the board or <strong>Return to group</strong>.
+          Use the action icons to set a relationship target, open entity details, or add and
+          manage entities on the board.
         </div>
 
         <div className="cluster-popup-entities">
@@ -220,9 +220,14 @@ export default function ClusterPopup({
                   title={entity.name || `Entity ${entity.id}`}
                   onClick={() => handleSelectEntity(entityKey, isPlaced)}
                 >
-                  <div className="cluster-popup-entity-header">
+                  <div className="cluster-popup-entity-row cluster-popup-entity-row--title">
                     <div className="cluster-popup-entity-name">
                       {entity.name || `Entity ${entity.id}`}
+                    </div>
+                  </div>
+                  <div className="cluster-popup-entity-row cluster-popup-entity-row--meta">
+                    <div className="cluster-popup-entity-type" title={getEntityTypeName(entity)}>
+                      {getEntityTypeName(entity)}
                     </div>
                     <div className="cluster-popup-entity-actions">
                       <button
@@ -251,36 +256,37 @@ export default function ClusterPopup({
                       >
                         <Info size={14} aria-hidden="true" />
                       </button>
+                      {isPlaced ? (
+                        <button
+                          type="button"
+                          className="cluster-popup-entity-action-icon"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleReturnEntity(entity)
+                          }}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          aria-label="Return entity to cluster"
+                          disabled={!onReturnToGroup}
+                        >
+                          <Undo2 size={14} aria-hidden="true" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="cluster-popup-entity-action-icon"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleAddEntity(entity)
+                          }}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          aria-label="Add entity to board"
+                          disabled={!onAddToBoard}
+                        >
+                          <Plus size={14} aria-hidden="true" />
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="cluster-popup-entity-meta">
-                    Type: {getEntityTypeName(entity)}
-                  </div>
-                  {isPlaced ? (
-                    <button
-                      type="button"
-                      className="cluster-popup-entity-action"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        handleReturnEntity(entity)
-                      }}
-                    >
-                      Return to group
-                    </button>
-                  ) : isSelected ? (
-                    <button
-                      type="button"
-                      className="cluster-popup-entity-action cluster-popup-entity-action--icon"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        handleAddEntity(entity)
-                      }}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      aria-label="Add entity to board"
-                    >
-                      <Plus size={16} aria-hidden="true" />
-                    </button>
-                  ) : null}
                 </div>
               )
             })

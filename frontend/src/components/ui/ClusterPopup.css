@@ -145,7 +145,7 @@
   user-select: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   transition:
     box-shadow 150ms ease,
     transform 150ms ease,
@@ -154,25 +154,25 @@
     opacity 150ms ease;
 }
 
-.cluster-popup-entity-header {
+.cluster-popup-entity-row {
   display: flex;
   align-items: center;
+  gap: 8px;
+}
+
+.cluster-popup-entity-row--title {
+  justify-content: flex-start;
+}
+
+.cluster-popup-entity-row--meta {
   justify-content: space-between;
-  gap: 12px;
 }
 
 .cluster-popup-entity-actions {
-  display: flex;
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease;
-}
-
-.cluster-popup-entity:hover .cluster-popup-entity-actions,
-.cluster-popup-entity:focus-within .cluster-popup-entity-actions {
-  opacity: 1;
-  pointer-events: auto;
+  margin-left: auto;
 }
 
 .cluster-popup-entity:hover {
@@ -186,64 +186,16 @@
 }
 
 .cluster-popup-entity.is-placed {
-  opacity: 0.6;
-  cursor: not-allowed;
+  opacity: 0.75;
   background: #f8fafc;
   border-color: rgba(148, 163, 184, 0.55);
   box-shadow: none;
+  cursor: default;
 }
 
 .cluster-popup-entity.is-placed:hover {
   transform: none;
   box-shadow: none;
-}
-
-.cluster-popup-entity-action {
-  margin-top: 4px;
-  padding: 6px 10px;
-  border-radius: 10px;
-  border: none;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  color: #f8fafc;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.28);
-  transition:
-    transform 120ms ease,
-    box-shadow 120ms ease,
-    background-position 120ms ease,
-    filter 120ms ease;
-}
-
-.cluster-popup-entity-action:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.32);
-}
-
-.cluster-popup-entity-action:focus-visible {
-  outline: 3px solid rgba(37, 99, 235, 0.45);
-  outline-offset: 2px;
-}
-
-.cluster-popup-entity-action--icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
-  padding: 0;
-  background: rgba(37, 99, 235, 0.1);
-  color: #1d4ed8;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
-}
-
-.cluster-popup-entity-action--icon:hover,
-.cluster-popup-entity-action--icon:focus-visible {
-  background: #1d4ed8;
-  color: #f8fafc;
 }
 
 .cluster-popup-entity-action-icon {
@@ -253,8 +205,8 @@
   width: 28px;
   height: 28px;
   border-radius: 999px;
-  border: 1px solid rgba(100, 116, 139, 0.35);
-  background: rgba(248, 250, 252, 0.95);
+  border: 1px solid rgba(100, 116, 139, 0.45);
+  background: rgba(226, 232, 240, 0.95);
   color: #0f172a;
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
   transition:
@@ -299,12 +251,17 @@
   text-overflow: ellipsis;
 }
 
-.cluster-popup-entity-meta {
+.cluster-popup-entity-type {
   font-size: 11px;
-  color: #64748b;
+  color: #475569;
+  font-weight: 600;
+  background: rgba(226, 232, 240, 0.6);
+  border-radius: 999px;
+  padding: 4px 10px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 140px;
 }
 
 .cluster-popup-empty {
