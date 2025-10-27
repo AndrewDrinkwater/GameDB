@@ -175,13 +175,68 @@ export function buildReactFlowGraph(
       targetHandle: 'top',
     }))
 
+  const nodeSuppressedBy = new Map()
+  const suppressedNodeIds = new Set()
+
+  for (const edge of standardEdges) {
+    const sourceHidden = hiddenNodeIds.has(edge.source)
+    const targetHidden = hiddenNodeIds.has(edge.target)
+
+    if (sourceHidden && !targetHidden) {
+      suppressedNodeIds.add(edge.target)
+      if (!nodeSuppressedBy.has(edge.target)) nodeSuppressedBy.set(edge.target, new Set())
+      nodeSuppressedBy.get(edge.target).add(edge.source)
+    }
+
+    if (targetHidden && !sourceHidden) {
+      suppressedNodeIds.add(edge.source)
+      if (!nodeSuppressedBy.has(edge.source)) nodeSuppressedBy.set(edge.source, new Set())
+      nodeSuppressedBy.get(edge.source).add(edge.target)
+    }
+  }
+
   const layoutedNodes = layoutNodesHierarchically(
     [...baseNodes, ...clusterNodes],
     [...standardEdges, ...clusterEdges],
     centerKey
   )
 
-  return { nodes: layoutedNodes, edges: [...standardEdges, ...clusterEdges] }
+  const layoutedNodeMap = new Map(layoutedNodes.map((node) => [node.id, node]))
+
+  const suppressedNodes = {}
+  for (const nodeId of suppressedNodeIds) {
+    const node = layoutedNodeMap.get(nodeId)
+    if (node) suppressedNodes[nodeId] = node
+  }
+
+  const visibleNodes = layoutedNodes.filter((node) => {
+    if (suppressedNodeIds.has(node.id)) return false
+    return true
+  })
+
+  const suppressedEdges = []
+  const visibleStandardEdges = []
+
+  for (const edge of standardEdges) {
+    if (suppressedNodeIds.has(edge.source) || suppressedNodeIds.has(edge.target)) {
+      suppressedEdges.push(edge)
+    } else {
+      visibleStandardEdges.push(edge)
+    }
+  }
+
+  const finalEdges = [...visibleStandardEdges, ...clusterEdges]
+
+  return {
+    nodes: visibleNodes,
+    edges: finalEdges,
+    suppressedNodes,
+    suppressedEdges,
+    nodeSuppressedBy: Object.fromEntries(
+      [...nodeSuppressedBy.entries()].map(([nodeId, blockers]) => [nodeId, [...blockers]])
+    ),
+    hiddenNodeIds: Array.from(hiddenNodeIds),
+  }
 }
 
 export function createAdHocEntityNode(clusterNode, entity) {
