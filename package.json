@@ -8,6 +8,7 @@
     "concurrently": "^8.2.2"
   },
   "dependencies": {
+    "lucide-react": "^0.548.0",
     "pg": "^8.16.3"
   }
 }

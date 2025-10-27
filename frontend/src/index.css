@@ -90,3 +90,10 @@ body.theme-dark button:hover {
     background-color: #475569;
   }
 }
+
+/* ---- Lucide visibility fix ---- */
+svg.lucide,
+svg.lucide * {
+  stroke: currentColor !important;
+  fill: none !important;
+}
