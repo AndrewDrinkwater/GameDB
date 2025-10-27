@@ -58,9 +58,9 @@ button {
   font-weight: 500;
   font-family: inherit;
   background-color: #1e293b;
-  color: #fff;
+  color: inherit;
   cursor: pointer;
-  transition: background-color 0.25s, border-color 0.25s;
+  transition: background-color 0.25s, border-color 0.25s, color 0.25s;
 }
 button:hover {
   background-color: #334155;
@@ -72,7 +72,7 @@ button:focus-visible {
 
 body.theme-dark button {
   background-color: #334155;
-  color: #f8fafc;
+  color: inherit;
 }
 body.theme-dark button:hover {
   background-color: #475569;
