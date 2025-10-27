@@ -1,5 +1,5 @@
 import PropTypes from '../../utils/propTypes'
-import { ChevronDown, ChevronUp, Maximize2, Target } from 'lucide-react'
+import { Maximize2, Minus, Plus, Target } from 'lucide-react'
 import './RelationshipToolbar.css'
 
 export default function RelationshipToolbar({
@@ -11,23 +11,25 @@ export default function RelationshipToolbar({
 }) {
   return (
     <div className="relationship-toolbar" role="toolbar" aria-label="Relationship viewer controls">
-      <button
-        type="button"
-        className="relationship-toolbar__button"
-        onClick={onRefocus}
-      >
-        <Target size={16} aria-hidden="true" />
-        <span>Refocus</span>
-      </button>
+      <div className="relationship-toolbar__actions">
+        <button
+          type="button"
+          className="relationship-toolbar__button"
+          onClick={onRefocus}
+        >
+          <Target aria-hidden="true" />
+          <span>Refocus</span>
+        </button>
 
-      <button
-        type="button"
-        className="relationship-toolbar__button"
-        onClick={onZoomToFit}
-      >
-        <Maximize2 size={16} aria-hidden="true" />
-        <span>Zoom to fit</span>
-      </button>
+        <button
+          type="button"
+          className="relationship-toolbar__button"
+          onClick={onZoomToFit}
+        >
+          <Maximize2 aria-hidden="true" />
+          <span>Zoom to fit</span>
+        </button>
+      </div>
 
       <div className="relationship-toolbar__levels" aria-label="Relationship depth controls">
         <span className="relationship-toolbar__levels-label">Levels</span>
@@ -39,7 +41,7 @@ export default function RelationshipToolbar({
             disabled={depth >= 3}
             aria-label="Increase relationship depth"
           >
-            <ChevronUp size={14} aria-hidden="true" />
+            <Plus aria-hidden="true" />
           </button>
           <span className="relationship-toolbar__levels-value" aria-live="polite">
             {depth}
@@ -51,7 +53,7 @@ export default function RelationshipToolbar({
             disabled={depth <= 1}
             aria-label="Decrease relationship depth"
           >
-            <ChevronDown size={14} aria-hidden="true" />
+            <Minus aria-hidden="true" />
           </button>
         </div>
       </div>
