@@ -5,29 +5,25 @@ export default function EntityNode({ data }) {
   const label = data?.label || 'Entity'
   const inheritedStyle = data?.style || {}
 
-  const baseStyle = isCenter
-    ? {
-        border: '2px solid #2563eb',
-        background: '#dbeafe',
-        color: '#1d4ed8',
-        fontWeight: 700,
-      }
-    : {
-        border: '1px solid #cbd5f5',
-        background: '#ffffff',
-        color: '#0f172a',
-        fontWeight: 600,
-      }
+  const baseClasses =
+    'relative flex flex-col items-center gap-1 rounded-2xl border px-5 py-4 text-sm font-semibold shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg'
 
-  const style = { ...baseStyle, ...inheritedStyle }
+  const variantClasses = isCenter
+    ? 'border-blue-500/70 bg-gradient-to-b from-blue-100 via-white to-blue-50 text-blue-900'
+    : 'border-slate-200 bg-white text-slate-900'
+
+  const helperText = isCenter ? 'Primary entity' : 'Related entity'
 
   return (
     <div
-      className="rounded-xl px-4 py-3 shadow-sm text-center text-sm"
-      style={style}
+      className={`${baseClasses} ${variantClasses}`}
+      style={{ ...inheritedStyle }}
     >
       <Handle type="target" position={Position.Top} />
-      <div>{label}</div>
+      <div className="text-base leading-tight text-center">{label}</div>
+      <div className="text-[11px] font-normal uppercase tracking-wide text-slate-500">
+        {helperText}
+      </div>
       <Handle type="source" position={Position.Bottom} />
     </div>
   )
