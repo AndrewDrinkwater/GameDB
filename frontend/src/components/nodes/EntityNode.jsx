@@ -65,7 +65,12 @@ export default function EntityNode({ data }) {
               aria-label="Use as relationship source"
               disabled={isCenter || !data?.onSetTarget}
             >
-              <Target size={14} aria-hidden="true" />
+              <Target
+                size={16}
+                strokeWidth={2.25}
+                absoluteStrokeWidth
+                aria-hidden="true"
+              />
             </button>
             <button
               type="button"
@@ -75,7 +80,12 @@ export default function EntityNode({ data }) {
               aria-label="Open entity in new window"
               disabled={!data?.onOpenInfo}
             >
-              <Info size={14} aria-hidden="true" />
+              <Info
+                size={16}
+                strokeWidth={2.25}
+                absoluteStrokeWidth
+                aria-hidden="true"
+              />
             </button>
           </div>
         </div>
