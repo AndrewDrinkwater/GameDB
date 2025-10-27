@@ -398,297 +398,368 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
   })
 }
 
+const HIERARCHY_INDEX_SPACING = 260
+const HIERARCHY_LEVEL_SPACING_Y = 200
+
+const DEFAULT_RELATIONSHIP_LABEL = 'Relationship'
+
+function normalizeEdge(edge, index = 0) {
+  const source = String(edge.source)
+  const target = String(edge.target)
+  const typeName = edge?.type?.name || edge?.label || DEFAULT_RELATIONSHIP_LABEL
+
+  return {
+    id: edge?.id != null ? String(edge.id) : `${source}-${target}-${index}`,
+    source,
+    target,
+    relationshipType: typeName,
+  }
+}
+
+function createEntityNode(id, node, meta, position) {
+  const label = node?.name || `Entity ${id}`
+  const typeName = node?.type?.name || node?.typeName || 'Entity'
+
+  return {
+    id,
+    type: 'entity',
+    position,
+    data: {
+      label,
+      typeName,
+      entityId: id,
+      isCenter: meta.level === 0,
+      level: meta.level,
+      levelIndex: meta.levelIndex ?? 0,
+      parentId: meta.parentId,
+    },
+  }
+}
+
+function createClusterNode(definition, position, allNodes) {
+  const { id, parentId, relationshipType, containedIds, level, levelIndex, sourceId } = definition
+  const count = containedIds.length
+  const label = `${relationshipType} (${count})`
+
+  return {
+    id,
+    type: 'cluster',
+    position,
+    data: {
+      label,
+      relationshipType,
+      count,
+      containedIds,
+      sourceId,
+      level,
+      levelIndex,
+      parentId,
+      allNodes,
+      placedEntityIds: [],
+    },
+  }
+}
+
+function assignPositions(entries) {
+  const positionMap = new Map()
+
+  entries.forEach((items, level) => {
+    const sorted = [...items].sort((a, b) => {
+      const parentCompare = (a.parentId || '').localeCompare(b.parentId || '', undefined, {
+        sensitivity: 'base',
+      })
+      if (parentCompare !== 0) return parentCompare
+
+      return (a.label || a.id).localeCompare(b.label || b.id, undefined, { sensitivity: 'base' })
+    })
+
+    sorted.forEach((entry, index) => {
+      positionMap.set(entry.id, {
+        x: index * HIERARCHY_INDEX_SPACING,
+        y: level * HIERARCHY_LEVEL_SPACING_Y,
+        levelIndex: index,
+      })
+    })
+  })
+
+  return positionMap
+}
+
 export function buildReactFlowGraph(
   data,
   entityId,
   clusterThreshold = DEFAULT_CLUSTER_THRESHOLD
 ) {
-  const centerKey = String(entityId)
+  const centerId = String(entityId)
   const rawNodes = Array.isArray(data?.nodes) ? data.nodes : []
   const rawEdges = Array.isArray(data?.edges) ? data.edges : []
 
-  const parsedEdges = rawEdges.map((edge, i) => {
-    const source = String(edge.source)
-    const target = String(edge.target)
-    const typeName = edge?.type?.name || edge?.label || 'Relationship'
+  if (!centerId) {
     return {
-      id: edge?.id != null ? String(edge.id) : `${source}-${target}-${i}`,
-      source,
-      target,
-      typeName,
-      label: typeName,
+      nodes: [],
+      edges: [],
+      suppressedNodes: {},
+      suppressedEdges: [],
+      nodeSuppressedBy: {},
+      hiddenNodeIds: [],
     }
-  })
+  }
 
-  const enrichedNodes = rawNodes.map((node) => ({
-    ...node,
-    typeName: node?.type?.name || node?.typeName || null,
-  }))
+  const nodeMap = new Map(
+    rawNodes.map((node) => [String(node.id), { ...node, typeName: node?.type?.name || node?.typeName }])
+  )
 
-  const levelMap = computeNodeLevels(parsedEdges, centerKey)
-
-  const adjacencyMap = new Map()
-
-  parsedEdges.forEach((edge) => {
-    if (!adjacencyMap.has(edge.source)) adjacencyMap.set(edge.source, new Set())
-    if (!adjacencyMap.has(edge.target)) adjacencyMap.set(edge.target, new Set())
-    adjacencyMap.get(edge.source).add(edge.target)
-    adjacencyMap.get(edge.target).add(edge.source)
-  })
-
-  const groupedByTypeAndAnchor = new Map()
-
-  parsedEdges.forEach((edge) => {
-    const anchorId = determineClusterAnchor(edge, levelMap, centerKey)
-    const typeName = edge.typeName
-    const key = `${typeName}::${anchorId ?? ''}`
-
-    if (!groupedByTypeAndAnchor.has(key)) {
-      groupedByTypeAndAnchor.set(key, {
-        typeName,
-        anchorId: anchorId != null ? String(anchorId) : null,
-        edges: [],
+  if (!nodeMap.has(centerId)) {
+    const fallback = rawNodes[0]
+    if (fallback) {
+      nodeMap.set(centerId, {
+        ...fallback,
+        id: centerId,
+        name: fallback?.name || `Entity ${centerId}`,
+        typeName: fallback?.type?.name || fallback?.typeName,
       })
+    } else {
+      nodeMap.set(centerId, { id: centerId, name: `Entity ${centerId}`, typeName: 'Entity' })
     }
+  }
 
-    groupedByTypeAndAnchor.get(key).edges.push(edge)
+  const parsedEdges = rawEdges.map((edge, index) => normalizeEdge(edge, index))
+
+  const adjacency = new Map()
+  parsedEdges.forEach((edge) => {
+    if (!adjacency.has(edge.source)) adjacency.set(edge.source, [])
+    if (!adjacency.has(edge.target)) adjacency.set(edge.target, [])
+
+    adjacency.get(edge.source).push({ otherId: edge.target, edge })
+    adjacency.get(edge.target).push({ otherId: edge.source, edge })
   })
 
-  const clusterNodes = []
-  const clusterEdges = []
-  const clusterSuppressedByAnchor = new Map()
-  const hiddenNodeIds = new Set()
-  const consumedEdgeIds = new Set()
-
-  const protectedNodeIds = new Set([centerKey])
-  const extraProtected = Array.isArray(data?.protectedNodeIds)
-    ? data.protectedNodeIds.map((value) => String(value))
-    : []
-  extraProtected.forEach((id) => protectedNodeIds.add(id))
-
-  const clusterGroups = []
-
-  groupedByTypeAndAnchor.forEach((group) => {
-    if (!group?.edges?.length) return
-    if (group.edges.length < clusterThreshold) return
-
-    const anchorLevel = group.anchorId != null ? levelMap.get(String(group.anchorId)) ?? Infinity : Infinity
-    clusterGroups.push({ ...group, anchorLevel })
+  const metaMap = new Map()
+  metaMap.set(centerId, {
+    level: 0,
+    parentId: null,
+    relationshipType: null,
+    edgeId: null,
   })
 
-  clusterGroups
-    .sort((a, b) => {
-      const levelA = a.anchorLevel ?? Infinity
-      const levelB = b.anchorLevel ?? Infinity
-      if (levelA !== levelB) return levelA - levelB
-      return (a.typeName || '').localeCompare(b.typeName || '', undefined, { sensitivity: 'base' })
-    })
-    .forEach(({ typeName, anchorId, edges: edgesForGroup }) => {
-      const nodeIds = new Set()
-      edgesForGroup.forEach((edge) => {
-        nodeIds.add(edge.source)
-        nodeIds.add(edge.target)
-        consumedEdgeIds.add(edge.id)
-    })
+  const queue = [centerId]
+  while (queue.length) {
+    const currentId = queue.shift()
+    const currentMeta = metaMap.get(currentId)
+    const neighbors = adjacency.get(currentId) || []
 
-      const containedIds = [...nodeIds].filter((id) => {
-        if (id === centerKey) return false
-        if (anchorId && id === anchorId) return false
-        if (protectedNodeIds.has(id)) return false
-        return true
+    neighbors.forEach(({ otherId, edge }) => {
+      if (metaMap.has(otherId)) return
+      const nextLevel = currentMeta.level + 1
+      metaMap.set(otherId, {
+        level: nextLevel,
+        parentId: currentId,
+        relationshipType: edge.relationshipType,
+        edgeId: edge.id,
       })
+      queue.push(otherId)
+    })
+  }
 
-      if (!containedIds.length) return
+  const childrenByParent = new Map()
+  metaMap.forEach((meta, id) => {
+    if (!meta.parentId) return
+    if (!childrenByParent.has(meta.parentId)) childrenByParent.set(meta.parentId, [])
+    childrenByParent.get(meta.parentId).push({ id, relationshipType: meta.relationshipType })
+  })
 
-      containedIds.forEach((id) => hiddenNodeIds.add(id))
+  const clusterDefinitions = []
+  const nodesHiddenByCluster = new Set()
 
-      const normalizedAnchorId = anchorId != null ? String(anchorId) : null
-      const isAnchorHidden = normalizedAnchorId ? hiddenNodeIds.has(normalizedAnchorId) : false
+  childrenByParent.forEach((children, parentId) => {
+    const grouped = new Map()
+    children.forEach(({ id, relationshipType }) => {
+      const key = relationshipType || DEFAULT_RELATIONSHIP_LABEL
+      if (!grouped.has(key)) grouped.set(key, [])
+      grouped.get(key).push(String(id))
+    })
 
-      const clusterId = `cluster-${anchorId ?? 'unknown'}-${slugifyTypeName(typeName)}`
-      const entityCount = containedIds.length
+    grouped.forEach((ids, relationshipType) => {
+      if (ids.length < clusterThreshold) return
 
-      clusterNodes.push({
+      const clusterId = `cluster-${parentId}-${slugifyTypeName(relationshipType)}`
+      const parentMeta = metaMap.get(parentId)
+      const level = (parentMeta?.level ?? 0) + 1
+
+      clusterDefinitions.push({
         id: clusterId,
-        type: 'cluster',
-        data: {
-          label: `${entityCount} ${typeName}${entityCount === 1 ? '' : 's'}`,
-          relationshipType: typeName,
-          count: entityCount,
-          containedIds,
-          sourceId: anchorId || centerKey,
-          allNodes: enrichedNodes,
-        },
-        position: { x: 0, y: 0 },
+        parentId,
+        relationshipType,
+        containedIds: ids,
+        level,
+        levelIndex: 0,
+        sourceId: parentId,
       })
 
-      clusterEdges.push({
-        id: `edge-${clusterId}`,
-        source: anchorId || centerKey,
-        target: clusterId,
-        type: 'smoothstep',
-        label: `${typeName} (${entityCount})`,
-        animated: false,
-        sourceHandle: 'bottom',
-        targetHandle: 'top',
-      })
+      ids.forEach((childId) => nodesHiddenByCluster.add(childId))
+    })
+  })
 
-      if (isAnchorHidden && normalizedAnchorId) {
-        clusterSuppressedByAnchor.set(clusterId, new Set([normalizedAnchorId]))
-      }
+  const hiddenNodeIds = new Set()
+  const suppressedNodeIds = new Set()
+  const blockersMap = new Map()
+
+  const traverseHiddenSubtree = (nodeId, activeBlockers = []) => {
+    if (hiddenNodeIds.has(nodeId)) return
+    hiddenNodeIds.add(nodeId)
+
+    const children = childrenByParent.get(nodeId) || []
+    children.forEach(({ id: childId }) => {
+      const nextBlockers = new Set([nodeId, ...activeBlockers])
+      if (!blockersMap.has(childId)) blockersMap.set(childId, new Set())
+      nextBlockers.forEach((value) => blockersMap.get(childId).add(value))
+
+      if (hiddenNodeIds.has(childId)) return
+      if (!nodesHiddenByCluster.has(childId)) suppressedNodeIds.add(childId)
+      traverseHiddenSubtree(childId, [...nextBlockers])
+    })
+  }
+
+  nodesHiddenByCluster.forEach((hiddenRootId) => {
+    traverseHiddenSubtree(hiddenRootId, [hiddenRootId])
+  })
+
+  const levelEntries = new Map()
+
+  const registerLevelEntry = (level, entry) => {
+    if (!levelEntries.has(level)) levelEntries.set(level, [])
+    levelEntries.get(level).push(entry)
+  }
+
+  metaMap.forEach((meta, id) => {
+    const node = nodeMap.get(id)
+    registerLevelEntry(meta.level, {
+      id,
+      parentId: meta.parentId,
+      label: node?.name || `Entity ${id}`,
+    })
+  })
+
+  clusterDefinitions.forEach((cluster) => {
+    registerLevelEntry(cluster.level, {
+      id: cluster.id,
+      parentId: cluster.parentId,
+      label: cluster.relationshipType,
+    })
+  })
+
+  const positionLookup = assignPositions(levelEntries)
+
+  const visibleNodes = []
+  const suppressedNodes = {}
+
+  metaMap.forEach((meta, id) => {
+    const positionInfo =
+      positionLookup.get(id) || { x: 0, y: meta.level * HIERARCHY_LEVEL_SPACING_Y, levelIndex: 0 }
+    const nodeData = nodeMap.get(id) || { id, name: `Entity ${id}`, typeName: 'Entity' }
+    const enrichedMeta = {
+      ...meta,
+      levelIndex: positionInfo.levelIndex ?? 0,
+    }
+
+    const node = createEntityNode(id, nodeData, enrichedMeta, {
+      x: positionInfo.x,
+      y: positionInfo.y,
     })
 
-  const baseNodes = enrichedNodes
-    .filter((n) => !hiddenNodeIds.has(String(n.id)))
-    .map((node) => {
-      const id = String(node.id)
-      const label = node?.name || `Entity ${id}`
-      const isCenter = id === centerKey
-      const typeName = node?.typeName || 'Entity'
-      return {
-        id,
-        type: 'entity',
-        data: { label, isCenter, typeName, entityId: id },
-        position: { x: 0, y: 0 },
+    if (hiddenNodeIds.has(id)) {
+      if (suppressedNodeIds.has(id)) {
+        suppressedNodes[id] = node
       }
-    })
+    } else {
+      visibleNodes.push(node)
+    }
+  })
 
-  const standardEdges = parsedEdges
-    .filter((e) => !consumedEdgeIds.has(e.id))
-    .map((e) => ({
-      id: e.id,
-      source: e.source,
-      target: e.target,
+  const clusterNodes = clusterDefinitions.map((cluster) => {
+    const positionInfo = positionLookup.get(cluster.id) || {
+      x: 0,
+      y: cluster.level * HIERARCHY_LEVEL_SPACING_Y,
+      levelIndex: 0,
+    }
+
+    const definition = {
+      ...cluster,
+      levelIndex: positionInfo.levelIndex ?? 0,
+    }
+
+    return createClusterNode(definition, {
+      x: positionInfo.x,
+      y: positionInfo.y,
+    }, rawNodes)
+  })
+
+  const visibleNodeIds = new Set(visibleNodes.map((node) => node.id))
+
+  const visibleEdges = []
+  const suppressedEdges = []
+
+  const collectEdge = (edge) => {
+    const sourceHidden = hiddenNodeIds.has(edge.source) && !visibleNodeIds.has(edge.source)
+    const targetHidden = hiddenNodeIds.has(edge.target) && !visibleNodeIds.has(edge.target)
+
+    if (sourceHidden || targetHidden) {
+      suppressedEdges.push(edge)
+    } else {
+      visibleEdges.push(edge)
+    }
+  }
+
+  metaMap.forEach((meta, id) => {
+    const parentId = meta.parentId
+    if (!parentId) return
+
+    const edgeId = `edge-${parentId}-${id}`
+    const edge = {
+      id: edgeId,
+      source: parentId,
+      target: id,
       type: 'smoothstep',
-      label: e.label,
       animated: true,
-      data: { relationshipType: e.typeName },
+      label: meta.relationshipType || DEFAULT_RELATIONSHIP_LABEL,
+      data: { relationshipType: meta.relationshipType || DEFAULT_RELATIONSHIP_LABEL },
       style: { strokeWidth: 1.5 },
       sourceHandle: 'bottom',
       targetHandle: 'top',
-    }))
-
-  const reachableWithoutHidden = new Set()
-  const reachableQueue = []
-
-  protectedNodeIds.forEach((id) => {
-    const key = String(id)
-    if (hiddenNodeIds.has(key)) return
-    if (!reachableWithoutHidden.has(key)) {
-      reachableWithoutHidden.add(key)
-      reachableQueue.push(key)
     }
+
+    collectEdge(edge)
   })
 
-  while (reachableQueue.length) {
-    const current = reachableQueue.shift()
-    const neighbors = adjacencyMap.get(current)
-    if (!neighbors) continue
+  clusterNodes.forEach((clusterNode) => {
+    const { sourceId, relationshipType, count } = clusterNode.data
+    const edgeId = `edge-${sourceId}-${clusterNode.id}`
 
-    neighbors.forEach((neighbor) => {
-      if (hiddenNodeIds.has(neighbor)) return
-      if (reachableWithoutHidden.has(neighbor)) return
-      reachableWithoutHidden.add(neighbor)
-      reachableQueue.push(neighbor)
+    collectEdge({
+      id: edgeId,
+      source: sourceId,
+      target: clusterNode.id,
+      type: 'smoothstep',
+      animated: false,
+      label: `${relationshipType} (${count})`,
+      data: { relationshipType },
+      style: { strokeWidth: 1.5 },
+      sourceHandle: 'bottom',
+      targetHandle: 'top',
     })
-  }
-
-  const suppressedNodeIds = new Set()
-  const nodeSuppressedBy = new Map()
-
-  hiddenNodeIds.forEach((hiddenId) => {
-    const visited = new Set([hiddenId])
-    const queue = [hiddenId]
-
-    while (queue.length) {
-      const current = queue.shift()
-      const neighbors = adjacencyMap.get(current)
-      if (!neighbors) continue
-
-      neighbors.forEach((neighbor) => {
-        if (visited.has(neighbor)) return
-        visited.add(neighbor)
-
-        if (hiddenNodeIds.has(neighbor)) {
-          queue.push(neighbor)
-          return
-        }
-
-        if (protectedNodeIds.has(neighbor)) return
-        if (reachableWithoutHidden.has(neighbor)) return
-
-        suppressedNodeIds.add(neighbor)
-        if (!nodeSuppressedBy.has(neighbor)) nodeSuppressedBy.set(neighbor, new Set())
-        nodeSuppressedBy.get(neighbor).add(hiddenId)
-        queue.push(neighbor)
-      })
-    }
   })
 
-  clusterSuppressedByAnchor.forEach((blockers, clusterId) => {
-    suppressedNodeIds.add(clusterId)
-    if (!nodeSuppressedBy.has(clusterId)) nodeSuppressedBy.set(clusterId, new Set())
-    blockers.forEach((blocker) => nodeSuppressedBy.get(clusterId).add(blocker))
-  })
-
-  const layoutedNodes = layoutNodesHierarchically(
-    [...baseNodes, ...clusterNodes],
-    [...standardEdges, ...clusterEdges],
-    centerKey
+  const nodeSuppressedBy = Object.fromEntries(
+    [...blockersMap.entries()].map(([nodeId, blockers]) => [nodeId, [...blockers].map(String)])
   )
 
-  const layoutedNodeMap = new Map(layoutedNodes.map((node) => [node.id, node]))
-
-  const suppressedNodes = {}
-  for (const nodeId of suppressedNodeIds) {
-    const node = layoutedNodeMap.get(nodeId)
-    if (node) suppressedNodes[nodeId] = node
-  }
-
-  const visibleNodes = layoutedNodes.filter((node) => {
-    if (suppressedNodeIds.has(node.id)) return false
-    return true
-  })
-
-  const suppressedEdges = []
-  const visibleStandardEdges = []
-  const visibleClusterEdges = []
-
-  const isEndpointHiddenOrSuppressed = (edge) => {
-    const sourceKey = String(edge.source)
-    const targetKey = String(edge.target)
-    if (hiddenNodeIds.has(sourceKey) || hiddenNodeIds.has(targetKey)) return true
-    if (suppressedNodeIds.has(sourceKey) || suppressedNodeIds.has(targetKey)) return true
-    return false
-  }
-
-  for (const edge of standardEdges) {
-    if (isEndpointHiddenOrSuppressed(edge)) {
-      suppressedEdges.push(edge)
-    } else {
-      visibleStandardEdges.push(edge)
-    }
-  }
-
-  for (const edge of clusterEdges) {
-    if (isEndpointHiddenOrSuppressed(edge)) {
-      suppressedEdges.push(edge)
-    } else {
-      visibleClusterEdges.push(edge)
-    }
-  }
-
-  const finalEdges = [...visibleStandardEdges, ...visibleClusterEdges]
-
   return {
-    nodes: visibleNodes,
-    edges: finalEdges,
+    nodes: [...visibleNodes, ...clusterNodes],
+    edges: visibleEdges,
     suppressedNodes,
     suppressedEdges,
-    nodeSuppressedBy: Object.fromEntries(
-      [...nodeSuppressedBy.entries()].map(([nodeId, blockers]) => [nodeId, [...blockers]])
-    ),
-    hiddenNodeIds: Array.from(hiddenNodeIds),
+    nodeSuppressedBy,
+    hiddenNodeIds: Array.from(hiddenNodeIds, String),
   }
 }
 
