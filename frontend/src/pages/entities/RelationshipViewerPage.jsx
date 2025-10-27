@@ -144,6 +144,8 @@ function buildReactFlowGraph(data, entityId, clusterThreshold = CLUSTER_THRESHOL
         type: 'smoothstep',
         label: `${type} (${containedIds.length})`,
         animated: false,
+        sourceHandle: 'bottom',
+        targetHandle: 'top',
       })
     }
   }
@@ -174,6 +176,8 @@ function buildReactFlowGraph(data, entityId, clusterThreshold = CLUSTER_THRESHOL
       animated: true,
       data: { relationshipType: e.typeName },
       style: { strokeWidth: 1.5 },
+      sourceHandle: 'bottom',
+      targetHandle: 'top',
     }))
 
   const layoutedNodes = layoutNodesHierarchically(
@@ -256,22 +260,24 @@ export default function RelationshipViewerPage() {
       })
 
       setEdges((prevEdges) => {
-        const sourceId = clusterInfo?.sourceId ? String(clusterInfo.sourceId) : null
+        const clusterId = clusterInfo?.id ? String(clusterInfo.id) : null
         const relationshipType = clusterInfo?.relationshipType
-        if (!sourceId || !relationshipType) return prevEdges
-        const edgeId = `edge-${sourceId}-${entityId}`
+        if (!clusterId || !relationshipType) return prevEdges
+        const edgeId = `edge-${clusterId}-${entityId}`
         if (prevEdges.some((edge) => edge.id === edgeId)) return prevEdges
         return [
           ...prevEdges,
           {
             id: edgeId,
-            source: sourceId,
+            source: clusterId,
             target: entityId,
             type: 'smoothstep',
             label: relationshipType,
             animated: true,
-            data: { relationshipType },
+            data: { relationshipType, fromClusterId: clusterId },
             style: { strokeWidth: 1.5 },
+            sourceHandle: 'bottom',
+            targetHandle: 'top',
           },
         ]
       })
@@ -313,12 +319,58 @@ export default function RelationshipViewerPage() {
     })
 
     setEdges((prevEdges) => {
-      const sourceId = clusterInfo?.sourceId ? String(clusterInfo.sourceId) : null
-      if (!sourceId) return prevEdges
-      const edgeId = `edge-${sourceId}-${entityId}`
+      const clusterId = clusterInfo?.id ? String(clusterInfo.id) : null
+      if (!clusterId) return prevEdges
+      const edgeId = `edge-${clusterId}-${entityId}`
       return prevEdges.filter((edge) => edge.id !== edgeId)
     })
   }, [])
+
+  const handleNodeDragStop = useCallback(
+    (event, node) => {
+      if (!node || node.type !== 'entity') return
+      const entityId = String(node.id)
+      const clusterMeta = boardEntities[entityId]
+      if (!clusterMeta?.clusterId) return
+
+      const clusterElement = document.querySelector(
+        `[data-id="${clusterMeta.clusterId}"]`
+      )
+      const entityElement = document.querySelector(`[data-id="${entityId}"]`)
+      if (!clusterElement || !entityElement) return
+
+      const clusterRect = clusterElement.getBoundingClientRect()
+      const entityRect = entityElement.getBoundingClientRect()
+      const entityCenterX = entityRect.left + entityRect.width / 2
+      const entityCenterY = entityRect.top + entityRect.height / 2
+
+      const isInsideCluster =
+        entityCenterX >= clusterRect.left &&
+        entityCenterX <= clusterRect.right &&
+        entityCenterY >= clusterRect.top &&
+        entityCenterY <= clusterRect.bottom
+
+      if (!isInsideCluster) return
+
+      const clusterNode = nodes.find((graphNode) => graphNode.id === clusterMeta.clusterId)
+      if (!clusterNode) return
+
+      handleReturnEntityToCluster(
+        {
+          id: clusterNode.id,
+          relationshipType: clusterNode.data?.relationshipType,
+          sourceId: clusterNode.data?.sourceId,
+          placedEntityIds: clusterNode.data?.placedEntityIds || [],
+        },
+        {
+          id: entityId,
+          name: node?.data?.label,
+          typeName: node?.data?.typeName,
+        }
+      )
+    },
+    [boardEntities, handleReturnEntityToCluster, nodes]
+  )
 
   useEffect(() => {
     setNodes((prevNodes) =>
@@ -398,6 +450,7 @@ export default function RelationshipViewerPage() {
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
+            onNodeDragStop={handleNodeDragStop}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             fitView

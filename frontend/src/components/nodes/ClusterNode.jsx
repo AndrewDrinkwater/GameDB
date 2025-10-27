@@ -71,18 +71,9 @@ export default function ClusterNode({ id, data }) {
   const placedCount = placedIds.size
   const availableCount = Math.max(totalCount - placedCount, 0)
 
-  let countLabel = 'No related entities'
-  if (totalCount > 0) {
-    if (availableCount === 0) {
-      countLabel = `All ${totalCount === 1 ? 'entity' : 'entities'} on board`
-    } else if (availableCount === totalCount) {
-      countLabel = `${totalCount} ${totalCount === 1 ? 'entity' : 'entities'} inside`
-    } else {
-      countLabel = `${availableCount} of ${totalCount} ${
-        totalCount === 1 ? 'entity' : 'entities'
-      } not on board`
-    }
-  }
+  const countLabel = totalCount
+    ? `contains ${availableCount} of ${totalCount}`
+    : 'contains 0 of 0'
 
   const relationshipLabel = data?.relationshipType || data?.label || 'Cluster'
 
@@ -90,6 +81,7 @@ export default function ClusterNode({ id, data }) {
     <>
       <div className="cluster-node" onClick={handleOpen}>
         <Handle
+          id="top"
           type="target"
           position={Position.Top}
           style={{
@@ -107,6 +99,7 @@ export default function ClusterNode({ id, data }) {
         <div className="cluster-node__label">{relationshipLabel}</div>
         <div className="cluster-node__count">{countLabel}</div>
         <Handle
+          id="bottom"
           type="source"
           position={Position.Bottom}
           style={{

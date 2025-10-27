@@ -13,6 +13,7 @@ export default function EntityNode({ data }) {
       style={{ ...inheritedStyle }}
     >
       <Handle
+        id="top"
         type="target"
         position={Position.Top}
         style={{
@@ -41,6 +42,7 @@ export default function EntityNode({ data }) {
       </div>
 
       <Handle
+        id="bottom"
         type="source"
         position={Position.Bottom}
         style={{
