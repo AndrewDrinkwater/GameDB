@@ -127,6 +127,7 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
 
   // --- drag cards ---------------------------------------------------------
   const handleDragStart = (e, entity) => {
+    e.stopPropagation()
     e.dataTransfer.setData('application/x-entity', JSON.stringify(entity))
     if (cluster?.id || cluster?.sourceId || cluster?.relationshipType) {
       e.dataTransfer.setData(
@@ -240,6 +241,10 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
               <div
                 key={entity.id}
                 draggable={true}
+                onPointerDown={(e) => {
+                  // Prevent ReactFlow from initiating a pan when a card starts dragging
+                  e.stopPropagation()
+                }}
                 onDragStart={(e) => handleDragStart(e, entity)}
                 onDragEnd={(e) => handleDragEnd(e, entity)}
                 className={`cluster-popup-entity ${draggingId === entity.id ? 'is-dragging' : ''}`}
