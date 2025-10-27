@@ -1,6 +1,12 @@
+/* --------------------------------------------------------
+   Cluster Popup Layout & Base Styling
+-------------------------------------------------------- */
+
 .cluster-popup-overlay {
   position: absolute;
   inset: 0;
+  /* allow clicks to pass through the transparent overlay,
+     but the panel itself can still handle pointer events */
   pointer-events: none;
   font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont,
     'Helvetica Neue', Arial, sans-serif;
@@ -8,7 +14,7 @@
 
 .cluster-popup-panel {
   position: absolute;
-  pointer-events: auto;
+  pointer-events: auto; /* ✅ re-enable interactivity for contents */
   width: 420px;
   max-height: 70vh;
   display: flex;
@@ -21,13 +27,17 @@
   backdrop-filter: blur(10px);
   animation: cluster-popup-fade 150ms ease;
   transition: opacity 0.2s ease;
+  z-index: 2600;
 }
 
-/* 🔹 Disable pointer events while dragging, so ReactFlow can receive them */
+/* Dim panel slightly while dragging (but still clickable) */
 .cluster-popup-panel.dragging {
-  pointer-events: none;
   opacity: 0.96;
 }
+
+/* --------------------------------------------------------
+   Header
+-------------------------------------------------------- */
 
 .cluster-popup-header {
   position: sticky;
@@ -106,6 +116,10 @@
   outline-offset: 2px;
 }
 
+/* --------------------------------------------------------
+   Content / Entity Cards
+-------------------------------------------------------- */
+
 .cluster-popup-instructions {
   font-size: 11px;
   color: #64748b;
@@ -135,8 +149,12 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  transition: box-shadow 150ms ease, transform 150ms ease, background-color 150ms ease,
-    border-color 150ms ease, opacity 150ms ease;
+  transition:
+    box-shadow 150ms ease,
+    transform 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    opacity 150ms ease;
 }
 
 .cluster-popup-entity:hover {
@@ -157,9 +175,13 @@
   transition: all 120ms ease;
 }
 
+/* --------------------------------------------------------
+   Drag Preview
+-------------------------------------------------------- */
+
 .cluster-popup-drag-preview {
   position: fixed;
-  pointer-events: none; /* ✅ important so canvas can still receive drag */
+  pointer-events: none;
   z-index: 4000;
   width: 200px;
 }
@@ -170,6 +192,10 @@
   border-color: rgba(148, 163, 184, 0.6);
   transform: rotate(-2deg);
 }
+
+/* --------------------------------------------------------
+   Misc Elements
+-------------------------------------------------------- */
 
 .cluster-popup-entity-name {
   font-size: 14px;
@@ -195,6 +221,10 @@
   color: #64748b;
   padding: 24px 12px;
 }
+
+/* --------------------------------------------------------
+   Animations
+-------------------------------------------------------- */
 
 @keyframes cluster-popup-fade {
   from {

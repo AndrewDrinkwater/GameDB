@@ -146,6 +146,8 @@ export default function ClusterPopup({ position, cluster, onClose, onDragEntity 
       if (event.button !== 0) return
       event.stopPropagation()
 
+    event.target.releasePointerCapture?.(event.pointerId)
+
       if (!suppressBoardPanRef.current) {
         suppressBoardPanRef.current = true
         emitClusterDragPhase('start')
