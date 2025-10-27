@@ -163,29 +163,6 @@ export default function RelationshipViewerPage() {
       })
 
       markEntityVisible(entityId)
-
-      setEdges((prevEdges) => {
-        const clusterId = clusterInfo?.id ? String(clusterInfo.id) : null
-        const relationshipType = clusterInfo?.relationshipType
-        if (!clusterId || !relationshipType) return prevEdges
-        const edgeId = `edge-${clusterId}-${entityId}`
-        if (prevEdges.some((edge) => edge.id === edgeId)) return prevEdges
-        return [
-          ...prevEdges,
-          {
-            id: edgeId,
-            source: clusterId,
-            target: entityId,
-            type: 'smoothstep',
-            label: relationshipType,
-            animated: true,
-            data: { relationshipType, fromClusterId: clusterId },
-            style: { strokeWidth: 1.5 },
-            sourceHandle: 'bottom',
-            targetHandle: 'top',
-          },
-        ]
-      })
     },
     [handleOpenEntityInfo, handleSetTargetEntity, markEntityVisible]
   )
@@ -237,12 +214,9 @@ export default function RelationshipViewerPage() {
       )
     })
 
-    setEdges((prevEdges) => {
-      const clusterId = clusterInfo?.id ? String(clusterInfo.id) : null
-      if (!clusterId) return prevEdges
-      const edgeId = `edge-${clusterId}-${entityId}`
-      return prevEdges.filter((edge) => edge.id !== edgeId)
-    })
+    setEdges((prevEdges) =>
+      prevEdges.filter((edge) => edge.source !== entityId && edge.target !== entityId)
+    )
 
     markEntityHidden(entityId)
   }, [markEntityHidden])
@@ -358,6 +332,7 @@ export default function RelationshipViewerPage() {
       if (node) {
         nodesToAdd.push(node)
         delete nextSuppressed[nodeId]
+        hiddenSet.delete(nodeId)
       }
     })
 

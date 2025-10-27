@@ -135,3 +135,34 @@
     justify-content: space-between;
   }
 }
+
+/* --------------------------------------------------------
+   Relationship Toolbar Icon Fix
+-------------------------------------------------------- */
+
+.relationship-toolbar__button svg,
+.relationship-toolbar__levels-button svg {
+  stroke: currentColor !important;
+  fill: none !important;
+  color: inherit;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+/* Make sure white-on-gradient buttons show correctly */
+.relationship-toolbar__button svg {
+  stroke-width: 2.25px;
+  stroke: #ffffff !important;
+}
+
+/* If you have light buttons (like the levels +/-), use normal colour */
+.relationship-toolbar__levels-button svg {
+  stroke: currentColor !important;
+  stroke-width: 2.25px;
+}
+
+/* Optional: slightly lighten hover appearance for readability */
+.relationship-toolbar__button:hover svg {
+  opacity: 0.9;
+}
