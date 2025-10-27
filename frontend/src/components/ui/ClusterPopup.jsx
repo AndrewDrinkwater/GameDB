@@ -1,6 +1,6 @@
 import ReactDOM from 'react-dom'
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Info, Plus, Target, Undo2 } from 'lucide-react'
+import { Eye, Plus, RotateCcw, Target } from 'lucide-react'
 import './ClusterPopup.css'
 
 const PANEL_WIDTH = 420
@@ -220,72 +220,71 @@ export default function ClusterPopup({
                   title={entity.name || `Entity ${entity.id}`}
                   onClick={() => handleSelectEntity(entityKey, isPlaced)}
                 >
-                  <div className="cluster-popup-entity-row cluster-popup-entity-row--title">
+                  <div className="cluster-popup-entity-header">
                     <div className="cluster-popup-entity-name">
                       {entity.name || `Entity ${entity.id}`}
                     </div>
                   </div>
-                  <div className="cluster-popup-entity-row cluster-popup-entity-row--meta">
-                    <div className="cluster-popup-entity-type" title={getEntityTypeName(entity)}>
-                      {getEntityTypeName(entity)}
-                    </div>
-                    <div className="cluster-popup-entity-actions">
-                      <button
-                        type="button"
-                        className="cluster-popup-entity-action-icon"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          onSetTargetEntity?.(entityKey)
-                        }}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        aria-label="Use as relationship source"
-                        disabled={!onSetTargetEntity || isCurrentSource}
-                      >
-                        <Target size={14} aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
-                        className="cluster-popup-entity-action-icon"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          onOpenEntityInfo?.(entityKey)
-                        }}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        aria-label="Open entity in new window"
-                        disabled={!onOpenEntityInfo}
-                      >
-                        <Info size={14} aria-hidden="true" />
-                      </button>
-                      {isPlaced ? (
-                        <button
-                          type="button"
-                          className="cluster-popup-entity-action-icon"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            handleReturnEntity(entity)
-                          }}
-                          onPointerDown={(event) => event.stopPropagation()}
-                          aria-label="Return entity to cluster"
-                          disabled={!onReturnToGroup}
-                        >
-                          <Undo2 size={14} aria-hidden="true" />
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="cluster-popup-entity-action-icon"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            handleAddEntity(entity)
-                          }}
-                          onPointerDown={(event) => event.stopPropagation()}
-                          aria-label="Add entity to board"
-                          disabled={!onAddToBoard}
-                        >
-                          <Plus size={14} aria-hidden="true" />
-                        </button>
-                      )}
-                    </div>
+                  <div className="cluster-popup-entity-meta" title={getEntityTypeName(entity)}>
+                    {getEntityTypeName(entity)}
+                  </div>
+                  <div className="cluster-popup-entity-actions" role="group" aria-label="Entity actions">
+                    <button
+                      type="button"
+                      className={`cluster-popup-entity-action ${!isPlaced ? 'is-primary' : ''}`}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handleAddEntity(entity)
+                      }}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      aria-label="Add entity to board"
+                      title="Add to board"
+                      disabled={isPlaced || !onAddToBoard}
+                    >
+                      <Plus size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="cluster-popup-entity-action"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onOpenEntityInfo?.(entityKey)
+                      }}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      aria-label="Open entity details"
+                      title="Open details"
+                      disabled={!onOpenEntityInfo}
+                    >
+                      <Eye size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="cluster-popup-entity-action"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onSetTargetEntity?.(entityKey)
+                      }}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      aria-label="Use as relationship source"
+                      title="Set as source"
+                      disabled={!onSetTargetEntity || isCurrentSource}
+                    >
+                      <Target size={16} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="cluster-popup-entity-action"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        handleReturnEntity(entity)
+                      }}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      aria-label="Recall entity to cluster"
+                      title="Recall to cluster"
+                      disabled={!isPlaced || !onReturnToGroup}
+                    >
+                      <RotateCcw size={16} aria-hidden="true" />
+                    </button>
                   </div>
                 </div>
               )
