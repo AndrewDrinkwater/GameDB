@@ -368,9 +368,17 @@ function buildLevelsFromEdges(centerKey, edges) {
       const other = edge.source === current ? edge.target : edge.source
       if (!other) return
       const relationshipType = edge?.data?.relationshipType || edge?.label || ''
+      const parentId = edge?.data?.parentId ?? edge?.parentId ?? null
+      const childId = edge?.data?.childId ?? edge?.childId ?? null
 
       let nextLevel = currentLevel + 1
-      if (isParentRelation(relationshipType)) {
+      if (parentId && childId) {
+        if (current === parentId && other === childId) {
+          nextLevel = currentLevel + 1
+        } else if (current === childId && other === parentId) {
+          nextLevel = currentLevel - 1
+        }
+      } else if (isParentRelation(relationshipType)) {
         nextLevel = currentLevel - 1
       } else if (isSiblingRelation(relationshipType)) {
         nextLevel = currentLevel
@@ -415,6 +423,11 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
           if (!source || !target || source === target) return null
           const relationshipType =
             edge?.data?.relationshipType || edge?.data?.typeName || edge?.label || ''
+          const parentIdRaw =
+            edge?.data?.parentId ?? edge?.parentId ?? edge?.data?.parent ?? null
+          const childIdRaw = edge?.data?.childId ?? edge?.childId ?? null
+          const parentId = parentIdRaw != null ? String(parentIdRaw) : null
+          const childId = childIdRaw != null ? String(childIdRaw) : null
           return {
             id: edge?.id != null ? String(edge.id) : `edge-${index}`,
             source,
@@ -422,7 +435,11 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
             label: edge?.label || relationshipType || DEFAULT_RELATIONSHIP_LABEL,
             data: {
               relationshipType: relationshipType || DEFAULT_RELATIONSHIP_LABEL,
+              parentId,
+              childId,
             },
+            parentId,
+            childId,
           }
         })
         .filter(Boolean)
@@ -553,7 +570,11 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     label: edge.label || DEFAULT_RELATIONSHIP_LABEL,
     data: {
       relationshipType: edge.relationshipType || edge.label || DEFAULT_RELATIONSHIP_LABEL,
+      parentId: edge.parentId ?? null,
+      childId: edge.childId ?? null,
     },
+    parentId: edge.parentId ?? null,
+    childId: edge.childId ?? null,
     sourceHandle: 'bottom',
     targetHandle: 'top',
   }))
@@ -577,8 +598,12 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     label: cluster.relationshipType || DEFAULT_RELATIONSHIP_LABEL,
     data: {
       relationshipType: cluster.relationshipType || DEFAULT_RELATIONSHIP_LABEL,
+      parentId: cluster.parentId,
+      childId: cluster.id,
       isClusterEdge: true,
     },
+    parentId: cluster.parentId,
+    childId: cluster.id,
     sourceHandle: 'bottom',
     targetHandle: 'top',
   }))
