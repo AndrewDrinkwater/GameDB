@@ -23,6 +23,32 @@ const CHILD_RELATION_PATTERN =
 const SIBLING_RELATION_PATTERN =
   /(associated with|related to|partner|peer|sibling|affiliated with|connected to)/i
 
+function extractRelationshipLabel(relationshipType, fallback = '') {
+  if (typeof relationshipType === 'string') {
+    const trimmed = relationshipType.trim()
+    if (trimmed) return trimmed
+  }
+
+  if (relationshipType && typeof relationshipType === 'object') {
+    const labelCandidate =
+      relationshipType?.label ||
+      relationshipType?.from_label ||
+      relationshipType?.to_label ||
+      relationshipType?.fromLabel ||
+      relationshipType?.toLabel ||
+      ''
+    const trimmed = String(labelCandidate || '').trim()
+    if (trimmed) return trimmed
+  }
+
+  if (typeof fallback === 'string') {
+    const trimmed = fallback.trim()
+    if (trimmed) return trimmed
+  }
+
+  return ''
+}
+
 function normalizeNode(rawNode) {
   if (!rawNode) return null
   const id = String(rawNode.id ?? '')
@@ -39,57 +65,144 @@ function normalizeNode(rawNode) {
   }
 }
 
-function determineDirection(source, target, relationshipType) {
-  if (!relationshipType || !source || !target) return null
-  if (isChildRelation(relationshipType)) {
-    return { parent: source, child: target }
+function determineDirection(relationship, currentEntityId) {
+  if (!relationship) return { parentId: null, childId: null }
+
+  const fromEntityId = relationship?.fromEntityId
+  const toEntityId = relationship?.toEntityId
+  const relationshipType = relationship?.relationshipType
+
+  const normalizedFrom = fromEntityId != null ? String(fromEntityId) : null
+  const normalizedTo = toEntityId != null ? String(toEntityId) : null
+
+  let parentId = normalizedFrom
+  let childId = normalizedTo
+
+  if (currentEntityId != null) {
+    // currentEntityId is retained for compatibility and potential future logic.
   }
-  if (isParentRelation(relationshipType)) {
-    return { parent: target, child: source }
+
+  const label = extractRelationshipLabel(relationshipType).toLowerCase()
+
+  if ((!parentId || !childId) && normalizedFrom && normalizedTo && label) {
+    if (PARENT_RELATION_PATTERN.test(label)) {
+      parentId = normalizedTo
+      childId = normalizedFrom
+    } else if (CHILD_RELATION_PATTERN.test(label)) {
+      parentId = normalizedFrom
+      childId = normalizedTo
+    }
   }
-  return null
+
+  return { parentId, childId }
 }
 
-function normalizeEdge(rawEdge, index = 0) {
+function normalizeEdge(rawEdge, currentEntityId, index = 0) {
   if (!rawEdge) return null
 
-  const source = String(rawEdge?.source ?? rawEdge?.from ?? '')
-  const target = String(rawEdge?.target ?? rawEdge?.to ?? '')
-  if (!source || !target || source === target) return null
+  const fromEntityIdRaw =
+    rawEdge?.fromEntityId ??
+    rawEdge?.from_entity ??
+    rawEdge?.from ??
+    rawEdge?.source ??
+    null
+  const toEntityIdRaw =
+    rawEdge?.toEntityId ??
+    rawEdge?.to_entity ??
+    rawEdge?.to ??
+    rawEdge?.target ??
+    null
+
+  const fromEntityId = fromEntityIdRaw != null ? String(fromEntityIdRaw) : null
+  const toEntityId = toEntityIdRaw != null ? String(toEntityIdRaw) : null
+
+  if (!fromEntityId || !toEntityId || fromEntityId === toEntityId) return null
 
   const id =
     rawEdge?.id != null && rawEdge.id !== ''
       ? String(rawEdge.id)
-      : `edge-${index}-${source}-${target}`
+      : `edge-${index}-${fromEntityId}-${toEntityId}`
 
-  const relationshipTypeRaw =
-    rawEdge?.relationshipType ||
+  const relationshipType =
+    rawEdge?.relationshipType ??
+    rawEdge?.data?.relationshipType ??
+    rawEdge?.type ??
+    rawEdge?.data?.type ??
+    null
+
+  const fallbackRelationshipLabel =
+    rawEdge?.label ||
     rawEdge?.typeName ||
-    rawEdge?.type?.name ||
     rawEdge?.type?.label ||
+    rawEdge?.type?.name ||
     rawEdge?.type?.from_name ||
     rawEdge?.type?.fromName ||
     rawEdge?.type?.to_name ||
     rawEdge?.type?.toName ||
-    rawEdge?.data?.relationshipType ||
     rawEdge?.data?.typeName ||
-    rawEdge?.data?.type?.name ||
     rawEdge?.data?.type?.label ||
-    rawEdge?.label ||
+    rawEdge?.data?.type?.name ||
     ''
 
-  const relationshipType = String(relationshipTypeRaw || '').trim()
-  const label = relationshipType || DEFAULT_RELATIONSHIP_LABEL
-  const direction = determineDirection(source, target, relationshipType)
+  const relationshipLabel =
+    extractRelationshipLabel(relationshipType, fallbackRelationshipLabel) ||
+    DEFAULT_RELATIONSHIP_LABEL
+
+  const direction = determineDirection(
+    { fromEntityId, toEntityId, relationshipType },
+    currentEntityId
+  )
+
+  let label = relationshipLabel || DEFAULT_RELATIONSHIP_LABEL
+
+  if (relationshipType) {
+    const typeObject =
+      typeof relationshipType === 'object' && relationshipType !== null
+        ? relationshipType
+        : null
+    if (typeObject) {
+      if (currentEntityId != null && String(currentEntityId) === fromEntityId) {
+        label =
+          typeObject?.from_label ||
+          typeObject?.label ||
+          typeObject?.fromLabel ||
+          typeObject?.to_label ||
+          typeObject?.toLabel ||
+          relationshipLabel ||
+          DEFAULT_RELATIONSHIP_LABEL
+      } else if (currentEntityId != null && String(currentEntityId) === toEntityId) {
+        label =
+          typeObject?.to_label ||
+          typeObject?.label ||
+          typeObject?.toLabel ||
+          typeObject?.from_label ||
+          typeObject?.fromLabel ||
+          relationshipLabel ||
+          DEFAULT_RELATIONSHIP_LABEL
+      } else {
+        label =
+          typeObject?.label ||
+          typeObject?.from_label ||
+          typeObject?.to_label ||
+          typeObject?.fromLabel ||
+          typeObject?.toLabel ||
+          relationshipLabel ||
+          DEFAULT_RELATIONSHIP_LABEL
+      }
+    }
+  }
 
   return {
     id,
-    source,
-    target,
+    source: direction?.parentId || fromEntityId,
+    target: direction?.childId || toEntityId,
     relationshipType,
     label,
-    parentId: direction?.parent ?? null,
-    childId: direction?.child ?? null,
+    parentId: direction?.parentId ?? null,
+    childId: direction?.childId ?? null,
+    fromEntityId,
+    toEntityId,
+    relationshipLabel,
     raw: rawEdge,
   }
 }
@@ -134,7 +247,8 @@ function computeGraphMeta(centerId, edges) {
     neighbors.forEach(({ other, edge }) => {
       if (!other) return
       const existing = levels.get(other)
-      const relationshipType = edge?.relationshipType || edge?.label || DEFAULT_RELATIONSHIP_LABEL
+      const relationshipLabel =
+        edge?.relationshipLabel || edge?.label || DEFAULT_RELATIONSHIP_LABEL
 
       let nextLevel = currentLevel + 1
       let parentId = current
@@ -153,7 +267,7 @@ function computeGraphMeta(centerId, edges) {
           nextLevel = currentLevel + 1
           parentId = current
         }
-      } else if (relationshipType && isParentRelation(relationshipType)) {
+      } else if (relationshipLabel && isParentRelation(relationshipLabel)) {
         nextLevel = currentLevel - 1
         parentId = other
       }
@@ -163,7 +277,7 @@ function computeGraphMeta(centerId, edges) {
         meta.set(other, {
           level: nextLevel,
           parentId,
-          relationshipType,
+          relationshipType: relationshipLabel,
         })
         queue.push(other)
         return
@@ -174,7 +288,7 @@ function computeGraphMeta(centerId, edges) {
         meta.set(other, {
           level: nextLevel,
           parentId,
-          relationshipType,
+          relationshipType: relationshipLabel,
         })
       }
     })
@@ -367,7 +481,12 @@ function buildLevelsFromEdges(centerKey, edges) {
     relatedEdges.forEach((edge) => {
       const other = edge.source === current ? edge.target : edge.source
       if (!other) return
-      const relationshipType = edge?.data?.relationshipType || edge?.label || ''
+      const relationshipType =
+        edge?.data?.relationshipLabel ||
+        edge?.data?.relationshipType ||
+        edge?.relationshipLabel ||
+        edge?.label ||
+        ''
       const parentId = edge?.data?.parentId ?? edge?.parentId ?? null
       const childId = edge?.data?.childId ?? edge?.childId ?? null
 
@@ -421,8 +540,15 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
           const source = String(edge.source)
           const target = String(edge.target)
           if (!source || !target || source === target) return null
+          const relationshipDefinition =
+            edge?.data?.relationshipType ??
+            edge?.relationshipType ??
+            null
           const relationshipType =
-            edge?.data?.relationshipType || edge?.data?.typeName || edge?.label || ''
+            extractRelationshipLabel(
+              relationshipDefinition,
+              edge?.data?.typeName || edge?.label || ''
+            ) || edge?.label || ''
           const parentIdRaw =
             edge?.data?.parentId ?? edge?.parentId ?? edge?.data?.parent ?? null
           const childIdRaw = edge?.data?.childId ?? edge?.childId ?? null
@@ -435,6 +561,7 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
             label: edge?.label || relationshipType || DEFAULT_RELATIONSHIP_LABEL,
             data: {
               relationshipType: relationshipType || DEFAULT_RELATIONSHIP_LABEL,
+              relationshipLabel: relationshipType || DEFAULT_RELATIONSHIP_LABEL,
               parentId,
               childId,
             },
@@ -517,7 +644,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
   }
 
   const normalizedEdges = rawEdges
-    .map((edge, index) => normalizeEdge(edge, index))
+    .map((edge, index) => normalizeEdge(edge, centerId, index))
     .filter(Boolean)
 
   const { levels, meta } = computeGraphMeta(centerId, normalizedEdges)
@@ -569,7 +696,9 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     animated: true,
     label: edge.label || DEFAULT_RELATIONSHIP_LABEL,
     data: {
-      relationshipType: edge.relationshipType || edge.label || DEFAULT_RELATIONSHIP_LABEL,
+      relationshipType: edge.relationshipLabel || edge.label || DEFAULT_RELATIONSHIP_LABEL,
+      relationshipLabel: edge.relationshipLabel || edge.label || DEFAULT_RELATIONSHIP_LABEL,
+      relationshipDefinition: edge.relationshipType || null,
       parentId: edge.parentId ?? null,
       childId: edge.childId ?? null,
     },
