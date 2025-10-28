@@ -9,11 +9,14 @@ import {
   searchEntities,
   updateEntity,
 } from '../controllers/entityController.js'
+import { getEntityGraph } from '../controllers/entityGraphController.js'
 
 const router = Router()
 
+// Authenticated routes
 router.use(authenticate)
 
+router.get('/:id/graph', getEntityGraph)
 router.post('/', createEntity)
 router.get('/search', searchEntities)
 router.get('/:id', getEntityById)

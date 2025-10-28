@@ -23,6 +23,8 @@ import CreateRelationshipType from './pages/relationshipTypes/CreateRelationship
 import EditRelationshipType from './pages/relationshipTypes/EditRelationshipType.jsx'
 import EntitySecretList from './pages/secrets/EntitySecretList.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
+import RelationshipViewerPage from './pages/entities/RelationshipViewerPage.jsx'
+
 
 const router = createBrowserRouter(
   createRoutesFromElements(
@@ -80,6 +82,17 @@ const router = createBrowserRouter(
           <Route path="all/:id" element={<CharactersPage scope="all" />} />
         </Route>
 
+{/* Entity routes */}
+<Route path="entities" element={<EntityList />} />
+
+{/* ✅ Relationship viewer route */}
+<Route path="entities/:entityId/relationship-viewer" element={<RelationshipViewerPage />} />
+
+{/* ✅ Entity details route */}
+<Route path="entities/:id" element={<EntityDetailPage />} />
+
+
+          <Route path="entities/:id" element={<EntityDetailPage />} />
         {/* Admin-only route */}
         <Route path="users" element={<UsersPage />} />
       </Route>

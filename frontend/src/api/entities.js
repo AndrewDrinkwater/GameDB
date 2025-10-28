@@ -41,3 +41,27 @@ export const createEntity = (data) => api.post('/entities', data)
 export const updateEntity = (id, data) => api.patch(`/entities/${id}`, data)
 
 export const deleteEntity = (id) => api.delete(`/entities/${id}`)
+
+export const getEntityGraph = async (entityId, depth = 1) => {
+  const params = new URLSearchParams()
+  if (depth !== undefined && depth !== null) {
+    const resolved = Number(depth)
+    if (!Number.isNaN(resolved) && resolved > 0) {
+      params.set('depth', String(resolved))
+    }
+  }
+
+  const query = params.toString()
+
+  const payload = await api.get(
+    `/entities/${entityId}/graph${query ? `?${query}` : ''}`,
+    {
+      credentials: 'include',
+    }
+  )
+  if (!payload?.success) {
+    throw new Error(payload?.message || 'Failed to load graph')
+  }
+
+  return payload.data
+}
