@@ -39,57 +39,149 @@ function normalizeNode(rawNode) {
   }
 }
 
-function determineDirection(source, target, relationshipType) {
-  if (!relationshipType || !source || !target) return null
-  if (isChildRelation(relationshipType)) {
-    return { parent: source, child: target }
+function determineDirection(relationship, currentEntityId) {
+  if (!relationship) return { parentId: null, childId: null }
+
+  void currentEntityId
+
+  const fromEntityId =
+    relationship?.fromEntityId != null ? String(relationship.fromEntityId) : null
+  const toEntityId =
+    relationship?.toEntityId != null ? String(relationship.toEntityId) : null
+  const relationshipType = relationship?.relationshipType
+
+  let parentId = fromEntityId && toEntityId ? fromEntityId : null
+  let childId = fromEntityId && toEntityId ? toEntityId : null
+
+  const relationshipLabel = (() => {
+    if (!relationshipType) return ''
+    if (typeof relationshipType === 'string') return relationshipType.toLowerCase()
+    const rawLabel =
+      relationshipType?.label ||
+      relationshipType?.name ||
+      relationshipType?.from_label ||
+      relationshipType?.to_label ||
+      ''
+    return String(rawLabel).toLowerCase()
+  })()
+
+  if (!parentId && !childId && fromEntityId && toEntityId && relationshipLabel) {
+    if (PARENT_RELATION_PATTERN.test(relationshipLabel)) {
+      parentId = toEntityId
+      childId = fromEntityId
+    } else if (CHILD_RELATION_PATTERN.test(relationshipLabel)) {
+      parentId = fromEntityId
+      childId = toEntityId
+    }
   }
-  if (isParentRelation(relationshipType)) {
-    return { parent: target, child: source }
+
+  return {
+    parentId,
+    childId,
   }
-  return null
 }
 
-function normalizeEdge(rawEdge, index = 0) {
+function normalizeEdge(rawEdge, currentEntityId) {
   if (!rawEdge) return null
 
-  const source = String(rawEdge?.source ?? rawEdge?.from ?? '')
-  const target = String(rawEdge?.target ?? rawEdge?.to ?? '')
-  if (!source || !target || source === target) return null
+  const fromEntityIdRaw =
+    rawEdge?.from_entity ??
+    rawEdge?.fromEntityId ??
+    rawEdge?.from ??
+    rawEdge?.source ??
+    rawEdge?.sourceId ??
+    null
+  const toEntityIdRaw =
+    rawEdge?.to_entity ??
+    rawEdge?.toEntityId ??
+    rawEdge?.to ??
+    rawEdge?.target ??
+    rawEdge?.targetId ??
+    null
+
+  const fromEntityId = fromEntityIdRaw != null ? String(fromEntityIdRaw) : null
+  const toEntityId = toEntityIdRaw != null ? String(toEntityIdRaw) : null
+
+  if (!fromEntityId || !toEntityId || fromEntityId === toEntityId) return null
 
   const id =
     rawEdge?.id != null && rawEdge.id !== ''
       ? String(rawEdge.id)
-      : `edge-${index}-${source}-${target}`
+      : `edge-${fromEntityId}-${toEntityId}`
 
-  const relationshipTypeRaw =
-    rawEdge?.relationshipType ||
-    rawEdge?.typeName ||
-    rawEdge?.type?.name ||
-    rawEdge?.type?.label ||
-    rawEdge?.type?.from_name ||
-    rawEdge?.type?.fromName ||
-    rawEdge?.type?.to_name ||
-    rawEdge?.type?.toName ||
-    rawEdge?.data?.relationshipType ||
-    rawEdge?.data?.typeName ||
-    rawEdge?.data?.type?.name ||
-    rawEdge?.data?.type?.label ||
-    rawEdge?.label ||
-    ''
+  const relationshipType =
+    rawEdge?.relationshipType ??
+    rawEdge?.type ??
+    rawEdge?.data?.relationshipType ??
+    null
 
-  const relationshipType = String(relationshipTypeRaw || '').trim()
-  const label = relationshipType || DEFAULT_RELATIONSHIP_LABEL
-  const direction = determineDirection(source, target, relationshipType)
+  const normalizedRelationship = {
+    id,
+    fromEntityId,
+    toEntityId,
+    relationshipType,
+  }
+
+  const { parentId, childId } = determineDirection(
+    normalizedRelationship,
+    currentEntityId
+  )
+
+  const currentId = currentEntityId != null ? String(currentEntityId) : null
+
+  const baseLabel = (() => {
+    if (!relationshipType) {
+      return (
+        rawEdge?.label ||
+        rawEdge?.typeName ||
+        rawEdge?.data?.typeName ||
+        DEFAULT_RELATIONSHIP_LABEL
+      )
+    }
+
+    if (typeof relationshipType === 'string') {
+      return relationshipType || DEFAULT_RELATIONSHIP_LABEL
+    }
+
+    if (currentId && currentId === fromEntityId) {
+      return (
+        relationshipType?.from_label ||
+        relationshipType?.label ||
+        relationshipType?.name ||
+        DEFAULT_RELATIONSHIP_LABEL
+      )
+    }
+
+    if (currentId && currentId === toEntityId) {
+      return (
+        relationshipType?.to_label ||
+        relationshipType?.label ||
+        relationshipType?.name ||
+        DEFAULT_RELATIONSHIP_LABEL
+      )
+    }
+
+    return (
+      relationshipType?.label ||
+      relationshipType?.name ||
+      DEFAULT_RELATIONSHIP_LABEL
+    )
+  })()
+
+  const normalizedLabel =
+    String(baseLabel || DEFAULT_RELATIONSHIP_LABEL).trim() || DEFAULT_RELATIONSHIP_LABEL
 
   return {
     id,
-    source,
-    target,
+    source: parentId ?? fromEntityId,
+    target: childId ?? toEntityId,
+    parentId,
+    childId,
+    label: normalizedLabel,
+    fromEntityId,
+    toEntityId,
     relationshipType,
-    label,
-    parentId: direction?.parent ?? null,
-    childId: direction?.child ?? null,
+    relationshipLabel: normalizedLabel,
     raw: rawEdge,
   }
 }
@@ -134,7 +226,8 @@ function computeGraphMeta(centerId, edges) {
     neighbors.forEach(({ other, edge }) => {
       if (!other) return
       const existing = levels.get(other)
-      const relationshipType = edge?.relationshipType || edge?.label || DEFAULT_RELATIONSHIP_LABEL
+      const relationshipLabel =
+        edge?.relationshipLabel || edge?.label || DEFAULT_RELATIONSHIP_LABEL
 
       let nextLevel = currentLevel + 1
       let parentId = current
@@ -153,7 +246,7 @@ function computeGraphMeta(centerId, edges) {
           nextLevel = currentLevel + 1
           parentId = current
         }
-      } else if (relationshipType && isParentRelation(relationshipType)) {
+      } else if (relationshipLabel && isParentRelation(relationshipLabel)) {
         nextLevel = currentLevel - 1
         parentId = other
       }
@@ -163,7 +256,7 @@ function computeGraphMeta(centerId, edges) {
         meta.set(other, {
           level: nextLevel,
           parentId,
-          relationshipType,
+          relationshipType: relationshipLabel,
         })
         queue.push(other)
         return
@@ -174,7 +267,7 @@ function computeGraphMeta(centerId, edges) {
         meta.set(other, {
           level: nextLevel,
           parentId,
-          relationshipType,
+          relationshipType: relationshipLabel,
         })
       }
     })
@@ -517,7 +610,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
   }
 
   const normalizedEdges = rawEdges
-    .map((edge, index) => normalizeEdge(edge, index))
+    .map((edge) => normalizeEdge(edge, centerId))
     .filter(Boolean)
 
   const { levels, meta } = computeGraphMeta(centerId, normalizedEdges)
@@ -569,7 +662,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     animated: true,
     label: edge.label || DEFAULT_RELATIONSHIP_LABEL,
     data: {
-      relationshipType: edge.relationshipType || edge.label || DEFAULT_RELATIONSHIP_LABEL,
+      relationshipType: edge.relationshipLabel || edge.label || DEFAULT_RELATIONSHIP_LABEL,
       parentId: edge.parentId ?? null,
       childId: edge.childId ?? null,
     },
