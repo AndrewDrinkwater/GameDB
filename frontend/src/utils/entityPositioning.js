@@ -407,19 +407,18 @@ function groupChildrenByRelationship(
     })
     if (childIds.length < threshold) return
 
-    if (normalizedCurrentId && childIds.includes(normalizedCurrentId)) {
-      return
-    }
-
     const slug = slugifyTypeName(entry.typeName || entry.typeKey)
     const clusterId = `cluster-${entry.parentId}-${slug}`
 
     const clusterParentLevel = nodeLevels.get(entry.parentId) ?? 0
 
     const protectedIds = normalizedCurrentId
-      ? childIds.filter((childId) =>
-          isEntityOnActivePath(childId, normalizedCurrentId, edges)
-        )
+      ? [
+          ...childIds.filter((childId) =>
+            isEntityOnActivePath(childId, normalizedCurrentId, edges)
+          ),
+          normalizedCurrentId,
+        ]
       : []
     const protectedIdSet = new Set(protectedIds)
     const clusterMembers = childIds.filter((childId) => {
