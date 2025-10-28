@@ -244,7 +244,8 @@ function groupChildrenByRelationship(
   nodes,
   edges,
   threshold = DEFAULT_CLUSTER_THRESHOLD,
-  currentEntityId = null
+  currentEntityId = null,
+  maxClusterDepth = 1
 ) {
   const clusters = []
   const suppressedNodes = new Map()
@@ -262,6 +263,75 @@ function groupChildrenByRelationship(
     (Array.isArray(nodes) ? nodes : []).map((node) => [String(node?.id ?? ''), node])
   )
 
+  const nodeLevels = new Map()
+  if (normalizedCurrentId) {
+    nodeLevels.set(normalizedCurrentId, 0)
+  }
+  nodeLookup.forEach((node, key) => {
+    const levelFromData =
+      typeof node?.data?.level === 'number'
+        ? node.data.level
+        : typeof node?.level === 'number'
+        ? node.level
+        : null
+    if (levelFromData != null && Number.isFinite(levelFromData)) {
+      nodeLevels.set(key, levelFromData)
+    }
+  })
+
+  const adjacency = new Map()
+  const reverseAdjacency = new Map()
+
+  edges.forEach((edge) => {
+    if (!edge) return
+    const parentIdRaw = edge.parentId ?? edge.source ?? null
+    const childIdRaw = edge.childId ?? edge.target ?? null
+    if (!parentIdRaw || !childIdRaw) return
+
+    const parentId = String(parentIdRaw)
+    const childId = String(childIdRaw)
+
+    if (!adjacency.has(parentId)) adjacency.set(parentId, new Set())
+    adjacency.get(parentId).add(childId)
+
+    if (!reverseAdjacency.has(childId)) reverseAdjacency.set(childId, new Set())
+    reverseAdjacency.get(childId).add(parentId)
+  })
+
+  const levelSeeds = new Set(nodeLevels.keys())
+  if (normalizedCurrentId) {
+    levelSeeds.add(normalizedCurrentId)
+    const parentsOfCenter = reverseAdjacency.get(normalizedCurrentId)
+    if (parentsOfCenter) {
+      parentsOfCenter.forEach((parentId) => {
+        if (!nodeLevels.has(parentId)) {
+          nodeLevels.set(parentId, 0)
+        }
+        levelSeeds.add(parentId)
+      })
+    }
+  }
+
+  const queue = Array.from(levelSeeds)
+  while (queue.length) {
+    const currentId = queue.shift()
+    if (!currentId) continue
+    const currentLevel = nodeLevels.get(currentId)
+    if (currentLevel == null || !Number.isFinite(currentLevel)) continue
+
+    const children = adjacency.get(currentId)
+    if (!children) continue
+
+    children.forEach((childId) => {
+      const candidateLevel = currentLevel + 1
+      const existingLevel = nodeLevels.get(childId)
+      if (existingLevel == null || candidateLevel < existingLevel) {
+        nodeLevels.set(childId, candidateLevel)
+        queue.push(childId)
+      }
+    })
+  }
+
   const grouped = new Map()
   edges.forEach((edge) => {
     if (!edge) return
@@ -272,6 +342,15 @@ function groupChildrenByRelationship(
     const parentId = String(parentIdRaw)
     const childId = String(childIdRaw)
     if (!parentId || !childId || parentId === childId) return
+
+    const parentNode = nodeLookup.get(parentId)
+    const childNode = nodeLookup.get(childId)
+    if (parentNode?.inCluster || childNode?.inCluster) return
+
+    const parentLevel = nodeLevels.get(parentId) ?? 0
+    const childLevel = nodeLevels.get(childId) ?? parentLevel + 1
+
+    if (parentLevel >= maxClusterDepth || childLevel > maxClusterDepth) return
 
     const label =
       String(edge.relationshipLabel || edge.label || DEFAULT_RELATIONSHIP_LABEL)
@@ -317,7 +396,15 @@ function groupChildrenByRelationship(
   })
 
   grouped.forEach((entry) => {
-    const childIds = Array.from(entry.childMap.keys())
+    const parentNode = nodeLookup.get(entry.parentId)
+    if (parentNode?.inCluster) {
+      return
+    }
+
+    const childIds = Array.from(entry.childMap.keys()).filter((childId) => {
+      const childNode = nodeLookup.get(childId)
+      return !(childNode?.inCluster)
+    })
     if (childIds.length < threshold) return
 
     if (normalizedCurrentId && childIds.includes(normalizedCurrentId)) {
@@ -327,17 +414,24 @@ function groupChildrenByRelationship(
     const slug = slugifyTypeName(entry.typeName || entry.typeKey)
     const clusterId = `cluster-${entry.parentId}-${slug}`
 
+    const clusterParentLevel = nodeLevels.get(entry.parentId) ?? 0
+
     const protectedIds = normalizedCurrentId
       ? childIds.filter((childId) =>
           isEntityOnActivePath(childId, normalizedCurrentId, edges)
         )
       : []
     const protectedIdSet = new Set(protectedIds)
-    const clusterMembers = childIds.filter((childId) => !protectedIdSet.has(childId))
+    const clusterMembers = childIds.filter((childId) => {
+      if (protectedIdSet.has(childId)) return false
+      const childNode = nodeLookup.get(childId)
+      return !(childNode?.inCluster)
+    })
 
     if (clusterMembers.length) {
       const baseLabel =
         entry.typeName || entry.relationshipLabel || DEFAULT_RELATIONSHIP_LABEL
+      const clusterLabel = `${baseLabel} (${clusterMembers.length})`
 
       clusters.push({
         id: clusterId,
@@ -346,8 +440,9 @@ function groupChildrenByRelationship(
         typeName: entry.typeName,
         typeId: entry.typeId,
         containedIds: clusterMembers,
-        label: `${baseLabel} (${clusterMembers.length})`,
+        label: clusterLabel,
         count: clusterMembers.length,
+        parentLevel: clusterParentLevel,
       })
 
       clusterMembers.forEach((childId) => {
@@ -373,7 +468,7 @@ function groupChildrenByRelationship(
         id: `edge-${entry.parentId}-${clusterId}`,
         source: entry.parentId,
         target: clusterId,
-        label: baseLabel,
+        label: clusterLabel,
         parentId: entry.parentId,
         childId: clusterId,
         relationshipLabel: baseLabel,
@@ -442,6 +537,10 @@ function createClusterNodeDefinition(cluster, nodeSummaries) {
   const relationshipType = cluster.relationshipType || DEFAULT_RELATIONSHIP_LABEL
   const label = cluster.label || relationshipType
   const count = cluster.count ?? (Array.isArray(cluster.containedIds) ? cluster.containedIds.length : 0)
+  const parentLevel =
+    typeof cluster.parentLevel === 'number' && Number.isFinite(cluster.parentLevel)
+      ? cluster.parentLevel
+      : null
   return {
     id: cluster.id,
     type: 'cluster',
@@ -456,6 +555,7 @@ function createClusterNodeDefinition(cluster, nodeSummaries) {
       sourceId: cluster.parentId,
       placedEntityIds: [],
       allNodes: nodeSummaries,
+      parentLevel,
     },
   }
 }
