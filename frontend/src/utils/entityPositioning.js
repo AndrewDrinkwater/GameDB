@@ -16,8 +16,10 @@ const LEVEL_VERTICAL_SPACING =
   Math.max(DEFAULT_ENTITY_HEIGHT, DEFAULT_CLUSTER_HEIGHT) + HIERARCHY_VERTICAL_PADDING
 const CLUSTER_ENTITY_HORIZONTAL_SPACING = DEFAULT_ENTITY_WIDTH + CLUSTER_ENTITY_GAP
 
-const PARENT_RELATION_PATTERN = /(part of|owned by|managed by|works for|reports to)/i
-const CHILD_RELATION_PATTERN = /(owns|manages|contains|has member|employs)/i
+const PARENT_RELATION_PATTERN =
+  /(part of|owned by|managed by|works for|reports to|child of|belongs to|member of|subsidiary of|division of|child)/i
+const CHILD_RELATION_PATTERN =
+  /(owns|manages|contains|has member|employs|parent of|parent|oversees|supervises|leads)/i
 const SIBLING_RELATION_PATTERN =
   /(associated with|related to|partner|peer|sibling|affiliated with|connected to)/i
 
@@ -60,14 +62,23 @@ function normalizeEdge(rawEdge, index = 0) {
       ? String(rawEdge.id)
       : `edge-${index}-${source}-${target}`
 
-  const relationshipType =
+  const relationshipTypeRaw =
     rawEdge?.relationshipType ||
     rawEdge?.typeName ||
+    rawEdge?.type?.name ||
+    rawEdge?.type?.label ||
+    rawEdge?.type?.from_name ||
+    rawEdge?.type?.fromName ||
+    rawEdge?.type?.to_name ||
+    rawEdge?.type?.toName ||
     rawEdge?.data?.relationshipType ||
     rawEdge?.data?.typeName ||
+    rawEdge?.data?.type?.name ||
+    rawEdge?.data?.type?.label ||
     rawEdge?.label ||
     ''
 
+  const relationshipType = String(relationshipTypeRaw || '').trim()
   const label = relationshipType || DEFAULT_RELATIONSHIP_LABEL
   const direction = determineDirection(source, target, relationshipType)
 
