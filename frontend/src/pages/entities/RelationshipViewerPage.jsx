@@ -28,6 +28,11 @@ export default function RelationshipViewerPage() {
   const [relationshipDepth, setRelationshipDepth] = useState(1)
   const suppressedNodesRef = useRef(new Map())
   const hiddenClusterIdsRef = useRef(new Set())
+  const nodesRef = useRef([])
+
+  useEffect(() => {
+    nodesRef.current = nodes
+  }, [nodes])
 
   const onNodesChange = useCallback((changes) => setNodes((n) => applyNodeChanges(changes, n)), [])
   const onEdgesChange = useCallback((changes) => setEdges((e) => applyEdgeChanges(changes, e)), [])
@@ -190,7 +195,7 @@ export default function RelationshipViewerPage() {
       return
     }
 
-    const isProtectedNode = nodes.some(
+    const isProtectedNode = nodesRef.current.some(
       (graphNode) =>
         String(graphNode?.id) === entityId && graphNode?.data?.isExpandedProtected
     )
@@ -265,7 +270,7 @@ export default function RelationshipViewerPage() {
     } else {
       markClusterCollapsed(clusterId)
     }
-  }, [markClusterCollapsed, markClusterExpanded, nodes])
+  }, [markClusterCollapsed, markClusterExpanded])
 
   const handleNodeDragStop = useCallback(
     (event, node) => {
