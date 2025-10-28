@@ -206,6 +206,23 @@ function normalizeEdge(rawEdge, currentEntityId) {
   const normalizedLabel =
     String(baseLabel || DEFAULT_RELATIONSHIP_LABEL).trim() || DEFAULT_RELATIONSHIP_LABEL
 
+  const normalizedTypeName = (() => {
+    if (!relationshipType) return null
+    if (typeof relationshipType === 'string') return relationshipType
+    return (
+      relationshipType?.name ||
+      relationshipType?.label ||
+      relationshipType?.from_label ||
+      relationshipType?.to_label ||
+      null
+    )
+  })()
+
+  const normalizedTypeId =
+    relationshipType && typeof relationshipType === 'object'
+      ? relationshipType?.id ?? null
+      : null
+
   return {
     id,
     source: parentId ?? fromEntityId,
@@ -213,6 +230,8 @@ function normalizeEdge(rawEdge, currentEntityId) {
     parentId,
     childId,
     label: normalizedLabel,
+    typeName: normalizedTypeName ?? null,
+    typeId: normalizedTypeId ?? null,
     fromEntityId,
     toEntityId,
     relationshipType,
@@ -257,12 +276,37 @@ function groupChildrenByRelationship(
     const label =
       String(edge.relationshipLabel || edge.label || DEFAULT_RELATIONSHIP_LABEL)
         .trim() || DEFAULT_RELATIONSHIP_LABEL
+    const typeName =
+      (edge.typeName && String(edge.typeName).trim()) ||
+      (typeof edge.relationshipType === 'object'
+        ? String(
+            edge.relationshipType?.name ||
+              edge.relationshipType?.label ||
+              edge.relationshipType?.from_label ||
+              edge.relationshipType?.to_label ||
+              ''
+          ).trim()
+        : null) ||
+      null
+    const typeId =
+      edge.typeId != null
+        ? String(edge.typeId)
+        : edge.relationshipType && typeof edge.relationshipType === 'object'
+        ? edge.relationshipType?.id != null
+          ? String(edge.relationshipType.id)
+          : null
+        : null
 
-    const key = `${parentId}::${label}`
+    const typeKey = typeName || typeId || label
+
+    const key = `${parentId}-${typeKey}`
     if (!grouped.has(key)) {
       grouped.set(key, {
         parentId,
-        relationshipType: label,
+        typeName,
+        typeId,
+        typeKey,
+        relationshipLabel: label,
         childMap: new Map(),
       })
     }
@@ -280,7 +324,7 @@ function groupChildrenByRelationship(
       return
     }
 
-    const slug = slugifyTypeName(entry.relationshipType)
+    const slug = slugifyTypeName(entry.typeName || entry.typeKey)
     const clusterId = `cluster-${entry.parentId}-${slug}`
 
     const protectedIds = normalizedCurrentId
@@ -292,12 +336,17 @@ function groupChildrenByRelationship(
     const clusterMembers = childIds.filter((childId) => !protectedIdSet.has(childId))
 
     if (clusterMembers.length) {
+      const baseLabel =
+        entry.typeName || entry.relationshipLabel || DEFAULT_RELATIONSHIP_LABEL
+
       clusters.push({
         id: clusterId,
         parentId: entry.parentId,
-        relationshipType: entry.relationshipType,
+        relationshipType: baseLabel,
+        typeName: entry.typeName,
+        typeId: entry.typeId,
         containedIds: clusterMembers,
-        label: `${entry.relationshipType} (${clusterMembers.length})`,
+        label: `${baseLabel} (${clusterMembers.length})`,
         count: clusterMembers.length,
       })
 
@@ -306,7 +355,9 @@ function groupChildrenByRelationship(
         suppressedNodes.set(childId, {
           clusterId,
           parentId: entry.parentId,
-          relationshipType: entry.relationshipType,
+          relationshipType: baseLabel,
+          typeName: entry.typeName,
+          typeId: entry.typeId,
           entity,
         })
 
@@ -322,11 +373,13 @@ function groupChildrenByRelationship(
         id: `edge-${entry.parentId}-${clusterId}`,
         source: entry.parentId,
         target: clusterId,
-        label: entry.relationshipType,
+        label: baseLabel,
         parentId: entry.parentId,
         childId: clusterId,
-        relationshipLabel: entry.relationshipType,
-        relationshipType: entry.relationshipType,
+        relationshipLabel: baseLabel,
+        relationshipType: baseLabel,
+        typeName: entry.typeName,
+        typeId: entry.typeId,
         isClusterEdge: true,
       })
     }
