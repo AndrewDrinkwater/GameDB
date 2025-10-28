@@ -8,6 +8,7 @@ export default function EntityNode({ data }) {
   const typeName = data?.typeName || 'Entity'
   const inheritedStyle = data?.style || {}
   const entityId = data?.entityId || data?.id
+  const isExpandedProtected = Boolean(data?.isExpandedProtected)
 
   const handleSetTarget = (event) => {
     event?.preventDefault()
@@ -89,6 +90,9 @@ export default function EntityNode({ data }) {
             </button>
           </div>
         </div>
+        {isExpandedProtected && (
+          <div className="entity-node__protected-indicator">(linked to source)</div>
+        )}
       </div>
 
       <Handle
