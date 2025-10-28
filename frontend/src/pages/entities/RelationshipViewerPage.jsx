@@ -63,7 +63,13 @@ export default function RelationshipViewerPage() {
       const entityId = String(entity.id)
       const clusterId = String(clusterInfo.id)
 
-      suppressedNodesRef.current.delete(entityId)
+      const suppressedNodes = suppressedNodesRef.current
+      if (suppressedNodes.has(entityId)) {
+        suppressedNodes.delete(entityId)
+      } else {
+        return
+      }
+
       markClusterExpanded(clusterId)
 
       setBoardEntities((prev) => {
@@ -343,8 +349,65 @@ export default function RelationshipViewerPage() {
       setLoading(true)
       setError(null)
       try {
+        const suppressedEntries =
+          suppressedNodesRef.current instanceof Map
+            ? Array.from(suppressedNodesRef.current.entries())
+            : []
+        const suppressedLookup = new Map(
+          suppressedEntries.map(([key, value]) => [String(key), value])
+        )
+        const suppressedIds = new Set(suppressedLookup.keys())
+
         const graph = await getEntityGraph(entityId, relationshipDepth)
-        const layouted = buildReactFlowGraph(graph, entityId)
+        const graphData = graph ?? {}
+
+        let sanitizedEdges = Array.isArray(graphData.edges) ? graphData.edges : []
+        if (suppressedIds.size && Array.isArray(graphData.edges)) {
+          sanitizedEdges = graphData.edges.filter((edge) => {
+            const fromRaw =
+              edge?.from_entity ??
+              edge?.fromEntityId ??
+              edge?.from ??
+              edge?.source ??
+              edge?.sourceId ??
+              null
+            const toRaw =
+              edge?.to_entity ??
+              edge?.toEntityId ??
+              edge?.to ??
+              edge?.target ??
+              edge?.targetId ??
+              null
+
+            const fromId = fromRaw != null ? String(fromRaw) : null
+            const toId = toRaw != null ? String(toRaw) : null
+
+            const fromSuppressed = fromId ? suppressedIds.has(fromId) : false
+            const toSuppressed = toId ? suppressedIds.has(toId) : false
+
+            if (!fromSuppressed && !toSuppressed) return true
+            if (fromSuppressed && toSuppressed) return false
+
+            if (fromSuppressed) {
+              const meta = suppressedLookup.get(fromId)
+              const parentId = meta?.parentId != null ? String(meta.parentId) : null
+              return parentId && parentId === toId
+            }
+
+            if (toSuppressed) {
+              const meta = suppressedLookup.get(toId)
+              const parentId = meta?.parentId != null ? String(meta.parentId) : null
+              return parentId && parentId === fromId
+            }
+
+            return true
+          })
+        }
+
+        const layouted = buildReactFlowGraph(
+          { ...graphData, edges: sanitizedEdges },
+          entityId
+        )
         if (active) {
           const decorateNode = (node) => {
             if (!node) return null
