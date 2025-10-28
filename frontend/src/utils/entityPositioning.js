@@ -23,6 +23,41 @@ const CHILD_RELATION_PATTERN =
 const SIBLING_RELATION_PATTERN =
   /(associated with|related to|partner|peer|sibling|affiliated with|connected to)/i
 
+export function isEntityOnActivePath(entityId, sourceEntityId, edges) {
+  if (!entityId || !sourceEntityId || !Array.isArray(edges)) return false
+
+  const visited = new Set()
+  const stack = [String(sourceEntityId)]
+  const normalizedTarget = String(entityId)
+
+  while (stack.length) {
+    const current = stack.pop()
+    if (current === normalizedTarget) return true
+    if (visited.has(current)) continue
+    visited.add(current)
+
+    edges.forEach((edge) => {
+      if (!edge) return
+      const source = edge?.source != null ? String(edge.source) : null
+      const target = edge?.target != null ? String(edge.target) : null
+      if (!source || !target) return
+
+      let next = null
+      if (source === current) {
+        next = target
+      } else if (target === current) {
+        next = source
+      }
+
+      if (next != null && !visited.has(next)) {
+        stack.push(next)
+      }
+    })
+  }
+
+  return false
+}
+
 function normalizeNode(rawNode) {
   if (!rawNode) return null
   const id = String(rawNode.id ?? '')
@@ -248,42 +283,62 @@ function groupChildrenByRelationship(
     const slug = slugifyTypeName(entry.relationshipType)
     const clusterId = `cluster-${entry.parentId}-${slug}`
 
-    clusters.push({
-      id: clusterId,
-      parentId: entry.parentId,
-      relationshipType: entry.relationshipType,
-      containedIds: childIds,
-      label: `${entry.relationshipType} (${childIds.length})`,
-      count: childIds.length,
-    })
+    const protectedIds = normalizedCurrentId
+      ? childIds.filter((childId) =>
+          isEntityOnActivePath(childId, normalizedCurrentId, edges)
+        )
+      : []
+    const protectedIdSet = new Set(protectedIds)
+    const clusterMembers = childIds.filter((childId) => !protectedIdSet.has(childId))
 
-    childIds.forEach((childId) => {
-      const entity = nodeLookup.get(childId) || null
-      suppressedNodes.set(childId, {
-        clusterId,
+    if (clusterMembers.length) {
+      clusters.push({
+        id: clusterId,
         parentId: entry.parentId,
         relationshipType: entry.relationshipType,
-        entity,
+        containedIds: clusterMembers,
+        label: `${entry.relationshipType} (${clusterMembers.length})`,
+        count: clusterMembers.length,
       })
 
+      clusterMembers.forEach((childId) => {
+        const entity = nodeLookup.get(childId) || null
+        suppressedNodes.set(childId, {
+          clusterId,
+          parentId: entry.parentId,
+          relationshipType: entry.relationshipType,
+          entity,
+        })
+
+        if (entity) {
+          entity.inCluster = true
+        }
+
+        const relatedEdges = entry.childMap.get(childId) || []
+        relatedEdges.forEach((edge) => edgesToRemove.add(edge.id))
+      })
+
+      clusterEdges.push({
+        id: `edge-${entry.parentId}-${clusterId}`,
+        source: entry.parentId,
+        target: clusterId,
+        label: entry.relationshipType,
+        parentId: entry.parentId,
+        childId: clusterId,
+        relationshipLabel: entry.relationshipType,
+        relationshipType: entry.relationshipType,
+        isClusterEdge: true,
+      })
+    }
+
+    protectedIds.forEach((childId) => {
+      const entity = nodeLookup.get(childId) || null
       if (entity) {
-        entity.inCluster = true
+        entity.isExpandedProtected = true
+        if (entity.inCluster) {
+          entity.inCluster = false
+        }
       }
-
-      const relatedEdges = entry.childMap.get(childId) || []
-      relatedEdges.forEach((edge) => edgesToRemove.add(edge.id))
-    })
-
-    clusterEdges.push({
-      id: `edge-${entry.parentId}-${clusterId}`,
-      source: entry.parentId,
-      target: clusterId,
-      label: entry.relationshipType,
-      parentId: entry.parentId,
-      childId: clusterId,
-      relationshipLabel: entry.relationshipType,
-      relationshipType: entry.relationshipType,
-      isClusterEdge: true,
     })
   })
 
@@ -311,18 +366,21 @@ function createEntityNodeDefinition(rawNode, { isCenter = false } = {}) {
   const id = String(rawNode.id)
   const label = rawNode?.name || `Entity ${id}`
   const typeName = rawNode?.typeName || 'Entity'
+  const isExpandedProtected = Boolean(rawNode?.isExpandedProtected)
 
   return {
     id,
     type: 'entity',
     width: DEFAULT_ENTITY_WIDTH,
     height: DEFAULT_ENTITY_HEIGHT,
+    isExpandedProtected,
     position: { x: 0, y: 0 },
     data: {
       label,
       typeName,
       entityId: id,
       isCenter,
+      isExpandedProtected,
     },
   }
 }
@@ -586,6 +644,7 @@ function summarizeNodes(nodeMap) {
     id: node.id,
     name: node.name,
     typeName: node.typeName,
+    isExpandedProtected: Boolean(node.isExpandedProtected),
   }))
 }
 
@@ -669,6 +728,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
             id,
             name: entity?.name || `Entity ${id}`,
             typeName: entity?.typeName || entity?.type?.name || 'Entity',
+            isExpandedProtected: Boolean(entity?.isExpandedProtected),
           }
         : null,
     })

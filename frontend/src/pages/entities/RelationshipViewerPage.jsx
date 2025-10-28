@@ -63,6 +63,10 @@ export default function RelationshipViewerPage() {
       const entityId = String(entity.id)
       const clusterId = String(clusterInfo.id)
 
+      if (entity?.isExpandedProtected) {
+        return
+      }
+
       const suppressedNodes = suppressedNodesRef.current
       if (suppressedNodes.has(entityId)) {
         suppressedNodes.delete(entityId)
@@ -182,6 +186,16 @@ export default function RelationshipViewerPage() {
     const entityId = String(entity.id)
     const clusterId = String(clusterInfo.id)
 
+    if (entity?.isExpandedProtected) {
+      return
+    }
+
+    const isProtectedNode = nodes.some(
+      (graphNode) =>
+        String(graphNode?.id) === entityId && graphNode?.data?.isExpandedProtected
+    )
+    if (isProtectedNode) return
+
     setBoardEntities((prev) => {
       if (!prev[entityId]) return prev
       const next = { ...prev }
@@ -251,7 +265,7 @@ export default function RelationshipViewerPage() {
     } else {
       markClusterCollapsed(clusterId)
     }
-  }, [markClusterCollapsed, markClusterExpanded])
+  }, [markClusterCollapsed, markClusterExpanded, nodes])
 
   const handleNodeDragStop = useCallback(
     (event, node) => {
@@ -282,6 +296,8 @@ export default function RelationshipViewerPage() {
       const clusterNode = nodes.find((graphNode) => graphNode.id === clusterMeta.clusterId)
       if (!clusterNode) return
 
+      if (node?.data?.isExpandedProtected) return
+
       handleReturnEntityToCluster(
         {
           id: clusterNode.id,
@@ -293,6 +309,7 @@ export default function RelationshipViewerPage() {
           id: entityId,
           name: node?.data?.label,
           typeName: node?.data?.typeName,
+          isExpandedProtected: Boolean(node?.data?.isExpandedProtected),
         }
       )
     },
@@ -457,6 +474,7 @@ export default function RelationshipViewerPage() {
                       name: info.entity?.name || `Entity ${id}`,
                       typeName:
                         info.entity?.typeName || info.entity?.type?.name || 'Entity',
+                      isExpandedProtected: Boolean(info.entity?.isExpandedProtected),
                     }
                   : null,
               })
@@ -475,6 +493,7 @@ export default function RelationshipViewerPage() {
                       name: info.entity?.name || `Entity ${id}`,
                       typeName:
                         info.entity?.typeName || info.entity?.type?.name || 'Entity',
+                      isExpandedProtected: Boolean(info.entity?.isExpandedProtected),
                     }
                   : null,
               })
