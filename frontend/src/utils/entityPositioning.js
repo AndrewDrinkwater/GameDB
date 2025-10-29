@@ -162,10 +162,24 @@ function normalizeEdge(rawEdge, currentEntityId) {
     currentEntityId
   )
 
-  const currentId = currentEntityId != null ? String(currentEntityId) : null
+  const normalizedRelationshipType =
+    relationshipType && typeof relationshipType === 'object'
+      ? {
+          id: relationshipType?.id ?? null,
+          name:
+            relationshipType?.name ||
+            relationshipType?.label ||
+            relationshipType?.from_label ||
+            relationshipType?.to_label ||
+            null,
+          label: relationshipType?.label ?? null,
+          from_label: relationshipType?.from_label ?? null,
+          to_label: relationshipType?.to_label ?? null,
+        }
+      : relationshipType
 
-  const baseLabel = (() => {
-    if (!relationshipType) {
+  const directionalLabel = (() => {
+    if (!normalizedRelationshipType) {
       return (
         rawEdge?.label ||
         rawEdge?.typeName ||
@@ -174,53 +188,49 @@ function normalizeEdge(rawEdge, currentEntityId) {
       )
     }
 
-    if (typeof relationshipType === 'string') {
-      return relationshipType || DEFAULT_RELATIONSHIP_LABEL
+    if (typeof normalizedRelationshipType === 'string') {
+      return normalizedRelationshipType || DEFAULT_RELATIONSHIP_LABEL
     }
 
-    if (currentId && currentId === fromEntityId) {
-      return (
-        relationshipType?.from_label ||
-        relationshipType?.label ||
-        relationshipType?.name ||
-        DEFAULT_RELATIONSHIP_LABEL
-      )
+    const { from_label, to_label, label: baseLabel, name: baseName } =
+      normalizedRelationshipType
+
+    if (currentEntityId != null && String(currentEntityId) === fromEntityId) {
+      return from_label || baseLabel || baseName || DEFAULT_RELATIONSHIP_LABEL
     }
 
-    if (currentId && currentId === toEntityId) {
+    if (currentEntityId != null && String(currentEntityId) === toEntityId) {
+      return to_label || baseLabel || baseName || DEFAULT_RELATIONSHIP_LABEL
+    }
+
+    return baseLabel || baseName || from_label || to_label || DEFAULT_RELATIONSHIP_LABEL
+  })()
+
+  const normalizedLabel =
+    String(directionalLabel || DEFAULT_RELATIONSHIP_LABEL).trim() ||
+    DEFAULT_RELATIONSHIP_LABEL
+
+  const normalizedTypeName = (() => {
+    if (!normalizedRelationshipType || typeof normalizedRelationshipType === 'string') {
       return (
-        relationshipType?.to_label ||
-        relationshipType?.label ||
-        relationshipType?.name ||
-        DEFAULT_RELATIONSHIP_LABEL
+        (typeof normalizedRelationshipType === 'string'
+          ? normalizedRelationshipType
+          : null) || DEFAULT_RELATIONSHIP_LABEL
       )
     }
 
     return (
-      relationshipType?.label ||
-      relationshipType?.name ||
+      normalizedRelationshipType?.name ||
+      normalizedRelationshipType?.label ||
+      normalizedRelationshipType?.from_label ||
+      normalizedRelationshipType?.to_label ||
       DEFAULT_RELATIONSHIP_LABEL
     )
   })()
 
-  const normalizedLabel =
-    String(baseLabel || DEFAULT_RELATIONSHIP_LABEL).trim() || DEFAULT_RELATIONSHIP_LABEL
-
-  const normalizedTypeName = (() => {
-    if (!relationshipType) return null
-    if (typeof relationshipType === 'string') return relationshipType
-    return (
-      relationshipType?.name ||
-      relationshipType?.label ||
-      relationshipType?.from_label ||
-      relationshipType?.to_label ||
-      null
-    )
-  })()
-
   const normalizedTypeId =
-    relationshipType && typeof relationshipType === 'object'
-      ? relationshipType?.id ?? null
+    normalizedRelationshipType && typeof normalizedRelationshipType === 'object'
+      ? normalizedRelationshipType?.id ?? null
       : null
 
   return {
@@ -230,11 +240,11 @@ function normalizeEdge(rawEdge, currentEntityId) {
     parentId,
     childId,
     label: normalizedLabel,
-    typeName: normalizedTypeName ?? null,
+    typeName: normalizedTypeName ?? DEFAULT_RELATIONSHIP_LABEL,
     typeId: normalizedTypeId ?? null,
     fromEntityId,
     toEntityId,
-    relationshipType,
+    relationshipType: normalizedRelationshipType ?? null,
     relationshipLabel: normalizedLabel,
     raw: rawEdge,
   }
