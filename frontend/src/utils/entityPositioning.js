@@ -294,8 +294,8 @@ function groupChildrenByRelationship(
 
   edges.forEach((edge) => {
     if (!edge) return
-    const parentIdRaw = edge.parentId ?? edge.source ?? null
-    const childIdRaw = edge.childId ?? edge.target ?? null
+    const parentIdRaw = edge.parentId || edge.source || null
+    const childIdRaw = edge.childId || edge.target || null
     if (!parentIdRaw || !childIdRaw) return
 
     const parentId = String(parentIdRaw)
@@ -345,8 +345,8 @@ function groupChildrenByRelationship(
   const grouped = new Map()
   edges.forEach((edge) => {
     if (!edge) return
-    const parentIdRaw = edge.parentId ?? edge.source ?? null
-    const childIdRaw = edge.childId ?? edge.target ?? null
+    const parentIdRaw = edge.parentId || edge.source || null
+    const childIdRaw = edge.childId || edge.target || null
     if (!parentIdRaw || !childIdRaw) return
 
     const parentId = String(parentIdRaw)
@@ -386,7 +386,7 @@ function groupChildrenByRelationship(
           : null
         : null
 
-    const typeKey = typeName || typeId || label
+    const typeKey = typeName || typeId || 'unknown-type'
 
     const key = `${parentId}-${typeKey}`
     if (!grouped.has(key)) {
