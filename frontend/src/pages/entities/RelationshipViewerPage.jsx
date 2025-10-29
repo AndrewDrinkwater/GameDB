@@ -442,10 +442,12 @@ export default function RelationshipViewerPage() {
           })
         }
 
-        const layouted = buildReactFlowGraph(
-          { ...graphData, edges: sanitizedEdges },
-          entityId
-        )
+        const {
+          nodes: layoutedNodes,
+          edges: layoutedEdges,
+          suppressedNodes: layoutedSuppressedNodes,
+          clusters: layoutedClusters,
+        } = buildReactFlowGraph({ ...graphData, edges: sanitizedEdges }, entityId)
         if (active) {
           const decorateNode = (node) => {
             if (!node) return null
@@ -477,9 +479,9 @@ export default function RelationshipViewerPage() {
             return { ...node }
           }
 
-          const decoratedNodes = layouted.nodes.map(decorateNode)
+          const decoratedNodes = layoutedNodes.map(decorateNode)
           const suppressedMap = new Map()
-          const rawSuppressed = layouted.suppressedNodes
+          const rawSuppressed = layoutedSuppressedNodes
 
           if (rawSuppressed instanceof Map) {
             rawSuppressed.forEach((info, key) => {
@@ -524,15 +526,16 @@ export default function RelationshipViewerPage() {
           suppressedNodesRef.current = suppressedMap
 
           const initialHidden = new Set()
-          decoratedNodes.forEach((node) => {
-            if (node.type === 'cluster') {
-              initialHidden.add(String(node.id))
-            }
+          const clusterSource = Array.isArray(layoutedClusters)
+            ? layoutedClusters
+            : decoratedNodes.filter((node) => node.type === 'cluster')
+          clusterSource.forEach((clusterNode) => {
+            initialHidden.add(String(clusterNode.id))
           })
           hiddenClusterIdsRef.current = initialHidden
 
           setNodes(decoratedNodes)
-          setEdges(layouted.edges)
+          setEdges(layoutedEdges)
         }
       } catch (err) {
         if (active) setError(err.message || 'Failed to load graph')
