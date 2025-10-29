@@ -23,36 +23,19 @@ const CHILD_RELATION_PATTERN =
 const SIBLING_RELATION_PATTERN =
   /(associated with|related to|partner|peer|sibling|affiliated with|connected to)/i
 
-export function isEntityOnActivePath(entityId, sourceEntityId, edges) {
-  if (!entityId || !sourceEntityId || !Array.isArray(edges)) return false
+// Determines if a given entity lies along the visible relationship chain
+function isEntityOnActivePath(entityId, sourceEntityId, meta) {
+  if (!entityId || !sourceEntityId || !(meta instanceof Map)) return false
 
+  let current = String(sourceEntityId)
+  const target = String(entityId)
   const visited = new Set()
-  const stack = [String(sourceEntityId)]
-  const normalizedTarget = String(entityId)
 
-  while (stack.length) {
-    const current = stack.pop()
-    if (current === normalizedTarget) return true
-    if (visited.has(current)) continue
+  while (current && !visited.has(current)) {
     visited.add(current)
-
-    edges.forEach((edge) => {
-      if (!edge) return
-      const source = edge?.source != null ? String(edge.source) : null
-      const target = edge?.target != null ? String(edge.target) : null
-      if (!source || !target) return
-
-      let next = null
-      if (source === current) {
-        next = target
-      } else if (target === current) {
-        next = source
-      }
-
-      if (next != null && !visited.has(next)) {
-        stack.push(next)
-      }
-    })
+    if (current === target) return true
+    const parentRaw = meta.get(current)?.parentId
+    current = parentRaw != null ? String(parentRaw) : null
   }
 
   return false
@@ -308,6 +291,51 @@ function groupChildrenByRelationship(
     reverseAdjacency.get(childId).add(parentId)
   })
 
+  const meta = new Map()
+  if (normalizedCurrentId) {
+    meta.set(normalizedCurrentId, { parentId: null })
+    const visitedForMeta = new Set()
+    const stack = [normalizedCurrentId]
+
+    while (stack.length) {
+      const currentId = stack.pop()
+      if (!currentId || visitedForMeta.has(currentId)) continue
+      visitedForMeta.add(currentId)
+
+      if (!meta.has(currentId)) {
+        meta.set(currentId, { parentId: null })
+      }
+
+      const parentSet = reverseAdjacency.get(currentId)
+      if (parentSet && parentSet.size) {
+        const [primaryParentRaw] = Array.from(parentSet)
+        const primaryParent =
+          primaryParentRaw != null ? String(primaryParentRaw) : null
+
+        if (primaryParent) {
+          const currentMeta = meta.get(currentId) || {}
+          if (!currentMeta.parentId) {
+            meta.set(currentId, { ...currentMeta, parentId: primaryParent })
+          } else {
+            meta.set(currentId, { ...currentMeta })
+          }
+
+          parentSet.forEach((parentIdRaw) => {
+            const normalizedParent =
+              parentIdRaw != null ? String(parentIdRaw) : null
+            if (!normalizedParent) return
+            if (!meta.has(normalizedParent)) {
+              meta.set(normalizedParent, { parentId: null })
+            }
+            if (!visitedForMeta.has(normalizedParent)) {
+              stack.push(normalizedParent)
+            }
+          })
+        }
+      }
+    }
+  }
+
   const levelSeeds = new Set(nodeLevels.keys())
   if (normalizedCurrentId) {
     levelSeeds.add(normalizedCurrentId)
@@ -421,81 +449,103 @@ function groupChildrenByRelationship(
     const clusterId = `cluster-${entry.parentId}-${slug}`
 
     const clusterParentLevel = nodeLevels.get(entry.parentId) ?? 0
+    const baseLabel =
+      entry.typeName || entry.relationshipLabel || DEFAULT_RELATIONSHIP_LABEL
 
-    const protectedIds = normalizedCurrentId
-      ? [
-          ...childIds.filter((childId) =>
-            isEntityOnActivePath(childId, normalizedCurrentId, edges)
-          ),
-          normalizedCurrentId,
-        ]
-      : []
-    const protectedIdSet = new Set(protectedIds)
     const clusterMembers = childIds.filter((childId) => {
-      if (protectedIdSet.has(childId)) return false
       const childNode = nodeLookup.get(childId)
       return !(childNode?.inCluster)
     })
 
-    if (clusterMembers.length) {
-      const baseLabel =
-        entry.typeName || entry.relationshipLabel || DEFAULT_RELATIONSHIP_LABEL
-      const clusterLabel = `${baseLabel} (${clusterMembers.length})`
+    if (!clusterMembers.length) {
+      return
+    }
 
-      clusters.push({
-        id: clusterId,
-        parentId: entry.parentId,
-        relationshipType: baseLabel,
-        typeName: entry.typeName,
-        typeId: entry.typeId,
-        containedIds: clusterMembers,
-        label: clusterLabel,
-        count: clusterMembers.length,
-        parentLevel: clusterParentLevel,
-      })
+    const clusterDefinition = {
+      id: clusterId,
+      parentId: entry.parentId,
+      relationshipType: baseLabel,
+      typeName: entry.typeName,
+      typeId: entry.typeId,
+      containedIds: [...clusterMembers],
+      label: '',
+      count: 0,
+      parentLevel: clusterParentLevel,
+    }
 
-      clusterMembers.forEach((childId) => {
+    const protectedIds =
+      normalizedCurrentId && clusterDefinition.containedIds.length
+        ? clusterDefinition.containedIds.filter((childId) =>
+            isEntityOnActivePath(childId, normalizedCurrentId, meta)
+          )
+        : []
+    const protectedIdSet = new Set(protectedIds)
+
+    if (protectedIds.length) {
+      clusterDefinition.containedIds = clusterDefinition.containedIds.filter(
+        (childId) => !protectedIdSet.has(childId)
+      )
+
+      protectedIds.forEach((childId) => {
         const entity = nodeLookup.get(childId) || null
-        suppressedNodes.set(childId, {
-          clusterId,
-          parentId: entry.parentId,
-          relationshipType: baseLabel,
-          typeName: entry.typeName,
-          typeId: entry.typeId,
-          entity,
-        })
-
         if (entity) {
-          entity.inCluster = true
+          entity.isExpandedProtected = true
+          if (entity.inCluster) {
+            entity.inCluster = false
+          }
         }
 
-        const relatedEdges = entry.childMap.get(childId) || []
-        relatedEdges.forEach((edge) => edgesToRemove.add(edge.id))
-      })
-
-      clusterEdges.push({
-        id: `edge-${entry.parentId}-${clusterId}`,
-        source: entry.parentId,
-        target: clusterId,
-        label: clusterLabel,
-        parentId: entry.parentId,
-        childId: clusterId,
-        relationshipLabel: baseLabel,
-        relationshipType: baseLabel,
-        typeName: entry.typeName,
-        typeId: entry.typeId,
-        isClusterEdge: true,
+        const node = nodes.find((n) => String(n?.id ?? '') === childId)
+        if (node && node !== entity) {
+          node.isExpandedProtected = true
+          if (node.inCluster) {
+            node.inCluster = false
+          }
+        }
       })
     }
 
-    protectedIds.forEach((childId) => {
+    if (!clusterDefinition.containedIds.length) {
+      return
+    }
+
+    clusterDefinition.count = clusterDefinition.containedIds.length
+    clusterDefinition.label = `${baseLabel} (${clusterDefinition.count})`
+
+    clusters.push(clusterDefinition)
+
+    clusterMembers.forEach((childId) => {
+      if (protectedIdSet.has(childId)) return
       const entity = nodeLookup.get(childId) || null
+      suppressedNodes.set(childId, {
+        clusterId: clusterDefinition.id,
+        parentId: entry.parentId,
+        relationshipType: baseLabel,
+        typeName: entry.typeName,
+        typeId: entry.typeId,
+        entity,
+      })
+
       if (entity) {
-        entity.isExpandedProtected = true
-        if (entity.inCluster) {
-          entity.inCluster = false
-        }
+        entity.inCluster = true
       }
+
+      const relatedEdges = entry.childMap.get(childId) || []
+      relatedEdges.forEach((edge) => edgesToRemove.add(edge.id))
+    })
+
+    clusterEdges.push({
+      id: `edge-${entry.parentId}-${clusterDefinition.id}`,
+      source: entry.parentId,
+      target: clusterDefinition.id,
+      label: clusterDefinition.label,
+      parentId: entry.parentId,
+      childId: clusterDefinition.id,
+      relationshipLabel: baseLabel,
+      relationshipType: baseLabel,
+      typeName: entry.typeName,
+      typeId: entry.typeId,
+      isClusterEdge: true,
     })
   })
 
