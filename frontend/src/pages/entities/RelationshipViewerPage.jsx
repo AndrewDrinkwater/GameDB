@@ -29,10 +29,15 @@ export default function RelationshipViewerPage() {
   const suppressedNodesRef = useRef(new Map())
   const hiddenClusterIdsRef = useRef(new Set())
   const nodesRef = useRef([])
+  const edgesRef = useRef([])
 
   useEffect(() => {
     nodesRef.current = nodes
   }, [nodes])
+
+  useEffect(() => {
+    edgesRef.current = edges
+  }, [edges])
 
   const onNodesChange = useCallback((changes) => setNodes((n) => applyNodeChanges(changes, n)), [])
   const onEdgesChange = useCallback((changes) => setEdges((e) => applyEdgeChanges(changes, e)), [])
@@ -93,6 +98,32 @@ export default function RelationshipViewerPage() {
         }
       })
 
+      const edgeId = `cluster-${clusterId}-${entityId}`
+      const relationshipLabel =
+        clusterInfo.relationshipType || clusterInfo.label || 'Related'
+
+      const nextEdge = {
+        id: edgeId,
+        source: clusterId,
+        target: entityId,
+        type: 'smoothstep',
+        animated: false,
+        label: relationshipLabel,
+        data: {
+          relationshipType: relationshipLabel,
+          parentId: clusterId,
+          childId: entityId,
+          isClusterChildEdge: true,
+        },
+        sourceHandle: 'bottom',
+        targetHandle: 'top',
+      }
+
+      const edgeAlreadyExists = edgesRef.current.some((edge) => edge.id === edgeId)
+      const edgesForLayout = edgeAlreadyExists
+        ? edgesRef.current
+        : [...edgesRef.current, nextEdge]
+
       setNodes((prevNodes) => {
         const clusterNode = prevNodes.find((node) => node.id === clusterInfo.id)
         const initialPlaced = Array.from(
@@ -152,36 +183,21 @@ export default function RelationshipViewerPage() {
           (node) => node.id === clusterInfo.id && node.type === 'cluster'
         )
 
-        return positionEntitiesBelowCluster(nextNodes, updatedClusterNode || clusterNode, placedWithNew)
+        const positionedNodes = positionEntitiesBelowCluster(
+          nextNodes,
+          updatedClusterNode || clusterNode,
+          placedWithNew
+        )
+
+        return layoutNodesHierarchically(positionedNodes, edgesForLayout)
       })
 
-      setEdges((prevEdges) => {
-        const edgeId = `cluster-${clusterId}-${entityId}`
-        if (prevEdges.some((edge) => edge.id === edgeId)) return prevEdges
-
-        const relationshipLabel =
-          clusterInfo.relationshipType || clusterInfo.label || 'Related'
-
-        return [
-          ...prevEdges,
-          {
-            id: edgeId,
-            source: clusterId,
-            target: entityId,
-            type: 'smoothstep',
-            animated: false,
-            label: relationshipLabel,
-            data: {
-              relationshipType: relationshipLabel,
-              parentId: clusterId,
-              childId: entityId,
-              isClusterChildEdge: true,
-            },
-            sourceHandle: 'bottom',
-            targetHandle: 'top',
-          },
-        ]
-      })
+      if (!edgeAlreadyExists) {
+        setEdges((prevEdges) => {
+          if (prevEdges.some((edge) => edge.id === edgeId)) return prevEdges
+          return [...prevEdges, nextEdge]
+        })
+      }
     },
     [handleOpenEntityInfo, handleSetTargetEntity, markClusterExpanded]
   )
