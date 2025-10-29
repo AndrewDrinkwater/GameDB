@@ -284,6 +284,13 @@ function groupChildrenByRelationship(
     const parentId = String(parentIdRaw)
     const childId = String(childIdRaw)
 
+    // Skip clustering for entities whose parent is already suppressed or in a cluster
+    const parentNode = nodeLookup.get(parentId) || nodes.find((n) => String(n?.id ?? '') === parentId)
+    if (!parentNode || parentNode.inCluster) return
+
+    const childNode = nodeLookup.get(childId) || nodes.find((n) => String(n?.id ?? '') === childId)
+    if (childNode?.inCluster) return
+
     if (!adjacency.has(parentId)) adjacency.set(parentId, new Set())
     adjacency.get(parentId).add(childId)
 
@@ -508,6 +515,11 @@ function groupChildrenByRelationship(
     if (!clusterDefinition.containedIds.length) {
       return
     }
+
+    clusterDefinition.containedIds.forEach((cid) => {
+      const node = nodes.find((n) => String(n?.id ?? '') === cid) || nodeLookup.get(cid)
+      if (node) node.inCluster = true
+    })
 
     clusterDefinition.count = clusterDefinition.containedIds.length
     clusterDefinition.label = `${baseLabel} (${clusterDefinition.count})`
@@ -957,8 +969,10 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
   )
 
   const visibleEntityNodes = normalizedNodeList
-    .filter((rawNode) => !suppressedNodeIds.has(rawNode.id))
-    .map((rawNode) => createEntityNodeDefinition(rawNode, { isCenter: rawNode.id === centerId }))
+    .filter((rawNode) => !suppressedNodeIds.has(rawNode.id) && !rawNode.inCluster)
+    .map((rawNode) =>
+      createEntityNodeDefinition(rawNode, { isCenter: rawNode.id === centerId })
+    )
 
   const clusterAwareEdges = Array.isArray(clusterAwareEdgesRaw) && clusterAwareEdgesRaw.length
     ? clusterAwareEdgesRaw
@@ -1028,7 +1042,8 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     targetHandle: 'top',
   }))
 
-  const layoutNodesInput = [...visibleFilteredEntityNodes, ...clusterNodes]
+  const visibleNodes = [...visibleFilteredEntityNodes, ...clusterNodes]
+  const layoutNodesInput = visibleNodes
   const layoutedNodes = layoutNodesHierarchically(layoutNodesInput, visibleEdges, centerId)
 
   return {
