@@ -9,11 +9,9 @@ export const DEFAULT_CLUSTER_THRESHOLD = 5
 const DEFAULT_RELATIONSHIP_LABEL = 'Related'
 
 const HIERARCHY_HORIZONTAL_PADDING = 40
-const HIERARCHY_VERTICAL_PADDING = 80
+const HIERARCHY_VERTICAL_PADDING = 120
 const LEVEL_HORIZONTAL_SPACING =
   Math.max(DEFAULT_ENTITY_WIDTH, DEFAULT_CLUSTER_WIDTH) + HIERARCHY_HORIZONTAL_PADDING
-const LEVEL_VERTICAL_SPACING =
-  Math.max(DEFAULT_ENTITY_HEIGHT, DEFAULT_CLUSTER_HEIGHT) + HIERARCHY_VERTICAL_PADDING
 const CLUSTER_ENTITY_HORIZONTAL_SPACING = DEFAULT_ENTITY_WIDTH + CLUSTER_ENTITY_GAP
 
 const PARENT_RELATION_PATTERN =
@@ -674,12 +672,15 @@ function assignPositions(groups) {
   const positions = new Map()
   let globalMinX = Infinity
 
+  const baseY = 0
+
   groups.forEach((nodesAtLevel, level) => {
     const totalWidth = (nodesAtLevel.length - 1) * LEVEL_HORIZONTAL_SPACING
     const startX = -totalWidth / 2
     nodesAtLevel.forEach((node, index) => {
       const x = startX + index * LEVEL_HORIZONTAL_SPACING
-      const y = level * LEVEL_VERTICAL_SPACING
+      const y =
+        baseY + level * (DEFAULT_ENTITY_HEIGHT + HIERARCHY_VERTICAL_PADDING)
       positions.set(node.id, { x, y, level, levelIndex: index })
       if (x < globalMinX) globalMinX = x
     })
@@ -745,8 +746,11 @@ function buildLevelsFromEdges(centerKey, edges) {
       const other = edge.source === current ? edge.target : edge.source
       if (!other) return
       const relationshipType = edge?.data?.relationshipType || edge?.label || ''
-      const parentId = edge?.data?.parentId ?? edge?.parentId ?? null
-      const childId = edge?.data?.childId ?? edge?.childId ?? null
+      const parentIdRaw = edge?.data?.parentId ?? edge?.parentId ?? null
+      const childIdRaw = edge?.data?.childId ?? edge?.childId ?? null
+      const parentId = parentIdRaw != null ? String(parentIdRaw) : null
+      const childId = childIdRaw != null ? String(childIdRaw) : null
+      const isClusterEdge = Boolean(edge?.data?.isClusterEdge || edge?.isClusterEdge)
 
       let nextLevel = currentLevel + 1
       if (parentId && childId) {
@@ -755,9 +759,9 @@ function buildLevelsFromEdges(centerKey, edges) {
         } else if (current === childId && other === parentId) {
           nextLevel = currentLevel - 1
         }
-      } else if (isParentRelation(relationshipType)) {
+      } else if (!isClusterEdge && isParentRelation(relationshipType)) {
         nextLevel = currentLevel - 1
-      } else if (isSiblingRelation(relationshipType)) {
+      } else if (!isClusterEdge && isSiblingRelation(relationshipType)) {
         nextLevel = currentLevel
       }
 
@@ -833,6 +837,25 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
   const levels = buildLevelsFromEdges(centerKey, normalizedEdges)
   ensureAllLevels(levels, nodesForLayout, centerKey)
 
+  nodesForLayout.forEach((node) => {
+    if (!node) return
+    const isClusterNode = node.type === 'cluster' || node.type === 'clusterNode'
+    if (!isClusterNode) return
+
+    const parentIdRaw =
+      node.parentId ??
+      node.data?.parentId ??
+      node.data?.sourceId ??
+      node.data?.source ??
+      null
+
+    if (!parentIdRaw) return
+
+    const parentId = String(parentIdRaw)
+    const parentLevel = levels.get(parentId) ?? 0
+    levels.set(node.id, parentLevel + 1)
+  })
+
   const { groups } = buildLevelGroups(levels, nodesForLayout)
   const positions = assignPositions(groups)
 
@@ -844,9 +867,11 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
       levelIndex: node?.data?.levelIndex ?? 0,
     }
     const placement = positions.get(node.id) || fallbackPlacement
+    const isClusterNode = node.type === 'cluster' || node.type === 'clusterNode'
+    const adjustedX = isClusterNode ? placement.x + 40 : placement.x
     return {
       ...node,
-      position: { x: placement.x, y: placement.y },
+      position: { x: adjustedX, y: placement.y },
       data: {
         ...node.data,
         level: placement.level,
