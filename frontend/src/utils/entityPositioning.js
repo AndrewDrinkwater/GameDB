@@ -526,7 +526,14 @@ function groupChildrenByRelationship(
 
     clusterMembers.forEach((childId) => {
       if (protectedIdSet.has(childId)) return
-      const entity = nodeLookup.get(childId) || null
+      const entity =
+        nodeLookup.get(childId) ||
+        nodes.find((n) => String(n?.id ?? '') === childId) ||
+        null
+      if (entity?.isExpandedProtected) {
+        entity.inCluster = false
+        return
+      }
       suppressedNodes.set(childId, {
         clusterId: clusterDefinition.id,
         parentId: entry.parentId,
@@ -914,6 +921,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
       nodes: [],
       edges: [],
       suppressedNodes: new Map(),
+      clusters: [],
     }
   }
 
@@ -985,25 +993,26 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
 
   const suppressedNodeIds = new Set(Array.from(normalizedSuppressed.keys()))
 
-  const nodesInClusters = new Set(
-    normalizedNodeList.filter((node) => node.inCluster).map((node) => node.id)
+  const clusterNodes = (Array.isArray(clusterDefinitions) ? clusterDefinitions : []).map(
+    (cluster) => createClusterNodeDefinition(cluster, nodeSummaries)
   )
 
-  const clusterNodes = clusterDefinitions.map((cluster) =>
-    createClusterNodeDefinition(cluster, nodeSummaries)
+  const entityNodes = normalizedNodeList.map((rawNode) =>
+    createEntityNodeDefinition(rawNode, { isCenter: rawNode.id === centerId })
   )
 
-  const visibleEntityNodes = normalizedNodeList
-    .filter((rawNode) => !suppressedNodeIds.has(rawNode.id) && !rawNode.inCluster)
-    .map((rawNode) =>
-      createEntityNodeDefinition(rawNode, { isCenter: rawNode.id === centerId })
-    )
+  const visibleNodes = entityNodes.filter(
+    (node) => !suppressedNodeIds.has(String(node.id))
+  )
 
-  const clusterAwareEdges = Array.isArray(clusterAwareEdgesRaw) && clusterAwareEdgesRaw.length
-    ? clusterAwareEdgesRaw
-    : normalizedEdges
+  visibleNodes.push(...clusterNodes)
 
-  const filteredClusterAwareEdges = clusterAwareEdges.filter((edge) => {
+  const clusterAwareEdges =
+    Array.isArray(clusterAwareEdgesRaw) && clusterAwareEdgesRaw.length
+      ? clusterAwareEdgesRaw
+      : normalizedEdges
+
+  const filteredEdges = clusterAwareEdges.filter((edge) => {
     if (!edge) return false
     if (edge.isClusterEdge) return true
 
@@ -1015,15 +1024,14 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     const sourceId = rawSource != null ? String(rawSource) : ''
     const targetId = rawTarget != null ? String(rawTarget) : ''
 
-    if ((sourceId && nodesInClusters.has(sourceId)) || (targetId && nodesInClusters.has(targetId))) {
-      return false
-    }
+    if (sourceId && suppressedNodeIds.has(sourceId)) return false
+    if (targetId && suppressedNodeIds.has(targetId)) return false
 
     return true
   })
 
   const connectedNodeIds = new Set()
-  filteredClusterAwareEdges.forEach((edge) => {
+  filteredEdges.forEach((edge) => {
     const sourceId =
       edge.source != null
         ? String(edge.source)
@@ -1044,11 +1052,11 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     connectedNodeIds.add(centerId)
   }
 
-  const visibleFilteredEntityNodes = visibleEntityNodes.filter((node) =>
+  const visibleFilteredNodes = visibleNodes.filter((node) =>
     connectedNodeIds.has(String(node.id))
   )
 
-  const visibleEdges = filteredClusterAwareEdges.map((edge) => ({
+  const visibleEdges = filteredEdges.map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
@@ -1067,14 +1075,19 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     targetHandle: 'top',
   }))
 
-  const visibleNodes = [...visibleFilteredEntityNodes, ...clusterNodes]
-  const layoutNodesInput = visibleNodes
-  const layoutedNodes = layoutNodesHierarchically(layoutNodesInput, visibleEdges, centerId)
+  const layoutedNodes = layoutNodesHierarchically(
+    visibleFilteredNodes,
+    visibleEdges,
+    centerId
+  )
+
+  const layoutedClusters = layoutedNodes.filter((node) => node.type === 'cluster')
 
   return {
     nodes: layoutedNodes,
     edges: visibleEdges,
     suppressedNodes: normalizedSuppressed,
+    clusters: layoutedClusters,
   }
 }
 
