@@ -9,11 +9,9 @@ export const DEFAULT_CLUSTER_THRESHOLD = 5
 const DEFAULT_RELATIONSHIP_LABEL = 'Related'
 
 const HIERARCHY_HORIZONTAL_PADDING = 40
-const HIERARCHY_VERTICAL_PADDING = 80
+const HIERARCHY_VERTICAL_PADDING = 120
 const LEVEL_HORIZONTAL_SPACING =
   Math.max(DEFAULT_ENTITY_WIDTH, DEFAULT_CLUSTER_WIDTH) + HIERARCHY_HORIZONTAL_PADDING
-const LEVEL_VERTICAL_SPACING =
-  Math.max(DEFAULT_ENTITY_HEIGHT, DEFAULT_CLUSTER_HEIGHT) + HIERARCHY_VERTICAL_PADDING
 const CLUSTER_ENTITY_HORIZONTAL_SPACING = DEFAULT_ENTITY_WIDTH + CLUSTER_ENTITY_GAP
 
 const PARENT_RELATION_PATTERN =
@@ -23,36 +21,19 @@ const CHILD_RELATION_PATTERN =
 const SIBLING_RELATION_PATTERN =
   /(associated with|related to|partner|peer|sibling|affiliated with|connected to)/i
 
-export function isEntityOnActivePath(entityId, sourceEntityId, edges) {
-  if (!entityId || !sourceEntityId || !Array.isArray(edges)) return false
+// Determines if a given entity lies along the visible relationship chain
+function isEntityOnActivePath(entityId, sourceEntityId, meta) {
+  if (!entityId || !sourceEntityId || !(meta instanceof Map)) return false
 
+  let current = String(sourceEntityId)
+  const target = String(entityId)
   const visited = new Set()
-  const stack = [String(sourceEntityId)]
-  const normalizedTarget = String(entityId)
 
-  while (stack.length) {
-    const current = stack.pop()
-    if (current === normalizedTarget) return true
-    if (visited.has(current)) continue
+  while (current && !visited.has(current)) {
     visited.add(current)
-
-    edges.forEach((edge) => {
-      if (!edge) return
-      const source = edge?.source != null ? String(edge.source) : null
-      const target = edge?.target != null ? String(edge.target) : null
-      if (!source || !target) return
-
-      let next = null
-      if (source === current) {
-        next = target
-      } else if (target === current) {
-        next = source
-      }
-
-      if (next != null && !visited.has(next)) {
-        stack.push(next)
-      }
-    })
+    if (current === target) return true
+    const parentRaw = meta.get(current)?.parentId
+    current = parentRaw != null ? String(parentRaw) : null
   }
 
   return false
@@ -162,10 +143,24 @@ function normalizeEdge(rawEdge, currentEntityId) {
     currentEntityId
   )
 
-  const currentId = currentEntityId != null ? String(currentEntityId) : null
+  const normalizedRelationshipType =
+    relationshipType && typeof relationshipType === 'object'
+      ? {
+          id: relationshipType?.id ?? null,
+          name:
+            relationshipType?.name ||
+            relationshipType?.label ||
+            relationshipType?.from_label ||
+            relationshipType?.to_label ||
+            null,
+          label: relationshipType?.label ?? null,
+          from_label: relationshipType?.from_label ?? null,
+          to_label: relationshipType?.to_label ?? null,
+        }
+      : relationshipType
 
-  const baseLabel = (() => {
-    if (!relationshipType) {
+  const directionalLabel = (() => {
+    if (!normalizedRelationshipType) {
       return (
         rawEdge?.label ||
         rawEdge?.typeName ||
@@ -174,53 +169,49 @@ function normalizeEdge(rawEdge, currentEntityId) {
       )
     }
 
-    if (typeof relationshipType === 'string') {
-      return relationshipType || DEFAULT_RELATIONSHIP_LABEL
+    if (typeof normalizedRelationshipType === 'string') {
+      return normalizedRelationshipType || DEFAULT_RELATIONSHIP_LABEL
     }
 
-    if (currentId && currentId === fromEntityId) {
-      return (
-        relationshipType?.from_label ||
-        relationshipType?.label ||
-        relationshipType?.name ||
-        DEFAULT_RELATIONSHIP_LABEL
-      )
+    const { from_label, to_label, label: baseLabel, name: baseName } =
+      normalizedRelationshipType
+
+    if (currentEntityId != null && String(currentEntityId) === fromEntityId) {
+      return from_label || baseLabel || baseName || DEFAULT_RELATIONSHIP_LABEL
     }
 
-    if (currentId && currentId === toEntityId) {
+    if (currentEntityId != null && String(currentEntityId) === toEntityId) {
+      return to_label || baseLabel || baseName || DEFAULT_RELATIONSHIP_LABEL
+    }
+
+    return baseLabel || baseName || from_label || to_label || DEFAULT_RELATIONSHIP_LABEL
+  })()
+
+  const normalizedLabel =
+    String(directionalLabel || DEFAULT_RELATIONSHIP_LABEL).trim() ||
+    DEFAULT_RELATIONSHIP_LABEL
+
+  const normalizedTypeName = (() => {
+    if (!normalizedRelationshipType || typeof normalizedRelationshipType === 'string') {
       return (
-        relationshipType?.to_label ||
-        relationshipType?.label ||
-        relationshipType?.name ||
-        DEFAULT_RELATIONSHIP_LABEL
+        (typeof normalizedRelationshipType === 'string'
+          ? normalizedRelationshipType
+          : null) || DEFAULT_RELATIONSHIP_LABEL
       )
     }
 
     return (
-      relationshipType?.label ||
-      relationshipType?.name ||
+      normalizedRelationshipType?.name ||
+      normalizedRelationshipType?.label ||
+      normalizedRelationshipType?.from_label ||
+      normalizedRelationshipType?.to_label ||
       DEFAULT_RELATIONSHIP_LABEL
     )
   })()
 
-  const normalizedLabel =
-    String(baseLabel || DEFAULT_RELATIONSHIP_LABEL).trim() || DEFAULT_RELATIONSHIP_LABEL
-
-  const normalizedTypeName = (() => {
-    if (!relationshipType) return null
-    if (typeof relationshipType === 'string') return relationshipType
-    return (
-      relationshipType?.name ||
-      relationshipType?.label ||
-      relationshipType?.from_label ||
-      relationshipType?.to_label ||
-      null
-    )
-  })()
-
   const normalizedTypeId =
-    relationshipType && typeof relationshipType === 'object'
-      ? relationshipType?.id ?? null
+    normalizedRelationshipType && typeof normalizedRelationshipType === 'object'
+      ? normalizedRelationshipType?.id ?? null
       : null
 
   return {
@@ -230,11 +221,11 @@ function normalizeEdge(rawEdge, currentEntityId) {
     parentId,
     childId,
     label: normalizedLabel,
-    typeName: normalizedTypeName ?? null,
+    typeName: normalizedTypeName ?? DEFAULT_RELATIONSHIP_LABEL,
     typeId: normalizedTypeId ?? null,
     fromEntityId,
     toEntityId,
-    relationshipType,
+    relationshipType: normalizedRelationshipType ?? null,
     relationshipLabel: normalizedLabel,
     raw: rawEdge,
   }
@@ -284,12 +275,19 @@ function groupChildrenByRelationship(
 
   edges.forEach((edge) => {
     if (!edge) return
-    const parentIdRaw = edge.parentId ?? edge.source ?? null
-    const childIdRaw = edge.childId ?? edge.target ?? null
+    const parentIdRaw = edge.parentId || edge.source || null
+    const childIdRaw = edge.childId || edge.target || null
     if (!parentIdRaw || !childIdRaw) return
 
     const parentId = String(parentIdRaw)
     const childId = String(childIdRaw)
+
+    // Skip clustering for entities whose parent is already suppressed or in a cluster
+    const parentNode = nodeLookup.get(parentId) || nodes.find((n) => String(n?.id ?? '') === parentId)
+    if (!parentNode || parentNode.inCluster) return
+
+    const childNode = nodeLookup.get(childId) || nodes.find((n) => String(n?.id ?? '') === childId)
+    if (childNode?.inCluster) return
 
     if (!adjacency.has(parentId)) adjacency.set(parentId, new Set())
     adjacency.get(parentId).add(childId)
@@ -297,6 +295,51 @@ function groupChildrenByRelationship(
     if (!reverseAdjacency.has(childId)) reverseAdjacency.set(childId, new Set())
     reverseAdjacency.get(childId).add(parentId)
   })
+
+  const meta = new Map()
+  if (normalizedCurrentId) {
+    meta.set(normalizedCurrentId, { parentId: null })
+    const visitedForMeta = new Set()
+    const stack = [normalizedCurrentId]
+
+    while (stack.length) {
+      const currentId = stack.pop()
+      if (!currentId || visitedForMeta.has(currentId)) continue
+      visitedForMeta.add(currentId)
+
+      if (!meta.has(currentId)) {
+        meta.set(currentId, { parentId: null })
+      }
+
+      const parentSet = reverseAdjacency.get(currentId)
+      if (parentSet && parentSet.size) {
+        const [primaryParentRaw] = Array.from(parentSet)
+        const primaryParent =
+          primaryParentRaw != null ? String(primaryParentRaw) : null
+
+        if (primaryParent) {
+          const currentMeta = meta.get(currentId) || {}
+          if (!currentMeta.parentId) {
+            meta.set(currentId, { ...currentMeta, parentId: primaryParent })
+          } else {
+            meta.set(currentId, { ...currentMeta })
+          }
+
+          parentSet.forEach((parentIdRaw) => {
+            const normalizedParent =
+              parentIdRaw != null ? String(parentIdRaw) : null
+            if (!normalizedParent) return
+            if (!meta.has(normalizedParent)) {
+              meta.set(normalizedParent, { parentId: null })
+            }
+            if (!visitedForMeta.has(normalizedParent)) {
+              stack.push(normalizedParent)
+            }
+          })
+        }
+      }
+    }
+  }
 
   const levelSeeds = new Set(nodeLevels.keys())
   if (normalizedCurrentId) {
@@ -335,8 +378,8 @@ function groupChildrenByRelationship(
   const grouped = new Map()
   edges.forEach((edge) => {
     if (!edge) return
-    const parentIdRaw = edge.parentId ?? edge.source ?? null
-    const childIdRaw = edge.childId ?? edge.target ?? null
+    const parentIdRaw = edge.parentId || edge.source || null
+    const childIdRaw = edge.childId || edge.target || null
     if (!parentIdRaw || !childIdRaw) return
 
     const parentId = String(parentIdRaw)
@@ -376,7 +419,7 @@ function groupChildrenByRelationship(
           : null
         : null
 
-    const typeKey = typeName || typeId || label
+    const typeKey = typeName || typeId || 'unknown-type'
 
     const key = `${parentId}-${typeKey}`
     if (!grouped.has(key)) {
@@ -411,81 +454,115 @@ function groupChildrenByRelationship(
     const clusterId = `cluster-${entry.parentId}-${slug}`
 
     const clusterParentLevel = nodeLevels.get(entry.parentId) ?? 0
+    const baseLabel =
+      entry.typeName || entry.relationshipLabel || DEFAULT_RELATIONSHIP_LABEL
 
-    const protectedIds = normalizedCurrentId
-      ? [
-          ...childIds.filter((childId) =>
-            isEntityOnActivePath(childId, normalizedCurrentId, edges)
-          ),
-          normalizedCurrentId,
-        ]
-      : []
-    const protectedIdSet = new Set(protectedIds)
     const clusterMembers = childIds.filter((childId) => {
-      if (protectedIdSet.has(childId)) return false
       const childNode = nodeLookup.get(childId)
       return !(childNode?.inCluster)
     })
 
-    if (clusterMembers.length) {
-      const baseLabel =
-        entry.typeName || entry.relationshipLabel || DEFAULT_RELATIONSHIP_LABEL
-      const clusterLabel = `${baseLabel} (${clusterMembers.length})`
+    if (!clusterMembers.length) {
+      return
+    }
 
-      clusters.push({
-        id: clusterId,
-        parentId: entry.parentId,
-        relationshipType: baseLabel,
-        typeName: entry.typeName,
-        typeId: entry.typeId,
-        containedIds: clusterMembers,
-        label: clusterLabel,
-        count: clusterMembers.length,
-        parentLevel: clusterParentLevel,
-      })
+    const clusterDefinition = {
+      id: clusterId,
+      parentId: entry.parentId,
+      relationshipType: baseLabel,
+      typeName: entry.typeName,
+      typeId: entry.typeId,
+      containedIds: [...clusterMembers],
+      label: '',
+      count: 0,
+      parentLevel: clusterParentLevel,
+    }
 
-      clusterMembers.forEach((childId) => {
+    const protectedIds =
+      normalizedCurrentId && clusterDefinition.containedIds.length
+        ? clusterDefinition.containedIds.filter((childId) =>
+            isEntityOnActivePath(childId, normalizedCurrentId, meta)
+          )
+        : []
+    const protectedIdSet = new Set(protectedIds)
+
+    if (protectedIds.length) {
+      clusterDefinition.containedIds = clusterDefinition.containedIds.filter(
+        (childId) => !protectedIdSet.has(childId)
+      )
+
+      protectedIds.forEach((childId) => {
         const entity = nodeLookup.get(childId) || null
-        suppressedNodes.set(childId, {
-          clusterId,
-          parentId: entry.parentId,
-          relationshipType: baseLabel,
-          typeName: entry.typeName,
-          typeId: entry.typeId,
-          entity,
-        })
-
         if (entity) {
-          entity.inCluster = true
+          entity.isExpandedProtected = true
+          if (entity.inCluster) {
+            entity.inCluster = false
+          }
         }
 
-        const relatedEdges = entry.childMap.get(childId) || []
-        relatedEdges.forEach((edge) => edgesToRemove.add(edge.id))
-      })
-
-      clusterEdges.push({
-        id: `edge-${entry.parentId}-${clusterId}`,
-        source: entry.parentId,
-        target: clusterId,
-        label: clusterLabel,
-        parentId: entry.parentId,
-        childId: clusterId,
-        relationshipLabel: baseLabel,
-        relationshipType: baseLabel,
-        typeName: entry.typeName,
-        typeId: entry.typeId,
-        isClusterEdge: true,
+        const node = nodes.find((n) => String(n?.id ?? '') === childId)
+        if (node && node !== entity) {
+          node.isExpandedProtected = true
+          if (node.inCluster) {
+            node.inCluster = false
+          }
+        }
       })
     }
 
-    protectedIds.forEach((childId) => {
-      const entity = nodeLookup.get(childId) || null
-      if (entity) {
-        entity.isExpandedProtected = true
-        if (entity.inCluster) {
-          entity.inCluster = false
-        }
+    if (!clusterDefinition.containedIds.length) {
+      return
+    }
+
+    clusterDefinition.containedIds.forEach((cid) => {
+      const node = nodes.find((n) => String(n?.id ?? '') === cid) || nodeLookup.get(cid)
+      if (node) node.inCluster = true
+    })
+
+    clusterDefinition.count = clusterDefinition.containedIds.length
+    clusterDefinition.label = `${baseLabel} (${clusterDefinition.count})`
+
+    clusters.push(clusterDefinition)
+
+    clusterMembers.forEach((childId) => {
+      if (protectedIdSet.has(childId)) return
+      const entity =
+        nodeLookup.get(childId) ||
+        nodes.find((n) => String(n?.id ?? '') === childId) ||
+        null
+      if (entity?.isExpandedProtected) {
+        entity.inCluster = false
+        return
       }
+      suppressedNodes.set(childId, {
+        clusterId: clusterDefinition.id,
+        parentId: entry.parentId,
+        relationshipType: baseLabel,
+        typeName: entry.typeName,
+        typeId: entry.typeId,
+        entity,
+      })
+
+      if (entity) {
+        entity.inCluster = true
+      }
+
+      const relatedEdges = entry.childMap.get(childId) || []
+      relatedEdges.forEach((edge) => edgesToRemove.add(edge.id))
+    })
+
+    clusterEdges.push({
+      id: `edge-${entry.parentId}-${clusterDefinition.id}`,
+      source: entry.parentId,
+      target: clusterDefinition.id,
+      label: clusterDefinition.label,
+      parentId: entry.parentId,
+      childId: clusterDefinition.id,
+      relationshipLabel: baseLabel,
+      relationshipType: baseLabel,
+      typeName: entry.typeName,
+      typeId: entry.typeId,
+      isClusterEdge: true,
     })
   })
 
@@ -602,12 +679,15 @@ function assignPositions(groups) {
   const positions = new Map()
   let globalMinX = Infinity
 
+  const baseY = 0
+
   groups.forEach((nodesAtLevel, level) => {
     const totalWidth = (nodesAtLevel.length - 1) * LEVEL_HORIZONTAL_SPACING
     const startX = -totalWidth / 2
     nodesAtLevel.forEach((node, index) => {
       const x = startX + index * LEVEL_HORIZONTAL_SPACING
-      const y = level * LEVEL_VERTICAL_SPACING
+      const y =
+        baseY + level * (DEFAULT_ENTITY_HEIGHT + HIERARCHY_VERTICAL_PADDING)
       positions.set(node.id, { x, y, level, levelIndex: index })
       if (x < globalMinX) globalMinX = x
     })
@@ -673,8 +753,11 @@ function buildLevelsFromEdges(centerKey, edges) {
       const other = edge.source === current ? edge.target : edge.source
       if (!other) return
       const relationshipType = edge?.data?.relationshipType || edge?.label || ''
-      const parentId = edge?.data?.parentId ?? edge?.parentId ?? null
-      const childId = edge?.data?.childId ?? edge?.childId ?? null
+      const parentIdRaw = edge?.data?.parentId ?? edge?.parentId ?? null
+      const childIdRaw = edge?.data?.childId ?? edge?.childId ?? null
+      const parentId = parentIdRaw != null ? String(parentIdRaw) : null
+      const childId = childIdRaw != null ? String(childIdRaw) : null
+      const isClusterEdge = Boolean(edge?.data?.isClusterEdge || edge?.isClusterEdge)
 
       let nextLevel = currentLevel + 1
       if (parentId && childId) {
@@ -683,9 +766,9 @@ function buildLevelsFromEdges(centerKey, edges) {
         } else if (current === childId && other === parentId) {
           nextLevel = currentLevel - 1
         }
-      } else if (isParentRelation(relationshipType)) {
+      } else if (!isClusterEdge && isParentRelation(relationshipType)) {
         nextLevel = currentLevel - 1
-      } else if (isSiblingRelation(relationshipType)) {
+      } else if (!isClusterEdge && isSiblingRelation(relationshipType)) {
         nextLevel = currentLevel
       }
 
@@ -761,6 +844,25 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
   const levels = buildLevelsFromEdges(centerKey, normalizedEdges)
   ensureAllLevels(levels, nodesForLayout, centerKey)
 
+  nodesForLayout.forEach((node) => {
+    if (!node) return
+    const isClusterNode = node.type === 'cluster' || node.type === 'clusterNode'
+    if (!isClusterNode) return
+
+    const parentIdRaw =
+      node.parentId ??
+      node.data?.parentId ??
+      node.data?.sourceId ??
+      node.data?.source ??
+      null
+
+    if (!parentIdRaw) return
+
+    const parentId = String(parentIdRaw)
+    const parentLevel = levels.get(parentId) ?? 0
+    levels.set(node.id, parentLevel + 1)
+  })
+
   const { groups } = buildLevelGroups(levels, nodesForLayout)
   const positions = assignPositions(groups)
 
@@ -772,9 +874,11 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
       levelIndex: node?.data?.levelIndex ?? 0,
     }
     const placement = positions.get(node.id) || fallbackPlacement
+    const isClusterNode = node.type === 'cluster' || node.type === 'clusterNode'
+    const adjustedX = isClusterNode ? placement.x + 40 : placement.x
     return {
       ...node,
-      position: { x: placement.x, y: placement.y },
+      position: { x: adjustedX, y: placement.y },
       data: {
         ...node.data,
         level: placement.level,
@@ -817,6 +921,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
       nodes: [],
       edges: [],
       suppressedNodes: new Map(),
+      clusters: [],
     }
   }
 
@@ -888,23 +993,26 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
 
   const suppressedNodeIds = new Set(Array.from(normalizedSuppressed.keys()))
 
-  const nodesInClusters = new Set(
-    normalizedNodeList.filter((node) => node.inCluster).map((node) => node.id)
+  const clusterNodes = (Array.isArray(clusterDefinitions) ? clusterDefinitions : []).map(
+    (cluster) => createClusterNodeDefinition(cluster, nodeSummaries)
   )
 
-  const clusterNodes = clusterDefinitions.map((cluster) =>
-    createClusterNodeDefinition(cluster, nodeSummaries)
+  const entityNodes = normalizedNodeList.map((rawNode) =>
+    createEntityNodeDefinition(rawNode, { isCenter: rawNode.id === centerId })
   )
 
-  const visibleEntityNodes = normalizedNodeList
-    .filter((rawNode) => !suppressedNodeIds.has(rawNode.id))
-    .map((rawNode) => createEntityNodeDefinition(rawNode, { isCenter: rawNode.id === centerId }))
+  const visibleNodes = entityNodes.filter(
+    (node) => !suppressedNodeIds.has(String(node.id))
+  )
 
-  const clusterAwareEdges = Array.isArray(clusterAwareEdgesRaw) && clusterAwareEdgesRaw.length
-    ? clusterAwareEdgesRaw
-    : normalizedEdges
+  visibleNodes.push(...clusterNodes)
 
-  const filteredClusterAwareEdges = clusterAwareEdges.filter((edge) => {
+  const clusterAwareEdges =
+    Array.isArray(clusterAwareEdgesRaw) && clusterAwareEdgesRaw.length
+      ? clusterAwareEdgesRaw
+      : normalizedEdges
+
+  const filteredEdges = clusterAwareEdges.filter((edge) => {
     if (!edge) return false
     if (edge.isClusterEdge) return true
 
@@ -916,15 +1024,14 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     const sourceId = rawSource != null ? String(rawSource) : ''
     const targetId = rawTarget != null ? String(rawTarget) : ''
 
-    if ((sourceId && nodesInClusters.has(sourceId)) || (targetId && nodesInClusters.has(targetId))) {
-      return false
-    }
+    if (sourceId && suppressedNodeIds.has(sourceId)) return false
+    if (targetId && suppressedNodeIds.has(targetId)) return false
 
     return true
   })
 
   const connectedNodeIds = new Set()
-  filteredClusterAwareEdges.forEach((edge) => {
+  filteredEdges.forEach((edge) => {
     const sourceId =
       edge.source != null
         ? String(edge.source)
@@ -945,11 +1052,11 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     connectedNodeIds.add(centerId)
   }
 
-  const visibleFilteredEntityNodes = visibleEntityNodes.filter((node) =>
+  const visibleFilteredNodes = visibleNodes.filter((node) =>
     connectedNodeIds.has(String(node.id))
   )
 
-  const visibleEdges = filteredClusterAwareEdges.map((edge) => ({
+  const visibleEdges = filteredEdges.map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
@@ -968,13 +1075,19 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     targetHandle: 'top',
   }))
 
-  const layoutNodesInput = [...visibleFilteredEntityNodes, ...clusterNodes]
-  const layoutedNodes = layoutNodesHierarchically(layoutNodesInput, visibleEdges, centerId)
+  const layoutedNodes = layoutNodesHierarchically(
+    visibleFilteredNodes,
+    visibleEdges,
+    centerId
+  )
+
+  const layoutedClusters = layoutedNodes.filter((node) => node.type === 'cluster')
 
   return {
     nodes: layoutedNodes,
     edges: visibleEdges,
     suppressedNodes: normalizedSuppressed,
+    clusters: layoutedClusters,
   }
 }
 
