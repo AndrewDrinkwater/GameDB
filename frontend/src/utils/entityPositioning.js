@@ -69,6 +69,53 @@ function determineDirection(relationship, currentEntityId) {
   let parentId = fromEntityId && toEntityId ? fromEntityId : null
   let childId = fromEntityId && toEntityId ? toEntityId : null
 
+  const relationshipTypeDetails =
+    relationshipType && typeof relationshipType === 'object' ? relationshipType : null
+
+  const selectFirstValue = (...values) => {
+    for (const value of values) {
+      if (value != null && value !== '') return value
+    }
+    return null
+  }
+
+  const fromLabelRaw = selectFirstValue(
+    relationshipTypeDetails?.from_label,
+    relationshipTypeDetails?.fromLabel,
+    relationshipTypeDetails?.from_name,
+    relationshipTypeDetails?.fromName,
+  )
+  const toLabelRaw = selectFirstValue(
+    relationshipTypeDetails?.to_label,
+    relationshipTypeDetails?.toLabel,
+    relationshipTypeDetails?.to_name,
+    relationshipTypeDetails?.toName,
+  )
+
+  const labelIndicatesParent = (value) =>
+    typeof value === 'string' && PARENT_RELATION_PATTERN.test(value)
+  const labelIndicatesChild = (value) =>
+    typeof value === 'string' && CHILD_RELATION_PATTERN.test(value)
+
+  const fromIndicatesParent = labelIndicatesParent(fromLabelRaw)
+  const toIndicatesParent = labelIndicatesParent(toLabelRaw)
+  const fromIndicatesChild = labelIndicatesChild(fromLabelRaw)
+  const toIndicatesChild = labelIndicatesChild(toLabelRaw)
+
+  if (toIndicatesParent && !fromIndicatesParent) {
+    parentId = toEntityId
+    childId = fromEntityId
+  } else if (fromIndicatesParent && !toIndicatesParent) {
+    parentId = fromEntityId
+    childId = toEntityId
+  } else if (fromIndicatesChild && !toIndicatesChild) {
+    parentId = toEntityId
+    childId = fromEntityId
+  } else if (toIndicatesChild && !fromIndicatesChild) {
+    parentId = fromEntityId
+    childId = toEntityId
+  }
+
   const relationshipLabel = (() => {
     if (!relationshipType) return ''
     if (typeof relationshipType === 'string') return relationshipType.toLowerCase()
