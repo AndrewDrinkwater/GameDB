@@ -38,6 +38,32 @@ export default function RelationshipViewerPage() {
   const nodesRef = useRef([])
   const edgesRef = useRef([])
   const clustersRef = useRef([])
+  const userPlacedPositionsRef = useRef(new Map())
+  const manuallyReleasedEntitiesRef = useRef(new Set())
+  const lastEntityIdRef = useRef(null)
+
+  const applyUserPlacedPositions = useCallback((nodeList) => {
+    if (!Array.isArray(nodeList) || !nodeList.length) return nodeList
+    const positionOverrides = userPlacedPositionsRef.current
+    if (!(positionOverrides instanceof Map) || !positionOverrides.size) {
+      return nodeList
+    }
+
+    let didOverride = false
+    const mapped = nodeList.map((node) => {
+      if (!node || node.type !== 'entity') return node
+      const custom = positionOverrides.get(String(node.id))
+      if (!custom) return node
+      didOverride = true
+      return {
+        ...node,
+        position: { x: custom.x, y: custom.y },
+        positionAbsolute: { x: custom.x, y: custom.y },
+      }
+    })
+
+    return didOverride ? mapped : nodeList
+  }, [])
 
   useEffect(() => {
     nodesRef.current = nodes
@@ -46,6 +72,24 @@ export default function RelationshipViewerPage() {
   useEffect(() => {
     edgesRef.current = edges
   }, [edges])
+
+  useEffect(() => {
+    const normalizedId = entityId != null ? String(entityId) : null
+    if (normalizedId && lastEntityIdRef.current !== normalizedId) {
+      lastEntityIdRef.current = normalizedId
+      userPlacedPositionsRef.current = new Map()
+      manuallyReleasedEntitiesRef.current = new Set()
+      setBoardEntities({})
+      return
+    }
+
+    if (!normalizedId) {
+      lastEntityIdRef.current = null
+      userPlacedPositionsRef.current = new Map()
+      manuallyReleasedEntitiesRef.current = new Set()
+      setBoardEntities({})
+    }
+  }, [entityId])
 
   useEffect(() => {
     if (!selectedEntityInfoId) {
@@ -276,6 +320,10 @@ export default function RelationshipViewerPage() {
         return
       }
 
+      validNodesWithDefinitions.forEach(({ id }) => {
+        manuallyReleasedEntitiesRef.current.add(String(id))
+      })
+
       const relationshipLabel =
         clusterMeta.relationshipType || clusterMeta.label || 'Related'
 
@@ -435,7 +483,9 @@ export default function RelationshipViewerPage() {
           if (!hasLabelChange) return prevNodes
         }
 
-        return layoutNodesHierarchically(mappedNodes, edgesForLayout)
+        return applyUserPlacedPositions(
+          layoutNodesHierarchically(mappedNodes, edgesForLayout)
+        )
       })
 
       const normalizedLabel = `${relationshipLabel} (${remainingHidden.length})`
@@ -448,7 +498,12 @@ export default function RelationshipViewerPage() {
 
       markClusterExpanded(clusterId)
     },
-    [handleOpenEntityInfo, handleSetTargetEntity, markClusterExpanded]
+    [
+      applyUserPlacedPositions,
+      handleOpenEntityInfo,
+      handleSetTargetEntity,
+      markClusterExpanded,
+    ]
   )
 
   const handleReturnEntityToCluster = useCallback((clusterInfo, entity) => {
@@ -483,6 +538,14 @@ export default function RelationshipViewerPage() {
       })
 
     const descendantRemovalSet = new Set(descendantIdsToRemove)
+
+    manuallyReleasedEntitiesRef.current.delete(entityId)
+    userPlacedPositionsRef.current.delete(entityId)
+
+    descendantIdsToRemove.forEach((childId) => {
+      manuallyReleasedEntitiesRef.current.delete(String(childId))
+      userPlacedPositionsRef.current.delete(String(childId))
+    })
 
     setBoardEntities((prev) => {
       const next = { ...prev }
@@ -543,10 +606,12 @@ export default function RelationshipViewerPage() {
 
       finalRemainingPlaced = remainingPlaced
 
-      return positionEntitiesBelowCluster(
-        nextNodes,
-        updatedClusterNode || clusterNode,
-        remainingPlaced
+      return applyUserPlacedPositions(
+        positionEntitiesBelowCluster(
+          nextNodes,
+          updatedClusterNode || clusterNode,
+          remainingPlaced
+        )
       )
     })
 
@@ -681,7 +746,12 @@ export default function RelationshipViewerPage() {
         },
       })
     })
-  }, [collectDescendantInfo, markClusterCollapsed, markClusterExpanded])
+  }, [
+    applyUserPlacedPositions,
+    collectDescendantInfo,
+    markClusterCollapsed,
+    markClusterExpanded,
+  ])
 
   const handleCollapseEntityToCluster = useCallback(
     (clusterInput) => {
@@ -713,6 +783,8 @@ export default function RelationshipViewerPage() {
 
       entitiesToCollapse.forEach((entityId) => {
         const key = String(entityId)
+        manuallyReleasedEntitiesRef.current.delete(key)
+        userPlacedPositionsRef.current.delete(key)
         const node = nodesRef.current.find((graphNode) => String(graphNode.id) === key)
         if (node?.type === 'entity') {
           suppressedNodeDefinitionsRef.current.set(key, {
@@ -811,17 +883,23 @@ export default function RelationshipViewerPage() {
           }
         })
 
-        return layoutNodesHierarchically(mappedNodes, filteredEdges)
+        return applyUserPlacedPositions(
+          layoutNodesHierarchically(mappedNodes, filteredEdges)
+        )
       })
 
       markClusterCollapsed(clusterId)
     },
-    [markClusterCollapsed]
+    [applyUserPlacedPositions, markClusterCollapsed]
   )
 
   const handleNodeDragStop = useCallback(
     (event, node) => {
       if (!node || node.type !== 'entity') return
+      userPlacedPositionsRef.current.set(String(node.id), {
+        x: node?.position?.x ?? 0,
+        y: node?.position?.y ?? 0,
+      })
       const entityId = String(node.id)
       const clusterMeta = boardEntities[entityId]
       if (!clusterMeta?.clusterId) return
@@ -906,13 +984,12 @@ export default function RelationshipViewerPage() {
         nextNodes = positionEntitiesBelowCluster(nextNodes, clusterNode, entityIds)
       }
 
-      return nextNodes
+      return applyUserPlacedPositions(nextNodes)
     })
-  }, [boardEntities])
+  }, [applyUserPlacedPositions, boardEntities])
 
   useEffect(() => {
     if (!entityId) return
-    setBoardEntities({})
     let active = true
     async function fetchData() {
       setLoading(true)
@@ -1015,44 +1092,38 @@ export default function RelationshipViewerPage() {
           const decoratedNodes = layoutedNodes.map(decorateNode)
           const suppressedMap = new Map()
           const rawSuppressed = layoutedSuppressedNodes
+          const manualReleaseSet = manuallyReleasedEntitiesRef.current
+
+          const assignSuppressedEntry = (id, info) => {
+            if (manualReleaseSet.has(id)) {
+              return
+            }
+            suppressedMap.set(id, {
+              clusterId: info?.clusterId != null ? String(info.clusterId) : null,
+              parentId: info?.parentId != null ? String(info.parentId) : null,
+              relationshipType: info?.relationshipType || 'Related',
+              entity: info?.entity
+                ? {
+                    ...info.entity,
+                    id: String(info.entity.id ?? id),
+                    name: info.entity?.name || `Entity ${id}`,
+                    typeName:
+                      info.entity?.typeName || info.entity?.type?.name || 'Entity',
+                    isExpandedProtected: Boolean(info.entity?.isExpandedProtected),
+                  }
+                : null,
+            })
+          }
 
           if (rawSuppressed instanceof Map) {
             rawSuppressed.forEach((info, key) => {
               const id = String(key)
-              suppressedMap.set(id, {
-                clusterId: info?.clusterId != null ? String(info.clusterId) : null,
-                parentId: info?.parentId != null ? String(info.parentId) : null,
-                relationshipType: info?.relationshipType || 'Related',
-                entity: info?.entity
-                  ? {
-                      ...info.entity,
-                      id: String(info.entity.id ?? id),
-                      name: info.entity?.name || `Entity ${id}`,
-                      typeName:
-                        info.entity?.typeName || info.entity?.type?.name || 'Entity',
-                      isExpandedProtected: Boolean(info.entity?.isExpandedProtected),
-                    }
-                  : null,
-              })
+              assignSuppressedEntry(id, info)
             })
           } else {
             Object.entries(rawSuppressed || {}).forEach(([key, info]) => {
               const id = String(key)
-              suppressedMap.set(id, {
-                clusterId: info?.clusterId != null ? String(info.clusterId) : null,
-                parentId: info?.parentId != null ? String(info.parentId) : null,
-                relationshipType: info?.relationshipType || 'Related',
-                entity: info?.entity
-                  ? {
-                      ...info.entity,
-                      id: String(info.entity.id ?? id),
-                      name: info.entity?.name || `Entity ${id}`,
-                      typeName:
-                        info.entity?.typeName || info.entity?.type?.name || 'Entity',
-                      isExpandedProtected: Boolean(info.entity?.isExpandedProtected),
-                    }
-                  : null,
-              })
+              assignSuppressedEntry(id, info)
             })
           }
 
@@ -1060,22 +1131,41 @@ export default function RelationshipViewerPage() {
           suppressedNodeMetaRef.current = new Map(suppressedMap)
 
           const suppressedDefinitions = new Map()
-          suppressedMap.forEach((info, key) => {
-            const id = String(key)
-            const entity = info?.entity || null
-            suppressedDefinitions.set(id, {
-              id,
-              type: 'entity',
-              position: { x: 0, y: 0 },
-              data: {
-                label: entity?.name || `Entity ${id}`,
-                typeName: entity?.typeName || entity?.type?.name || 'Entity',
-                entityId: id,
-                isAdHoc: true,
-                isExpandedProtected: Boolean(entity?.isExpandedProtected),
-              },
+          if (rawSuppressed instanceof Map) {
+            rawSuppressed.forEach((info, key) => {
+              const id = String(key)
+              const entity = info?.entity || null
+              suppressedDefinitions.set(id, {
+                id,
+                type: 'entity',
+                position: { x: 0, y: 0 },
+                data: {
+                  label: entity?.name || `Entity ${id}`,
+                  typeName: entity?.typeName || entity?.type?.name || 'Entity',
+                  entityId: id,
+                  isAdHoc: true,
+                  isExpandedProtected: Boolean(entity?.isExpandedProtected),
+                },
+              })
             })
-          })
+          } else {
+            Object.entries(rawSuppressed || {}).forEach(([key, info]) => {
+              const id = String(key)
+              const entity = info?.entity || null
+              suppressedDefinitions.set(id, {
+                id,
+                type: 'entity',
+                position: { x: 0, y: 0 },
+                data: {
+                  label: entity?.name || `Entity ${id}`,
+                  typeName: entity?.typeName || entity?.type?.name || 'Entity',
+                  entityId: id,
+                  isAdHoc: true,
+                  isExpandedProtected: Boolean(entity?.isExpandedProtected),
+                },
+              })
+            })
+          }
 
           suppressedNodeDefinitionsRef.current = suppressedDefinitions
 
@@ -1109,8 +1199,64 @@ export default function RelationshipViewerPage() {
 
           clustersRef.current = normalizedClusters
 
-          setNodes(decoratedNodes)
-          setEdges(layoutedEdges)
+          const existingNodesMap = new Map(
+            Array.isArray(nodesRef.current)
+              ? nodesRef.current.map((node) => [String(node.id), node])
+              : []
+          )
+
+          const mergedNodes = [...decoratedNodes]
+
+          manualReleaseSet.forEach((releasedId) => {
+            const key = String(releasedId)
+            if (mergedNodes.some((node) => String(node.id) === key)) return
+            const existingNode = existingNodesMap.get(key)
+            if (existingNode) {
+              mergedNodes.push(existingNode)
+              return
+            }
+            const suppressedDefinition = suppressedDefinitions.get(key)
+            if (suppressedDefinition) {
+              const decoratedSuppressed = decorateNode(suppressedDefinition)
+              if (decoratedSuppressed) {
+                mergedNodes.push({
+                  ...decoratedSuppressed,
+                  id: key,
+                  type: 'entity',
+                })
+              }
+            }
+          })
+
+          const layoutedEdgeIds = new Set(
+            Array.isArray(layoutedEdges)
+              ? layoutedEdges.map((edge) => edge.id)
+              : []
+          )
+
+          const preservedEdges = (Array.isArray(edgesRef.current)
+            ? edgesRef.current
+            : []
+          ).filter((edge) => {
+            if (!edge || layoutedEdgeIds.has(edge.id)) return false
+            const rawChild =
+              edge?.data?.childId ?? edge?.target ?? edge?.data?.targetId ?? null
+            const rawSource =
+              edge?.data?.parentId ?? edge?.source ?? edge?.data?.sourceId ?? null
+            const childId = rawChild != null ? String(rawChild) : null
+            const sourceId = rawSource != null ? String(rawSource) : null
+
+            if (childId && manualReleaseSet.has(childId)) return true
+            if (sourceId && manualReleaseSet.has(sourceId)) return true
+            return false
+          })
+
+          const mergedEdges = Array.isArray(layoutedEdges)
+            ? [...layoutedEdges, ...preservedEdges]
+            : preservedEdges
+
+          setNodes(applyUserPlacedPositions(mergedNodes))
+          setEdges(mergedEdges)
         }
       } catch (err) {
         if (active) setError(err.message || 'Failed to load graph')
@@ -1123,6 +1269,7 @@ export default function RelationshipViewerPage() {
       active = false
     }
   }, [
+    applyUserPlacedPositions,
     entityId,
     relationshipDepth,
     handleAddEntityFromCluster,
@@ -1228,7 +1375,20 @@ export default function RelationshipViewerPage() {
         )
       }
 
-      return arrangedNodes
+      const overrides = userPlacedPositionsRef.current
+      if (overrides instanceof Map && overrides.size) {
+        arrangedNodes.forEach((node) => {
+          if (!node || node.type !== 'entity') return
+          const key = String(node.id)
+          if (!overrides.has(key)) return
+          overrides.set(key, {
+            x: node.position?.x ?? 0,
+            y: node.position?.y ?? 0,
+          })
+        })
+      }
+
+      return applyUserPlacedPositions(arrangedNodes)
     })
 
     if (reactFlowInstance) {
@@ -1236,7 +1396,13 @@ export default function RelationshipViewerPage() {
         reactFlowInstance.fitView({ padding: 0.2, duration: 400 })
       })
     }
-  }, [boardEntities, edges, entityId, reactFlowInstance])
+  }, [
+    applyUserPlacedPositions,
+    boardEntities,
+    edges,
+    entityId,
+    reactFlowInstance,
+  ])
 
   const handleIncreaseDepth = useCallback(() => {
     setRelationshipDepth((current) => Math.min(3, current + 1))
