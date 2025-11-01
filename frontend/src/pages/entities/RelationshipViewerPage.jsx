@@ -965,9 +965,13 @@ export default function RelationshipViewerPage() {
         const label =
           meta?.relationshipType || relationshipLabel || fallbackRelationshipLabel
 
+        const parentCandidate =
+          clusterMeta?.parentId != null ? String(clusterMeta.parentId) : null
         const sourceId =
-          clusterMeta?.parentId != null
-            ? String(clusterMeta.parentId)
+          parentCandidate &&
+          Array.isArray(nodesRef.current) &&
+          nodesRef.current.some((node) => String(node.id) === parentCandidate)
+            ? parentCandidate
             : clusterId
 
         const nextEdge = {
@@ -1039,7 +1043,7 @@ export default function RelationshipViewerPage() {
           if (!currentId || visited.has(currentId)) continue
           visited.add(currentId)
 
-          const parentDepth = depthLookup.get(currentId)
+          const parentDepth = depthLookup.get(currentId) ?? 0
           if (
             relationshipDepthLimit != null &&
             parentDepth != null &&
@@ -1064,111 +1068,90 @@ export default function RelationshipViewerPage() {
             const childId = childRaw != null ? String(childRaw) : null
             if (!childId || childId === currentId) return
 
-            const childDepth = depthLookup.get(childId)
+            const nextDepth = parentDepth + 1
             if (
               relationshipDepthLimit != null &&
-              childDepth != null &&
-              childDepth > relationshipDepthLimit
+              Number.isFinite(relationshipDepthLimit) &&
+              nextDepth > relationshipDepthLimit
             ) {
               return
             }
 
             if (plannedNodeIds.has(childId)) {
+              if (!depthLookup.has(childId)) {
+                depthLookup.set(childId, nextDepth)
+              }
               if (breakoutIds.has(childId)) {
                 queue.push(childId)
               }
-              return
-            }
+            } else if (!descendantAdditionIds.has(childId)) {
+              let definitionToAdd = null
 
-            let shouldAppendEdge = false
+              if (suppressedNodes.has(childId)) {
+                const definition = suppressedDefinitions.get(childId)
+                if (!definition) return
 
-            if (!suppressedNodes.has(childId)) {
-              if (!plannedNodeIds.has(childId) && !descendantAdditionIds.has(childId)) {
-                const nextDepth =
-                  parentDepth != null && Number.isFinite(parentDepth)
-                    ? parentDepth + 1
-                    : null
-                const withinDepthRange =
-                  relationshipDepthLimit == null ||
-                  nextDepth == null ||
-                  nextDepth <= relationshipDepthLimit
+                suppressedNodes.delete(childId)
+                suppressedDefinitions.delete(childId)
+                suppressedMeta.delete(childId)
+                manuallyReleasedEntitiesRef.current.add(childId)
 
-                if (withinDepthRange) {
-                  const existingDefinition = allNodeDefinitions.get(childId)
-                  if (existingDefinition) {
-                    const fallbackLabel =
-                      existingDefinition?.data?.label ||
-                      existingDefinition?.data?.name ||
-                      `Entity ${childId}`
+                definitionToAdd = definition
+              } else {
+                const existingDefinition = allNodeDefinitions.get(childId)
+                if (!existingDefinition) return
 
-                    const normalizedDefinition = {
-                      ...existingDefinition,
-                      id: String(childId),
-                      type: existingDefinition.type || 'entity',
-                      position: existingDefinition.position || { x: 0, y: 0 },
-                      data: {
-                        ...existingDefinition?.data,
-                        label: sanitizeEntityLabel(fallbackLabel, `Entity ${childId}`),
-                        typeName:
-                          existingDefinition?.data?.typeName ||
-                          existingDefinition?.data?.type?.name ||
-                          'Entity',
-                        entityId:
-                          existingDefinition?.data?.entityId != null
-                            ? String(existingDefinition.data.entityId)
-                            : String(childId),
-                        isAdHoc:
-                          existingDefinition?.data?.isAdHoc != null
-                            ? Boolean(existingDefinition.data.isAdHoc)
-                            : true,
-                        isExpandedProtected: Boolean(
-                          existingDefinition?.data?.isExpandedProtected
-                        ),
-                      },
-                    }
+                const fallbackLabel =
+                  existingDefinition?.data?.label ||
+                  existingDefinition?.data?.name ||
+                  `Entity ${childId}`
 
-                    descendantNodeAdditions.push({
-                      id: childId,
-                      definition: normalizedDefinition,
-                    })
-                    descendantAdditionIds.add(childId)
-                    allNodeDefinitions.set(childId, normalizedDefinition)
-                    breakoutIds.add(childId)
-                    shouldAppendEdge = true
-                  }
+                const normalizedDefinition = {
+                  ...existingDefinition,
+                  id: String(childId),
+                  type: existingDefinition.type || 'entity',
+                  position: existingDefinition.position || { x: 0, y: 0 },
+                  data: {
+                    ...existingDefinition?.data,
+                    label: sanitizeEntityLabel(fallbackLabel, `Entity ${childId}`),
+                    typeName:
+                      existingDefinition?.data?.typeName ||
+                      existingDefinition?.data?.type?.name ||
+                      'Entity',
+                    entityId:
+                      existingDefinition?.data?.entityId != null
+                        ? String(existingDefinition.data.entityId)
+                        : String(childId),
+                    isAdHoc:
+                      existingDefinition?.data?.isAdHoc != null
+                        ? Boolean(existingDefinition.data.isAdHoc)
+                        : true,
+                    isExpandedProtected: Boolean(
+                      existingDefinition?.data?.isExpandedProtected
+                    ),
+                  },
                 }
+
+                definitionToAdd = normalizedDefinition
               }
 
-              plannedNodeIds.add(childId)
-              queue.push(childId)
-
-              if (shouldAppendEdge) {
-                const reactFlowEdge = convertNormalizedEdgeToReactFlow(edge)
-                if (reactFlowEdge && !appendedEdgeIds.has(reactFlowEdge.id)) {
-                  appendedEdgeIds.add(reactFlowEdge.id)
-                  descendantEdgeAdditions.push(reactFlowEdge)
-                }
+              if (definitionToAdd) {
+                descendantNodeAdditions.push({
+                  id: childId,
+                  definition: definitionToAdd,
+                })
+                descendantAdditionIds.add(childId)
+                plannedNodeIds.add(childId)
+                breakoutIds.add(childId)
+                queue.push(childId)
+                depthLookup.set(childId, nextDepth)
+                allNodeDefinitions.set(childId, definitionToAdd)
               }
-
-              return
             }
 
-            const definition = suppressedDefinitions.get(childId)
-            if (!definition) return
-
-            suppressedNodes.delete(childId)
-            suppressedDefinitions.delete(childId)
-            suppressedMeta.delete(childId)
-
-            if (!descendantAdditionIds.has(childId)) {
-              descendantNodeAdditions.push({ id: childId, definition })
-              descendantAdditionIds.add(childId)
+            if (!depthLookup.has(childId)) {
+              depthLookup.set(childId, nextDepth)
             }
-            manuallyReleasedEntitiesRef.current.add(childId)
-            plannedNodeIds.add(childId)
-            breakoutIds.add(childId)
-            queue.push(childId)
-            allNodeDefinitions.set(childId, definition)
 
             const reactFlowEdge = convertNormalizedEdgeToReactFlow(edge)
             if (reactFlowEdge && !appendedEdgeIds.has(reactFlowEdge.id)) {
