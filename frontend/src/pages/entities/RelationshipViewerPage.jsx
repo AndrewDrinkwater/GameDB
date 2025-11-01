@@ -69,6 +69,57 @@ export default function RelationshipViewerPage() {
     hiddenClusterIdsRef.current.add(String(clusterId))
   }, [])
 
+  const collectDescendantInfo = useCallback((rootEntityId) => {
+    if (!rootEntityId) return new Map()
+
+    const normalizedRoot = String(rootEntityId)
+    const edges = Array.isArray(edgesRef.current) ? edgesRef.current : []
+    const descendants = new Map()
+    const stack = [normalizedRoot]
+    const visited = new Set()
+
+    while (stack.length) {
+      const currentId = stack.pop()
+      if (!currentId || visited.has(currentId)) continue
+      visited.add(currentId)
+
+      edges.forEach((edge) => {
+        if (!edge || edge?.data?.isClusterEdge || edge?.data?.isClusterChildEdge) return
+
+        const parentRaw =
+          edge?.parentId ?? edge?.data?.parentId ?? edge?.source ?? null
+        const childRaw = edge?.childId ?? edge?.data?.childId ?? edge?.target ?? null
+
+        if (parentRaw == null || childRaw == null) return
+
+        const parentId = String(parentRaw)
+        if (parentId !== currentId) return
+
+        const childId = String(childRaw)
+        if (!childId || childId === normalizedRoot) return
+
+        if (!descendants.has(childId)) {
+          const relationshipLabel =
+            edge?.data?.relationshipType ||
+            edge?.relationshipLabel ||
+            edge?.label ||
+            'Related'
+
+          descendants.set(childId, {
+            parentId,
+            relationshipType: relationshipLabel,
+          })
+        }
+
+        if (!visited.has(childId)) {
+          stack.push(childId)
+        }
+      })
+    }
+
+    return descendants
+  }, [])
+
   const handleAddEntityFromCluster = useCallback(
     (clusterInput) => {
       if (!clusterInput) return
@@ -145,13 +196,42 @@ export default function RelationshipViewerPage() {
         return
       }
 
+      const clusterParentId =
+        clusterMeta.parentId != null ? String(clusterMeta.parentId) : null
+
+      const visibleNodeIds = new Set(
+        nodesRef.current.map((node) => String(node.id))
+      )
+
+      const validNodesWithDefinitions = nodesWithDefinitions.filter(
+        ({ meta }) => {
+          const parentId =
+            meta?.parentId != null ? String(meta.parentId) : clusterParentId
+
+          if (clusterParentId && parentId !== clusterParentId) {
+            return false
+          }
+
+          if (parentId) {
+            if (suppressedNodes.has(parentId)) return false
+            return visibleNodeIds.has(parentId)
+          }
+
+          return true
+        }
+      )
+
+      if (!validNodesWithDefinitions.length) {
+        return
+      }
+
       const relationshipLabel =
         clusterMeta.relationshipType || clusterMeta.label || 'Related'
 
       const edgesForLayout = [...edgesRef.current]
       const newEdges = []
 
-      nodesWithDefinitions.forEach(({ id, meta }) => {
+      validNodesWithDefinitions.forEach(({ id, meta }) => {
         const edgeId = `cluster-${clusterId}-${id}`
         if (edgesForLayout.some((edge) => edge.id === edgeId)) return
 
@@ -179,7 +259,7 @@ export default function RelationshipViewerPage() {
         newEdges.push(nextEdge)
       })
 
-      nodesWithDefinitions.forEach(({ id }) => {
+      validNodesWithDefinitions.forEach(({ id }) => {
         suppressedNodes.delete(String(id))
       })
 
@@ -187,14 +267,10 @@ export default function RelationshipViewerPage() {
         suppressedNodes.has(String(id))
       )
 
-      const visibleIds = clusterMeta.containedIds.filter((id) =>
-        !suppressedNodes.has(String(id))
-      )
-
       setBoardEntities((prev) => {
         const next = { ...prev }
         let changed = false
-        nodesWithDefinitions.forEach(({ id }) => {
+        validNodesWithDefinitions.forEach(({ id }) => {
           if (next[id]) return
           next[id] = {
             clusterId: clusterMeta.id,
@@ -230,7 +306,7 @@ export default function RelationshipViewerPage() {
           (clusterNodeCurrent.data?.placedEntityIds || []).map((value) => String(value))
         )
 
-        nodesWithDefinitions.forEach(({ id, definition, meta }) => {
+        validNodesWithDefinitions.forEach(({ id, definition, meta }) => {
           placedEntityIds.add(String(id))
           if (existingIds.has(String(id))) return
 
@@ -339,11 +415,40 @@ export default function RelationshipViewerPage() {
     )
     if (isProtectedNode) return
 
+    const nodeLookup = new Map(
+      nodesRef.current.map((graphNode) => [String(graphNode.id), graphNode])
+    )
+
+    const descendantInfoMap = collectDescendantInfo(entityId)
+    const descendantEntries = Array.from(descendantInfoMap.entries())
+    const descendantIdsToRemove = descendantEntries
+      .map(([childId]) => String(childId))
+      .filter((childId) => {
+        if (childId === entityId) return false
+        const childNode = nodeLookup.get(childId)
+        if (!childNode) return false
+        if (childNode?.data?.isExpandedProtected) return false
+        return true
+      })
+
+    const descendantRemovalSet = new Set(descendantIdsToRemove)
+
     setBoardEntities((prev) => {
-      if (!prev[entityId]) return prev
       const next = { ...prev }
-      delete next[entityId]
-      return next
+      let changed = false
+
+      if (next[entityId]) {
+        delete next[entityId]
+        changed = true
+      }
+
+      descendantIdsToRemove.forEach((childId) => {
+        if (!next[childId]) return
+        delete next[childId]
+        changed = true
+      })
+
+      return changed ? next : prev
     })
 
     let finalRemainingPlaced = []
@@ -352,9 +457,17 @@ export default function RelationshipViewerPage() {
       const clusterNode = prevNodes.find((node) => node.id === clusterInfo.id)
 
       const filteredNodes = prevNodes.filter((node) => {
-        if (node.id !== entityId) return true
-        if (node.type !== 'entity') return true
-        return !node.data?.isAdHoc
+        const nodeId = String(node.id)
+        if (nodeId === entityId && node.type === 'entity') {
+          return !node.data?.isAdHoc
+        }
+
+        if (descendantRemovalSet.has(nodeId) && node.type === 'entity') {
+          if (node.data?.isExpandedProtected) return true
+          return false
+        }
+
+        return true
       })
 
       let nextNodes = filteredNodes.map((node) => {
@@ -386,9 +499,27 @@ export default function RelationshipViewerPage() {
       )
     })
 
-    setEdges((prevEdges) =>
-      prevEdges.filter((edge) => edge.source !== entityId && edge.target !== entityId)
-    )
+    setEdges((prevEdges) => {
+      const removalIds = new Set([entityId, ...descendantIdsToRemove])
+      return prevEdges.filter((edge) => {
+        const sourceId =
+          edge?.source != null
+            ? String(edge.source)
+            : edge?.parentId != null
+            ? String(edge.parentId)
+            : null
+        const targetId =
+          edge?.target != null
+            ? String(edge.target)
+            : edge?.childId != null
+            ? String(edge.childId)
+            : null
+
+        if (sourceId && removalIds.has(sourceId)) return false
+        if (targetId && removalIds.has(targetId)) return false
+        return true
+      })
+    })
 
     const relationshipLabel = clusterInfo.relationshipType || clusterInfo.label || 'Related'
     const suppressedMeta = {
@@ -449,7 +580,57 @@ export default function RelationshipViewerPage() {
     } else {
       markClusterCollapsed(clusterId)
     }
-  }, [markClusterCollapsed, markClusterExpanded])
+
+    const clustersList = Array.isArray(clustersRef.current)
+      ? clustersRef.current
+      : []
+
+    descendantIdsToRemove.forEach((childId) => {
+      const childNode = nodeLookup.get(childId)
+      if (!childNode) return
+
+      const info = descendantInfoMap.get(childId) || {}
+      const parentId = info?.parentId != null ? String(info.parentId) : null
+      const relationshipType = info?.relationshipType || 'Related'
+
+      const relatedCluster = clustersList.find((cluster) => {
+        if (!cluster) return false
+        const normalizedParent = cluster?.parentId != null ? String(cluster.parentId) : null
+        if (normalizedParent && parentId && normalizedParent !== parentId) return false
+        return Array.isArray(cluster?.containedIds)
+          ? cluster.containedIds.some((value) => String(value) === String(childId))
+          : false
+      })
+
+      const suppressedMetaEntry = {
+        clusterId: relatedCluster ? String(relatedCluster.id) : null,
+        parentId,
+        relationshipType,
+        entity: {
+          id: String(childId),
+          name: childNode?.data?.label || `Entity ${childId}`,
+          typeName: childNode?.data?.typeName || childNode?.data?.type?.name || 'Entity',
+          type: childNode?.data?.type || null,
+          isExpandedProtected: Boolean(childNode?.data?.isExpandedProtected),
+        },
+      }
+
+      suppressedNodesRef.current.set(String(childId), suppressedMetaEntry)
+      suppressedNodeMetaRef.current.set(String(childId), suppressedMetaEntry)
+      suppressedNodeDefinitionsRef.current.set(String(childId), {
+        id: String(childId),
+        type: 'entity',
+        position: { x: 0, y: 0 },
+        data: {
+          label: childNode?.data?.label || `Entity ${childId}`,
+          typeName: childNode?.data?.typeName || childNode?.data?.type?.name || 'Entity',
+          entityId: String(childId),
+          isAdHoc: true,
+          isExpandedProtected: Boolean(childNode?.data?.isExpandedProtected),
+        },
+      })
+    })
+  }, [collectDescendantInfo, markClusterCollapsed, markClusterExpanded])
 
   const handleCollapseEntityToCluster = useCallback(
     (clusterInput) => {

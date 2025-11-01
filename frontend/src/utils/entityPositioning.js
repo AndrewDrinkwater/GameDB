@@ -910,6 +910,106 @@ function summarizeNodes(nodeMap) {
   }))
 }
 
+function buildParentLookup(edges) {
+  const lookup = new Map()
+  if (!Array.isArray(edges)) return lookup
+
+  edges.forEach((edge) => {
+    if (!edge) return
+    if (edge.isClusterEdge || edge?.data?.isClusterEdge || edge?.data?.isClusterChildEdge)
+      return
+
+    const parentRaw = edge?.parentId ?? edge?.source ?? null
+    const childRaw = edge?.childId ?? edge?.target ?? null
+    if (parentRaw == null || childRaw == null) return
+
+    const parentId = String(parentRaw)
+    const childId = String(childRaw)
+    if (!childId) return
+
+    if (!lookup.has(childId)) lookup.set(childId, new Set())
+    lookup.get(childId).add(parentId)
+  })
+
+  return lookup
+}
+
+function createShouldRenderNode({
+  centerId = null,
+  parentLookup = new Map(),
+  suppressedIds = new Set(),
+  candidateIds = new Set(),
+}) {
+  const cache = new Map()
+  const normalizedCenter = centerId != null ? String(centerId) : null
+
+  function resolver(nodeId, visiting = new Set()) {
+    const key = String(nodeId)
+    if (!key) return false
+
+    if (cache.has(key)) {
+      return cache.get(key)
+    }
+
+    if (suppressedIds.has(key)) {
+      cache.set(key, false)
+      return false
+    }
+
+    if (!candidateIds.has(key)) {
+      cache.set(key, false)
+      return false
+    }
+
+    if (normalizedCenter && key === normalizedCenter) {
+      cache.set(key, true)
+      return true
+    }
+
+    const parents = parentLookup.get(key)
+    if (!parents || parents.size === 0) {
+      cache.set(key, true)
+      return true
+    }
+
+    if (visiting.has(key)) {
+      cache.set(key, false)
+      return false
+    }
+
+    visiting.add(key)
+
+    for (const parentId of parents) {
+      const normalizedParent = String(parentId)
+      if (!normalizedParent) continue
+
+      if (suppressedIds.has(normalizedParent)) {
+        cache.set(key, false)
+        visiting.delete(key)
+        return false
+      }
+
+      if (!candidateIds.has(normalizedParent)) {
+        cache.set(key, false)
+        visiting.delete(key)
+        return false
+      }
+
+      if (!resolver(normalizedParent, visiting)) {
+        cache.set(key, false)
+        visiting.delete(key)
+        return false
+      }
+    }
+
+    visiting.delete(key)
+    cache.set(key, true)
+    return true
+  }
+
+  return resolver
+}
+
 export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_CLUSTER_THRESHOLD) {
   const centerId = entityId != null ? String(entityId) : null
   const rawNodes = Array.isArray(data?.nodes) ? data.nodes : []
@@ -1007,11 +1107,28 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     createEntityNodeDefinition(rawNode, { isCenter: rawNode.id === centerId })
   )
 
-  const visibleNodes = entityNodes.filter(
+  const candidateEntityNodes = entityNodes.filter(
     (node) => !suppressedNodeIds.has(String(node.id))
   )
 
-  visibleNodes.push(...clusterNodes)
+  const candidateIds = new Set(candidateEntityNodes.map((node) => String(node.id)))
+  if (centerId != null) {
+    candidateIds.add(String(centerId))
+  }
+
+  const parentLookup = buildParentLookup(normalizedEdges)
+  const shouldRenderNode = createShouldRenderNode({
+    centerId,
+    parentLookup,
+    suppressedIds: suppressedNodeIds,
+    candidateIds,
+  })
+
+  const visibleEntityNodes = candidateEntityNodes.filter((node) =>
+    shouldRenderNode(String(node.id))
+  )
+
+  const visibleNodes = [...visibleEntityNodes, ...clusterNodes]
 
   // Determine all currently visible node IDs
   const visibleNodeIds = new Set(visibleNodes.map((node) => String(node.id)))
