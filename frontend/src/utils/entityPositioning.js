@@ -81,6 +81,17 @@ function determineDirection(relationship, currentEntityId) {
     return String(rawLabel).toLowerCase()
   })()
 
+  if (fromEntityId && toEntityId && relationshipLabel) {
+    const isParentRelationLabel = /(parent|owns|contains)/.test(relationshipLabel)
+    const isChildRelationLabel = /(child|belongs to|part of)/.test(relationshipLabel)
+
+    if (isChildRelationLabel && !isParentRelationLabel) {
+      const temp = parentId
+      parentId = childId
+      childId = temp
+    }
+  }
+
   if (!parentId && !childId && fromEntityId && toEntityId && relationshipLabel) {
     if (PARENT_RELATION_PATTERN.test(relationshipLabel)) {
       parentId = toEntityId
@@ -644,14 +655,36 @@ function createClusterNodeDefinition(cluster, nodeSummaries) {
 
 function ensureAllLevels(levels, nodes, centerId) {
   const normalizedCenter = centerId != null ? String(centerId) : null
+
   nodes.forEach((node) => {
+    if (!node) return
     if (!levels.has(node.id)) {
-      if (node.id === normalizedCenter) {
-        levels.set(node.id, 0)
-      } else {
-        levels.set(node.id, 1)
-      }
+      levels.set(node.id, node.id === normalizedCenter ? 0 : 1)
     }
+  })
+
+  if (normalizedCenter && (!levels.has(normalizedCenter) || levels.get(normalizedCenter) !== 0)) {
+    levels.set(normalizedCenter, 0)
+  }
+
+  const adjustedLevels = new Map()
+  levels.forEach((value, key) => {
+    if (key === normalizedCenter) {
+      adjustedLevels.set(key, 0)
+      return
+    }
+
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      adjustedLevels.set(key, 1)
+      return
+    }
+
+    adjustedLevels.set(key, Math.abs(value))
+  })
+
+  levels.clear()
+  adjustedLevels.forEach((value, key) => {
+    levels.set(key, value)
   })
 }
 
@@ -939,9 +972,17 @@ function createShouldRenderNode({
   parentLookup = new Map(),
   suppressedIds = new Set(),
   candidateIds = new Set(),
+  alwaysIncludeIds = new Set(),
 }) {
   const cache = new Map()
   const normalizedCenter = centerId != null ? String(centerId) : null
+  const forcedIds = new Set(
+    alwaysIncludeIds instanceof Set
+      ? Array.from(alwaysIncludeIds).map(String)
+      : Array.isArray(alwaysIncludeIds)
+      ? alwaysIncludeIds.map((id) => String(id))
+      : []
+  )
 
   function resolver(nodeId, visiting = new Set()) {
     const key = String(nodeId)
@@ -956,12 +997,17 @@ function createShouldRenderNode({
       return false
     }
 
-    if (!candidateIds.has(key)) {
+    if (!candidateIds.has(key) && !forcedIds.has(key)) {
       cache.set(key, false)
       return false
     }
 
     if (normalizedCenter && key === normalizedCenter) {
+      cache.set(key, true)
+      return true
+    }
+
+    if (forcedIds.has(key)) {
       cache.set(key, true)
       return true
     }
@@ -979,30 +1025,38 @@ function createShouldRenderNode({
 
     visiting.add(key)
 
+    let hasRenderableParent = false
+
     for (const parentId of parents) {
       const normalizedParent = String(parentId)
       if (!normalizedParent) continue
 
       if (suppressedIds.has(normalizedParent)) {
-        cache.set(key, false)
-        visiting.delete(key)
-        return false
+        continue
       }
 
-      if (!candidateIds.has(normalizedParent)) {
-        cache.set(key, false)
-        visiting.delete(key)
-        return false
+      if (!candidateIds.has(normalizedParent) && !forcedIds.has(normalizedParent)) {
+        hasRenderableParent = true
+        continue
       }
 
-      if (!resolver(normalizedParent, visiting)) {
-        cache.set(key, false)
-        visiting.delete(key)
-        return false
+      if (forcedIds.has(normalizedParent)) {
+        hasRenderableParent = true
+        continue
+      }
+
+      if (resolver(normalizedParent, visiting)) {
+        hasRenderableParent = true
       }
     }
 
     visiting.delete(key)
+
+    if (!hasRenderableParent) {
+      cache.set(key, false)
+      return false
+    }
+
     cache.set(key, true)
     return true
   }
@@ -1010,7 +1064,12 @@ function createShouldRenderNode({
   return resolver
 }
 
-export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_CLUSTER_THRESHOLD) {
+export function buildReactFlowGraph(
+  data,
+  entityId,
+  clusterThreshold = DEFAULT_CLUSTER_THRESHOLD,
+  options = {}
+) {
   const centerId = entityId != null ? String(entityId) : null
   const rawNodes = Array.isArray(data?.nodes) ? data.nodes : []
   const rawEdges = Array.isArray(data?.edges) ? data.edges : []
@@ -1049,6 +1108,17 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     .filter(Boolean)
 
   const normalizedNodeList = Array.from(nodeMap.values())
+
+  const optionIncludeIds = options?.alwaysIncludeIds
+  const forcedIncludeIds = new Set(
+    optionIncludeIds instanceof Set
+      ? Array.from(optionIncludeIds).map(String)
+      : Array.isArray(optionIncludeIds)
+      ? optionIncludeIds.map((id) => String(id))
+      : optionIncludeIds && typeof optionIncludeIds === 'object'
+      ? Object.values(optionIncludeIds).map((id) => String(id))
+      : []
+  )
 
   const {
     clusters: clusterDefinitions,
@@ -1097,6 +1167,10 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     })
   })
 
+  forcedIncludeIds.forEach((id) => {
+    normalizedSuppressed.delete(String(id))
+  })
+
   const suppressedNodeIds = new Set(Array.from(normalizedSuppressed.keys()))
 
   const clusterNodes = (Array.isArray(clusterDefinitions) ? clusterDefinitions : []).map(
@@ -1116,12 +1190,17 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     candidateIds.add(String(centerId))
   }
 
+  forcedIncludeIds.forEach((id) => {
+    candidateIds.add(String(id))
+  })
+
   const parentLookup = buildParentLookup(normalizedEdges)
   const shouldRenderNode = createShouldRenderNode({
     centerId,
     parentLookup,
     suppressedIds: suppressedNodeIds,
     candidateIds,
+    alwaysIncludeIds: forcedIncludeIds,
   })
 
   const visibleEntityNodes = candidateEntityNodes.filter((node) =>
