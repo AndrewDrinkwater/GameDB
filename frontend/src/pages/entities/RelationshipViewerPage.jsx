@@ -964,48 +964,6 @@ export default function RelationshipViewerPage() {
         clusterMeta.relationshipType || clusterMeta.label || 'Related'
 
       const edgesForLayout = [...edgesRef.current]
-      const newEdges = []
-
-      validNodesWithDefinitions.forEach(({ id, meta }) => {
-        const edgeId = `cluster-${clusterId}-${id}`
-        if (edgesForLayout.some((edge) => edge.id === edgeId)) return
-
-        const fallbackRelationshipLabel = sanitizeEntityLabel(
-          meta?.entity?.name,
-          'Related'
-        )
-        const label =
-          meta?.relationshipType || relationshipLabel || fallbackRelationshipLabel
-
-        const parentCandidate =
-          clusterMeta?.parentId != null ? String(clusterMeta.parentId) : null
-        const sourceId =
-          parentCandidate &&
-          Array.isArray(nodesRef.current) &&
-          nodesRef.current.some((node) => String(node.id) === parentCandidate)
-            ? parentCandidate
-            : clusterId
-
-        const nextEdge = {
-          id: edgeId,
-          source: sourceId,
-          target: id,
-          type: 'smoothstep',
-          animated: false,
-          label,
-          data: {
-            relationshipType: label,
-            parentId: sourceId,
-            childId: id,
-            isClusterChildEdge: true,
-          },
-          sourceHandle: 'bottom',
-          targetHandle: 'top',
-        }
-
-        edgesForLayout.push(nextEdge)
-        newEdges.push(nextEdge)
-      })
 
       validNodesWithDefinitions.forEach(({ id }) => {
         suppressedNodes.delete(String(id))
@@ -1202,10 +1160,10 @@ export default function RelationshipViewerPage() {
         return changed ? next : prev
       })
 
-      if (newEdges.length || descendantEdgeAdditions.length) {
+      if (descendantEdgeAdditions.length) {
         setEdges((prevEdges) => {
           const existing = new Set(prevEdges.map((edge) => edge.id))
-          const appendable = [...newEdges, ...descendantEdgeAdditions].filter(
+          const appendable = descendantEdgeAdditions.filter(
             (edge) => !existing.has(edge.id)
           )
           if (!appendable.length) return prevEdges
@@ -1354,8 +1312,8 @@ export default function RelationshipViewerPage() {
           : cluster
       )
 
-      markClusterExpanded(clusterId)
-      scheduleVisibilityReevaluation()
+      // Keep the cluster visually collapsed; do not trigger global
+      // reevaluation so that only the selected entity is revealed.
     },
     [
       applyUserPlacedPositions,
@@ -1363,7 +1321,6 @@ export default function RelationshipViewerPage() {
       handleSetTargetEntity,
       markClusterExpanded,
       relationshipDepth,
-      scheduleVisibilityReevaluation,
     ]
   )
 
@@ -1905,18 +1862,9 @@ export default function RelationshipViewerPage() {
             if (!fromSuppressed && !toSuppressed) return true
             if (fromSuppressed && toSuppressed) return false
 
-            if (fromSuppressed) {
-              const meta = suppressedLookup.get(fromId)
-              const parentId = meta?.parentId != null ? String(meta.parentId) : null
-              return parentId && parentId === toId
-            }
-
-            if (toSuppressed) {
-              const meta = suppressedLookup.get(toId)
-              const parentId = meta?.parentId != null ? String(meta.parentId) : null
-              return parentId && parentId === fromId
-            }
-
+            // Retain edges where only one side is suppressed so that descendant
+            // relationships remain connected when the suppressed node becomes
+            // visible.
             return true
           })
         }
