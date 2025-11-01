@@ -670,6 +670,27 @@ export default function EntityDetailPage() {
     })
   }, [relationships])
 
+  const sortedRelationships = useMemo(() => {
+    if (!Array.isArray(normalisedRelationships)) return []
+
+    const entityIdString = entity?.id != null ? String(entity.id) : null
+    if (!entityIdString) return [...normalisedRelationships]
+
+    return [...normalisedRelationships].sort((a, b) => {
+      const aIsSource = String(a?.fromId ?? '') === entityIdString
+      const bIsSource = String(b?.fromId ?? '') === entityIdString
+
+      if (aIsSource !== bIsSource) {
+        return aIsSource ? 1 : -1
+      }
+
+      const aRelatedName = aIsSource ? a?.toName || '' : a?.fromName || ''
+      const bRelatedName = bIsSource ? b?.toName || '' : b?.fromName || ''
+
+      return aRelatedName.localeCompare(bRelatedName, undefined, { sensitivity: 'base' })
+    })
+  }, [normalisedRelationships, entity?.id])
+
   const relationshipsByPerspective = useMemo(() => {
     const entityId = entity?.id
     if (!entityId) {
@@ -877,7 +898,7 @@ export default function EntityDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {normalisedRelationships.map((relationship) => {
+                {sortedRelationships.map((relationship) => {
                   const isSource = String(relationship.fromId) === String(entity.id)
                   const relatedName = isSource ? relationship.toName : relationship.fromName
                   const relatedId = isSource ? relationship.toId : relationship.fromId

@@ -90,9 +90,6 @@ export default function EntityNode({ data }) {
             </button>
           </div>
         </div>
-        {isExpandedProtected && (
-          <div className="entity-node__protected-indicator">(linked to source)</div>
-        )}
       </div>
 
       <Handle
