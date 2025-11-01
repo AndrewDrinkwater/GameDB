@@ -113,9 +113,16 @@ export default function RelationshipViewerPage() {
         return
       }
 
-      const suppressedIdsToExpand = clusterMeta.containedIds.filter((id) =>
-        suppressedNodes.has(String(id))
-      )
+      const entityId =
+        typeof clusterInput === 'object' && clusterInput?.entityId != null
+          ? String(clusterInput.entityId)
+          : null
+
+      const suppressedIdsToExpand = entityId
+        ? [entityId].filter((id) => suppressedNodes.has(id))
+        : clusterMeta.containedIds.filter((id) =>
+            suppressedNodes.has(String(id))
+          )
 
       if (!suppressedIdsToExpand.length) {
         markClusterExpanded(clusterId)
@@ -748,7 +755,8 @@ export default function RelationshipViewerPage() {
                 ...node,
                 data: {
                   ...node.data,
-                  onAddToBoard: handleAddEntityFromCluster,
+                  onAddToBoard: (cluster, entityId) =>
+                    handleAddEntityFromCluster({ ...cluster, entityId }),
                   onReturnToGroup: handleReturnEntityToCluster,
                   onCollapseCluster: handleCollapseEntityToCluster,
                   onSetTargetEntity: handleSetTargetEntity,

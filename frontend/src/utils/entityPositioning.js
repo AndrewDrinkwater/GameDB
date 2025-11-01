@@ -999,21 +999,6 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
 
   const suppressedNodeIds = new Set(Array.from(normalizedSuppressed.keys()))
 
-  const clusteredParentIds = new Set([...normalizedSuppressed.keys()])
-
-  const visibleNormalizedEdges = normalizedEdges.filter((edge) => {
-    const parentId =
-      edge.parentId != null
-        ? String(edge.parentId)
-        : edge.source != null
-        ? String(edge.source)
-        : null
-
-    if (!parentId) return true
-
-    return !clusteredParentIds.has(parentId)
-  })
-
   const clusterNodes = (Array.isArray(clusterDefinitions) ? clusterDefinitions : []).map(
     (cluster) => createClusterNodeDefinition(cluster, nodeSummaries)
   )
@@ -1028,14 +1013,63 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
 
   visibleNodes.push(...clusterNodes)
 
+  // Determine all currently visible node IDs
+  const visibleNodeIds = new Set(visibleNodes.map((node) => String(node.id)))
+
+  // Filter edges to exclude those whose parent is hidden or clustered
+  const visibleEdges = normalizedEdges.filter((edge) => {
+    if (!edge) return false
+
+    const parentRaw =
+      edge.parentId != null
+        ? edge.parentId
+        : edge.source != null
+        ? edge.source
+        : null
+
+    if (parentRaw == null) {
+      return true
+    }
+
+    const parentId = String(parentRaw)
+
+    if (!visibleNodeIds.has(parentId)) {
+      return false
+    }
+
+    if (suppressedNodeIds.has(parentId)) {
+      return false
+    }
+
+    return true
+  })
+
   const clusterAwareEdges =
     Array.isArray(clusterAwareEdgesRaw) && clusterAwareEdgesRaw.length
       ? clusterAwareEdgesRaw
-      : visibleNormalizedEdges
+      : visibleEdges
 
   const filteredEdges = clusterAwareEdges.filter((edge) => {
     if (!edge) return false
     if (edge.isClusterEdge) return true
+
+    const parentRaw =
+      edge.parentId != null
+        ? edge.parentId
+        : edge.source != null
+        ? edge.source
+        : null
+
+    if (parentRaw != null) {
+      const parentId = String(parentRaw)
+      if (!visibleNodeIds.has(parentId)) {
+        return false
+      }
+
+      if (suppressedNodeIds.has(parentId)) {
+        return false
+      }
+    }
 
     const rawSource =
       edge.source != null ? edge.source : edge.parentId != null ? edge.parentId : null
