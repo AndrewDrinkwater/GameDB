@@ -158,9 +158,9 @@ export default function ClusterPopup({
   )
 
   const handleAddEntity = useCallback(
-    (entity) => {
-      if (!entity) return
-      onAddToBoard?.(cluster, entity)
+    (entityId) => {
+      if (!entityId) return
+      onAddToBoard?.(cluster, entityId)
       setSelectedEntityId(null)
     },
     [cluster, onAddToBoard]
@@ -235,7 +235,7 @@ export default function ClusterPopup({
                         className="cluster-popup-entity-action is-primary"
                         onClick={(event) => {
                           event.stopPropagation()
-                          handleAddEntity(entity)
+                          handleAddEntity(entityKey)
                         }}
                         onPointerDown={(event) => event.stopPropagation()}
                         aria-label="Add entity to board"
