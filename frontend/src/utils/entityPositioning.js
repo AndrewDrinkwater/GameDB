@@ -12,14 +12,18 @@ const HIERARCHY_HORIZONTAL_PADDING = 40
 const HIERARCHY_VERTICAL_PADDING = 120
 const LEVEL_HORIZONTAL_SPACING =
   Math.max(DEFAULT_ENTITY_WIDTH, DEFAULT_CLUSTER_WIDTH) + HIERARCHY_HORIZONTAL_PADDING
+const LEVEL_VERTICAL_SPACING =
+  DEFAULT_ENTITY_HEIGHT + HIERARCHY_VERTICAL_PADDING
 const CLUSTER_ENTITY_HORIZONTAL_SPACING = DEFAULT_ENTITY_WIDTH + CLUSTER_ENTITY_GAP
 
 const PARENT_RELATION_PATTERN =
   /(part of|owned by|managed by|works for|reports to|child of|belongs to|member of|subsidiary of|division of|child)/i
 const CHILD_RELATION_PATTERN =
   /(owns|manages|contains|has member|employs|parent of|parent|oversees|supervises|leads)/i
-const SIBLING_RELATION_PATTERN =
-  /(associated with|related to|partner|peer|sibling|affiliated with|connected to)/i
+const LAYOUT_PARENT_TO_CHILD_PATTERN =
+  /(owns|contains|parent|manages|supervises|leads|employs|has member|has child)/i
+const LAYOUT_CHILD_TO_PARENT_PATTERN =
+  /(child of|belongs to|part of|owned by|managed by|reports to|works for)/i
 
 // Determines if a given entity lies along the visible relationship chain
 function isEntityOnActivePath(entityId, sourceEntityId, meta) {
@@ -705,60 +709,64 @@ function ensureAllLevels(levels, nodes, centerId) {
 
   nodes.forEach((node) => {
     if (!node) return
-    if (!levels.has(node.id)) {
-      levels.set(node.id, node.id === normalizedCenter ? 0 : 1)
+    const id = String(node.id)
+    if (!levels.has(id)) {
+      levels.set(id, id === normalizedCenter ? 0 : 1)
     }
   })
 
-  if (normalizedCenter && (!levels.has(normalizedCenter) || levels.get(normalizedCenter) !== 0)) {
+  if (normalizedCenter) {
     levels.set(normalizedCenter, 0)
   }
 
-  const adjustedLevels = new Map()
   levels.forEach((value, key) => {
-    if (key === normalizedCenter) {
-      adjustedLevels.set(key, 0)
-      return
-    }
-
     if (typeof value !== 'number' || !Number.isFinite(value)) {
-      adjustedLevels.set(key, 1)
-      return
+      levels.set(key, key === normalizedCenter ? 0 : 1)
     }
-
-    adjustedLevels.set(key, Math.abs(value))
-  })
-
-  levels.clear()
-  adjustedLevels.forEach((value, key) => {
-    levels.set(key, value)
   })
 }
 
 function buildLevelGroups(levels, nodes) {
-  let minLevel = 0
-  levels.forEach((value) => {
-    if (value < minLevel) minLevel = value
-  })
-  const levelOffset = minLevel < 0 ? -minLevel : 0
+  let minLevel = Infinity
 
-  const groups = new Map()
   nodes.forEach((node) => {
-    const rawLevel = levels.get(node.id) ?? 0
-    const level = rawLevel + levelOffset
-    if (!groups.has(level)) groups.set(level, [])
-    groups.get(level).push(node)
+    if (!node) return
+    const value = levels.get(node.id)
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      if (value < minLevel) minLevel = value
+    }
   })
 
-  groups.forEach((entries) => {
+  if (!Number.isFinite(minLevel)) {
+    minLevel = 0
+  }
+
+  const grouped = new Map()
+  const visualLevels = new Map()
+
+  nodes.forEach((node) => {
+    if (!node) return
+    const rawLevel = levels.get(node.id) ?? 0
+    const visualLevel = rawLevel - minLevel
+    visualLevels.set(node.id, visualLevel)
+    if (!grouped.has(visualLevel)) grouped.set(visualLevel, [])
+    grouped.get(visualLevel).push(node)
+  })
+
+  const sortedLevels = Array.from(grouped.keys()).sort((a, b) => a - b)
+  const groups = new Map()
+
+  sortedLevels.forEach((level) => {
+    const entries = grouped.get(level) || []
     entries.sort((a, b) => {
       const aLabel = a?.data?.label || a.id
       const bLabel = b?.data?.label || b.id
       return aLabel.localeCompare(bLabel)
     })
+    groups.set(level, entries)
   })
 
-  return { groups, levelOffset }
+  return { groups, visualLevels }
 }
 
 function assignPositions(groups) {
@@ -772,8 +780,7 @@ function assignPositions(groups) {
     const startX = -totalWidth / 2
     nodesAtLevel.forEach((node, index) => {
       const x = startX + index * LEVEL_HORIZONTAL_SPACING
-      const y =
-        baseY + level * (DEFAULT_ENTITY_HEIGHT + HIERARCHY_VERTICAL_PADDING)
+      const y = baseY + level * LEVEL_VERTICAL_SPACING
       positions.set(node.id, { x, y, level, levelIndex: index })
       if (x < globalMinX) globalMinX = x
     })
@@ -803,71 +810,99 @@ export function isChildRelation(typeName) {
   return CHILD_RELATION_PATTERN.test(String(typeName))
 }
 
-function isSiblingRelation(typeName) {
-  if (!typeName) return false
-  return SIBLING_RELATION_PATTERN.test(String(typeName))
-}
+function extractEdgeRelationshipLabel(edge) {
+  if (!edge) return ''
 
-function buildRelationshipAdjacency(edges) {
-  const adjacency = new Map()
-  edges.forEach((edge) => {
-    if (!edge) return
-    const source = String(edge.source)
-    const target = String(edge.target)
-    if (!source || !target || source === target) return
-    if (!adjacency.has(source)) adjacency.set(source, [])
-    if (!adjacency.has(target)) adjacency.set(target, [])
-    adjacency.get(source).push(edge)
-    adjacency.get(target).push(edge)
-  })
-  return adjacency
+  const rawRelationship =
+    edge?.data?.relationshipType ??
+    edge?.relationshipType ??
+    edge?.label ??
+    edge?.relationshipLabel ??
+    ''
+
+  if (typeof rawRelationship === 'string') {
+    return rawRelationship.toLowerCase()
+  }
+
+  if (rawRelationship && typeof rawRelationship === 'object') {
+    const candidate =
+      rawRelationship?.label ??
+      rawRelationship?.name ??
+      rawRelationship?.from_label ??
+      rawRelationship?.to_label ??
+      ''
+
+    if (typeof candidate === 'string') {
+      return candidate.toLowerCase()
+    }
+  }
+
+  return ''
 }
 
 function buildLevelsFromEdges(centerKey, edges) {
-  const adjacency = buildRelationshipAdjacency(edges)
   const levels = new Map()
   if (!centerKey) return levels
-  levels.set(centerKey, 0)
 
-  const queue = [centerKey]
+  const normalizedCenter = String(centerKey)
+  levels.set(normalizedCenter, 0)
+
+  const parentToChildren = new Map()
+  const childToParents = new Map()
+
+  edges.forEach((edge) => {
+    if (!edge) return
+    const parentRaw =
+      edge?.parentId ?? edge?.data?.parentId ?? edge?.source ?? null
+    const childRaw = edge?.childId ?? edge?.data?.childId ?? edge?.target ?? null
+
+    const parentId = parentRaw != null ? String(parentRaw) : null
+    const childId = childRaw != null ? String(childRaw) : null
+
+    if (!parentId || !childId || parentId === childId) return
+
+    if (!parentToChildren.has(parentId)) parentToChildren.set(parentId, new Set())
+    parentToChildren.get(parentId).add(childId)
+
+    if (!childToParents.has(childId)) childToParents.set(childId, new Set())
+    childToParents.get(childId).add(parentId)
+  })
+
+  const queue = [normalizedCenter]
+
   while (queue.length) {
     const current = queue.shift()
+    if (!current) continue
+
     const currentLevel = levels.get(current) ?? 0
-    const relatedEdges = adjacency.get(current) || []
 
-    relatedEdges.forEach((edge) => {
-      const other = edge.source === current ? edge.target : edge.source
-      if (!other) return
-      const relationshipType = edge?.data?.relationshipType || edge?.label || ''
-      const parentIdRaw = edge?.data?.parentId ?? edge?.parentId ?? null
-      const childIdRaw = edge?.data?.childId ?? edge?.childId ?? null
-      const parentId = parentIdRaw != null ? String(parentIdRaw) : null
-      const childId = childIdRaw != null ? String(childIdRaw) : null
-      const isClusterEdge = Boolean(edge?.data?.isClusterEdge || edge?.isClusterEdge)
-
-      let nextLevel = currentLevel + 1
-      if (parentId && childId) {
-        if (current === parentId && other === childId) {
-          nextLevel = currentLevel + 1
-        } else if (current === childId && other === parentId) {
-          nextLevel = currentLevel - 1
+    const parents = childToParents.get(current)
+    if (parents) {
+      parents.forEach((parentId) => {
+        const normalizedParent = parentId != null ? String(parentId) : null
+        if (!normalizedParent) return
+        const candidateLevel = currentLevel - 1
+        const existing = levels.get(normalizedParent)
+        if (existing == null || candidateLevel < existing) {
+          levels.set(normalizedParent, candidateLevel)
+          queue.push(normalizedParent)
         }
-      } else if (!isClusterEdge && isParentRelation(relationshipType)) {
-        nextLevel = currentLevel - 1
-      } else if (!isClusterEdge && isSiblingRelation(relationshipType)) {
-        nextLevel = currentLevel
-      }
+      })
+    }
 
-      if (!levels.has(other)) {
-        levels.set(other, nextLevel)
-        queue.push(other)
-      } else {
-        const existing = levels.get(other)
-        if (Math.abs(nextLevel) < Math.abs(existing)) {
-          levels.set(other, nextLevel)
+    const children = parentToChildren.get(current)
+    if (children) {
+      children.forEach((childId) => {
+        const normalizedChild = childId != null ? String(childId) : null
+        if (!normalizedChild) return
+        const candidateLevel = currentLevel + 1
+        const existing = levels.get(normalizedChild)
+        if (existing == null || candidateLevel < existing) {
+          levels.set(normalizedChild, candidateLevel)
+          queue.push(normalizedChild)
         }
-      }
-    })
+      })
+    }
   }
 
   return levels
@@ -897,8 +932,8 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
     ? edges
         .map((edge, index) => {
           if (!edge) return null
-          const source = String(edge.source)
-          const target = String(edge.target)
+          const source = edge?.source != null ? String(edge.source) : ''
+          const target = edge?.target != null ? String(edge.target) : ''
           if (!source || !target || source === target) return null
           const relationshipType =
             edge?.data?.relationshipType || edge?.data?.typeName || edge?.label || ''
@@ -922,12 +957,71 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
           }
         })
         .filter(Boolean)
-        .filter(
-          (edge) => layoutNodeIds.has(edge.source) && layoutNodeIds.has(edge.target)
-        )
     : []
 
-  const levels = buildLevelsFromEdges(centerKey, normalizedEdges)
+  const directionalEdges = normalizedEdges
+    .map((edge) => {
+      if (!edge) return null
+      const directionalEdge = {
+        ...edge,
+        data: { ...(edge.data || {}) },
+      }
+
+      const source = directionalEdge.source || ''
+      const target = directionalEdge.target || ''
+      if (!source || !target || source === target) {
+        return null
+      }
+
+      let parentId =
+        directionalEdge.parentId != null ? String(directionalEdge.parentId) : null
+      let childId =
+        directionalEdge.childId != null ? String(directionalEdge.childId) : null
+
+      if (!parentId || !childId) {
+        let nextSource = source
+        let nextTarget = target
+        const relationshipLabel = extractEdgeRelationshipLabel(directionalEdge)
+        const indicatesParentToChild =
+          relationshipLabel &&
+          LAYOUT_PARENT_TO_CHILD_PATTERN.test(relationshipLabel)
+        const indicatesChildToParent =
+          relationshipLabel &&
+          LAYOUT_CHILD_TO_PARENT_PATTERN.test(relationshipLabel)
+
+        if (indicatesChildToParent && !indicatesParentToChild) {
+          const temp = nextSource
+          nextSource = nextTarget
+          nextTarget = temp
+        }
+
+        parentId = parentId ?? nextSource
+        childId = childId ?? nextTarget
+      }
+
+      if (!parentId || !childId || parentId === childId) {
+        parentId = source
+        childId = target
+      }
+
+      directionalEdge.source = parentId
+      directionalEdge.target = childId
+      directionalEdge.parentId = parentId
+      directionalEdge.childId = childId
+      directionalEdge.data = {
+        ...directionalEdge.data,
+        parentId,
+        childId,
+      }
+
+      return directionalEdge
+    })
+    .filter(Boolean)
+    .filter(
+      (edge) => layoutNodeIds.has(edge.source) && layoutNodeIds.has(edge.target)
+    )
+
+  const levels = buildLevelsFromEdges(centerKey, directionalEdges)
   ensureAllLevels(levels, nodesForLayout, centerKey)
 
   nodesForLayout.forEach((node) => {
@@ -949,14 +1043,16 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
     levels.set(node.id, parentLevel + 1)
   })
 
-  const { groups } = buildLevelGroups(levels, nodesForLayout)
+  const { groups, visualLevels } = buildLevelGroups(levels, nodesForLayout)
   const positions = assignPositions(groups)
 
   return normalizedNodes.map((node) => {
+    const rawLevel = levels.get(node.id) ?? 0
+    const visualLevel = visualLevels.get(node.id) ?? rawLevel
     const fallbackPlacement = {
       x: node?.position?.x ?? 0,
-      y: node?.position?.y ?? 0,
-      level: node?.data?.level ?? 0,
+      y: visualLevel * LEVEL_VERTICAL_SPACING,
+      level: visualLevel,
       levelIndex: node?.data?.levelIndex ?? 0,
     }
     const placement = positions.get(node.id) || fallbackPlacement
@@ -967,7 +1063,8 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
       position: { x: adjustedX, y: placement.y },
       data: {
         ...node.data,
-        level: placement.level,
+        level: rawLevel,
+        visualLevel: placement.level ?? visualLevel,
         levelIndex: placement.levelIndex,
       },
     }
