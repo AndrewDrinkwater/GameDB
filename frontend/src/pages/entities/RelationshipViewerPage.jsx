@@ -947,9 +947,12 @@ export default function RelationshipViewerPage() {
         const plannedNodeIds = new Set(
           nodesRef.current.map((node) => String(node.id))
         )
+        const breakoutIds = new Set()
         validNodesWithDefinitions.forEach(({ id }) => {
           if (!id) return
-          plannedNodeIds.add(String(id))
+          const normalizedId = String(id)
+          plannedNodeIds.add(normalizedId)
+          breakoutIds.add(normalizedId)
         })
 
         const queue = validNodesWithDefinitions.map(({ id }) => String(id))
@@ -996,7 +999,9 @@ export default function RelationshipViewerPage() {
             }
 
             if (plannedNodeIds.has(childId)) {
-              queue.push(childId)
+              if (breakoutIds.has(childId)) {
+                queue.push(childId)
+              }
               return
             }
 
@@ -1016,6 +1021,7 @@ export default function RelationshipViewerPage() {
             descendantNodeAdditions.push({ id: childId, definition })
             manuallyReleasedEntitiesRef.current.add(childId)
             plannedNodeIds.add(childId)
+            breakoutIds.add(childId)
             queue.push(childId)
 
             const reactFlowEdge = convertNormalizedEdgeToReactFlow(edge)
