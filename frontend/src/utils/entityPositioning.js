@@ -1308,17 +1308,38 @@ export function buildReactFlowGraph(
   )
 
   // Allow the source node unconditionally and build a set of reachable nodes
+  // Traverse the filtered edges in both directions so that parents of the
+  // center entity remain visible in addition to any of their descendants.
   const allowedNodeIds = new Set(centerId != null ? [String(centerId)] : [])
   let added = true
   while (added) {
     added = false
     for (const edge of filteredEdges) {
       if (!edge) continue
-      const parent = edge.parentId != null ? String(edge.parentId) : String(edge.source ?? '')
-      const child = edge.childId != null ? String(edge.childId) : String(edge.target ?? '')
-      if (parent && child && allowedNodeIds.has(parent) && !allowedNodeIds.has(child)) {
-        allowedNodeIds.add(child)
-        added = true
+
+      const parentRaw =
+        edge.parentId != null ? edge.parentId : edge.source != null ? edge.source : null
+      const childRaw =
+        edge.childId != null ? edge.childId : edge.target != null ? edge.target : null
+
+      const parent = parentRaw != null ? String(parentRaw) : ''
+      const child = childRaw != null ? String(childRaw) : ''
+
+      const hasParent = Boolean(parent)
+      const hasChild = Boolean(child)
+
+      if (hasParent && allowedNodeIds.has(parent)) {
+        if (hasChild && !allowedNodeIds.has(child)) {
+          allowedNodeIds.add(child)
+          added = true
+        }
+      }
+
+      if (hasChild && allowedNodeIds.has(child)) {
+        if (hasParent && !allowedNodeIds.has(parent)) {
+          allowedNodeIds.add(parent)
+          added = true
+        }
       }
     }
   }
