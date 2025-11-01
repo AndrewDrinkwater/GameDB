@@ -11,6 +11,7 @@ import {
   positionEntitiesBelowCluster,
   layoutNodesHierarchically,
   normalizeGraphEdge,
+  sanitizeEntityLabel,
 } from '../../utils/entityPositioning.js'
 import RelationshipToolbar from '../../components/relationshipViewer/RelationshipToolbar.jsx'
 import EntityInfoDrawer from '../../components/relationshipViewer/EntityInfoDrawer.jsx'
@@ -675,17 +676,22 @@ export default function RelationshipViewerPage() {
           const meta = nodeMetaLookup.get(id) || {}
           const entityMeta = meta?.entity || null
 
+          const fallbackLabel = sanitizeEntityLabel(
+            definition?.data?.label,
+            sanitizeEntityLabel(
+              definition?.data?.name,
+              `Entity ${id}`
+            )
+          )
+          const sanitizedLabel = sanitizeEntityLabel(entityMeta?.name, fallbackLabel)
+
           const normalizedNode = {
             ...definition,
             id,
             type: 'entity',
             data: {
               ...definition?.data,
-              label:
-                definition?.data?.label ||
-                entityMeta?.name ||
-                definition?.data?.name ||
-                `Entity ${id}`,
+              label: sanitizedLabel,
               typeName:
                 definition?.data?.typeName ||
                 definition?.data?.type?.name ||
@@ -885,8 +891,12 @@ export default function RelationshipViewerPage() {
         const edgeId = `cluster-${clusterId}-${id}`
         if (edgesForLayout.some((edge) => edge.id === edgeId)) return
 
+        const fallbackRelationshipLabel = sanitizeEntityLabel(
+          meta?.entity?.name,
+          'Related'
+        )
         const label =
-          meta?.relationshipType || relationshipLabel || meta?.entity?.name || 'Related'
+          meta?.relationshipType || relationshipLabel || fallbackRelationshipLabel
 
         const nextEdge = {
           id: edgeId,
@@ -1092,13 +1102,16 @@ export default function RelationshipViewerPage() {
 
           if (!newNode) return
 
+          const fallbackLabel = sanitizeEntityLabel(newNode.data?.label, `Entity ${id}`)
+          const sanitizedLabel = sanitizeEntityLabel(entityMeta?.name, fallbackLabel)
+
           const normalizedNode = {
             ...newNode,
             id: String(id),
             type: 'entity',
             data: {
               ...newNode.data,
-              label: entityMeta?.name || newNode.data?.label || `Entity ${id}`,
+              label: sanitizedLabel,
               typeName:
                 entityMeta?.typeName || newNode.data?.typeName || 'Entity',
               entityId: String(id),
@@ -1339,13 +1352,18 @@ export default function RelationshipViewerPage() {
     })
 
     const relationshipLabel = clusterInfo.relationshipType || clusterInfo.label || 'Related'
+    const sanitizedEntityLabel = sanitizeEntityLabel(
+      entity?.name,
+      `Entity ${entityId}`
+    )
+
     const suppressedMeta = {
       clusterId,
       parentId: clusterInfo.sourceId ? String(clusterInfo.sourceId) : null,
       relationshipType: relationshipLabel,
       entity: {
         id: entityId,
-        name: entity?.name || `Entity ${entityId}`,
+        name: sanitizedEntityLabel,
         typeName: entity?.typeName || entity?.type?.name || 'Entity',
         type: entity?.type,
       },
@@ -1358,7 +1376,7 @@ export default function RelationshipViewerPage() {
       type: 'entity',
       position: { x: 0, y: 0 },
       data: {
-        label: entity?.name || `Entity ${entityId}`,
+        label: sanitizedEntityLabel,
         typeName: entity?.typeName || entity?.type?.name || 'Entity',
         entityId,
         isAdHoc: true,
@@ -1829,6 +1847,7 @@ export default function RelationshipViewerPage() {
             if (manualReleaseSet.has(id)) {
               return
             }
+            const sanitizedName = sanitizeEntityLabel(info?.entity?.name, `Entity ${id}`)
             suppressedMap.set(id, {
               clusterId: info?.clusterId != null ? String(info.clusterId) : null,
               parentId: info?.parentId != null ? String(info.parentId) : null,
@@ -1837,7 +1856,7 @@ export default function RelationshipViewerPage() {
                 ? {
                     ...info.entity,
                     id: String(info.entity.id ?? id),
-                    name: info.entity?.name || `Entity ${id}`,
+                    name: sanitizedName,
                     typeName:
                       info.entity?.typeName || info.entity?.type?.name || 'Entity',
                     isExpandedProtected: Boolean(info.entity?.isExpandedProtected),
@@ -1866,12 +1885,13 @@ export default function RelationshipViewerPage() {
             rawSuppressed.forEach((info, key) => {
               const id = String(key)
               const entity = info?.entity || null
+              const sanitizedLabel = sanitizeEntityLabel(entity?.name, `Entity ${id}`)
               suppressedDefinitions.set(id, {
                 id,
                 type: 'entity',
                 position: { x: 0, y: 0 },
                 data: {
-                  label: entity?.name || `Entity ${id}`,
+                  label: sanitizedLabel,
                   typeName: entity?.typeName || entity?.type?.name || 'Entity',
                   entityId: id,
                   isAdHoc: true,
@@ -1883,12 +1903,13 @@ export default function RelationshipViewerPage() {
             Object.entries(rawSuppressed || {}).forEach(([key, info]) => {
               const id = String(key)
               const entity = info?.entity || null
+              const sanitizedLabel = sanitizeEntityLabel(entity?.name, `Entity ${id}`)
               suppressedDefinitions.set(id, {
                 id,
                 type: 'entity',
                 position: { x: 0, y: 0 },
                 data: {
-                  label: entity?.name || `Entity ${id}`,
+                  label: sanitizedLabel,
                   typeName: entity?.typeName || entity?.type?.name || 'Entity',
                   entityId: id,
                   isAdHoc: true,

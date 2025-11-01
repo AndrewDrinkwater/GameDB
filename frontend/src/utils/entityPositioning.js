@@ -25,6 +25,16 @@ const LAYOUT_PARENT_TO_CHILD_PATTERN =
 const LAYOUT_CHILD_TO_PARENT_PATTERN =
   /(child of|belongs to|part of|owned by|managed by|reports to|works for)/i
 
+const LINKED_TO_SOURCE_PATTERN = /\s*\(linked to source\)/gi
+
+export function sanitizeEntityLabel(name, fallback) {
+  if (typeof name === 'string') {
+    const cleaned = name.replace(LINKED_TO_SOURCE_PATTERN, '').trim()
+    if (cleaned) return cleaned
+  }
+  return fallback
+}
+
 // Determines if a given entity lies along the visible relationship chain
 function isEntityOnActivePath(entityId, sourceEntityId, meta) {
   if (!entityId || !sourceEntityId || !(meta instanceof Map)) return false
@@ -48,7 +58,7 @@ function normalizeNode(rawNode) {
   const id = String(rawNode.id ?? '')
   if (!id) return null
 
-  const name = rawNode?.name || `Entity ${id}`
+  const name = sanitizeEntityLabel(rawNode?.name, `Entity ${id}`)
   const typeName = rawNode?.type?.name || rawNode?.typeName || 'Entity'
 
   return {
@@ -656,7 +666,7 @@ function groupChildrenByRelationship(
 
 function createEntityNodeDefinition(rawNode, { isCenter = false } = {}) {
   const id = String(rawNode.id)
-  const label = rawNode?.name || `Entity ${id}`
+  const label = sanitizeEntityLabel(rawNode?.name, `Entity ${id}`)
   const typeName = rawNode?.typeName || 'Entity'
   const isExpandedProtected = Boolean(rawNode?.isExpandedProtected)
 
@@ -769,20 +779,165 @@ function buildLevelGroups(levels, nodes) {
   return { groups, visualLevels }
 }
 
-function assignPositions(groups) {
+function getNodeLabelValue(node) {
+  if (!node) return ''
+  const label = typeof node?.data?.label === 'string' ? node.data.label.trim() : ''
+  if (label) return label
+  const name = typeof node?.name === 'string' ? node.name.trim() : ''
+  if (name) return name
+  const id = node?.id != null ? String(node.id) : ''
+  return id
+}
+
+function compareNodesByLabel(a, b) {
+  const aLabel = getNodeLabelValue(a)
+  const bLabel = getNodeLabelValue(b)
+  return aLabel.localeCompare(bLabel)
+}
+
+function buildPrimaryParentMap(edges, levels, nodeLookup) {
+  const parentsByChild = new Map()
+
+  edges.forEach((edge) => {
+    if (!edge) return
+    const parentRaw =
+      edge?.parentId ?? edge?.data?.parentId ?? edge?.source ?? edge?.data?.source ?? null
+    const childRaw =
+      edge?.childId ?? edge?.data?.childId ?? edge?.target ?? edge?.data?.target ?? null
+
+    const parentId = parentRaw != null ? String(parentRaw) : null
+    const childId = childRaw != null ? String(childRaw) : null
+
+    if (!parentId || !childId || parentId === childId) return
+
+    if (!parentsByChild.has(childId)) parentsByChild.set(childId, new Set())
+    parentsByChild.get(childId).add(parentId)
+  })
+
+  const result = new Map()
+
+  parentsByChild.forEach((parents, childId) => {
+    let selectedParent = null
+    let selectedLevel = Infinity
+    let selectedLabel = ''
+
+    parents.forEach((parentId) => {
+      const levelValue = levels.get(parentId)
+      if (typeof levelValue !== 'number' || !Number.isFinite(levelValue)) return
+
+      const parentNode = nodeLookup.get(parentId)
+      const labelValue = getNodeLabelValue(parentNode)
+
+      if (selectedParent == null || levelValue < selectedLevel) {
+        selectedParent = parentId
+        selectedLevel = levelValue
+        selectedLabel = labelValue
+        return
+      }
+
+      if (levelValue === selectedLevel) {
+        if (labelValue.localeCompare(selectedLabel) < 0) {
+          selectedParent = parentId
+          selectedLabel = labelValue
+        }
+      }
+    })
+
+    if (selectedParent != null) {
+      result.set(childId, selectedParent)
+    }
+  })
+
+  return result
+}
+
+function assignPositions(groups, primaryParentByNode = new Map()) {
   const positions = new Map()
   let globalMinX = Infinity
 
   const baseY = 0
+  const sortedLevels = Array.from(groups.keys()).sort((a, b) => a - b)
 
-  groups.forEach((nodesAtLevel, level) => {
-    const totalWidth = (nodesAtLevel.length - 1) * LEVEL_HORIZONTAL_SPACING
-    const startX = -totalWidth / 2
-    nodesAtLevel.forEach((node, index) => {
-      const x = startX + index * LEVEL_HORIZONTAL_SPACING
+  sortedLevels.forEach((level) => {
+    const nodesAtLevel = groups.get(level) || []
+    if (!nodesAtLevel.length) return
+
+    const groupedByParent = new Map()
+    const orphans = []
+
+    nodesAtLevel.forEach((node) => {
+      const parentId = primaryParentByNode.get(node.id)
+      const parentPosition = parentId ? positions.get(parentId) : null
+      if (parentId && parentPosition) {
+        if (!groupedByParent.has(parentId)) groupedByParent.set(parentId, [])
+        groupedByParent.get(parentId).push(node)
+        return
+      }
+
+      orphans.push(node)
+    })
+
+    const levelGroups = []
+
+    groupedByParent.forEach((children, parentId) => {
+      const parentPosition = positions.get(parentId)
+      if (!parentPosition) {
+        children.forEach((child) => orphans.push(child))
+        return
+      }
+      const sortedChildren = [...children].sort(compareNodesByLabel)
+      levelGroups.push({
+        anchorX: parentPosition.x,
+        nodes: sortedChildren,
+        parentId,
+      })
+    })
+
+    if (orphans.length) {
+      const sortedOrphans = [...orphans].sort(compareNodesByLabel)
+      levelGroups.push({
+        anchorX: null,
+        nodes: sortedOrphans,
+        parentId: null,
+      })
+    }
+
+    levelGroups.sort((a, b) => {
+      if (a.anchorX != null && b.anchorX != null) return a.anchorX - b.anchorX
+      if (a.anchorX != null) return -1
+      if (b.anchorX != null) return 1
+      return 0
+    })
+
+    let hasPlaced = false
+    let rightmostAssigned = -Infinity
+    let levelIndexCounter = 0
+
+    levelGroups.forEach((group) => {
+      const width = (group.nodes.length - 1) * LEVEL_HORIZONTAL_SPACING
+      let startX
+
+      if (group.anchorX != null) {
+        startX = group.anchorX - width / 2
+      } else {
+        startX =
+          hasPlaced && Number.isFinite(rightmostAssigned)
+            ? rightmostAssigned + LEVEL_HORIZONTAL_SPACING
+            : -width / 2
+      }
+
       const y = baseY + level * LEVEL_VERTICAL_SPACING
-      positions.set(node.id, { x, y, level, levelIndex: index })
-      if (x < globalMinX) globalMinX = x
+
+      group.nodes.forEach((node, index) => {
+        const x = startX + index * LEVEL_HORIZONTAL_SPACING
+        positions.set(node.id, { x, y, level, levelIndex: levelIndexCounter })
+        levelIndexCounter += 1
+        if (x < globalMinX) globalMinX = x
+      })
+
+      const groupRight = startX + width
+      rightmostAssigned = Math.max(rightmostAssigned, groupRight)
+      hasPlaced = true
     })
   })
 
@@ -1044,7 +1199,13 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
   })
 
   const { groups, visualLevels } = buildLevelGroups(levels, nodesForLayout)
-  const positions = assignPositions(groups)
+  const nodeLookup = new Map(nodesForLayout.map((node) => [node.id, node]))
+  const primaryParentByNode = buildPrimaryParentMap(
+    directionalEdges,
+    levels,
+    nodeLookup
+  )
+  const positions = assignPositions(groups, primaryParentByNode)
 
   return normalizedNodes.map((node) => {
     const rawLevel = levels.get(node.id) ?? 0
@@ -1303,7 +1464,7 @@ export function buildReactFlowGraph(
         ? {
             ...entity,
             id,
-            name: entity?.name || `Entity ${id}`,
+            name: sanitizeEntityLabel(entity?.name, `Entity ${id}`),
             typeName: entity?.typeName || entity?.type?.name || 'Entity',
             isExpandedProtected: Boolean(entity?.isExpandedProtected),
           }
@@ -1588,7 +1749,7 @@ export function createAdHocEntityNode(clusterNode, entity, placedIds = []) {
     type: 'entity',
     position: { x, y },
     data: {
-      label: entity.name || `Entity ${entityId}`,
+      label: sanitizeEntityLabel(entity.name, `Entity ${entityId}`),
       typeName: entity?.type?.name || entity?.typeName || 'Entity',
       isCenter: false,
       isAdHoc: true,
