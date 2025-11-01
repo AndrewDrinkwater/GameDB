@@ -773,7 +773,7 @@ export default function RelationshipViewerPage() {
   }, [performClusterBreakout])
 
   const handleAddEntityFromCluster = useCallback(
-    (clusterInput) => {
+    (clusterInput, specificEntityId) => {
       if (!clusterInput) return
 
       const clusterId = String(
@@ -816,16 +816,18 @@ export default function RelationshipViewerPage() {
         return
       }
 
-      const entityId =
-        typeof clusterInput === 'object' && clusterInput?.entityId != null
-          ? String(clusterInput.entityId)
+      const selectedIdRaw =
+        specificEntityId != null
+          ? specificEntityId
+          : typeof clusterInput === 'object' && clusterInput?.entityId != null
+          ? clusterInput.entityId
           : null
 
-      const suppressedIdsToExpand = entityId
-        ? [entityId].filter((id) => suppressedNodes.has(id))
-        : clusterMeta.containedIds.filter((id) =>
-            suppressedNodes.has(String(id))
-          )
+      const selectedId = selectedIdRaw != null ? String(selectedIdRaw) : null
+
+      const suppressedIdsToExpand = selectedId
+        ? [selectedId].filter((id) => suppressedNodes.has(id))
+        : []
 
       if (!suppressedIdsToExpand.length) {
         markClusterExpanded(clusterId)
@@ -1820,7 +1822,7 @@ export default function RelationshipViewerPage() {
                 data: {
                   ...node.data,
                   onAddToBoard: (cluster, entityId) =>
-                    handleAddEntityFromCluster({ ...cluster, entityId }),
+                    handleAddEntityFromCluster(cluster, entityId),
                   onReturnToGroup: handleReturnEntityToCluster,
                   onCollapseCluster: handleCollapseEntityToCluster,
                   onSetTargetEntity: handleSetTargetEntity,
