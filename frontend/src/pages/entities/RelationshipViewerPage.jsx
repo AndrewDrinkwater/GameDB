@@ -94,6 +94,90 @@ function computeDepthLookup(sourceId, adjacency) {
   return depthMap
 }
 
+function buildParentChainLookup(edges) {
+  const lookup = new Map()
+  if (!Array.isArray(edges)) return lookup
+
+  edges.forEach((edge) => {
+    if (!edge) return
+
+    const parentRaw =
+      edge?.parentId != null
+        ? edge.parentId
+        : edge?.source != null
+        ? edge.source
+        : null
+    const childRaw =
+      edge?.childId != null
+        ? edge.childId
+        : edge?.target != null
+        ? edge.target
+        : null
+
+    if (parentRaw == null || childRaw == null) return
+
+    const parentId = String(parentRaw)
+    const childId = String(childRaw)
+    if (!parentId || !childId || parentId === childId) return
+
+    if (!lookup.has(childId)) lookup.set(childId, new Set())
+    lookup.get(childId).add(parentId)
+  })
+
+  return lookup
+}
+
+function computeAncestorInclusionSet(sourceId, edges, depthLimit = null) {
+  const normalizedSource = sourceId != null ? String(sourceId) : null
+  if (!normalizedSource) return new Set()
+
+  const parentLookup = buildParentChainLookup(edges)
+  if (!parentLookup.size) return new Set()
+
+  const ancestors = new Set()
+  const queue = []
+  const depthMap = new Map()
+
+  const directParents = parentLookup.get(normalizedSource)
+  if (directParents && directParents.size) {
+    directParents.forEach((parentId) => {
+      const normalizedParent = String(parentId)
+      if (!normalizedParent) return
+      ancestors.add(normalizedParent)
+      queue.push(normalizedParent)
+      depthMap.set(normalizedParent, 1)
+    })
+  }
+
+  while (queue.length) {
+    const currentId = queue.shift()
+    if (!currentId) continue
+
+    const currentDepth = depthMap.get(currentId) ?? 1
+    if (depthLimit != null && currentDepth >= depthLimit) {
+      continue
+    }
+
+    const parents = parentLookup.get(currentId)
+    if (!parents || !parents.size) continue
+
+    parents.forEach((parentId) => {
+      const normalizedParent = String(parentId)
+      if (!normalizedParent || normalizedParent === currentId) return
+      if (ancestors.has(normalizedParent)) return
+
+      const nextDepth = currentDepth + 1
+      if (depthLimit != null && nextDepth > depthLimit) return
+
+      ancestors.add(normalizedParent)
+      depthMap.set(normalizedParent, nextDepth)
+      queue.push(normalizedParent)
+    })
+  }
+
+  return ancestors
+}
+
 function convertNormalizedEdgeToReactFlow(edge) {
   if (!edge) return null
 
@@ -1346,12 +1430,26 @@ export default function RelationshipViewerPage() {
           adjacencyFromGraph
         )
 
+        const ancestorDepthLimit = Number.isFinite(Number(relationshipDepth))
+          ? Number(relationshipDepth)
+          : null
+        const forcedAncestorIds = computeAncestorInclusionSet(
+          entityId,
+          normalizedGraphEdges,
+          ancestorDepthLimit
+        )
+
         const {
           nodes: layoutedNodes,
           edges: layoutedEdges,
           suppressedNodes: layoutedSuppressedNodes,
           clusters: layoutedClusters,
-        } = buildReactFlowGraph({ ...graphData, edges: sanitizedEdges }, entityId)
+        } = buildReactFlowGraph(
+          { ...graphData, edges: sanitizedEdges },
+          entityId,
+          undefined,
+          { alwaysIncludeIds: forcedAncestorIds }
+        )
         if (active) {
           const decorateNode = (node) => {
             if (!node) return null
