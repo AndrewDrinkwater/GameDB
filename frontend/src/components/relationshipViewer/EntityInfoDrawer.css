@@ -1,0 +1,135 @@
+.entity-info-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: min(420px, 92vw);
+  background: #ffffff;
+  border-left: 1px solid #e2e8f0;
+  box-shadow: -2px 0 16px rgba(15, 23, 42, 0.12);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  z-index: 1000;
+  animation: entity-info-drawer-slide-in 0.25s ease-out;
+  overflow-y: auto;
+}
+
+@keyframes entity-info-drawer-slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.entity-info-drawer__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.entity-info-drawer__close:hover,
+.entity-info-drawer__close:focus {
+  color: #0f172a;
+  outline: none;
+}
+
+.entity-info-drawer__header {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.entity-info-drawer__type {
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6366f1;
+}
+
+.entity-info-drawer__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.entity-info-drawer__summary {
+  font-size: 0.95rem;
+  color: #475569;
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.entity-info-drawer__status {
+  font-size: 0.9rem;
+  color: #475569;
+  margin: 0;
+}
+
+.entity-info-drawer__status--error {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.entity-info-drawer__metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+}
+
+.entity-info-drawer__metadata-item dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.entity-info-drawer__metadata-item dd {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #0f172a;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.entity-info-drawer__actions {
+  margin-top: auto;
+  padding-top: 12px;
+  display: flex;
+}
+
+.entity-info-drawer__link {
+  background: #312e81;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.2s ease-in-out;
+}
+
+.entity-info-drawer__link:hover,
+.entity-info-drawer__link:focus {
+  background: #4338ca;
+  outline: none;
+}
