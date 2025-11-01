@@ -1187,8 +1187,9 @@ export default function RelationshipViewerPage() {
         )
 
         validNodesWithDefinitions.forEach(({ id, definition, meta }) => {
-          placedEntityIds.add(String(id))
-          if (existingIds.has(String(id))) return
+          const normalizedId = String(id)
+          placedEntityIds.add(normalizedId)
+          if (existingIds.has(normalizedId)) return
 
           const entityMeta = meta?.entity || {
             id,
@@ -1227,9 +1228,37 @@ export default function RelationshipViewerPage() {
             },
           }
 
-          existingIds.add(String(id))
+          existingIds.add(normalizedId)
           didAddNode = true
           nextNodes = [...nextNodes, normalizedNode]
+
+          const edgeId = `cluster-context-${clusterId}-${normalizedId}`
+          const existingEdge = edgesRef.current.find((edge) => edge.id === edgeId)
+
+          if (!existingEdge) {
+            const visualContextEdge = {
+              id: edgeId,
+              source: clusterId,
+              target: normalizedId,
+              type: 'smoothstep',
+              animated: false,
+              label: '',
+              style: {
+                stroke: '#bbb',
+                strokeDasharray: '4 2',
+              },
+              data: {
+                isClusterContext: true,
+                parentId: clusterId,
+                childId: normalizedId,
+              },
+              sourceHandle: 'bottom',
+              targetHandle: 'top',
+            }
+
+            edgesRef.current.push(visualContextEdge)
+            setEdges((prev) => [...prev, visualContextEdge])
+          }
         })
 
         descendantNodeAdditions.forEach(({ id, definition }) => {
