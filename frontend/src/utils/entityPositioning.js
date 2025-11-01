@@ -1257,7 +1257,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
   })
 
   // Map filtered edges to React Flow edge format
-  const visibleEdges = finalFilteredEdges.map((edge) => ({
+  const reactFlowEdges = finalFilteredEdges.map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
@@ -1278,7 +1278,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
 
   const layoutedNodes = layoutNodesHierarchically(
     finalVisibleNodes,
-    visibleEdges,
+    reactFlowEdges,
     centerId
   )
 
@@ -1286,7 +1286,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
 
   return {
     nodes: layoutedNodes,
-    edges: visibleEdges,
+    edges: reactFlowEdges,
     suppressedNodes: normalizedSuppressed,
     clusters: layoutedClusters,
   }
