@@ -51,7 +51,10 @@ export default function RelationshipViewerPage() {
 
     let didOverride = false
     const mapped = nodeList.map((node) => {
-      if (!node || node.type !== 'entity') return node
+      if (!node) return node
+      const isSupportedNode = node.type === 'entity' || node.type === 'cluster'
+      if (!isSupportedNode) return node
+
       const custom = positionOverrides.get(String(node.id))
       if (!custom) return node
       didOverride = true
@@ -895,12 +898,17 @@ export default function RelationshipViewerPage() {
 
   const handleNodeDragStop = useCallback(
     (event, node) => {
-      if (!node || node.type !== 'entity') return
-      userPlacedPositionsRef.current.set(String(node.id), {
+      if (!node || (node.type !== 'entity' && node.type !== 'cluster')) return
+
+      const id = String(node.id)
+      userPlacedPositionsRef.current.set(id, {
         x: node?.position?.x ?? 0,
         y: node?.position?.y ?? 0,
       })
-      const entityId = String(node.id)
+
+      if (node.type !== 'entity') return
+
+      const entityId = id
       const clusterMeta = boardEntities[entityId]
       if (!clusterMeta?.clusterId) return
 
@@ -1378,7 +1386,10 @@ export default function RelationshipViewerPage() {
       const overrides = userPlacedPositionsRef.current
       if (overrides instanceof Map && overrides.size) {
         arrangedNodes.forEach((node) => {
-          if (!node || node.type !== 'entity') return
+          if (!node) return
+          const isSupportedNode = node.type === 'entity' || node.type === 'cluster'
+          if (!isSupportedNode) return
+
           const key = String(node.id)
           if (!overrides.has(key)) return
           overrides.set(key, {
