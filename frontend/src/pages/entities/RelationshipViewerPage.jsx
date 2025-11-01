@@ -892,8 +892,18 @@ export default function RelationshipViewerPage() {
       }
 
       if (!suppressedIdsToExpand.length) {
-        markClusterExpanded(clusterId)
-        return
+        if (!selectedId) {
+          markClusterExpanded(clusterId)
+          return
+        } else {
+          const normalizedSelectedId = String(selectedId)
+          suppressedNodes.delete(normalizedSelectedId)
+          suppressedDefinitions.delete(normalizedSelectedId)
+          if (suppressedMeta instanceof Map) {
+            suppressedMeta.delete(normalizedSelectedId)
+          }
+          manuallyReleasedEntitiesRef.current.add(normalizedSelectedId)
+        }
       }
 
       const nodesWithDefinitions = suppressedIdsToExpand
@@ -911,7 +921,9 @@ export default function RelationshipViewerPage() {
         .filter((entry) => Boolean(entry.definition))
 
       if (!nodesWithDefinitions.length) {
-        markClusterExpanded(clusterId)
+        if (!selectedId) {
+          markClusterExpanded(clusterId)
+        }
         return
       }
 
