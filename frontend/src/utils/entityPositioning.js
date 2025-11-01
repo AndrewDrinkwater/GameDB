@@ -1351,7 +1351,31 @@ export function buildReactFlowGraph(
     shouldRenderNode(String(node.id))
   )
 
-  const visibleNodes = [...visibleEntityNodes, ...clusterNodes]
+  const visibleEntityIdSet = new Set(
+    visibleEntityNodes.map((node) => String(node.id))
+  )
+
+  const filteredVisibleEntityNodes = visibleEntityNodes.filter((node) => {
+    const nodeId = String(node.id)
+    if (!nodeId) return false
+
+    const parents = parentLookup.get(nodeId)
+    if (!parents || !parents.size) {
+      return true
+    }
+
+    for (const parentId of parents) {
+      const normalizedParent = parentId != null ? String(parentId) : ''
+      if (!normalizedParent) continue
+      if (visibleEntityIdSet.has(normalizedParent)) {
+        return true
+      }
+    }
+
+    return false
+  })
+
+  const visibleNodes = [...filteredVisibleEntityNodes, ...clusterNodes]
 
   // Determine all currently visible node IDs
   const visibleNodeIds = new Set(visibleNodes.map((node) => String(node.id)))

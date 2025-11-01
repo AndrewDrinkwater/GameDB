@@ -254,6 +254,7 @@ export default function RelationshipViewerPage() {
   const lastEntityIdRef = useRef(null)
   const graphAdjacencyRef = useRef(new Map())
   const nodeDepthLookupRef = useRef(new Map())
+  const visibilityReevaluationTimeoutRef = useRef(null)
 
   const applyUserPlacedPositions = useCallback((nodeList) => {
     if (!Array.isArray(nodeList) || !nodeList.length) return nodeList
@@ -288,6 +289,15 @@ export default function RelationshipViewerPage() {
   useEffect(() => {
     edgesRef.current = edges
   }, [edges])
+
+  useEffect(() => {
+    return () => {
+      if (visibilityReevaluationTimeoutRef.current != null) {
+        clearTimeout(visibilityReevaluationTimeoutRef.current)
+        visibilityReevaluationTimeoutRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const normalizedId = entityId != null ? String(entityId) : null
@@ -430,6 +440,331 @@ export default function RelationshipViewerPage() {
 
     return descendants
   }, [])
+
+  const performClusterBreakout = useCallback(
+    (entries) => {
+      if (!Array.isArray(entries) || !entries.length) return
+
+      const suppressedNodes = suppressedNodesRef.current
+      const suppressedMeta = suppressedNodeMetaRef.current
+      const suppressedDefinitions = suppressedNodeDefinitionsRef.current
+
+      if (!(suppressedNodes instanceof Map) || !(suppressedDefinitions instanceof Map)) {
+        return
+      }
+
+      const normalized = entries
+        .map((entry) => {
+          const id = entry?.id != null ? String(entry.id) : null
+          if (!id) return null
+
+          const definition = entry?.definition || suppressedDefinitions.get(id) || null
+          if (!definition) return null
+
+          const meta =
+            entry?.meta || suppressedMeta.get(id) || suppressedNodes.get(id) || null
+
+          return { id, definition, meta }
+        })
+        .filter(Boolean)
+
+      if (!normalized.length) return
+
+      const manualReleaseSet = manuallyReleasedEntitiesRef.current
+      const nodeMetaLookup = new Map()
+      const definitionLookup = new Map()
+
+      normalized.forEach(({ id, definition, meta }) => {
+        nodeMetaLookup.set(id, meta || null)
+        definitionLookup.set(id, definition)
+        suppressedNodes.delete(id)
+        suppressedMeta.delete(id)
+        suppressedDefinitions.delete(id)
+        manualReleaseSet.add(id)
+      })
+
+      const adjacency =
+        graphAdjacencyRef.current instanceof Map
+          ? graphAdjacencyRef.current
+          : new Map()
+      const depthLookup =
+        nodeDepthLookupRef.current instanceof Map
+          ? nodeDepthLookupRef.current
+          : new Map()
+
+      const relationshipDepthLimit = Number.isFinite(Number(relationshipDepth))
+        ? Number(relationshipDepth)
+        : null
+
+      const edgesForLayout = [...edgesRef.current]
+      const layoutEdgeIds = new Set(edgesForLayout.map((edge) => edge.id))
+      const appendedEdgeIds = new Set(layoutEdgeIds)
+      const edgesToAppend = []
+
+      const plannedNodeIds = new Set(nodesRef.current.map((node) => String(node.id)))
+      normalized.forEach(({ id }) => plannedNodeIds.add(id))
+
+      const descendantNodeAdditions = []
+      const queue = normalized.map(({ id }) => id)
+
+      while (queue.length) {
+        const currentId = queue.shift()
+        if (!currentId) continue
+
+        const parentDepth = depthLookup.get(currentId)
+        if (
+          relationshipDepthLimit != null &&
+          parentDepth != null &&
+          parentDepth >= relationshipDepthLimit
+        ) {
+          continue
+        }
+
+        const outgoingEdges = adjacency.get(currentId)
+        if (!outgoingEdges?.length) continue
+
+        outgoingEdges.forEach((edge) => {
+          if (!edge) return
+
+          const childRaw =
+            edge?.childId != null
+              ? edge.childId
+              : edge?.target != null
+              ? edge.target
+              : null
+
+          const childId = childRaw != null ? String(childRaw) : null
+          if (!childId || childId === currentId) return
+
+          const childDepth = depthLookup.get(childId)
+          if (
+            relationshipDepthLimit != null &&
+            childDepth != null &&
+            childDepth > relationshipDepthLimit
+          ) {
+            return
+          }
+
+          if (plannedNodeIds.has(childId)) {
+            queue.push(childId)
+            return
+          }
+
+          if (!suppressedNodes.has(childId)) {
+            plannedNodeIds.add(childId)
+            queue.push(childId)
+            return
+          }
+
+          const definition = suppressedDefinitions.get(childId)
+          if (!definition) return
+
+          const meta =
+            suppressedMeta.get(childId) || suppressedNodes.get(childId) || null
+
+          suppressedNodes.delete(childId)
+          suppressedMeta.delete(childId)
+          suppressedDefinitions.delete(childId)
+          manualReleaseSet.add(childId)
+          plannedNodeIds.add(childId)
+          queue.push(childId)
+
+          nodeMetaLookup.set(childId, meta || null)
+          definitionLookup.set(childId, definition)
+          descendantNodeAdditions.push({ id: childId, definition })
+
+          const flowEdge = convertNormalizedEdgeToReactFlow(edge)
+          if (flowEdge && !appendedEdgeIds.has(flowEdge.id)) {
+            appendedEdgeIds.add(flowEdge.id)
+            edgesToAppend.push(flowEdge)
+            edgesForLayout.push(flowEdge)
+          }
+        })
+      }
+
+      nodeMetaLookup.forEach((meta, childId) => {
+        const parentId = meta?.parentId != null ? String(meta.parentId) : null
+        if (!parentId) return
+        const outgoingEdges = adjacency.get(parentId)
+        if (!outgoingEdges?.length) return
+        outgoingEdges.forEach((edge) => {
+          if (!edge) return
+          const childRaw =
+            edge?.childId != null
+              ? edge.childId
+              : edge?.target != null
+              ? edge.target
+              : null
+          if (childRaw == null) return
+          const normalizedChild = String(childRaw)
+          if (normalizedChild !== childId) return
+          const flowEdge = convertNormalizedEdgeToReactFlow(edge)
+          if (flowEdge && !appendedEdgeIds.has(flowEdge.id)) {
+            appendedEdgeIds.add(flowEdge.id)
+            edgesToAppend.push(flowEdge)
+            edgesForLayout.push(flowEdge)
+          }
+        })
+      })
+
+      const additionMap = new Map()
+      normalized.forEach(({ id }) => {
+        const definition = definitionLookup.get(id)
+        if (id && definition) {
+          additionMap.set(id, definition)
+        }
+      })
+      descendantNodeAdditions.forEach(({ id, definition }) => {
+        if (id && definition) {
+          additionMap.set(id, definition)
+        }
+      })
+
+      if (!additionMap.size) return
+
+      if (nodeMetaLookup.size) {
+        setBoardEntities((prev) => {
+          const next = { ...prev }
+          let changed = false
+          nodeMetaLookup.forEach((meta, id) => {
+            if (!meta?.clusterId) return
+            const key = String(id)
+            const nextValue = {
+              clusterId: String(meta.clusterId),
+              relationshipType: meta?.relationshipType || null,
+              sourceId: meta?.parentId != null ? String(meta.parentId) : null,
+            }
+
+            const existing = next[key]
+            if (
+              !existing ||
+              existing.clusterId !== nextValue.clusterId ||
+              existing.relationshipType !== nextValue.relationshipType ||
+              existing.sourceId !== nextValue.sourceId
+            ) {
+              next[key] = nextValue
+              changed = true
+            }
+          })
+          return changed ? next : prev
+        })
+      }
+
+      if (edgesToAppend.length) {
+        setEdges((prevEdges) => {
+          const existing = new Set(prevEdges.map((edge) => edge.id))
+          const appendable = edgesToAppend.filter((edge) => {
+            if (!edge) return false
+            if (existing.has(edge.id)) return false
+            existing.add(edge.id)
+            return true
+          })
+          if (!appendable.length) return prevEdges
+          return [...prevEdges, ...appendable]
+        })
+      }
+
+      setNodes((prevNodes) => {
+        const existingIds = new Set(prevNodes.map((node) => String(node.id)))
+        let nextNodes = prevNodes
+        let didAddNode = false
+
+        additionMap.forEach((definition, id) => {
+          if (!id || existingIds.has(id) || !definition) return
+
+          const meta = nodeMetaLookup.get(id) || {}
+          const entityMeta = meta?.entity || null
+
+          const normalizedNode = {
+            ...definition,
+            id,
+            type: 'entity',
+            data: {
+              ...definition?.data,
+              label:
+                definition?.data?.label ||
+                entityMeta?.name ||
+                definition?.data?.name ||
+                `Entity ${id}`,
+              typeName:
+                definition?.data?.typeName ||
+                definition?.data?.type?.name ||
+                entityMeta?.typeName ||
+                'Entity',
+              entityId: id,
+              isAdHoc: true,
+              onSetTarget: handleSetTargetEntity,
+              onOpenInfo: handleOpenEntityInfo,
+              isExpandedProtected: Boolean(
+                definition?.data?.isExpandedProtected ||
+                  entityMeta?.isExpandedProtected
+              ),
+            },
+          }
+
+          existingIds.add(id)
+          didAddNode = true
+          nextNodes = [...nextNodes, normalizedNode]
+        })
+
+        if (!didAddNode) return prevNodes
+
+        return applyUserPlacedPositions(
+          layoutNodesHierarchically(nextNodes, edgesForLayout)
+        )
+      })
+    },
+    [
+      applyUserPlacedPositions,
+      handleOpenEntityInfo,
+      handleSetTargetEntity,
+      layoutNodesHierarchically,
+      relationshipDepth,
+    ]
+  )
+
+  const scheduleVisibilityReevaluation = useCallback(() => {
+    if (visibilityReevaluationTimeoutRef.current != null) {
+      clearTimeout(visibilityReevaluationTimeoutRef.current)
+    }
+
+    visibilityReevaluationTimeoutRef.current = setTimeout(() => {
+      visibilityReevaluationTimeoutRef.current = null
+
+      const visibleIds = new Set(nodesRef.current.map((node) => String(node.id)))
+      const suppressed = suppressedNodesRef.current
+      const suppressedMeta = suppressedNodeMetaRef.current
+      const definitions = suppressedNodeDefinitionsRef.current
+
+      if (!(suppressed instanceof Map) || !(definitions instanceof Map)) {
+        return
+      }
+
+      const updates = []
+
+      suppressed.forEach((meta, id) => {
+        const normalizedId = String(id)
+        const parentId = meta?.parentId != null ? String(meta.parentId) : null
+        if (!parentId) return
+        if (!visibleIds.has(parentId)) return
+        const definition = definitions.get(normalizedId)
+        if (!definition) return
+
+        const suppressedMetaEntry =
+          suppressedMeta instanceof Map ? suppressedMeta.get(normalizedId) : meta
+
+        updates.push({
+          id: normalizedId,
+          definition,
+          meta: suppressedMetaEntry || meta,
+        })
+      })
+
+      if (updates.length) {
+        performClusterBreakout(updates)
+      }
+    }, 0)
+  }, [performClusterBreakout])
 
   const handleAddEntityFromCluster = useCallback(
     (clusterInput) => {
@@ -860,6 +1195,7 @@ export default function RelationshipViewerPage() {
       )
 
       markClusterExpanded(clusterId)
+      scheduleVisibilityReevaluation()
     },
     [
       applyUserPlacedPositions,
@@ -867,6 +1203,7 @@ export default function RelationshipViewerPage() {
       handleSetTargetEntity,
       markClusterExpanded,
       relationshipDepth,
+      scheduleVisibilityReevaluation,
     ]
   )
 
