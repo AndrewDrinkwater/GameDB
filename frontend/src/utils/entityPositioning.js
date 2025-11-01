@@ -1228,7 +1228,36 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     connectedNodeIds.has(String(node.id))
   )
 
-  const reactFlowEdges = filteredEdges.map((edge) => ({
+  // Allow the source node unconditionally and build a set of reachable nodes
+  const allowedNodeIds = new Set(centerId != null ? [String(centerId)] : [])
+  let added = true
+  while (added) {
+    added = false
+    for (const edge of filteredEdges) {
+      if (!edge) continue
+      const parent = edge.parentId != null ? String(edge.parentId) : String(edge.source ?? '')
+      const child = edge.childId != null ? String(edge.childId) : String(edge.target ?? '')
+      if (parent && child && allowedNodeIds.has(parent) && !allowedNodeIds.has(child)) {
+        allowedNodeIds.add(child)
+        added = true
+      }
+    }
+  }
+
+  // Filter out any node whose direct parent is not in allowedNodeIds
+  const finalVisibleNodes = visibleFilteredNodes.filter((node) =>
+    allowedNodeIds.has(String(node.id))
+  )
+
+  // Also filter edges: keep only those connecting allowed nodes
+  const finalFilteredEdges = filteredEdges.filter((edge) => {
+    const parent = edge.parentId != null ? String(edge.parentId) : String(edge.source ?? '')
+    const child = edge.childId != null ? String(edge.childId) : String(edge.target ?? '')
+    return parent && child && allowedNodeIds.has(parent) && allowedNodeIds.has(child)
+  })
+
+  // Map filtered edges to React Flow edge format
+  const visibleEdges = finalFilteredEdges.map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
@@ -1248,8 +1277,8 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
   }))
 
   const layoutedNodes = layoutNodesHierarchically(
-    visibleFilteredNodes,
-    reactFlowEdges,
+    finalVisibleNodes,
+    visibleEdges,
     centerId
   )
 
@@ -1257,7 +1286,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
 
   return {
     nodes: layoutedNodes,
-    edges: reactFlowEdges,
+    edges: visibleEdges,
     suppressedNodes: normalizedSuppressed,
     clusters: layoutedClusters,
   }
