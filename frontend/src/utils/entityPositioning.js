@@ -444,6 +444,12 @@ function groupChildrenByRelationship(
       return
     }
 
+    if (
+      nodes.find((n) => String(n?.id ?? '') === entry.parentId)?.inCluster
+    ) {
+      return
+    }
+
     const childIds = Array.from(entry.childMap.keys()).filter((childId) => {
       const childNode = nodeLookup.get(childId)
       return !(childNode?.inCluster)
@@ -904,6 +910,106 @@ function summarizeNodes(nodeMap) {
   }))
 }
 
+function buildParentLookup(edges) {
+  const lookup = new Map()
+  if (!Array.isArray(edges)) return lookup
+
+  edges.forEach((edge) => {
+    if (!edge) return
+    if (edge.isClusterEdge || edge?.data?.isClusterEdge || edge?.data?.isClusterChildEdge)
+      return
+
+    const parentRaw = edge?.parentId ?? edge?.source ?? null
+    const childRaw = edge?.childId ?? edge?.target ?? null
+    if (parentRaw == null || childRaw == null) return
+
+    const parentId = String(parentRaw)
+    const childId = String(childRaw)
+    if (!childId) return
+
+    if (!lookup.has(childId)) lookup.set(childId, new Set())
+    lookup.get(childId).add(parentId)
+  })
+
+  return lookup
+}
+
+function createShouldRenderNode({
+  centerId = null,
+  parentLookup = new Map(),
+  suppressedIds = new Set(),
+  candidateIds = new Set(),
+}) {
+  const cache = new Map()
+  const normalizedCenter = centerId != null ? String(centerId) : null
+
+  function resolver(nodeId, visiting = new Set()) {
+    const key = String(nodeId)
+    if (!key) return false
+
+    if (cache.has(key)) {
+      return cache.get(key)
+    }
+
+    if (suppressedIds.has(key)) {
+      cache.set(key, false)
+      return false
+    }
+
+    if (!candidateIds.has(key)) {
+      cache.set(key, false)
+      return false
+    }
+
+    if (normalizedCenter && key === normalizedCenter) {
+      cache.set(key, true)
+      return true
+    }
+
+    const parents = parentLookup.get(key)
+    if (!parents || parents.size === 0) {
+      cache.set(key, true)
+      return true
+    }
+
+    if (visiting.has(key)) {
+      cache.set(key, false)
+      return false
+    }
+
+    visiting.add(key)
+
+    for (const parentId of parents) {
+      const normalizedParent = String(parentId)
+      if (!normalizedParent) continue
+
+      if (suppressedIds.has(normalizedParent)) {
+        cache.set(key, false)
+        visiting.delete(key)
+        return false
+      }
+
+      if (!candidateIds.has(normalizedParent)) {
+        cache.set(key, false)
+        visiting.delete(key)
+        return false
+      }
+
+      if (!resolver(normalizedParent, visiting)) {
+        cache.set(key, false)
+        visiting.delete(key)
+        return false
+      }
+    }
+
+    visiting.delete(key)
+    cache.set(key, true)
+    return true
+  }
+
+  return resolver
+}
+
 export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_CLUSTER_THRESHOLD) {
   const centerId = entityId != null ? String(entityId) : null
   const rawNodes = Array.isArray(data?.nodes) ? data.nodes : []
@@ -1001,20 +1107,86 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     createEntityNodeDefinition(rawNode, { isCenter: rawNode.id === centerId })
   )
 
-  const visibleNodes = entityNodes.filter(
+  const candidateEntityNodes = entityNodes.filter(
     (node) => !suppressedNodeIds.has(String(node.id))
   )
 
-  visibleNodes.push(...clusterNodes)
+  const candidateIds = new Set(candidateEntityNodes.map((node) => String(node.id)))
+  if (centerId != null) {
+    candidateIds.add(String(centerId))
+  }
+
+  const parentLookup = buildParentLookup(normalizedEdges)
+  const shouldRenderNode = createShouldRenderNode({
+    centerId,
+    parentLookup,
+    suppressedIds: suppressedNodeIds,
+    candidateIds,
+  })
+
+  const visibleEntityNodes = candidateEntityNodes.filter((node) =>
+    shouldRenderNode(String(node.id))
+  )
+
+  const visibleNodes = [...visibleEntityNodes, ...clusterNodes]
+
+  // Determine all currently visible node IDs
+  const visibleNodeIds = new Set(visibleNodes.map((node) => String(node.id)))
+
+  // Filter edges to exclude those whose parent is hidden or clustered
+  const visibleEdges = normalizedEdges.filter((edge) => {
+    if (!edge) return false
+
+    const parentRaw =
+      edge.parentId != null
+        ? edge.parentId
+        : edge.source != null
+        ? edge.source
+        : null
+
+    if (parentRaw == null) {
+      return true
+    }
+
+    const parentId = String(parentRaw)
+
+    if (!visibleNodeIds.has(parentId)) {
+      return false
+    }
+
+    if (suppressedNodeIds.has(parentId)) {
+      return false
+    }
+
+    return true
+  })
 
   const clusterAwareEdges =
     Array.isArray(clusterAwareEdgesRaw) && clusterAwareEdgesRaw.length
       ? clusterAwareEdgesRaw
-      : normalizedEdges
+      : visibleEdges
 
   const filteredEdges = clusterAwareEdges.filter((edge) => {
     if (!edge) return false
     if (edge.isClusterEdge) return true
+
+    const parentRaw =
+      edge.parentId != null
+        ? edge.parentId
+        : edge.source != null
+        ? edge.source
+        : null
+
+    if (parentRaw != null) {
+      const parentId = String(parentRaw)
+      if (!visibleNodeIds.has(parentId)) {
+        return false
+      }
+
+      if (suppressedNodeIds.has(parentId)) {
+        return false
+      }
+    }
 
     const rawSource =
       edge.source != null ? edge.source : edge.parentId != null ? edge.parentId : null
@@ -1056,7 +1228,36 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     connectedNodeIds.has(String(node.id))
   )
 
-  const visibleEdges = filteredEdges.map((edge) => ({
+  // Allow the source node unconditionally and build a set of reachable nodes
+  const allowedNodeIds = new Set(centerId != null ? [String(centerId)] : [])
+  let added = true
+  while (added) {
+    added = false
+    for (const edge of filteredEdges) {
+      if (!edge) continue
+      const parent = edge.parentId != null ? String(edge.parentId) : String(edge.source ?? '')
+      const child = edge.childId != null ? String(edge.childId) : String(edge.target ?? '')
+      if (parent && child && allowedNodeIds.has(parent) && !allowedNodeIds.has(child)) {
+        allowedNodeIds.add(child)
+        added = true
+      }
+    }
+  }
+
+  // Filter out any node whose direct parent is not in allowedNodeIds
+  const finalVisibleNodes = visibleFilteredNodes.filter((node) =>
+    allowedNodeIds.has(String(node.id))
+  )
+
+  // Also filter edges: keep only those connecting allowed nodes
+  const finalFilteredEdges = filteredEdges.filter((edge) => {
+    const parent = edge.parentId != null ? String(edge.parentId) : String(edge.source ?? '')
+    const child = edge.childId != null ? String(edge.childId) : String(edge.target ?? '')
+    return parent && child && allowedNodeIds.has(parent) && allowedNodeIds.has(child)
+  })
+
+  // Map filtered edges to React Flow edge format
+  const reactFlowEdges = finalFilteredEdges.map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
@@ -1076,8 +1277,8 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
   }))
 
   const layoutedNodes = layoutNodesHierarchically(
-    visibleFilteredNodes,
-    visibleEdges,
+    finalVisibleNodes,
+    reactFlowEdges,
     centerId
   )
 
@@ -1085,7 +1286,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
 
   return {
     nodes: layoutedNodes,
-    edges: visibleEdges,
+    edges: reactFlowEdges,
     suppressedNodes: normalizedSuppressed,
     clusters: layoutedClusters,
   }
