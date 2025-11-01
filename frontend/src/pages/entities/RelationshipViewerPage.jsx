@@ -10,12 +10,139 @@ import {
   createAdHocEntityNode,
   positionEntitiesBelowCluster,
   layoutNodesHierarchically,
+  normalizeGraphEdge,
 } from '../../utils/entityPositioning.js'
 import RelationshipToolbar from '../../components/relationshipViewer/RelationshipToolbar.jsx'
 import EntityInfoDrawer from '../../components/relationshipViewer/EntityInfoDrawer.jsx'
 
 const nodeTypes = { cluster: ClusterNode, entity: EntityNode }
 const edgeTypes = {}
+
+const DEFAULT_RELATIONSHIP_LABEL = 'Related'
+
+function buildAdjacencyFromEdges(edges) {
+  const adjacency = new Map()
+  if (!Array.isArray(edges)) return adjacency
+
+  edges.forEach((edge) => {
+    if (!edge) return
+
+    const parentRaw =
+      edge?.parentId != null
+        ? edge.parentId
+        : edge?.source != null
+        ? edge.source
+        : null
+    const childRaw =
+      edge?.childId != null
+        ? edge.childId
+        : edge?.target != null
+        ? edge.target
+        : null
+
+    if (parentRaw == null || childRaw == null) return
+
+    const parentId = String(parentRaw)
+    const childId = String(childRaw)
+    if (!parentId || !childId || parentId === childId) return
+
+    if (!adjacency.has(parentId)) adjacency.set(parentId, [])
+    adjacency.get(parentId).push(edge)
+  })
+
+  return adjacency
+}
+
+function computeDepthLookup(sourceId, adjacency) {
+  const depthMap = new Map()
+  if (!sourceId) return depthMap
+
+  const normalizedSource = String(sourceId)
+  if (!normalizedSource) return depthMap
+
+  depthMap.set(normalizedSource, 0)
+  const queue = [normalizedSource]
+  const visited = new Set([normalizedSource])
+
+  while (queue.length) {
+    const currentId = queue.shift()
+    if (!currentId) continue
+
+    const currentDepth = depthMap.get(currentId) ?? 0
+    const outgoing = adjacency.get(currentId)
+    if (!outgoing || !outgoing.length) continue
+
+    outgoing.forEach((edge) => {
+      if (!edge) return
+
+      const childRaw =
+        edge?.childId != null
+          ? edge.childId
+          : edge?.target != null
+          ? edge.target
+          : null
+
+      const childId = childRaw != null ? String(childRaw) : null
+      if (!childId || visited.has(childId) || childId === currentId) return
+
+      depthMap.set(childId, currentDepth + 1)
+      visited.add(childId)
+      queue.push(childId)
+    })
+  }
+
+  return depthMap
+}
+
+function convertNormalizedEdgeToReactFlow(edge) {
+  if (!edge) return null
+
+  const sourceRaw =
+    edge?.parentId != null
+      ? edge.parentId
+      : edge?.source != null
+      ? edge.source
+      : null
+  const targetRaw =
+    edge?.childId != null
+      ? edge.childId
+      : edge?.target != null
+      ? edge.target
+      : null
+
+  const source = sourceRaw != null ? String(sourceRaw) : null
+  const target = targetRaw != null ? String(targetRaw) : null
+
+  if (!source || !target || source === target) return null
+
+  const label =
+    edge?.relationshipLabel ||
+    edge?.label ||
+    edge?.typeName ||
+    DEFAULT_RELATIONSHIP_LABEL
+
+  return {
+    id:
+      edge?.id != null && edge.id !== ''
+        ? String(edge.id)
+        : `edge-${source}-${target}`,
+    source,
+    target,
+    type: 'smoothstep',
+    animated: edge?.isClusterEdge ? false : true,
+    label,
+    data: {
+      relationshipType: label,
+      parentId: source,
+      childId: target,
+      isClusterEdge: Boolean(edge?.isClusterEdge),
+    },
+    parentId: source,
+    childId: target,
+    sourceHandle: 'bottom',
+    targetHandle: 'top',
+  }
+}
 
 export default function RelationshipViewerPage() {
   const { entityId } = useParams()
@@ -41,6 +168,8 @@ export default function RelationshipViewerPage() {
   const userPlacedPositionsRef = useRef(new Map())
   const manuallyReleasedEntitiesRef = useRef(new Set())
   const lastEntityIdRef = useRef(null)
+  const graphAdjacencyRef = useRef(new Map())
+  const nodeDepthLookupRef = useRef(new Map())
 
   const applyUserPlacedPositions = useCallback((nodeList) => {
     if (!Array.isArray(nodeList) || !nodeList.length) return nodeList
@@ -365,6 +494,119 @@ export default function RelationshipViewerPage() {
         suppressedNodes.delete(String(id))
       })
 
+      const descendantNodeAdditions = []
+      const descendantEdgeAdditions = []
+
+      const adjacency =
+        graphAdjacencyRef.current instanceof Map
+          ? graphAdjacencyRef.current
+          : new Map()
+      const depthLookup =
+        nodeDepthLookupRef.current instanceof Map
+          ? nodeDepthLookupRef.current
+          : new Map()
+
+      const relationshipDepthLimit = Number.isFinite(Number(relationshipDepth))
+        ? Number(relationshipDepth)
+        : null
+
+      if (adjacency.size) {
+        const suppressedMeta =
+          suppressedNodeMetaRef.current instanceof Map
+            ? suppressedNodeMetaRef.current
+            : new Map()
+        const plannedNodeIds = new Set(
+          nodesRef.current.map((node) => String(node.id))
+        )
+        validNodesWithDefinitions.forEach(({ id }) => {
+          if (!id) return
+          plannedNodeIds.add(String(id))
+        })
+
+        const queue = validNodesWithDefinitions.map(({ id }) => String(id))
+        const visited = new Set()
+        const appendedEdgeIds = new Set()
+
+        while (queue.length) {
+          const currentId = queue.shift()
+          if (!currentId || visited.has(currentId)) continue
+          visited.add(currentId)
+
+          const parentDepth = depthLookup.get(currentId)
+          if (
+            relationshipDepthLimit != null &&
+            parentDepth != null &&
+            parentDepth >= relationshipDepthLimit
+          ) {
+            continue
+          }
+
+          const outgoingEdges = adjacency.get(currentId)
+          if (!outgoingEdges || !outgoingEdges.length) continue
+
+          outgoingEdges.forEach((edge) => {
+            if (!edge) return
+
+            const childRaw =
+              edge?.childId != null
+                ? edge.childId
+                : edge?.target != null
+                ? edge.target
+                : null
+
+            const childId = childRaw != null ? String(childRaw) : null
+            if (!childId || childId === currentId) return
+
+            const childDepth = depthLookup.get(childId)
+            if (
+              relationshipDepthLimit != null &&
+              childDepth != null &&
+              childDepth > relationshipDepthLimit
+            ) {
+              return
+            }
+
+            if (plannedNodeIds.has(childId)) {
+              queue.push(childId)
+              return
+            }
+
+            if (!suppressedNodes.has(childId)) {
+              plannedNodeIds.add(childId)
+              queue.push(childId)
+              return
+            }
+
+            const definition = suppressedDefinitions.get(childId)
+            if (!definition) return
+
+            suppressedNodes.delete(childId)
+            suppressedDefinitions.delete(childId)
+            suppressedMeta.delete(childId)
+
+            descendantNodeAdditions.push({ id: childId, definition })
+            manuallyReleasedEntitiesRef.current.add(childId)
+            plannedNodeIds.add(childId)
+            queue.push(childId)
+
+            const reactFlowEdge = convertNormalizedEdgeToReactFlow(edge)
+            if (reactFlowEdge && !appendedEdgeIds.has(reactFlowEdge.id)) {
+              appendedEdgeIds.add(reactFlowEdge.id)
+              descendantEdgeAdditions.push(reactFlowEdge)
+            }
+          })
+        }
+
+        if (descendantEdgeAdditions.length) {
+          const layoutEdgeIds = new Set(edgesForLayout.map((edge) => edge.id))
+          descendantEdgeAdditions.forEach((edge) => {
+            if (!edge || layoutEdgeIds.has(edge.id)) return
+            layoutEdgeIds.add(edge.id)
+            edgesForLayout.push(edge)
+          })
+        }
+      }
+
       const remainingHidden = clusterMeta.containedIds.filter((id) =>
         suppressedNodes.has(String(id))
       )
@@ -384,10 +626,12 @@ export default function RelationshipViewerPage() {
         return changed ? next : prev
       })
 
-      if (newEdges.length) {
+      if (newEdges.length || descendantEdgeAdditions.length) {
         setEdges((prevEdges) => {
           const existing = new Set(prevEdges.map((edge) => edge.id))
-          const appendable = newEdges.filter((edge) => !existing.has(edge.id))
+          const appendable = [...newEdges, ...descendantEdgeAdditions].filter(
+            (edge) => !existing.has(edge.id)
+          )
           if (!appendable.length) return prevEdges
           return [...prevEdges, ...appendable]
         })
@@ -451,6 +695,38 @@ export default function RelationshipViewerPage() {
           nextNodes = [...nextNodes, normalizedNode]
         })
 
+        descendantNodeAdditions.forEach(({ id, definition }) => {
+          if (!id || existingIds.has(String(id))) return
+
+          const normalizedNode = {
+            ...definition,
+            id: String(id),
+            type: 'entity',
+            data: {
+              ...definition?.data,
+              label:
+                definition?.data?.label ||
+                definition?.data?.name ||
+                `Entity ${id}`,
+              typeName:
+                definition?.data?.typeName ||
+                definition?.data?.type?.name ||
+                'Entity',
+              entityId: String(id),
+              isAdHoc: true,
+              onSetTarget: handleSetTargetEntity,
+              onOpenInfo: handleOpenEntityInfo,
+              isExpandedProtected: Boolean(
+                definition?.data?.isExpandedProtected
+              ),
+            },
+          }
+
+          existingIds.add(String(id))
+          didAddNode = true
+          nextNodes = [...nextNodes, normalizedNode]
+        })
+
         const orderedPlaced = Array.from(placedEntityIds)
         const updatedLabel = `${relationshipLabel} (${remainingHidden.length})`
 
@@ -506,6 +782,7 @@ export default function RelationshipViewerPage() {
       handleOpenEntityInfo,
       handleSetTargetEntity,
       markClusterExpanded,
+      relationshipDepth,
     ]
   )
 
@@ -1057,6 +1334,17 @@ export default function RelationshipViewerPage() {
             return true
           })
         }
+
+        const normalizedGraphEdges = sanitizedEdges
+          .map((edge) => normalizeGraphEdge(edge, entityId))
+          .filter(Boolean)
+
+        const adjacencyFromGraph = buildAdjacencyFromEdges(normalizedGraphEdges)
+        graphAdjacencyRef.current = adjacencyFromGraph
+        nodeDepthLookupRef.current = computeDepthLookup(
+          entityId,
+          adjacencyFromGraph
+        )
 
         const {
           nodes: layoutedNodes,

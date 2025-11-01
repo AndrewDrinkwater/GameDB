@@ -1365,3 +1365,7 @@ export function positionEntitiesBelowCluster(nodes, clusterNode, placedIds = [])
 
   return didChange ? nextNodes : nodes
 }
+
+export function normalizeGraphEdge(rawEdge, currentEntityId) {
+  return normalizeEdge(rawEdge, currentEntityId)
+}
