@@ -444,6 +444,12 @@ function groupChildrenByRelationship(
       return
     }
 
+    if (
+      nodes.find((n) => String(n?.id ?? '') === entry.parentId)?.inCluster
+    ) {
+      return
+    }
+
     const childIds = Array.from(entry.childMap.keys()).filter((childId) => {
       const childNode = nodeLookup.get(childId)
       return !(childNode?.inCluster)
@@ -993,6 +999,21 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
 
   const suppressedNodeIds = new Set(Array.from(normalizedSuppressed.keys()))
 
+  const clusteredParentIds = new Set([...normalizedSuppressed.keys()])
+
+  const visibleNormalizedEdges = normalizedEdges.filter((edge) => {
+    const parentId =
+      edge.parentId != null
+        ? String(edge.parentId)
+        : edge.source != null
+        ? String(edge.source)
+        : null
+
+    if (!parentId) return true
+
+    return !clusteredParentIds.has(parentId)
+  })
+
   const clusterNodes = (Array.isArray(clusterDefinitions) ? clusterDefinitions : []).map(
     (cluster) => createClusterNodeDefinition(cluster, nodeSummaries)
   )
@@ -1010,7 +1031,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
   const clusterAwareEdges =
     Array.isArray(clusterAwareEdgesRaw) && clusterAwareEdgesRaw.length
       ? clusterAwareEdgesRaw
-      : normalizedEdges
+      : visibleNormalizedEdges
 
   const filteredEdges = clusterAwareEdges.filter((edge) => {
     if (!edge) return false
@@ -1056,7 +1077,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
     connectedNodeIds.has(String(node.id))
   )
 
-  const visibleEdges = filteredEdges.map((edge) => ({
+  const reactFlowEdges = filteredEdges.map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
@@ -1077,7 +1098,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
 
   const layoutedNodes = layoutNodesHierarchically(
     visibleFilteredNodes,
-    visibleEdges,
+    reactFlowEdges,
     centerId
   )
 
@@ -1085,7 +1106,7 @@ export function buildReactFlowGraph(data, entityId, clusterThreshold = DEFAULT_C
 
   return {
     nodes: layoutedNodes,
-    edges: visibleEdges,
+    edges: reactFlowEdges,
     suppressedNodes: normalizedSuppressed,
     clusters: layoutedClusters,
   }
