@@ -35,6 +35,12 @@ export function sanitizeEntityLabel(name, fallback) {
   return fallback
 }
 
+function isClusterNodeType(node) {
+  if (!node) return false
+  const type = node?.type
+  return type === 'cluster' || type === 'clusterNode'
+}
+
 // Determines if a given entity lies along the visible relationship chain
 function isEntityOnActivePath(entityId, sourceEntityId, meta) {
   if (!entityId || !sourceEntityId || !(meta instanceof Map)) return false
@@ -795,7 +801,14 @@ function compareNodesByLabel(a, b) {
   return aLabel.localeCompare(bLabel)
 }
 
-function buildPrimaryParentMap(edges, levels, nodeLookup) {
+function buildPrimaryParentMap(
+  edges,
+  levels,
+  nodeLookup,
+  options = {}
+) {
+  const { centerId = null } = options
+  const normalizedCenter = centerId != null ? String(centerId) : null
   const parentsByChild = new Map()
 
   edges.forEach((edge) => {
@@ -848,6 +861,67 @@ function buildPrimaryParentMap(edges, levels, nodeLookup) {
     }
   })
 
+  nodeLookup.forEach((node, key) => {
+    if (!node) return
+    const nodeId = String(key)
+    if (!nodeId || result.has(nodeId)) return
+    if (!isClusterNodeType(node)) return
+
+    const candidateParents = [
+      node.parentId,
+      node.data?.parentId,
+      node.data?.sourceId,
+      node.data?.source,
+    ]
+      .map((value) => (value != null ? String(value) : null))
+      .filter(Boolean)
+
+    let resolvedParent = candidateParents.find((candidate) =>
+      nodeLookup.has(candidate)
+    )
+
+    if (!resolvedParent && candidateParents.length) {
+      resolvedParent = candidateParents[0]
+    }
+
+    const clusterLevel = levels.get(nodeId) ?? Infinity
+
+    if (!resolvedParent) {
+      const containedCandidates = Array.isArray(node?.data?.containedIds)
+        ? node.data.containedIds
+            .map((candidate) => (candidate != null ? String(candidate) : null))
+            .filter((candidate) => {
+              if (!candidate) return false
+              if (!nodeLookup.has(candidate)) return false
+              const candidateLevel = levels.get(candidate)
+              return (
+                typeof candidateLevel === 'number' &&
+                Number.isFinite(candidateLevel) &&
+                candidateLevel < clusterLevel
+              )
+            })
+        : []
+
+      if (containedCandidates.length) {
+        containedCandidates.sort((a, b) => {
+          const aLevel = levels.get(a) ?? Infinity
+          const bLevel = levels.get(b) ?? Infinity
+          if (aLevel === bLevel) return a.localeCompare(b)
+          return aLevel - bLevel
+        })
+        resolvedParent = containedCandidates[0]
+      }
+    }
+
+    if (!resolvedParent && normalizedCenter && nodeLookup.has(normalizedCenter)) {
+      resolvedParent = normalizedCenter === nodeId ? null : normalizedCenter
+    }
+
+    if (resolvedParent) {
+      result.set(nodeId, resolvedParent)
+    }
+  })
+
   return result
 }
 
@@ -864,6 +938,7 @@ function assignPositions(groups, primaryParentByNode = new Map()) {
 
     const groupedByParent = new Map()
     const orphans = []
+    const levelOccupied = new Set()
 
     nodesAtLevel.forEach((node) => {
       const parentId = primaryParentByNode.get(node.id)
@@ -927,16 +1002,43 @@ function assignPositions(groups, primaryParentByNode = new Map()) {
       }
 
       const y = baseY + level * LEVEL_VERTICAL_SPACING
+      const placedXs = []
 
       group.nodes.forEach((node, index) => {
-        const x = startX + index * LEVEL_HORIZONTAL_SPACING
+        const spacing = LEVEL_HORIZONTAL_SPACING
+        let x = startX + index * spacing
+
+        if (
+          group.anchorX == null &&
+          hasPlaced &&
+          Number.isFinite(rightmostAssigned) &&
+          x <= rightmostAssigned
+        ) {
+          x = rightmostAssigned + spacing
+        }
+
+        let attempts = 0
+        let key = `${Math.round(x * 100)}`
+        while (levelOccupied.has(key) && attempts < 100) {
+          x += spacing
+          attempts += 1
+          key = `${Math.round(x * 100)}`
+        }
+
+        levelOccupied.add(key)
+        placedXs.push(x)
         positions.set(node.id, { x, y, level, levelIndex: levelIndexCounter })
         levelIndexCounter += 1
         if (x < globalMinX) globalMinX = x
+        if (x > rightmostAssigned) rightmostAssigned = x
       })
 
-      const groupRight = startX + width
-      rightmostAssigned = Math.max(rightmostAssigned, groupRight)
+      if (placedXs.length) {
+        const groupRight = Math.max(...placedXs)
+        if (groupRight > rightmostAssigned) {
+          rightmostAssigned = groupRight
+        }
+      }
       hasPlaced = true
     })
   })
@@ -1074,8 +1176,17 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
 
   if (!normalizedNodes.length) return nodes
 
-  const activeNodes = normalizedNodes.filter((node) => !node.inCluster)
-  const nodesForLayout = activeNodes.length ? activeNodes : normalizedNodes
+  const clusterNodes = normalizedNodes.filter((node) => isClusterNodeType(node))
+  const nonClusterNodes = normalizedNodes.filter((node) => !isClusterNodeType(node))
+  const visibleEntities = nonClusterNodes.filter((node) => !node.inCluster)
+  const baseNodes = visibleEntities.length ? visibleEntities : nonClusterNodes
+
+  const nodesForLayoutMap = new Map()
+  baseNodes.forEach((node) => nodesForLayoutMap.set(node.id, node))
+  clusterNodes.forEach((node) => nodesForLayoutMap.set(node.id, node))
+
+  const nodesForLayout = Array.from(nodesForLayoutMap.values())
+  if (!nodesForLayout.length) return nodes
 
   const centerKey =
     centerId != null ? String(centerId) : nodesForLayout[0]?.id ?? null
@@ -1181,8 +1292,7 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
 
   nodesForLayout.forEach((node) => {
     if (!node) return
-    const isClusterNode = node.type === 'cluster' || node.type === 'clusterNode'
-    if (!isClusterNode) return
+    if (!isClusterNodeType(node)) return
 
     const parentIdRaw =
       node.parentId ??
@@ -1203,7 +1313,8 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
   const primaryParentByNode = buildPrimaryParentMap(
     directionalEdges,
     levels,
-    nodeLookup
+    nodeLookup,
+    { centerId: centerKey }
   )
   const positions = assignPositions(groups, primaryParentByNode)
 
@@ -1217,11 +1328,9 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
       levelIndex: node?.data?.levelIndex ?? 0,
     }
     const placement = positions.get(node.id) || fallbackPlacement
-    const isClusterNode = node.type === 'cluster' || node.type === 'clusterNode'
-    const adjustedX = isClusterNode ? placement.x + 40 : placement.x
     return {
       ...node,
-      position: { x: adjustedX, y: placement.y },
+      position: { x: placement.x, y: placement.y },
       data: {
         ...node.data,
         level: rawLevel,
