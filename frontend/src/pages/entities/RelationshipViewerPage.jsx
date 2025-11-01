@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ReactFlow, { Background, Controls, MiniMap, applyEdgeChanges, applyNodeChanges } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { getEntityGraph } from '../../api/entities.js'
+import { getEntityGraph, getEntity } from '../../api/entities.js'
 import ClusterNode from '../../components/nodes/ClusterNode.jsx'
 import EntityNode from '../../components/nodes/EntityNode.jsx'
 import {
@@ -12,6 +12,7 @@ import {
   layoutNodesHierarchically,
 } from '../../utils/entityPositioning.js'
 import RelationshipToolbar from '../../components/relationshipViewer/RelationshipToolbar.jsx'
+import EntityInfoDrawer from '../../components/relationshipViewer/EntityInfoDrawer.jsx'
 
 const nodeTypes = { cluster: ClusterNode, entity: EntityNode }
 const edgeTypes = {}
@@ -26,6 +27,10 @@ export default function RelationshipViewerPage() {
   const [boardEntities, setBoardEntities] = useState({})
   const [reactFlowInstance, setReactFlowInstance] = useState(null)
   const [relationshipDepth, setRelationshipDepth] = useState(1)
+  const [selectedEntityInfoId, setSelectedEntityInfoId] = useState(null)
+  const [selectedEntityInfo, setSelectedEntityInfo] = useState(null)
+  const [selectedEntityInfoError, setSelectedEntityInfoError] = useState(null)
+  const [selectedEntityInfoLoading, setSelectedEntityInfoLoading] = useState(false)
   const suppressedNodesRef = useRef(new Map())
   const suppressedNodeMetaRef = useRef(new Map())
   const suppressedNodeDefinitionsRef = useRef(new Map())
@@ -42,6 +47,45 @@ export default function RelationshipViewerPage() {
     edgesRef.current = edges
   }, [edges])
 
+  useEffect(() => {
+    if (!selectedEntityInfoId) {
+      setSelectedEntityInfo(null)
+      setSelectedEntityInfoError(null)
+      setSelectedEntityInfoLoading(false)
+      return
+    }
+
+    let cancelled = false
+
+    const loadEntityInfo = async () => {
+      setSelectedEntityInfoLoading(true)
+      setSelectedEntityInfoError(null)
+      setSelectedEntityInfo(null)
+
+      try {
+        const response = await getEntity(selectedEntityInfoId)
+        if (cancelled) return
+        const data = response?.data || response
+        setSelectedEntityInfo(data || null)
+      } catch (error) {
+        if (cancelled) return
+        console.error('Failed to load entity info:', error)
+        setSelectedEntityInfo(null)
+        setSelectedEntityInfoError(error.message || 'Failed to load entity info')
+      } finally {
+        if (!cancelled) {
+          setSelectedEntityInfoLoading(false)
+        }
+      }
+    }
+
+    loadEntityInfo()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedEntityInfoId])
+
   const onNodesChange = useCallback((changes) => setNodes((n) => applyNodeChanges(changes, n)), [])
   const onEdgesChange = useCallback((changes) => setEdges((e) => applyEdgeChanges(changes, e)), [])
 
@@ -55,8 +99,15 @@ export default function RelationshipViewerPage() {
 
   const handleOpenEntityInfo = useCallback((entityToOpen) => {
     if (!entityToOpen) return
-    const url = `/entities/${entityToOpen}`
-    window.open(url, '_blank', 'noopener,noreferrer')
+    const nextId = String(entityToOpen)
+    setSelectedEntityInfoId((prevId) => (prevId === nextId ? prevId : nextId))
+  }, [])
+
+  const handleCloseEntityInfo = useCallback(() => {
+    setSelectedEntityInfoId(null)
+    setSelectedEntityInfo(null)
+    setSelectedEntityInfoError(null)
+    setSelectedEntityInfoLoading(false)
   }, [])
 
   const markClusterExpanded = useCallback((clusterId) => {
@@ -1237,6 +1288,14 @@ export default function RelationshipViewerPage() {
           </div>
         </div>
       </div>
+
+      <EntityInfoDrawer
+        entityId={selectedEntityInfoId}
+        entity={selectedEntityInfo}
+        isLoading={selectedEntityInfoLoading}
+        error={selectedEntityInfoError}
+        onClose={handleCloseEntityInfo}
+      />
     </div>
   )
 }
