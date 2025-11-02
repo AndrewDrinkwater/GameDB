@@ -67,9 +67,18 @@ export default function ClusterNode({ id, data }) {
     () => new Set((data?.placedEntityIds || []).map((value) => String(value))),
     [data?.placedEntityIds]
   )
-  const totalCount = data?.count ?? containedEntities.length
-  const placedCount = placedIds.size
-  const availableCount = Math.max(totalCount - placedCount, 0)
+  const hiddenIds = useMemo(
+    () => (data?.hiddenContainedIds || []).map((value) => String(value)),
+    [data?.hiddenContainedIds]
+  )
+  const fallbackTotal = hiddenIds.length + placedIds.size
+  const totalCount =
+    data?.totalCount != null
+      ? data.totalCount
+      : fallbackTotal > 0
+      ? fallbackTotal
+      : containedEntities.length
+  const availableCount = Math.max(hiddenIds.length, 0)
 
   const countLabel = totalCount
     ? `contains ${availableCount} of ${totalCount}`
