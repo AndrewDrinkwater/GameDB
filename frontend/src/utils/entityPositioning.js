@@ -1078,7 +1078,13 @@ function createSiblingComparator(primaryParentByNode) {
   }
 }
 
-function assignPositions(groups, primaryParentByNode = new Map()) {
+function assignPositions(
+  groups,
+  primaryParentByNode = new Map(),
+  options = {}
+) {
+  const depthLookup =
+    options?.depthLookup instanceof Map ? options.depthLookup : null
   const positions = new Map()
   let globalMinX = Infinity
 
@@ -1156,10 +1162,12 @@ function assignPositions(groups, primaryParentByNode = new Map()) {
             : -width / 2
       }
 
-      const y = baseY + level * LEVEL_VERTICAL_SPACING
       const placedXs = []
 
       group.nodes.forEach((node, index) => {
+        const depthOverride = depthLookup?.get(node.id)
+        const yLevel = depthOverride != null ? depthOverride : level
+        const y = baseY + yLevel * LEVEL_VERTICAL_SPACING
         const spacing = LEVEL_HORIZONTAL_SPACING
         let x = startX + index * spacing
 
@@ -1182,7 +1190,13 @@ function assignPositions(groups, primaryParentByNode = new Map()) {
 
         levelOccupied.add(key)
         placedXs.push(x)
-        positions.set(node.id, { x, y, level, levelIndex: levelIndexCounter })
+        positions.set(node.id, {
+          x,
+          y,
+          level: yLevel,
+          groupLevel: level,
+          levelIndex: levelIndexCounter,
+        })
         levelIndexCounter += 1
         if (x < globalMinX) globalMinX = x
         if (x > rightmostAssigned) rightmostAssigned = x
@@ -1429,7 +1443,14 @@ function buildLevelsFromEdges(centerKey, edges) {
   return levels
 }
 
-export function layoutNodesHierarchically(nodes, edges, centerId) {
+export function layoutNodesHierarchically(
+  nodes,
+  edges,
+  centerId,
+  options = {}
+) {
+  const depthLookup =
+    options?.depthLookup instanceof Map ? options.depthLookup : null
   const normalizedNodes = Array.isArray(nodes)
     ? nodes.map((node) => ({
         ...node,
@@ -1580,26 +1601,33 @@ export function layoutNodesHierarchically(nodes, edges, centerId) {
     nodeLookup,
     { centerId: centerKey }
   )
-  const positions = assignPositions(groups, primaryParentByNode)
+  const positions = assignPositions(groups, primaryParentByNode, {
+    depthLookup,
+  })
 
   return normalizedNodes.map((node) => {
     const rawLevel = levels.get(node.id) ?? 0
     const visualLevel = visualLevels.get(node.id) ?? rawLevel
+    const depthOverride = depthLookup?.get(node.id)
+    const fallbackLevel = depthOverride != null ? depthOverride : visualLevel
     const fallbackPlacement = {
       x: node?.position?.x ?? 0,
-      y: visualLevel * LEVEL_VERTICAL_SPACING,
-      level: visualLevel,
+      y: fallbackLevel * LEVEL_VERTICAL_SPACING,
+      level: fallbackLevel,
+      groupLevel: visualLevel,
       levelIndex: node?.data?.levelIndex ?? 0,
     }
     const placement = positions.get(node.id) || fallbackPlacement
+    const resolvedLevel = placement.level ?? fallbackLevel
     return {
       ...node,
       position: { x: placement.x, y: placement.y },
       data: {
         ...node.data,
         level: rawLevel,
-        visualLevel: placement.level ?? visualLevel,
+        visualLevel: placement.groupLevel ?? visualLevel,
         levelIndex: placement.levelIndex,
+        depthLevel: resolvedLevel,
       },
     }
   })
