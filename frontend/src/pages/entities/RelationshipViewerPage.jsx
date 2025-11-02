@@ -488,10 +488,10 @@ export default function RelationshipViewerPage() {
         graphAdjacencyRef.current instanceof Map
           ? graphAdjacencyRef.current
           : new Map()
-      const depthLookup =
-        nodeDepthLookupRef.current instanceof Map
-          ? nodeDepthLookupRef.current
-          : new Map()
+      if (!(nodeDepthLookupRef.current instanceof Map)) {
+        nodeDepthLookupRef.current = new Map()
+      }
+      const depthLookup = nodeDepthLookupRef.current
 
       const relationshipDepthLimit = Number.isFinite(Number(relationshipDepth))
         ? Number(relationshipDepth)
@@ -513,6 +513,7 @@ export default function RelationshipViewerPage() {
         if (!currentId) continue
 
         const parentDepth = depthLookup.get(currentId)
+        const normalizedParentDepth = parentDepth != null ? parentDepth : 0
         if (
           relationshipDepthLimit != null &&
           parentDepth != null &&
@@ -537,11 +538,17 @@ export default function RelationshipViewerPage() {
           const childId = childRaw != null ? String(childRaw) : null
           if (!childId || childId === currentId) return
 
-          const childDepth = depthLookup.get(childId)
+          const proposedDepth = normalizedParentDepth + 1
+          const existingDepth = depthLookup.get(childId)
+          if (existingDepth == null || existingDepth <= normalizedParentDepth) {
+            depthLookup.set(childId, proposedDepth)
+          }
+
+          const effectiveDepth = depthLookup.get(childId)
           if (
             relationshipDepthLimit != null &&
-            childDepth != null &&
-            childDepth > relationshipDepthLimit
+            effectiveDepth != null &&
+            effectiveDepth > relationshipDepthLimit
           ) {
             return
           }
@@ -716,7 +723,9 @@ export default function RelationshipViewerPage() {
         if (!didAddNode) return prevNodes
 
         return applyUserPlacedPositions(
-          layoutNodesHierarchically(nextNodes, edgesForLayout)
+          layoutNodesHierarchically(nextNodes, edgesForLayout, undefined, {
+            depthLookup,
+          })
         )
       })
     },
@@ -960,6 +969,33 @@ export default function RelationshipViewerPage() {
         manuallyReleasedEntitiesRef.current.add(String(id))
       })
 
+      if (!(nodeDepthLookupRef.current instanceof Map)) {
+        nodeDepthLookupRef.current = new Map()
+      }
+      const depthLookup = nodeDepthLookupRef.current
+
+      const clusterDepth = depthLookup.get(clusterId)
+      validNodesWithDefinitions.forEach(({ id, meta }) => {
+        const normalizedId = String(id)
+        const parentId =
+          meta?.parentId != null ? String(meta.parentId) : clusterParentId
+        const parentDepth = parentId ? depthLookup.get(parentId) : null
+        const baseDepth =
+          parentDepth != null
+            ? parentDepth
+            : clusterDepth != null
+            ? clusterDepth
+            : null
+
+        if (baseDepth != null) {
+          const proposedDepth = baseDepth + 1
+          const existingDepth = depthLookup.get(normalizedId)
+          if (existingDepth == null || existingDepth <= baseDepth) {
+            depthLookup.set(normalizedId, proposedDepth)
+          }
+        }
+      })
+
       const relationshipLabel =
         clusterMeta.relationshipType || clusterMeta.label || 'Related'
 
@@ -975,10 +1011,6 @@ export default function RelationshipViewerPage() {
       const adjacency =
         graphAdjacencyRef.current instanceof Map
           ? graphAdjacencyRef.current
-          : new Map()
-      const depthLookup =
-        nodeDepthLookupRef.current instanceof Map
-          ? nodeDepthLookupRef.current
           : new Map()
 
       const relationshipDepthLimit = Number.isFinite(Number(relationshipDepth))
@@ -1048,7 +1080,8 @@ export default function RelationshipViewerPage() {
             }
 
             if (plannedNodeIds.has(childId)) {
-              if (!depthLookup.has(childId)) {
+              const existingDepth = depthLookup.get(childId)
+              if (existingDepth == null || existingDepth <= parentDepth) {
                 depthLookup.set(childId, nextDepth)
               }
               if (breakoutIds.has(childId)) {
@@ -1329,7 +1362,9 @@ export default function RelationshipViewerPage() {
         }
 
         return applyUserPlacedPositions(
-          layoutNodesHierarchically(mappedNodes, edgesForLayout)
+          layoutNodesHierarchically(mappedNodes, edgesForLayout, undefined, {
+            depthLookup,
+          })
         )
       })
 
@@ -1348,10 +1383,10 @@ export default function RelationshipViewerPage() {
           graphAdjacencyRef.current instanceof Map
             ? graphAdjacencyRef.current
             : new Map()
-        const depthLookup =
-          nodeDepthLookupRef.current instanceof Map
-            ? nodeDepthLookupRef.current
-            : new Map()
+        if (!(nodeDepthLookupRef.current instanceof Map)) {
+          nodeDepthLookupRef.current = new Map()
+        }
+        const depthLookup = nodeDepthLookupRef.current
         const suppressedNodesMap =
           suppressedNodesRef.current instanceof Map
             ? suppressedNodesRef.current
@@ -1387,7 +1422,10 @@ export default function RelationshipViewerPage() {
 
           const childEdges = adjacency.get(parentId) || []
           const parentDepth = depthLookup.get(parentId)
-          const nextDepth = Number.isFinite(parentDepth) ? parentDepth + 1 : null
+          const normalizedParentDepth = Number.isFinite(parentDepth)
+            ? parentDepth
+            : 0
+          const nextDepth = normalizedParentDepth + 1
 
           childEdges.forEach((edge) => {
             if (!edge) return
@@ -1431,7 +1469,8 @@ export default function RelationshipViewerPage() {
 
             manuallyReleasedEntitiesRef.current.add(childId)
 
-            if (nextDepth != null) {
+            const existingDepth = depthLookup.get(childId)
+            if (existingDepth == null || existingDepth <= normalizedParentDepth) {
               depthLookup.set(childId, nextDepth)
             }
 
@@ -1506,7 +1545,12 @@ export default function RelationshipViewerPage() {
             if (!appendableNodes.length) return prev
 
             const nextNodes = [...prev, ...appendableNodes]
-            const relaid = layoutNodesHierarchically(nextNodes, edgesRef.current)
+            const relaid = layoutNodesHierarchically(
+              nextNodes,
+              edgesRef.current,
+              undefined,
+              { depthLookup }
+            )
             return applyUserPlacedPositions(relaid)
           })
         }
@@ -1955,8 +1999,15 @@ export default function RelationshipViewerPage() {
           }
         })
 
+        const depthLookup =
+          nodeDepthLookupRef.current instanceof Map
+            ? nodeDepthLookupRef.current
+            : undefined
+
         return applyUserPlacedPositions(
-          layoutNodesHierarchically(mappedNodes, filteredEdges)
+          layoutNodesHierarchically(mappedNodes, filteredEdges, undefined, {
+            depthLookup,
+          })
         )
       })
 
@@ -2403,7 +2454,16 @@ export default function RelationshipViewerPage() {
     setNodes((currentNodes) => {
       if (!currentNodes?.length) return currentNodes
 
-      const layouted = layoutNodesHierarchically(currentNodes, edges, entityId)
+      const depthLookup =
+        nodeDepthLookupRef.current instanceof Map
+          ? nodeDepthLookupRef.current
+          : undefined
+      const layouted = layoutNodesHierarchically(
+        currentNodes,
+        edges,
+        entityId,
+        { depthLookup }
+      )
 
       const positionMap = new Map(
         layouted.map((node) => [String(node.id), { ...node.position }])
