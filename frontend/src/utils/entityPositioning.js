@@ -848,8 +848,20 @@ function buildPrimaryParentMap(
 
     if (!parentId || !childId || parentId === childId) return
 
-    if (!parentsByChild.has(childId)) parentsByChild.set(childId, new Set())
-    parentsByChild.get(childId).add(parentId)
+    const relationshipLabel = extractEdgeRelationshipLabel(edge)
+    const indicatesParental =
+      Boolean(relationshipLabel) &&
+      (isParentRelation(relationshipLabel) ||
+        LAYOUT_PARENT_TO_CHILD_PATTERN.test(relationshipLabel))
+
+    const metadata = {
+      parentId,
+      relationshipLabel,
+      indicatesParental,
+    }
+
+    if (!parentsByChild.has(childId)) parentsByChild.set(childId, [])
+    parentsByChild.get(childId).push(metadata)
   })
 
   const result = new Map()
@@ -858,8 +870,11 @@ function buildPrimaryParentMap(
     let selectedParent = null
     let selectedLevel = Infinity
     let selectedLabel = ''
+    let selectedMetadata = null
 
-    parents.forEach((parentId) => {
+    parents.forEach((parentInfo) => {
+      if (!parentInfo) return
+      const parentId = parentInfo.parentId
       const levelValue = levels.get(parentId)
       if (typeof levelValue !== 'number' || !Number.isFinite(levelValue)) return
 
@@ -870,13 +885,25 @@ function buildPrimaryParentMap(
         selectedParent = parentId
         selectedLevel = levelValue
         selectedLabel = labelValue
+        selectedMetadata = parentInfo
         return
       }
 
       if (levelValue === selectedLevel) {
+        const previousIsParental = Boolean(selectedMetadata?.indicatesParental)
+        const currentIsParental = Boolean(parentInfo?.indicatesParental)
+
+        if (currentIsParental && !previousIsParental) {
+          selectedParent = parentId
+          selectedLabel = labelValue
+          selectedMetadata = parentInfo
+          return
+        }
+
         if (labelValue.localeCompare(selectedLabel) < 0) {
           selectedParent = parentId
           selectedLabel = labelValue
+          selectedMetadata = parentInfo
         }
       }
     })
