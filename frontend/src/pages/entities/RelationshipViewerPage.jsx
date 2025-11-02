@@ -257,6 +257,19 @@ export default function RelationshipViewerPage() {
   const nodeDepthLookupRef = useRef(new Map())
   const visibilityReevaluationTimeoutRef = useRef(null)
 
+  const setDepthPreservingManualRelease = (map, nodeId, depth) => {
+    if (!(map instanceof Map)) return
+    if (nodeId == null) return
+    const normalizedId = String(nodeId)
+    if (!normalizedId) return
+    if (depth == null || Number.isNaN(depth)) return
+    const manualSet = manuallyReleasedEntitiesRef.current
+    if (manualSet.has(normalizedId) && map.has(normalizedId)) {
+      return
+    }
+    map.set(normalizedId, depth)
+  }
+
   const applyUserPlacedPositions = useCallback((nodeList) => {
     if (!Array.isArray(nodeList) || !nodeList.length) return nodeList
     const positionOverrides = userPlacedPositionsRef.current
@@ -541,7 +554,7 @@ export default function RelationshipViewerPage() {
           const proposedDepth = normalizedParentDepth + 1
           const existingDepth = depthLookup.get(childId)
           if (existingDepth == null || proposedDepth < existingDepth) {
-            depthLookup.set(childId, proposedDepth)
+            setDepthPreservingManualRelease(depthLookup, childId, proposedDepth)
           }
 
           const effectiveDepth = depthLookup.get(childId)
@@ -833,6 +846,9 @@ export default function RelationshipViewerPage() {
           : null
 
       const selectedId = selectedIdRaw != null ? String(selectedIdRaw) : null
+      if (selectedId && manuallyReleasedEntitiesRef.current.has(selectedId)) {
+        return
+      }
 
       const allNodeDefinitions = new Map()
       if (Array.isArray(nodesRef.current)) {
@@ -943,6 +959,17 @@ export default function RelationshipViewerPage() {
         nodesRef.current.map((node) => String(node.id))
       )
 
+      const clusterHiddenSet = new Set(
+        Array.isArray(clusterMeta.containedIds)
+          ? clusterMeta.containedIds.map((value) => String(value))
+          : []
+      )
+      const clusterPlacedSet = new Set(
+        Array.isArray(clusterMeta.placedEntityIds)
+          ? clusterMeta.placedEntityIds.map((value) => String(value))
+          : []
+      )
+
       const validNodesWithDefinitions = nodesWithDefinitions.filter(
         ({ meta }) => {
           const parentId =
@@ -967,6 +994,9 @@ export default function RelationshipViewerPage() {
 
       validNodesWithDefinitions.forEach(({ id }) => {
         manuallyReleasedEntitiesRef.current.add(String(id))
+        const normalizedId = String(id)
+        clusterHiddenSet.delete(normalizedId)
+        clusterPlacedSet.add(normalizedId)
       })
 
       const clusterDepth = depthLookup.get(clusterId)
@@ -986,7 +1016,7 @@ export default function RelationshipViewerPage() {
           const proposedDepth = baseDepth + 1
           const existingDepth = depthLookup.get(normalizedId)
           if (existingDepth == null || proposedDepth < existingDepth) {
-            depthLookup.set(normalizedId, proposedDepth)
+            setDepthPreservingManualRelease(depthLookup, normalizedId, proposedDepth)
           }
         }
       })
@@ -1079,9 +1109,9 @@ export default function RelationshipViewerPage() {
             }
 
             if (plannedNodeIds.has(childId)) {
-              if (!depthLookup.has(childId)) {
-                depthLookup.set(childId, nextDepth)
-              }
+          if (!depthLookup.has(childId)) {
+            setDepthPreservingManualRelease(depthLookup, childId, nextDepth)
+          }
               if (breakoutIds.has(childId)) {
                 queue.push(childId)
               }
@@ -1145,13 +1175,13 @@ export default function RelationshipViewerPage() {
                 plannedNodeIds.add(childId)
                 breakoutIds.add(childId)
                 queue.push(childId)
-                depthLookup.set(childId, nextDepth)
+                setDepthPreservingManualRelease(depthLookup, childId, nextDepth)
                 allNodeDefinitions.set(childId, definitionToAdd)
               }
             }
 
             if (!depthLookup.has(childId)) {
-              depthLookup.set(childId, nextDepth)
+              setDepthPreservingManualRelease(depthLookup, childId, nextDepth)
             }
 
             const reactFlowEdge = convertNormalizedEdgeToReactFlow(edge)
@@ -1172,7 +1202,7 @@ export default function RelationshipViewerPage() {
         }
       }
 
-      const remainingHidden = clusterMeta.containedIds.filter((id) =>
+      const remainingHidden = Array.from(clusterHiddenSet).filter((id) =>
         suppressedNodes.has(String(id))
       )
 
@@ -1180,13 +1210,30 @@ export default function RelationshipViewerPage() {
         const next = { ...prev }
         let changed = false
         validNodesWithDefinitions.forEach(({ id }) => {
-          if (next[id]) return
-          next[id] = {
-            clusterId: clusterMeta.id,
+          const key = String(id)
+          const allContained = Array.isArray(clusterMeta.allContainedIds)
+            ? clusterMeta.allContainedIds.map((value) => String(value))
+            : Array.isArray(clusterMeta.containedIds)
+            ? clusterMeta.containedIds.map((value) => String(value))
+            : []
+          const nextValue = {
+            clusterId: String(clusterMeta.id),
             relationshipType: clusterMeta.relationshipType || null,
             sourceId: clusterMeta.parentId || null,
+            containedIds: allContained,
+            allContainedIds: allContained,
           }
-          changed = true
+
+          const existing = next[key]
+          if (
+            !existing ||
+            existing.clusterId !== nextValue.clusterId ||
+            existing.relationshipType !== nextValue.relationshipType ||
+            existing.sourceId !== nextValue.sourceId
+          ) {
+            next[key] = nextValue
+            changed = true
+          }
         })
         return changed ? next : prev
       })
@@ -1325,15 +1372,22 @@ export default function RelationshipViewerPage() {
         })
 
         const orderedPlaced = Array.from(placedEntityIds)
+        const updatedHidden = Array.from(clusterHiddenSet)
+        const updatedPlaced = Array.from(clusterPlacedSet)
         const updatedLabel = `${relationshipLabel} (${remainingHidden.length})`
 
         let mappedNodes = nextNodes.map((node) => {
           if (String(node.id) !== clusterId || node.type !== 'cluster') return node
+          const totalCount = Array.isArray(clusterMeta.allContainedIds)
+            ? clusterMeta.allContainedIds.length
+            : node.data?.totalCount ?? orderedPlaced.length + remainingHidden.length
           return {
             ...node,
             data: {
               ...node.data,
               placedEntityIds: orderedPlaced,
+              hiddenContainedIds: updatedHidden,
+              totalCount,
               label: updatedLabel,
             },
           }
@@ -1367,10 +1421,24 @@ export default function RelationshipViewerPage() {
       })
 
       const normalizedLabel = `${relationshipLabel} (${remainingHidden.length})`
+      const normalizedHidden = Array.from(clusterHiddenSet)
+      const normalizedPlaced = Array.from(clusterPlacedSet)
       clusterMeta.label = normalizedLabel
+      clusterMeta.containedIds = normalizedHidden
+      clusterMeta.placedEntityIds = normalizedPlaced
+      const allCount = Array.isArray(clusterMeta.allContainedIds)
+        ? clusterMeta.allContainedIds.length
+        : normalizedHidden.length + normalizedPlaced.length
+      clusterMeta.totalCount = allCount
       clustersRef.current = clustersRef.current.map((cluster) =>
         String(cluster.id) === clusterId
-          ? { ...cluster, label: normalizedLabel }
+          ? {
+              ...cluster,
+              label: normalizedLabel,
+              containedIds: normalizedHidden,
+              placedEntityIds: normalizedPlaced,
+              totalCount: allCount,
+            }
           : cluster
       )
 
@@ -1469,7 +1537,7 @@ export default function RelationshipViewerPage() {
 
             const existingDepth = depthLookup.get(childId)
             if (existingDepth == null || nextDepth < existingDepth) {
-              depthLookup.set(childId, nextDepth)
+                setDepthPreservingManualRelease(depthLookup, childId, nextDepth)
             }
 
             const entityMeta = meta?.entity || null
@@ -1781,7 +1849,42 @@ export default function RelationshipViewerPage() {
 
     const clusterRecord = clustersRef.current.find((cluster) => cluster.id === clusterId)
     if (clusterRecord) {
-      const remainingHidden = clusterInfo.containedIds.filter((id) =>
+      const hiddenSet = new Set(
+        Array.isArray(clusterRecord.containedIds)
+          ? clusterRecord.containedIds.map((value) => String(value))
+          : []
+      )
+      const placedSet = new Set(
+        Array.isArray(clusterRecord.placedEntityIds)
+          ? clusterRecord.placedEntityIds.map((value) => String(value))
+          : []
+      )
+
+      hiddenSet.add(entityId)
+      placedSet.delete(entityId)
+
+      descendantIdsToRemove.forEach((childId) => {
+        hiddenSet.add(String(childId))
+        placedSet.delete(String(childId))
+      })
+
+      const allSet = new Set(
+        Array.isArray(clusterRecord.allContainedIds)
+          ? clusterRecord.allContainedIds.map((value) => String(value))
+          : [...hiddenSet, ...placedSet]
+      )
+      allSet.add(entityId)
+      descendantIdsToRemove.forEach((childId) => allSet.add(String(childId)))
+
+      const hiddenList = Array.from(hiddenSet)
+      const placedList = Array.from(placedSet)
+      const allList = Array.from(allSet)
+
+      clusterRecord.containedIds = hiddenList
+      clusterRecord.placedEntityIds = placedList
+      clusterRecord.allContainedIds = allList
+
+      const remainingHidden = hiddenList.filter((id) =>
         suppressedNodesRef.current.has(String(id))
       )
       const updatedLabel = `${
@@ -1789,7 +1892,15 @@ export default function RelationshipViewerPage() {
       } (${remainingHidden.length})`
       clusterRecord.label = updatedLabel
       clustersRef.current = clustersRef.current.map((cluster) =>
-        cluster.id === clusterId ? { ...cluster, label: updatedLabel } : cluster
+        cluster.id === clusterId
+          ? {
+              ...cluster,
+              label: updatedLabel,
+              containedIds: hiddenList,
+              placedEntityIds: placedList,
+              allContainedIds: allList,
+            }
+          : cluster
       )
       setNodes((prevNodes) =>
         prevNodes.map((node) => {
@@ -1799,6 +1910,16 @@ export default function RelationshipViewerPage() {
             data: {
               ...node.data,
               label: updatedLabel,
+              hiddenContainedIds: hiddenList,
+              placedEntityIds: placedList,
+              containedIds:
+                Array.isArray(node.data?.containedIds)
+                  ? node.data.containedIds
+                  : allList,
+              totalCount:
+                Array.isArray(clusterRecord.allContainedIds)
+                  ? clusterRecord.allContainedIds.length
+                  : node.data?.totalCount ?? hiddenList.length + placedList.length,
             },
           }
         })
@@ -1827,8 +1948,11 @@ export default function RelationshipViewerPage() {
         if (!cluster) return false
         const normalizedParent = cluster?.parentId != null ? String(cluster.parentId) : null
         if (normalizedParent && parentId && normalizedParent !== parentId) return false
-        return Array.isArray(cluster?.containedIds)
-          ? cluster.containedIds.some((value) => String(value) === String(childId))
+        const candidateIds = Array.isArray(cluster?.allContainedIds)
+          ? cluster.allContainedIds
+          : cluster?.containedIds
+        return Array.isArray(candidateIds)
+          ? candidateIds.some((value) => String(value) === String(childId))
           : false
       })
 
@@ -1886,7 +2010,10 @@ export default function RelationshipViewerPage() {
       const suppressedNodes = suppressedNodesRef.current
       const suppressedMeta = suppressedNodeMetaRef.current
 
-      const entitiesToCollapse = clusterMeta.containedIds.filter((id) =>
+      const collapseSource = Array.isArray(clusterMeta.allContainedIds)
+        ? clusterMeta.allContainedIds
+        : clusterMeta.containedIds
+      const entitiesToCollapse = collapseSource.filter((id) =>
         nodesRef.current.some((node) => String(node.id) === String(id))
       )
 
@@ -1898,6 +2025,8 @@ export default function RelationshipViewerPage() {
       entitiesToCollapse.forEach((entityId) => {
         const key = String(entityId)
         manuallyReleasedEntitiesRef.current.delete(key)
+        clusterPlacedSet.delete(key)
+        clusterHiddenSet.add(key)
         userPlacedPositionsRef.current.delete(key)
         const node = nodesRef.current.find((graphNode) => String(graphNode.id) === key)
         if (node?.type === 'entity') {
@@ -1967,15 +2096,37 @@ export default function RelationshipViewerPage() {
         return changed ? next : prev
       })
 
-      const remainingHidden = clusterMeta.containedIds.filter((id) =>
+      const allList = Array.isArray(clusterMeta.allContainedIds)
+        ? clusterMeta.allContainedIds.map((value) => String(value))
+        : []
+      const hiddenList = Array.from(clusterHiddenSet)
+      const placedList = Array.from(clusterPlacedSet)
+      const normalizedAll = Array.from(
+        new Set([...allList, ...hiddenList, ...placedList])
+      )
+      const remainingHidden = hiddenList.filter((id) =>
         suppressedNodes.has(String(id))
       )
       const updatedLabel = `${
         clusterMeta.relationshipType || clusterMeta.label || 'Related'
       } (${remainingHidden.length})`
       clusterMeta.label = updatedLabel
+      clusterMeta.containedIds = hiddenList
+      clusterMeta.placedEntityIds = placedList
+      clusterMeta.allContainedIds = normalizedAll
+      const allCount = normalizedAll.length
+      clusterMeta.totalCount = allCount
       clustersRef.current = clustersRef.current.map((cluster) =>
-        String(cluster.id) === clusterId ? { ...cluster, label: updatedLabel } : cluster
+        String(cluster.id) === clusterId
+          ? {
+              ...cluster,
+              label: updatedLabel,
+              containedIds: hiddenList,
+              placedEntityIds: placedList,
+              allContainedIds: normalizedAll,
+              totalCount: allCount,
+            }
+          : cluster
       )
 
       setNodes((prev) => {
@@ -1985,13 +2136,16 @@ export default function RelationshipViewerPage() {
 
         const mappedNodes = filteredNodes.map((node) => {
           if (String(node.id) !== clusterId || node.type !== 'cluster') return node
+          const totalCount = Array.isArray(clusterMeta.allContainedIds)
+            ? clusterMeta.allContainedIds.length
+            : node.data?.totalCount ?? placedList.length + hiddenList.length
           return {
             ...node,
             data: {
               ...node.data,
-              placedEntityIds: clusterMeta.containedIds.filter((id) =>
-                !suppressedNodes.has(String(id))
-              ),
+              placedEntityIds: placedList,
+              hiddenContainedIds: hiddenList,
+              totalCount,
               label: updatedLabel,
             },
           }
@@ -2202,6 +2356,15 @@ export default function RelationshipViewerPage() {
           const decorateNode = (node) => {
             if (!node) return null
             if (node.type === 'cluster') {
+              const rawContainedIds = Array.isArray(node?.data?.containedIds)
+                ? node.data.containedIds.map((value) => String(value))
+                : []
+              const placedEntityIds = rawContainedIds.filter((value) =>
+                manualReleaseSet.has(String(value))
+              )
+              const hiddenContainedIds = rawContainedIds.filter(
+                (value) => !manualReleaseSet.has(String(value))
+              )
               return {
                 ...node,
                 data: {
@@ -2212,7 +2375,10 @@ export default function RelationshipViewerPage() {
                   onCollapseCluster: handleCollapseEntityToCluster,
                   onSetTargetEntity: handleSetTargetEntity,
                   onOpenEntityInfo: handleOpenEntityInfo,
-                  placedEntityIds: [],
+                  placedEntityIds,
+                  containedIds: rawContainedIds,
+                  hiddenContainedIds,
+                  totalCount: rawContainedIds.length,
                 },
               }
             }
@@ -2323,24 +2489,37 @@ export default function RelationshipViewerPage() {
           })
           hiddenClusterIdsRef.current = initialHidden
 
-          const normalizedClusters = clusterSource.map((clusterNode) => ({
-            id: String(clusterNode.id),
-            relationshipType:
-              clusterNode?.data?.relationshipType ||
-              clusterNode?.data?.label ||
-              'Related',
-            label:
-              clusterNode?.data?.label ||
-              clusterNode?.data?.relationshipType ||
-              'Related',
-            containedIds: (clusterNode?.data?.containedIds || []).map((value) =>
-              String(value)
-            ),
-            parentId:
-              clusterNode?.data?.sourceId != null
-                ? String(clusterNode.data.sourceId)
-                : null,
-          }))
+          const normalizedClusters = clusterSource.map((clusterNode) => {
+            const allContainedIds = (clusterNode?.data?.containedIds || []).map(
+              (value) => String(value)
+            )
+            const placedEntityIds = allContainedIds.filter((value) =>
+              manualReleaseSet.has(String(value))
+            )
+            const hiddenContainedIds = allContainedIds.filter(
+              (value) => !manualReleaseSet.has(String(value))
+            )
+
+            return {
+              id: String(clusterNode.id),
+              relationshipType:
+                clusterNode?.data?.relationshipType ||
+                clusterNode?.data?.label ||
+                'Related',
+              label:
+                clusterNode?.data?.label ||
+                clusterNode?.data?.relationshipType ||
+                'Related',
+              containedIds: hiddenContainedIds,
+              allContainedIds,
+              placedEntityIds,
+              totalCount: allContainedIds.length,
+              parentId:
+                clusterNode?.data?.sourceId != null
+                  ? String(clusterNode.data.sourceId)
+                  : null,
+            }
+          })
 
           clustersRef.current = normalizedClusters
 
