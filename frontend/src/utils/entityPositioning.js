@@ -15,6 +15,7 @@ const LEVEL_HORIZONTAL_SPACING =
 const LEVEL_VERTICAL_SPACING =
   DEFAULT_ENTITY_HEIGHT + HIERARCHY_VERTICAL_PADDING
 const CLUSTER_ENTITY_HORIZONTAL_SPACING = DEFAULT_ENTITY_WIDTH + CLUSTER_ENTITY_GAP
+const MIN_HORIZONTAL_GAP = DEFAULT_ENTITY_WIDTH + 40 // buffer for spacing
 
 const PARENT_RELATION_PATTERN =
   /(part of|owned by|managed by|works for|reports to|child of|belongs to|member of|subsidiary of|division of|child)/i
@@ -39,6 +40,30 @@ function isClusterNodeType(node) {
   if (!node) return false
   const type = node?.type
   return type === 'cluster' || type === 'clusterNode'
+}
+
+function getNodeDimensions(node) {
+  if (!node) {
+    return {
+      width: DEFAULT_ENTITY_WIDTH,
+      height: DEFAULT_ENTITY_HEIGHT,
+    }
+  }
+
+  const numericWidth = Number(node?.width)
+  const numericHeight = Number(node?.height)
+  const width = Number.isFinite(numericWidth)
+    ? numericWidth
+    : isClusterNodeType(node)
+    ? DEFAULT_CLUSTER_WIDTH
+    : DEFAULT_ENTITY_WIDTH
+  const height = Number.isFinite(numericHeight)
+    ? numericHeight
+    : isClusterNodeType(node)
+    ? DEFAULT_CLUSTER_HEIGHT
+    : DEFAULT_ENTITY_HEIGHT
+
+  return { width, height }
 }
 
 // Determines if a given entity lies along the visible relationship chain
@@ -823,8 +848,25 @@ function buildPrimaryParentMap(
 
     if (!parentId || !childId || parentId === childId) return
 
-    if (!parentsByChild.has(childId)) parentsByChild.set(childId, new Set())
-    parentsByChild.get(childId).add(parentId)
+    const relationshipLabel = extractEdgeRelationshipLabel(edge)
+    const relationshipName = extractEdgeRelationshipName(edge)
+    const relationshipKey =
+      normalizeRelationshipKey(relationshipLabel) ||
+      normalizeRelationshipKey(relationshipName)
+    const indicatesParental =
+      Boolean(relationshipLabel) &&
+      (isParentRelation(relationshipLabel) ||
+        LAYOUT_PARENT_TO_CHILD_PATTERN.test(relationshipLabel))
+
+    const metadata = {
+      parentId,
+      relationshipKey,
+      relationshipName,
+      indicatesParental,
+    }
+
+    if (!parentsByChild.has(childId)) parentsByChild.set(childId, [])
+    parentsByChild.get(childId).push(metadata)
   })
 
   const result = new Map()
@@ -833,8 +875,13 @@ function buildPrimaryParentMap(
     let selectedParent = null
     let selectedLevel = Infinity
     let selectedLabel = ''
+    let selectedMetadata = null
+    let selectedRelationshipKey = ''
+    let selectedRelationshipName = ''
 
-    parents.forEach((parentId) => {
+    parents.forEach((parentInfo) => {
+      if (!parentInfo) return
+      const parentId = parentInfo.parentId
       const levelValue = levels.get(parentId)
       if (typeof levelValue !== 'number' || !Number.isFinite(levelValue)) return
 
@@ -845,19 +892,48 @@ function buildPrimaryParentMap(
         selectedParent = parentId
         selectedLevel = levelValue
         selectedLabel = labelValue
+        selectedMetadata = parentInfo
+        selectedRelationshipKey = normalizeRelationshipKey(
+          parentInfo?.relationshipKey
+        )
+        selectedRelationshipName = parentInfo?.relationshipName ?? ''
         return
       }
 
       if (levelValue === selectedLevel) {
+        const previousIsParental = Boolean(selectedMetadata?.indicatesParental)
+        const currentIsParental = Boolean(parentInfo?.indicatesParental)
+
+        if (currentIsParental && !previousIsParental) {
+          selectedParent = parentId
+          selectedLabel = labelValue
+          selectedMetadata = parentInfo
+          selectedRelationshipKey = normalizeRelationshipKey(
+            parentInfo?.relationshipKey
+          )
+          selectedRelationshipName = parentInfo?.relationshipName ?? ''
+          return
+        }
+
         if (labelValue.localeCompare(selectedLabel) < 0) {
           selectedParent = parentId
           selectedLabel = labelValue
+          selectedMetadata = parentInfo
+          selectedRelationshipKey = normalizeRelationshipKey(
+            parentInfo?.relationshipKey
+          )
+          selectedRelationshipName = parentInfo?.relationshipName ?? ''
         }
       }
     })
 
     if (selectedParent != null) {
-      result.set(childId, selectedParent)
+      result.set(childId, {
+        parentId: selectedParent,
+        relationshipKey: selectedRelationshipKey,
+        relationshipName: selectedRelationshipName,
+        indicatesParental: Boolean(selectedMetadata?.indicatesParental),
+      })
     }
   })
 
@@ -918,11 +994,88 @@ function buildPrimaryParentMap(
     }
 
     if (resolvedParent) {
-      result.set(nodeId, resolvedParent)
+      const relationshipNameCandidates = [
+        typeof node?.data?.relationshipType === 'string'
+          ? node.data.relationshipType
+          : null,
+        typeof node?.relationshipType === 'string'
+          ? node.relationshipType
+          : null,
+      ].filter((value) => typeof value === 'string' && value.trim())
+
+      const relationshipName = relationshipNameCandidates.length
+        ? relationshipNameCandidates[0].trim()
+        : ''
+      const relationshipKey = normalizeRelationshipKey(relationshipName)
+
+      result.set(nodeId, {
+        parentId: resolvedParent,
+        relationshipKey,
+        relationshipName,
+      })
     }
   })
 
   return result
+}
+
+function getPrimaryParentInfo(primaryParentByNode, nodeId) {
+  if (!primaryParentByNode || !nodeId) return null
+  const value = primaryParentByNode.get(nodeId)
+  if (!value) return null
+
+  if (typeof value === 'string') {
+    return {
+      parentId: value,
+      relationshipKey: '',
+      relationshipName: '',
+    }
+  }
+
+  if (typeof value === 'object') {
+    const parentId =
+      value?.parentId != null
+        ? String(value.parentId)
+        : value?.sourceId != null
+        ? String(value.sourceId)
+        : null
+
+    return {
+      parentId,
+      relationshipKey: normalizeRelationshipKey(value?.relationshipKey),
+      relationshipName:
+        typeof value?.relationshipName === 'string'
+          ? value.relationshipName
+          : '',
+    }
+  }
+
+  return null
+}
+
+function createSiblingComparator(primaryParentByNode) {
+  return (a, b) => {
+    if (!a && !b) return 0
+    if (!a) return 1
+    if (!b) return -1
+
+    const infoA = getPrimaryParentInfo(primaryParentByNode, a.id)
+    const infoB = getPrimaryParentInfo(primaryParentByNode, b.id)
+
+    const keyA = infoA?.relationshipKey || ''
+    const keyB = infoB?.relationshipKey || ''
+
+    if (keyA && keyB) {
+      const keyCompare = keyA.localeCompare(keyB)
+      if (keyCompare !== 0) return keyCompare
+    } else if (keyA) {
+      return -1
+    } else if (keyB) {
+      return 1
+    }
+
+    return compareNodesByLabel(a, b)
+  }
 }
 
 function assignPositions(groups, primaryParentByNode = new Map()) {
@@ -941,7 +1094,8 @@ function assignPositions(groups, primaryParentByNode = new Map()) {
     const levelOccupied = new Set()
 
     nodesAtLevel.forEach((node) => {
-      const parentId = primaryParentByNode.get(node.id)
+      const info = getPrimaryParentInfo(primaryParentByNode, node.id)
+      const parentId = info?.parentId ?? null
       const parentPosition = parentId ? positions.get(parentId) : null
       if (parentId && parentPosition) {
         if (!groupedByParent.has(parentId)) groupedByParent.set(parentId, [])
@@ -953,6 +1107,7 @@ function assignPositions(groups, primaryParentByNode = new Map()) {
     })
 
     const levelGroups = []
+    const siblingComparator = createSiblingComparator(primaryParentByNode)
 
     groupedByParent.forEach((children, parentId) => {
       const parentPosition = positions.get(parentId)
@@ -960,7 +1115,7 @@ function assignPositions(groups, primaryParentByNode = new Map()) {
         children.forEach((child) => orphans.push(child))
         return
       }
-      const sortedChildren = [...children].sort(compareNodesByLabel)
+      const sortedChildren = [...children].sort(siblingComparator)
       levelGroups.push({
         anchorX: parentPosition.x,
         nodes: sortedChildren,
@@ -1043,6 +1198,76 @@ function assignPositions(groups, primaryParentByNode = new Map()) {
     })
   })
 
+  const orderedNodeEntries = []
+  sortedLevels.forEach((level) => {
+    const nodesAtLevel = groups.get(level) || []
+    nodesAtLevel.forEach((node) => {
+      if (!node) return
+      const id = node?.id != null ? String(node.id) : null
+      if (!id) return
+      if (positions.has(id)) {
+        orderedNodeEntries.push({ id, node })
+      }
+    })
+  })
+
+  const positioned = []
+  orderedNodeEntries.forEach(({ id, node }) => {
+    const placement = positions.get(id)
+    if (!placement) return
+
+    const { width, height } = getNodeDimensions(node)
+    const level = placement.level ?? null
+    const current = {
+      id,
+      width,
+      height,
+      level,
+      position: { ...placement },
+    }
+
+    const isUserPlaced = Boolean(
+      (node?.data && node.data.isUserPlaced) || node?.isUserPlaced
+    )
+
+    if (!isUserPlaced) {
+      positioned.forEach((prev) => {
+        const sameLevel =
+          (current.level != null && prev.level != null && current.level === prev.level) ||
+          Math.abs(current.position.y - prev.position.y) <
+            Math.max(current.height, prev.height, DEFAULT_ENTITY_HEIGHT)
+        if (!sameLevel) return
+
+        const prevRightEdge = prev.position.x + prev.width
+        const minAllowedX = Math.max(
+          prev.position.x + MIN_HORIZONTAL_GAP,
+          prevRightEdge + 40
+        )
+        if (current.position.x < minAllowedX) {
+          current.position.x = minAllowedX
+        }
+      })
+    }
+
+    positions.set(id, {
+      ...placement,
+      x: current.position.x,
+    })
+
+    positioned.push({
+      id,
+      width: current.width,
+      height: current.height,
+      level: current.level,
+      position: { ...current.position },
+    })
+  })
+
+  globalMinX = Infinity
+  positions.forEach((value) => {
+    if (value.x < globalMinX) globalMinX = value.x
+  })
+
   const xOffset = Number.isFinite(globalMinX) && globalMinX < 0 ? -globalMinX : 0
   const adjusted = new Map()
   positions.forEach((value, key) => {
@@ -1092,6 +1317,45 @@ function extractEdgeRelationshipLabel(edge) {
     if (typeof candidate === 'string') {
       return candidate.toLowerCase()
     }
+  }
+
+  return ''
+}
+
+function extractEdgeRelationshipName(edge) {
+  if (!edge) return ''
+
+  const rawRelationship =
+    edge?.data?.relationshipType ??
+    edge?.relationshipType ??
+    edge?.label ??
+    edge?.relationshipLabel ??
+    ''
+
+  if (typeof rawRelationship === 'string') {
+    return rawRelationship.trim()
+  }
+
+  if (rawRelationship && typeof rawRelationship === 'object') {
+    const candidate =
+      rawRelationship?.label ??
+      rawRelationship?.name ??
+      rawRelationship?.from_label ??
+      rawRelationship?.to_label ??
+      ''
+
+    if (typeof candidate === 'string') {
+      return candidate.trim()
+    }
+  }
+
+  return ''
+}
+
+function normalizeRelationshipKey(value) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed ? trimmed.toLowerCase() : ''
   }
 
   return ''
