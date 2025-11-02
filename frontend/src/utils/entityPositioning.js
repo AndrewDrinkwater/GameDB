@@ -849,6 +849,10 @@ function buildPrimaryParentMap(
     if (!parentId || !childId || parentId === childId) return
 
     const relationshipLabel = extractEdgeRelationshipLabel(edge)
+    const relationshipName = extractEdgeRelationshipName(edge)
+    const relationshipKey =
+      normalizeRelationshipKey(relationshipLabel) ||
+      normalizeRelationshipKey(relationshipName)
     const indicatesParental =
       Boolean(relationshipLabel) &&
       (isParentRelation(relationshipLabel) ||
@@ -856,7 +860,8 @@ function buildPrimaryParentMap(
 
     const metadata = {
       parentId,
-      relationshipLabel,
+      relationshipKey,
+      relationshipName,
       indicatesParental,
     }
 
@@ -871,6 +876,8 @@ function buildPrimaryParentMap(
     let selectedLevel = Infinity
     let selectedLabel = ''
     let selectedMetadata = null
+    let selectedRelationshipKey = ''
+    let selectedRelationshipName = ''
 
     parents.forEach((parentInfo) => {
       if (!parentInfo) return
@@ -886,6 +893,10 @@ function buildPrimaryParentMap(
         selectedLevel = levelValue
         selectedLabel = labelValue
         selectedMetadata = parentInfo
+        selectedRelationshipKey = normalizeRelationshipKey(
+          parentInfo?.relationshipKey
+        )
+        selectedRelationshipName = parentInfo?.relationshipName ?? ''
         return
       }
 
@@ -897,6 +908,10 @@ function buildPrimaryParentMap(
           selectedParent = parentId
           selectedLabel = labelValue
           selectedMetadata = parentInfo
+          selectedRelationshipKey = normalizeRelationshipKey(
+            parentInfo?.relationshipKey
+          )
+          selectedRelationshipName = parentInfo?.relationshipName ?? ''
           return
         }
 
@@ -904,12 +919,21 @@ function buildPrimaryParentMap(
           selectedParent = parentId
           selectedLabel = labelValue
           selectedMetadata = parentInfo
+          selectedRelationshipKey = normalizeRelationshipKey(
+            parentInfo?.relationshipKey
+          )
+          selectedRelationshipName = parentInfo?.relationshipName ?? ''
         }
       }
     })
 
     if (selectedParent != null) {
-      result.set(childId, selectedParent)
+      result.set(childId, {
+        parentId: selectedParent,
+        relationshipKey: selectedRelationshipKey,
+        relationshipName: selectedRelationshipName,
+        indicatesParental: Boolean(selectedMetadata?.indicatesParental),
+      })
     }
   })
 
@@ -970,11 +994,88 @@ function buildPrimaryParentMap(
     }
 
     if (resolvedParent) {
-      result.set(nodeId, resolvedParent)
+      const relationshipNameCandidates = [
+        typeof node?.data?.relationshipType === 'string'
+          ? node.data.relationshipType
+          : null,
+        typeof node?.relationshipType === 'string'
+          ? node.relationshipType
+          : null,
+      ].filter((value) => typeof value === 'string' && value.trim())
+
+      const relationshipName = relationshipNameCandidates.length
+        ? relationshipNameCandidates[0].trim()
+        : ''
+      const relationshipKey = normalizeRelationshipKey(relationshipName)
+
+      result.set(nodeId, {
+        parentId: resolvedParent,
+        relationshipKey,
+        relationshipName,
+      })
     }
   })
 
   return result
+}
+
+function getPrimaryParentInfo(primaryParentByNode, nodeId) {
+  if (!primaryParentByNode || !nodeId) return null
+  const value = primaryParentByNode.get(nodeId)
+  if (!value) return null
+
+  if (typeof value === 'string') {
+    return {
+      parentId: value,
+      relationshipKey: '',
+      relationshipName: '',
+    }
+  }
+
+  if (typeof value === 'object') {
+    const parentId =
+      value?.parentId != null
+        ? String(value.parentId)
+        : value?.sourceId != null
+        ? String(value.sourceId)
+        : null
+
+    return {
+      parentId,
+      relationshipKey: normalizeRelationshipKey(value?.relationshipKey),
+      relationshipName:
+        typeof value?.relationshipName === 'string'
+          ? value.relationshipName
+          : '',
+    }
+  }
+
+  return null
+}
+
+function createSiblingComparator(primaryParentByNode) {
+  return (a, b) => {
+    if (!a && !b) return 0
+    if (!a) return 1
+    if (!b) return -1
+
+    const infoA = getPrimaryParentInfo(primaryParentByNode, a.id)
+    const infoB = getPrimaryParentInfo(primaryParentByNode, b.id)
+
+    const keyA = infoA?.relationshipKey || ''
+    const keyB = infoB?.relationshipKey || ''
+
+    if (keyA && keyB) {
+      const keyCompare = keyA.localeCompare(keyB)
+      if (keyCompare !== 0) return keyCompare
+    } else if (keyA) {
+      return -1
+    } else if (keyB) {
+      return 1
+    }
+
+    return compareNodesByLabel(a, b)
+  }
 }
 
 function assignPositions(groups, primaryParentByNode = new Map()) {
@@ -993,7 +1094,8 @@ function assignPositions(groups, primaryParentByNode = new Map()) {
     const levelOccupied = new Set()
 
     nodesAtLevel.forEach((node) => {
-      const parentId = primaryParentByNode.get(node.id)
+      const info = getPrimaryParentInfo(primaryParentByNode, node.id)
+      const parentId = info?.parentId ?? null
       const parentPosition = parentId ? positions.get(parentId) : null
       if (parentId && parentPosition) {
         if (!groupedByParent.has(parentId)) groupedByParent.set(parentId, [])
@@ -1005,6 +1107,7 @@ function assignPositions(groups, primaryParentByNode = new Map()) {
     })
 
     const levelGroups = []
+    const siblingComparator = createSiblingComparator(primaryParentByNode)
 
     groupedByParent.forEach((children, parentId) => {
       const parentPosition = positions.get(parentId)
@@ -1012,7 +1115,7 @@ function assignPositions(groups, primaryParentByNode = new Map()) {
         children.forEach((child) => orphans.push(child))
         return
       }
-      const sortedChildren = [...children].sort(compareNodesByLabel)
+      const sortedChildren = [...children].sort(siblingComparator)
       levelGroups.push({
         anchorX: parentPosition.x,
         nodes: sortedChildren,
@@ -1214,6 +1317,45 @@ function extractEdgeRelationshipLabel(edge) {
     if (typeof candidate === 'string') {
       return candidate.toLowerCase()
     }
+  }
+
+  return ''
+}
+
+function extractEdgeRelationshipName(edge) {
+  if (!edge) return ''
+
+  const rawRelationship =
+    edge?.data?.relationshipType ??
+    edge?.relationshipType ??
+    edge?.label ??
+    edge?.relationshipLabel ??
+    ''
+
+  if (typeof rawRelationship === 'string') {
+    return rawRelationship.trim()
+  }
+
+  if (rawRelationship && typeof rawRelationship === 'object') {
+    const candidate =
+      rawRelationship?.label ??
+      rawRelationship?.name ??
+      rawRelationship?.from_label ??
+      rawRelationship?.to_label ??
+      ''
+
+    if (typeof candidate === 'string') {
+      return candidate.trim()
+    }
+  }
+
+  return ''
+}
+
+function normalizeRelationshipKey(value) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed ? trimmed.toLowerCase() : ''
   }
 
   return ''
