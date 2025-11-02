@@ -15,6 +15,7 @@ const LEVEL_HORIZONTAL_SPACING =
 const LEVEL_VERTICAL_SPACING =
   DEFAULT_ENTITY_HEIGHT + HIERARCHY_VERTICAL_PADDING
 const CLUSTER_ENTITY_HORIZONTAL_SPACING = DEFAULT_ENTITY_WIDTH + CLUSTER_ENTITY_GAP
+const MIN_HORIZONTAL_GAP = DEFAULT_ENTITY_WIDTH + 40 // buffer for spacing
 
 const PARENT_RELATION_PATTERN =
   /(part of|owned by|managed by|works for|reports to|child of|belongs to|member of|subsidiary of|division of|child)/i
@@ -39,6 +40,30 @@ function isClusterNodeType(node) {
   if (!node) return false
   const type = node?.type
   return type === 'cluster' || type === 'clusterNode'
+}
+
+function getNodeDimensions(node) {
+  if (!node) {
+    return {
+      width: DEFAULT_ENTITY_WIDTH,
+      height: DEFAULT_ENTITY_HEIGHT,
+    }
+  }
+
+  const numericWidth = Number(node?.width)
+  const numericHeight = Number(node?.height)
+  const width = Number.isFinite(numericWidth)
+    ? numericWidth
+    : isClusterNodeType(node)
+    ? DEFAULT_CLUSTER_WIDTH
+    : DEFAULT_ENTITY_WIDTH
+  const height = Number.isFinite(numericHeight)
+    ? numericHeight
+    : isClusterNodeType(node)
+    ? DEFAULT_CLUSTER_HEIGHT
+    : DEFAULT_ENTITY_HEIGHT
+
+  return { width, height }
 }
 
 // Determines if a given entity lies along the visible relationship chain
@@ -1041,6 +1066,76 @@ function assignPositions(groups, primaryParentByNode = new Map()) {
       }
       hasPlaced = true
     })
+  })
+
+  const orderedNodeEntries = []
+  sortedLevels.forEach((level) => {
+    const nodesAtLevel = groups.get(level) || []
+    nodesAtLevel.forEach((node) => {
+      if (!node) return
+      const id = node?.id != null ? String(node.id) : null
+      if (!id) return
+      if (positions.has(id)) {
+        orderedNodeEntries.push({ id, node })
+      }
+    })
+  })
+
+  const positioned = []
+  orderedNodeEntries.forEach(({ id, node }) => {
+    const placement = positions.get(id)
+    if (!placement) return
+
+    const { width, height } = getNodeDimensions(node)
+    const level = placement.level ?? null
+    const current = {
+      id,
+      width,
+      height,
+      level,
+      position: { ...placement },
+    }
+
+    const isUserPlaced = Boolean(
+      (node?.data && node.data.isUserPlaced) || node?.isUserPlaced
+    )
+
+    if (!isUserPlaced) {
+      positioned.forEach((prev) => {
+        const sameLevel =
+          (current.level != null && prev.level != null && current.level === prev.level) ||
+          Math.abs(current.position.y - prev.position.y) <
+            Math.max(current.height, prev.height, DEFAULT_ENTITY_HEIGHT)
+        if (!sameLevel) return
+
+        const prevRightEdge = prev.position.x + prev.width
+        const minAllowedX = Math.max(
+          prev.position.x + MIN_HORIZONTAL_GAP,
+          prevRightEdge + 40
+        )
+        if (current.position.x < minAllowedX) {
+          current.position.x = minAllowedX
+        }
+      })
+    }
+
+    positions.set(id, {
+      ...placement,
+      x: current.position.x,
+    })
+
+    positioned.push({
+      id,
+      width: current.width,
+      height: current.height,
+      level: current.level,
+      position: { ...current.position },
+    })
+  })
+
+  globalMinX = Infinity
+  positions.forEach((value) => {
+    if (value.x < globalMinX) globalMinX = value.x
   })
 
   const xOffset = Number.isFinite(globalMinX) && globalMinX < 0 ? -globalMinX : 0
