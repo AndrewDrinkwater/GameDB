@@ -38,6 +38,36 @@ export default (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 'hidden',
       },
+      read_access: {
+        type: DataTypes.ENUM('global', 'selective', 'hidden'),
+        allowNull: false,
+        defaultValue: 'global',
+      },
+      write_access: {
+        type: DataTypes.ENUM('global', 'selective', 'hidden'),
+        allowNull: false,
+        defaultValue: 'global',
+      },
+      read_campaign_ids: {
+        type: DataTypes.ARRAY(DataTypes.UUID),
+        allowNull: false,
+        defaultValue: [],
+      },
+      read_user_ids: {
+        type: DataTypes.ARRAY(DataTypes.UUID),
+        allowNull: false,
+        defaultValue: [],
+      },
+      write_campaign_ids: {
+        type: DataTypes.ARRAY(DataTypes.UUID),
+        allowNull: false,
+        defaultValue: [],
+      },
+      write_user_ids: {
+        type: DataTypes.ARRAY(DataTypes.UUID),
+        allowNull: false,
+        defaultValue: [],
+      },
     },
     {
       tableName: 'entities',
