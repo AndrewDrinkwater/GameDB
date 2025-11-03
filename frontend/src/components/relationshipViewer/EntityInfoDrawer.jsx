@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import PropTypes from '../../utils/propTypes.js'
 import './EntityInfoDrawer.css'
 
-const ANIMATION_DURATION = 250
+const ANIMATION_DURATION = 450
 const PREPARING_OPEN_STATE = 'preparing-open'
 
 const formatDateTime = (value) => {
