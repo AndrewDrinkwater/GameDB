@@ -442,12 +442,31 @@ export default function RelationshipViewerPage() {
     return descendants
   }, [])
 
+  const assignDepthToEntity = useCallback((entity, depthValue) => {
+    if (entity == null || depthValue == null) return
+    const normalizedId = String(entity)
+    if (!normalizedId) return
+
+    const depthLookup =
+      nodeDepthLookupRef.current instanceof Map ? nodeDepthLookupRef.current : null
+    if (!depthLookup) return
+
+    const manualReleaseSet = manuallyReleasedEntitiesRef.current
+    const alreadyReleased = manualReleaseSet.has(normalizedId)
+    if (alreadyReleased && depthLookup.has(normalizedId)) {
+      return
+    }
+
+    depthLookup.set(normalizedId, depthValue)
+  }, [])
+
   const performClusterBreakout = useCallback(
     (entries) => {
       if (!Array.isArray(entries) || !entries.length) return
 
       const suppressedNodes = suppressedNodesRef.current
       const suppressedMeta = suppressedNodeMetaRef.current
+      const manualReleaseSet = manuallyReleasedEntitiesRef.current
       const suppressedDefinitions = suppressedNodeDefinitionsRef.current
 
       if (!(suppressedNodes instanceof Map) || !(suppressedDefinitions instanceof Map)) {
@@ -467,11 +486,15 @@ export default function RelationshipViewerPage() {
 
           return { id, definition, meta }
         })
-        .filter(Boolean)
+        .filter((entry) => {
+          if (!entry) return false
+          if (!entry?.id) return false
+          if (manualReleaseSet.has(entry.id)) return false
+          return true
+        })
 
       if (!normalized.length) return
 
-      const manualReleaseSet = manuallyReleasedEntitiesRef.current
       const nodeMetaLookup = new Map()
       const definitionLookup = new Map()
 
@@ -789,6 +812,8 @@ export default function RelationshipViewerPage() {
       )
       if (!clusterNode) return
 
+      const manualReleaseSet = manuallyReleasedEntitiesRef.current
+
       const clustersList = clustersRef.current
       const clusterMeta =
         clustersList.find((cluster) => String(cluster.id) === clusterId) || {
@@ -801,7 +826,9 @@ export default function RelationshipViewerPage() {
             clusterNode?.data?.label ||
             clusterNode?.data?.relationshipType ||
             'Related',
-          containedIds: (clusterNode?.data?.containedIds || []).map(String),
+          containedIds: (clusterNode?.data?.containedIds || [])
+            .map((value) => String(value))
+            .filter((value) => !manualReleaseSet.has(value)),
           parentId:
             clusterNode?.data?.sourceId != null
               ? String(clusterNode.data.sourceId)
@@ -824,6 +851,9 @@ export default function RelationshipViewerPage() {
           : null
 
       const selectedId = selectedIdRaw != null ? String(selectedIdRaw) : null
+      if (selectedId && manualReleaseSet.has(selectedId)) {
+        return
+      }
 
       const allNodeDefinitions = new Map()
       if (Array.isArray(nodesRef.current)) {
@@ -918,7 +948,12 @@ export default function RelationshipViewerPage() {
             meta: suppressedMeta.get(key) || suppressedNodes.get(key) || null,
           }
         })
-        .filter((entry) => Boolean(entry.definition))
+        .filter((entry) => {
+          if (!entry?.definition) return false
+          const normalizedId = entry?.id != null ? String(entry.id) : null
+          if (!normalizedId) return false
+          return !manualReleaseSet.has(normalizedId)
+        })
 
       if (!nodesWithDefinitions.length) {
         if (!selectedId) {
@@ -935,7 +970,11 @@ export default function RelationshipViewerPage() {
       )
 
       const validNodesWithDefinitions = nodesWithDefinitions.filter(
-        ({ meta }) => {
+        ({ id, meta }) => {
+          const normalizedId = id != null ? String(id) : null
+          if (normalizedId && manualReleaseSet.has(normalizedId)) {
+            return false
+          }
           const parentId =
             meta?.parentId != null ? String(meta.parentId) : clusterParentId
 
@@ -957,7 +996,9 @@ export default function RelationshipViewerPage() {
       }
 
       validNodesWithDefinitions.forEach(({ id }) => {
-        manuallyReleasedEntitiesRef.current.add(String(id))
+        const normalizedId = String(id)
+        if (!normalizedId) return
+        manualReleaseSet.add(normalizedId)
       })
 
       const relationshipLabel =
@@ -1048,9 +1089,7 @@ export default function RelationshipViewerPage() {
             }
 
             if (plannedNodeIds.has(childId)) {
-              if (!depthLookup.has(childId)) {
-                depthLookup.set(childId, nextDepth)
-              }
+              assignDepthToEntity(childId, nextDepth)
               if (breakoutIds.has(childId)) {
                 queue.push(childId)
               }
@@ -1064,7 +1103,7 @@ export default function RelationshipViewerPage() {
                 suppressedNodes.delete(childId)
                 suppressedDefinitions.delete(childId)
                 suppressedMeta.delete(childId)
-                manuallyReleasedEntitiesRef.current.add(childId)
+                manualReleaseSet.add(childId)
 
                 definitionToAdd = definition
               } else {
@@ -1114,14 +1153,12 @@ export default function RelationshipViewerPage() {
                 plannedNodeIds.add(childId)
                 breakoutIds.add(childId)
                 queue.push(childId)
-                depthLookup.set(childId, nextDepth)
+                assignDepthToEntity(childId, nextDepth)
                 allNodeDefinitions.set(childId, definitionToAdd)
               }
             }
 
-            if (!depthLookup.has(childId)) {
-              depthLookup.set(childId, nextDepth)
-            }
+            assignDepthToEntity(childId, nextDepth)
 
             const reactFlowEdge = convertNormalizedEdgeToReactFlow(edge)
             if (reactFlowEdge && !appendedEdgeIds.has(reactFlowEdge.id)) {
@@ -1141,9 +1178,13 @@ export default function RelationshipViewerPage() {
         }
       }
 
-      const remainingHidden = clusterMeta.containedIds.filter((id) =>
-        suppressedNodes.has(String(id))
-      )
+      const remainingHidden = clusterMeta.containedIds.filter((id) => {
+        const normalizedId = String(id)
+        if (manualReleaseSet.has(normalizedId)) {
+          return false
+        }
+        return suppressedNodes.has(normalizedId)
+      })
 
       setBoardEntities((prev) => {
         const next = { ...prev }
@@ -1303,6 +1344,7 @@ export default function RelationshipViewerPage() {
             data: {
               ...node.data,
               placedEntityIds: orderedPlaced,
+              manuallyReleasedIds: orderedPlaced,
               label: updatedLabel,
             },
           }
@@ -1352,6 +1394,7 @@ export default function RelationshipViewerPage() {
           nodeDepthLookupRef.current instanceof Map
             ? nodeDepthLookupRef.current
             : new Map()
+        const manualReleaseSet = manuallyReleasedEntitiesRef.current
         const suppressedNodesMap =
           suppressedNodesRef.current instanceof Map
             ? suppressedNodesRef.current
@@ -1401,6 +1444,10 @@ export default function RelationshipViewerPage() {
             const childId = childRaw != null ? String(childRaw) : null
             if (!childId || childId === parentId) return
 
+            if (manualReleaseSet.has(childId)) {
+              return
+            }
+
             const relEdge = convertNormalizedEdgeToReactFlow(edge)
             if (relEdge && !existingEdgeIds.has(relEdge.id)) {
               existingEdgeIds.add(relEdge.id)
@@ -1429,10 +1476,11 @@ export default function RelationshipViewerPage() {
               suppressedMetaMap.delete(childId)
             }
 
-            manuallyReleasedEntitiesRef.current.add(childId)
+            const wasReleased = manualReleaseSet.has(childId)
+            manualReleaseSet.add(childId)
 
-            if (nextDepth != null) {
-              depthLookup.set(childId, nextDepth)
+            if (nextDepth != null && (!wasReleased || !depthLookup.has(childId))) {
+              assignDepthToEntity(childId, nextDepth)
             }
 
             const entityMeta = meta?.entity || null
@@ -1568,6 +1616,7 @@ export default function RelationshipViewerPage() {
       applyUserPlacedPositions,
       handleOpenEntityInfo,
       handleSetTargetEntity,
+      assignDepthToEntity,
       markClusterExpanded,
       relationshipDepth,
     ]
@@ -1661,6 +1710,7 @@ export default function RelationshipViewerPage() {
           data: {
             ...node.data,
             placedEntityIds: Array.from(existingPlaced),
+            manuallyReleasedIds: Array.from(existingPlaced),
           },
         }
       })
@@ -1739,9 +1789,14 @@ export default function RelationshipViewerPage() {
 
     const clusterRecord = clustersRef.current.find((cluster) => cluster.id === clusterId)
     if (clusterRecord) {
-      const remainingHidden = clusterInfo.containedIds.filter((id) =>
-        suppressedNodesRef.current.has(String(id))
-      )
+      const manualReleaseSet = manuallyReleasedEntitiesRef.current
+      const remainingHidden = clusterInfo.containedIds.filter((id) => {
+        const normalizedId = String(id)
+        if (manualReleaseSet.has(normalizedId)) {
+          return false
+        }
+        return suppressedNodesRef.current.has(normalizedId)
+      })
       const updatedLabel = `${
         clusterRecord.relationshipType || clusterInfo.relationshipType || 'Related'
       } (${remainingHidden.length})`
@@ -1925,9 +1980,14 @@ export default function RelationshipViewerPage() {
         return changed ? next : prev
       })
 
-      const remainingHidden = clusterMeta.containedIds.filter((id) =>
-        suppressedNodes.has(String(id))
-      )
+      const manualReleaseSet = manuallyReleasedEntitiesRef.current
+      const remainingHidden = clusterMeta.containedIds.filter((id) => {
+        const normalizedId = String(id)
+        if (manualReleaseSet.has(normalizedId)) {
+          return false
+        }
+        return suppressedNodes.has(normalizedId)
+      })
       const updatedLabel = `${
         clusterMeta.relationshipType || clusterMeta.label || 'Related'
       } (${remainingHidden.length})`
@@ -1947,9 +2007,24 @@ export default function RelationshipViewerPage() {
             ...node,
             data: {
               ...node.data,
-              placedEntityIds: clusterMeta.containedIds.filter((id) =>
-                !suppressedNodes.has(String(id))
-              ),
+              placedEntityIds: clusterMeta.containedIds
+                .filter((id) => {
+                  const normalizedId = String(id)
+                  if (manualReleaseSet.has(normalizedId)) {
+                    return false
+                  }
+                  return !suppressedNodes.has(normalizedId)
+                })
+                .map((value) => String(value)),
+              manuallyReleasedIds: clusterMeta.containedIds
+                .filter((id) => {
+                  const normalizedId = String(id)
+                  if (manualReleaseSet.has(normalizedId)) {
+                    return false
+                  }
+                  return !suppressedNodes.has(normalizedId)
+                })
+                .map((value) => String(value)),
               label: updatedLabel,
             },
           }
@@ -2049,6 +2124,7 @@ export default function RelationshipViewerPage() {
           data: {
             ...node.data,
             placedEntityIds: clusterPlaced,
+            manuallyReleasedIds: clusterPlaced,
           },
         }
       })
@@ -2182,10 +2258,58 @@ export default function RelationshipViewerPage() {
             return { ...node }
           }
 
+          const manualReleaseSet = manuallyReleasedEntitiesRef.current
           const decoratedNodes = layoutedNodes.map(decorateNode)
+          const boardEntitiesByCluster = Object.entries(boardEntities).reduce(
+            (acc, [entityKey, info]) => {
+              const clusterKey =
+                info?.clusterId != null ? String(info.clusterId) : null
+              if (!clusterKey) return acc
+              if (!acc.has(clusterKey)) acc.set(clusterKey, [])
+              acc.get(clusterKey).push(String(entityKey))
+              return acc
+            },
+            new Map()
+          )
+          const filterContainedIds = (ids) => {
+            const normalized = Array.isArray(ids)
+              ? ids.map((value) => String(value))
+              : []
+            if (!manualReleaseSet.size) {
+              return normalized
+            }
+            return normalized.filter((value) => !manualReleaseSet.has(value))
+          }
+          const sanitizeClusterNode = (node) => {
+            if (!node) return node
+            const clusterIdValue = node?.id != null ? String(node.id) : null
+            const filteredContained = filterContainedIds(
+              node?.data?.containedIds || []
+            )
+            const placedIdsSource =
+              clusterIdValue && boardEntitiesByCluster.has(clusterIdValue)
+                ? boardEntitiesByCluster.get(clusterIdValue)
+                : []
+            const placedIds = Array.isArray(placedIdsSource)
+              ? placedIdsSource.map((value) => String(value))
+              : []
+
+            return {
+              ...node,
+              data: {
+                ...node?.data,
+                containedIds: filteredContained,
+                count: filteredContained.length + placedIds.length,
+                placedEntityIds: placedIds,
+                manuallyReleasedIds: placedIds,
+              },
+            }
+          }
+          const sanitizedNodes = decoratedNodes.map((node) =>
+            node?.type === 'cluster' ? sanitizeClusterNode(node) : node
+          )
           const suppressedMap = new Map()
           const rawSuppressed = layoutedSuppressedNodes
-          const manualReleaseSet = manuallyReleasedEntitiesRef.current
 
           const assignSuppressedEntry = (id, info) => {
             if (manualReleaseSet.has(id)) {
@@ -2266,9 +2390,12 @@ export default function RelationshipViewerPage() {
           suppressedNodeDefinitionsRef.current = suppressedDefinitions
 
           const initialHidden = new Set()
-          const clusterSource = Array.isArray(layoutedClusters)
+          const clusterSourceBase = Array.isArray(layoutedClusters)
             ? layoutedClusters
-            : decoratedNodes.filter((node) => node.type === 'cluster')
+            : sanitizedNodes.filter((node) => node.type === 'cluster')
+          const clusterSource = clusterSourceBase.map((clusterNode) =>
+            sanitizeClusterNode(clusterNode)
+          )
           clusterSource.forEach((clusterNode) => {
             initialHidden.add(String(clusterNode.id))
           })
@@ -2301,7 +2428,7 @@ export default function RelationshipViewerPage() {
               : []
           )
 
-          const mergedNodes = [...decoratedNodes]
+          const mergedNodes = [...sanitizedNodes]
 
           manualReleaseSet.forEach((releasedId) => {
             const key = String(releasedId)
@@ -2455,6 +2582,7 @@ export default function RelationshipViewerPage() {
           data: {
             ...node.data,
             placedEntityIds: placed,
+            manuallyReleasedIds: placed,
           },
         }
       })

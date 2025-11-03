@@ -18,6 +18,7 @@ export default function ClusterPopup({
   onReturnToGroup,
   onSetTargetEntity,
   onOpenEntityInfo,
+  releasedEntityIds = [],
 }) {
   const {
     label,
@@ -28,7 +29,6 @@ export default function ClusterPopup({
   } = cluster || {}
   const [portalEl, setPortalEl] = useState(null)
   const [selectedEntityId, setSelectedEntityId] = useState(null)
-  const entityCount = Array.isArray(entities) ? entities.length : 0
   const [currentPos, setCurrentPos] = useState({
     x: position?.x ?? 100,
     y: position?.y ?? 100,
@@ -144,6 +144,19 @@ export default function ClusterPopup({
     () => new Set((Array.isArray(placedEntityIds) ? placedEntityIds : []).map(String)),
     [placedEntityIds]
   )
+  const releasedIds = useMemo(
+    () =>
+      new Set((Array.isArray(releasedEntityIds) ? releasedEntityIds : []).map(String)),
+    [releasedEntityIds]
+  )
+  const visibleEntities = useMemo(
+    () =>
+      Array.isArray(entities)
+        ? entities.filter((entity) => !releasedIds.has(String(entity.id)))
+        : [],
+    [entities, releasedIds]
+  )
+  const entityCount = visibleEntities.length
 
   useEffect(() => {
     setSelectedEntityId(null)
@@ -160,10 +173,11 @@ export default function ClusterPopup({
   const handleAddEntity = useCallback(
     (entityId) => {
       if (!entityId) return
+      if (releasedIds.has(String(entityId))) return
       onAddToBoard?.(cluster, entityId)
       setSelectedEntityId(null)
     },
-    [cluster, onAddToBoard]
+    [cluster, onAddToBoard, releasedIds]
   )
 
   const handleReturnEntity = useCallback(
@@ -204,14 +218,14 @@ export default function ClusterPopup({
         </div>
 
         <div className="cluster-popup-entities">
-          {entities.length ? (
-            entities.map((entity) => {
-              const entityKey = String(entity.id)
-              const isPlaced = placedIds.has(entityKey)
-              const isSelected = selectedEntityId === entityKey
-              const isCurrentSource = sourceId != null && entityKey === String(sourceId)
+          {visibleEntities.length ? (
+            visibleEntities.map((entity) => {
+                const entityKey = String(entity.id)
+                const isPlaced = placedIds.has(entityKey) || releasedIds.has(entityKey)
+                const isSelected = selectedEntityId === entityKey
+                const isCurrentSource = sourceId != null && entityKey === String(sourceId)
 
-              return (
+                return (
                 <div
                   key={entity.id}
                   className={`cluster-popup-entity ${isPlaced ? 'is-placed' : ''} ${
