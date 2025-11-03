@@ -21,6 +21,7 @@ export default function RelationshipBuilder({
   const [entity1, setEntity1] = useState(null)
   const [entity2, setEntity2] = useState(null)
   const [relationshipTypeId, setRelationshipTypeId] = useState('')
+  const [relationshipDirection, setRelationshipDirection] = useState(null)
   const [showCreator, setShowCreator] = useState(false)
 
   // --- Load entities and relationship types once
@@ -76,6 +77,9 @@ export default function RelationshipBuilder({
     return { ...entity, entity_type_id: typeId, typeName }
   }
 
+  const getEntityDisplayName = (entity) =>
+    entity?.name || entity?.title || entity?.displayName || 'Unnamed entity'
+
   // --- Calculate valid relationship types
   const validRelationshipTypes = useMemo(() => {
     const e1 = normaliseEntity(entity1)
@@ -108,14 +112,94 @@ export default function RelationshipBuilder({
         const reverse =
           fromIds.includes(String(type2)) && toIds.includes(String(type1))
         if (direct || reverse) {
-          return { ...rt, _direction: direct ? 'direct' : 'reverse' }
+          return {
+            ...rt,
+            _supportsDirect: direct,
+            _supportsReverse: reverse,
+          }
         }
         return null
       })
       .filter(Boolean)
   }, [relationshipTypes, entity1, entity2])
 
-    // --- Create relationship
+  const selectedType = useMemo(
+    () =>
+      validRelationshipTypes.find(
+        (rt) => String(rt.id) === String(relationshipTypeId)
+      ),
+    [relationshipTypeId, validRelationshipTypes]
+  )
+
+  const resolvedDirection = useMemo(() => {
+    if (!selectedType) return null
+    if (
+      relationshipDirection === 'reverse' &&
+      selectedType._supportsReverse
+    )
+      return 'reverse'
+    if (
+      relationshipDirection === 'direct' &&
+      selectedType._supportsDirect
+    )
+      return 'direct'
+    if (selectedType._supportsDirect) return 'direct'
+    if (selectedType._supportsReverse) return 'reverse'
+    return null
+  }, [relationshipDirection, selectedType])
+
+  useEffect(() => {
+    if (!selectedType) {
+      if (relationshipDirection !== null) setRelationshipDirection(null)
+      return
+    }
+
+    if (resolvedDirection === null) {
+      if (relationshipDirection !== null) setRelationshipDirection(null)
+      return
+    }
+
+    if (relationshipDirection === null) {
+      setRelationshipDirection(resolvedDirection)
+      return
+    }
+
+    if (relationshipDirection !== resolvedDirection) {
+      setRelationshipDirection(resolvedDirection)
+    }
+  }, [selectedType, resolvedDirection, relationshipDirection])
+
+  useEffect(() => {
+    if (!relationshipTypeId) return
+    const stillValid = validRelationshipTypes.some(
+      (rt) => String(rt.id) === String(relationshipTypeId)
+    )
+    if (!stillValid) {
+      setRelationshipTypeId('')
+      setRelationshipDirection(null)
+    }
+  }, [validRelationshipTypes, relationshipTypeId])
+
+  const creationFromEntity =
+    resolvedDirection === 'direct' ? entity1 : entity2
+  const creationToEntity =
+    resolvedDirection === 'direct' ? entity2 : entity1
+
+  const creationFromName = getEntityDisplayName(creationFromEntity)
+  const creationToName = getEntityDisplayName(creationToEntity)
+
+  const fromLabel =
+    selectedType?.from_name ||
+    selectedType?.fromName ||
+    selectedType?.name ||
+    'relates to'
+  const toLabel =
+    selectedType?.to_name ||
+    selectedType?.toName ||
+    selectedType?.name ||
+    'relates to'
+
+  // --- Create relationship
   const handleSubmit = async () => {
     setError('')
 
@@ -139,16 +223,15 @@ export default function RelationshipBuilder({
       return
     }
 
-    const selectedType = validRelationshipTypes.find(
-      (r) => r.id === relationshipTypeId
-    )
-
-    let from_entity_id = entity1.id
-    let to_entity_id = entity2.id
-    if (selectedType?._direction === 'reverse') {
-      from_entity_id = entity2.id
-      to_entity_id = entity1.id
+    const directionToUse = resolvedDirection
+    if (!selectedType || !directionToUse) {
+      setError('Please select a valid relationship type.')
+      return
     }
+
+    const from_entity_id =
+      directionToUse === 'direct' ? entity1.id : entity2.id
+    const to_entity_id = directionToUse === 'direct' ? entity2.id : entity1.id
 
     try {
       await createRelationship({
@@ -160,6 +243,7 @@ export default function RelationshipBuilder({
         from_entity_id,
         to_entity_id,
         relationship_type_id: relationshipTypeId,
+        __direction: directionToUse,
       })
     } catch (err) {
       // ✅ Improved and defensive error handling
@@ -197,6 +281,7 @@ export default function RelationshipBuilder({
             if (!fromEntity) {
               setEntity1(entity)
               setRelationshipTypeId('')
+              setRelationshipDirection(null)
             }
           }}
           disabled={!!fromEntity}
@@ -247,7 +332,26 @@ export default function RelationshipBuilder({
           <label>Relationship Type</label>
           <select
             value={relationshipTypeId}
-            onChange={(e) => setRelationshipTypeId(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value
+              setRelationshipTypeId(value)
+              if (!value) {
+                setRelationshipDirection(null)
+                return
+              }
+
+              const nextType = validRelationshipTypes.find(
+                (rt) => String(rt.id) === String(value)
+              )
+
+              if (nextType?._supportsDirect) {
+                setRelationshipDirection('direct')
+              } else if (nextType?._supportsReverse) {
+                setRelationshipDirection('reverse')
+              } else {
+                setRelationshipDirection(null)
+              }
+            }}
           >
             <option value="">Select relationship type…</option>
             {validRelationshipTypes.length > 0 ? (
@@ -262,6 +366,39 @@ export default function RelationshipBuilder({
           </select>
         </div>
       )}
+
+      {entity1 &&
+        entity2 &&
+        selectedType &&
+        resolvedDirection && (
+          <div className="relationship-preview">
+            <div className="preview-header">
+              <h3>Relationship preview</h3>
+              {selectedType._supportsDirect &&
+                selectedType._supportsReverse && (
+                  <button
+                    type="button"
+                    className="btn small secondary"
+                    onClick={() =>
+                      setRelationshipDirection((prev) =>
+                        prev === 'reverse' ? 'direct' : 'reverse'
+                      )
+                    }
+                  >
+                    Swap entities
+                  </button>
+                )}
+            </div>
+            <p>
+              <strong>{creationFromName}</strong> {fromLabel}{' '}
+              <strong>{creationToName}</strong>
+            </p>
+            <p>
+              <strong>{creationToName}</strong> {toLabel}{' '}
+              <strong>{creationFromName}</strong>
+            </p>
+          </div>
+        )}
 
       {/* ACTIONS */}
       <div className="form-actions">
