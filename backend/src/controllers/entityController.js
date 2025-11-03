@@ -14,6 +14,11 @@ import {
   validateEntityMetadata,
 } from '../utils/entityMetadataValidator.js'
 import { applyRelBuilderHeader } from '../utils/featureFlags.js'
+import {
+  buildEntityReadContext,
+  buildReadableEntitiesWhereClause,
+  canUserReadEntity,
+} from '../utils/entityAccess.js'
 
 const VISIBILITY_VALUES = new Set(['hidden', 'visible', 'partial'])
 const PUBLIC_VISIBILITY = ['visible', 'partial']
@@ -170,6 +175,12 @@ export const listWorldEntities = async (req, res) => {
       ]
     }
 
+    const readContext = await buildEntityReadContext({
+      worldId: world.id,
+      user,
+      worldAccess: access,
+    })
+
     const entities = await Entity.findAll({
       where,
       include: [
@@ -179,7 +190,9 @@ export const listWorldEntities = async (req, res) => {
       order: [['created_at', 'DESC']],
     })
 
-    res.json({ success: true, data: entities })
+    const filteredEntities = entities.filter((entity) => canUserReadEntity(entity, readContext))
+
+    res.json({ success: true, data: filteredEntities })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }
@@ -240,11 +253,26 @@ export const searchEntities = async (req, res) => {
     const trimmedQuery = typeof q === 'string' ? q.trim() : ''
     const where = { world_id: world.id }
 
+    const readContext = await buildEntityReadContext({
+      worldId: world.id,
+      user,
+      worldAccess: access,
+    })
+
     if (!access.isOwner && !access.isAdmin) {
       where[Op.or] = [
         { visibility: { [Op.in]: PUBLIC_VISIBILITY } },
         { created_by: user.id },
       ]
+    }
+
+    const readAccessWhere = buildReadableEntitiesWhereClause(readContext)
+    if (readAccessWhere) {
+      if (where[Op.and]) {
+        where[Op.and].push(readAccessWhere)
+      } else {
+        where[Op.and] = [readAccessWhere]
+      }
     }
 
     if (trimmedQuery) {
@@ -480,7 +508,13 @@ export const getEntityById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'World not found' })
     }
 
-    if (!access.hasAccess && !isCreator && !access.isAdmin && !access.isOwner) {
+    const readContext = await buildEntityReadContext({
+      worldId: entity.world_id,
+      user,
+      worldAccess: access,
+    })
+
+    if (!canUserReadEntity(entity, readContext)) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 

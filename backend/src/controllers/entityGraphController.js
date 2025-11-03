@@ -5,6 +5,8 @@ import {
   EntityRelationshipType,
   EntityType,
 } from '../models/index.js'
+import { checkWorldAccess } from '../middleware/worldAccess.js'
+import { buildEntityReadContext, canUserReadEntity } from '../utils/entityAccess.js'
 
 function mapEntityNode(entity) {
   if (!entity) return null
@@ -25,7 +27,15 @@ export async function getEntityGraph(req, res) {
     const depthLimit = Number.isFinite(depthParam) && depthParam > 0 ? Math.min(depthParam, 6) : 1
 
     const center = await Entity.findByPk(id, {
-      attributes: ['id', 'name'],
+      attributes: [
+        'id',
+        'name',
+        'world_id',
+        'created_by',
+        'read_access',
+        'read_campaign_ids',
+        'read_user_ids',
+      ],
       include: [
         {
           model: EntityType,
@@ -37,6 +47,23 @@ export async function getEntityGraph(req, res) {
 
     if (!center) {
       return res.status(404).json({ success: false, message: 'Entity not found' })
+    }
+
+    const user = req.user
+    const access = await checkWorldAccess(center.world_id, user)
+
+    if (!access.world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    const readContext = await buildEntityReadContext({
+      worldId: center.world_id,
+      user,
+      worldAccess: access,
+    })
+
+    if (!canUserReadEntity(center, readContext)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
     const nodeMap = new Map()
@@ -65,7 +92,15 @@ export async function getEntityGraph(req, res) {
       {
         model: Entity,
         as: 'from',
-        attributes: ['id', 'name'],
+        attributes: [
+          'id',
+          'name',
+          'world_id',
+          'created_by',
+          'read_access',
+          'read_campaign_ids',
+          'read_user_ids',
+        ],
         include: [
           {
             model: EntityType,
@@ -77,7 +112,15 @@ export async function getEntityGraph(req, res) {
       {
         model: Entity,
         as: 'to',
-        attributes: ['id', 'name'],
+        attributes: [
+          'id',
+          'name',
+          'world_id',
+          'created_by',
+          'read_access',
+          'read_campaign_ids',
+          'read_user_ids',
+        ],
         include: [
           {
             model: EntityType,
@@ -87,6 +130,19 @@ export async function getEntityGraph(req, res) {
         ],
       },
     ]
+
+    const readableCache = new Map()
+
+    const isNodeReadable = (entity) => {
+      if (!entity?.id) return false
+      if (entity.world_id && entity.world_id !== center.world_id) return false
+      if (readableCache.has(entity.id)) {
+        return readableCache.get(entity.id)
+      }
+      const readable = canUserReadEntity(entity, readContext)
+      readableCache.set(entity.id, readable)
+      return readable
+    }
 
     const registerNode = (node, levelValue) => {
       if (!node || levelValue > depthLimit) return
@@ -122,8 +178,15 @@ export async function getEntityGraph(req, res) {
             ? relationship.get({ plain: true })
             : relationship
 
-        const from = mapEntityNode(plainRelationship.from)
-        const to = mapEntityNode(plainRelationship.to)
+        const fromEntity = plainRelationship.from
+        const toEntity = plainRelationship.to
+
+        if (!isNodeReadable(fromEntity) || !isNodeReadable(toEntity)) {
+          return
+        }
+
+        const from = mapEntityNode(fromEntity)
+        const to = mapEntityNode(toEntity)
 
         if (!from?.id || !to?.id) {
           return
