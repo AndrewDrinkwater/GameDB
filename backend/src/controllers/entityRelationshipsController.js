@@ -400,6 +400,15 @@ export async function createRelationship(req, res) {
   }
 }
 
+/**
+ * Returns all relationships for a given entity, including:
+ * - Relationship type details (with allowed entity type rules)
+ * - Source ("from") and target ("to") entities, each with their entityType included
+ *
+ * Including entityType for both sides ensures the frontend can
+ * display and filter by the related entity's type name correctly
+ * (fixes "Unknown entity type" in the Relationships tab).
+ */
 export async function getRelationshipsByEntity(req, res) {
   try {
     applyRelBuilderHeader(res)
@@ -422,9 +431,27 @@ export async function getRelationshipsByEntity(req, res) {
         [Op.or]: [{ from_entity: entityId }, { to_entity: entityId }],
       },
       include: [
-        { model: EntityRelationshipType, as: 'relationshipType' },
-        { model: Entity, as: 'from' },
-        { model: Entity, as: 'to' },
+        {
+          model: EntityRelationshipType,
+          as: 'relationshipType',
+          include: [
+            {
+              model: EntityRelationshipTypeEntityType,
+              as: 'entityTypeRules',
+              include: [{ association: 'entityType', attributes: ['id', 'name'] }],
+            },
+          ],
+        },
+        {
+          model: Entity,
+          as: 'from',
+          include: [{ association: 'entityType', attributes: ['id', 'name'] }],
+        },
+        {
+          model: Entity,
+          as: 'to',
+          include: [{ association: 'entityType', attributes: ['id', 'name'] }],
+        },
       ],
     })
 
