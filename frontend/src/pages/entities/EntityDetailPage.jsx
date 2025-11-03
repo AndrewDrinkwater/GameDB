@@ -237,6 +237,9 @@ export default function EntityDetailPage() {
   const [accessOptions, setAccessOptions] = useState({ campaigns: [], users: [] })
   const [accessOptionsLoading, setAccessOptionsLoading] = useState(false)
   const [accessOptionsError, setAccessOptionsError] = useState('')
+  const [accessSaving, setAccessSaving] = useState(false)
+  const [accessSaveError, setAccessSaveError] = useState('')
+  const [accessSaveSuccess, setAccessSaveSuccess] = useState('')
   const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
   const fromEntitiesSearch = location.state?.fromEntities?.search || ''
 
@@ -617,6 +620,28 @@ export default function EntityDetailPage() {
     return false
   }, [entity, user])
 
+  const accessDefaults = useMemo(() => {
+    if (!entity) {
+      return {
+        readMode: 'global',
+        readCampaigns: [],
+        readUsers: [],
+        writeMode: 'global',
+        writeCampaigns: [],
+        writeUsers: [],
+      }
+    }
+
+    return {
+      readMode: normaliseAccessMode(entity.read_access || entity.readAccess),
+      readCampaigns: normaliseIdArray(entity.read_campaign_ids || entity.readCampaignIds),
+      readUsers: normaliseIdArray(entity.read_user_ids || entity.readUserIds),
+      writeMode: normaliseAccessMode(entity.write_access || entity.writeAccess),
+      writeCampaigns: normaliseIdArray(entity.write_campaign_ids || entity.writeCampaignIds),
+      writeUsers: normaliseIdArray(entity.write_user_ids || entity.writeUserIds),
+    }
+  }, [entity])
+
   const handleEditToggle = useCallback(() => {
     if (!canEdit) return
     setFormError('')
@@ -658,30 +683,8 @@ export default function EntityDetailPage() {
   const worldId = useMemo(() => entity?.world?.id || entity?.world_id || '', [entity])
 
   useEffect(() => {
-    if (!entity) {
-      setAccessSettings({
-        readMode: 'global',
-        readCampaigns: [],
-        readUsers: [],
-        writeMode: 'global',
-        writeCampaigns: [],
-        writeUsers: [],
-      })
-      return
-    }
-
-    const readAccessValue = normaliseAccessMode(entity.read_access || entity.readAccess)
-    const writeAccessValue = normaliseAccessMode(entity.write_access || entity.writeAccess)
-
-    setAccessSettings({
-      readMode: readAccessValue,
-      readCampaigns: normaliseIdArray(entity.read_campaign_ids || entity.readCampaignIds),
-      readUsers: normaliseIdArray(entity.read_user_ids || entity.readUserIds),
-      writeMode: writeAccessValue,
-      writeCampaigns: normaliseIdArray(entity.write_campaign_ids || entity.writeCampaignIds),
-      writeUsers: normaliseIdArray(entity.write_user_ids || entity.writeUserIds),
-    })
-  }, [entity])
+    setAccessSettings(accessDefaults)
+  }, [accessDefaults])
 
   const loadAccessOptions = useCallback(async () => {
     if (!token) return
@@ -753,38 +756,143 @@ export default function EntityDetailPage() {
     loadAccessOptions()
   }, [sessionReady, loadAccessOptions])
 
-  const handleAccessSettingChange = useCallback((key, value) => {
-    setAccessSettings((prev) => {
-      const next = { ...(prev || {}) }
+  const isAccessDirty = useMemo(() => {
+    const keys = [
+      'readMode',
+      'readCampaigns',
+      'readUsers',
+      'writeMode',
+      'writeCampaigns',
+      'writeUsers',
+    ]
 
-      if (key === 'readMode' || key === 'writeMode') {
-        next[key] = normaliseAccessMode(value)
-        return next
+    const normaliseArray = (value) => {
+      if (!Array.isArray(value)) return []
+      return value
+        .map((entry) => {
+          if (entry === null || entry === undefined) return null
+          const text = String(entry).trim()
+          return text || null
+        })
+        .filter(Boolean)
+        .sort()
+    }
+
+    return keys.some((key) => {
+      const currentValue = accessSettings?.[key]
+      const defaultValue = accessDefaults?.[key]
+
+      const currentIsArray = Array.isArray(currentValue)
+      const defaultIsArray = Array.isArray(defaultValue)
+
+      if (currentIsArray || defaultIsArray) {
+        const currentArray = normaliseArray(currentValue)
+        const defaultArray = normaliseArray(defaultValue)
+
+        if (currentArray.length !== defaultArray.length) return true
+        for (let index = 0; index < currentArray.length; index += 1) {
+          if (currentArray[index] !== defaultArray[index]) {
+            return true
+          }
+        }
+        return false
       }
 
-      if (
-        key === 'readCampaigns' ||
-        key === 'readUsers' ||
-        key === 'writeCampaigns' ||
-        key === 'writeUsers'
-      ) {
-        const list = Array.isArray(value)
-          ? value
-              .map((entry) => {
-                if (entry === undefined || entry === null) return ''
-                return String(entry).trim()
-              })
-              .filter(Boolean)
-          : []
-
-        next[key] = list
-        return next
-      }
-
-      next[key] = value
-      return next
+      return currentValue !== defaultValue
     })
-  }, [])
+  }, [accessSettings, accessDefaults])
+
+  const handleAccessSettingChange = useCallback(
+    (key, value) => {
+      if (!canEdit || accessSaving) return
+      setAccessSaveError('')
+      setAccessSaveSuccess('')
+
+      setAccessSettings((prev) => {
+        const next = { ...(prev || {}) }
+
+        if (key === 'readMode' || key === 'writeMode') {
+          const mode = normaliseAccessMode(value)
+          next[key] = mode
+
+          if (key === 'readMode' && mode !== 'selective') {
+            next.readCampaigns = []
+            next.readUsers = []
+          }
+
+          if (key === 'writeMode' && mode !== 'selective') {
+            next.writeCampaigns = []
+            next.writeUsers = []
+          }
+
+          return next
+        }
+
+        if (
+          key === 'readCampaigns' ||
+          key === 'readUsers' ||
+          key === 'writeCampaigns' ||
+          key === 'writeUsers'
+        ) {
+          const list = Array.isArray(value)
+            ? value
+                .map((entry) => {
+                  if (entry === undefined || entry === null) return ''
+                  return String(entry).trim()
+                })
+                .filter(Boolean)
+            : []
+
+          next[key] = list
+          return next
+        }
+
+        next[key] = value
+        return next
+      })
+    },
+    [canEdit, accessSaving],
+  )
+
+  const entityId = entity?.id
+
+  const handleAccessSave = useCallback(async () => {
+    if (!canEdit || !entityId) return
+
+    setAccessSaveError('')
+    setAccessSaveSuccess('')
+    setAccessSaving(true)
+
+    try {
+      const payload = {
+        read_access: accessSettings.readMode,
+        write_access: accessSettings.writeMode,
+        read_campaign_ids:
+          accessSettings.readMode === 'selective' ? accessSettings.readCampaigns : [],
+        read_user_ids:
+          accessSettings.readMode === 'selective' ? accessSettings.readUsers : [],
+        write_campaign_ids:
+          accessSettings.writeMode === 'selective' ? accessSettings.writeCampaigns : [],
+        write_user_ids:
+          accessSettings.writeMode === 'selective' ? accessSettings.writeUsers : [],
+      }
+
+      const response = await updateEntity(entityId, payload)
+      const updated = response?.data || response
+
+      if (!updated) {
+        throw new Error('Failed to save access settings')
+      }
+
+      setEntity(updated)
+      setAccessSaveSuccess('Access settings saved.')
+    } catch (err) {
+      console.error('❌ Failed to save access settings', err)
+      setAccessSaveError(err.message || 'Failed to save access settings')
+    } finally {
+      setAccessSaving(false)
+    }
+  }, [canEdit, entityId, accessSettings])
 
   const normalisedRelationships = useMemo(() => {
     if (!Array.isArray(relationships)) return []
@@ -1687,9 +1795,15 @@ export default function EntityDetailPage() {
         <section className="entity-card entity-access-card">
           <h2 className="entity-card-title">Access controls</h2>
           <p className="entity-access-note help-text">
-            These controls are the foundation for upcoming access management. Changes are
-            currently informational only.
+            Configure who can view and edit this entity. Save your changes to update the access
+            rules.
           </p>
+
+          {!canEdit ? (
+            <p className="entity-access-note help-text">
+              You do not have permission to change access settings for this entity.
+            </p>
+          ) : null}
 
           {accessOptionsError ? (
             <div className="alert error" role="alert">
@@ -1713,6 +1827,7 @@ export default function EntityDetailPage() {
                     onChange={(event) =>
                       handleAccessSettingChange('readMode', event.target.value)
                     }
+                    disabled={!canEdit || accessSaving}
                   >
                     {ACCESS_MODE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1740,6 +1855,7 @@ export default function EntityDetailPage() {
                             : 'No campaigns available for this world.'
                         }
                         loading={accessOptionsLoading}
+                        disabled={!canEdit || accessSaving}
                       />
                       <p className="help-text">
                         Members of selected campaigns can view this entity.
@@ -1762,6 +1878,7 @@ export default function EntityDetailPage() {
                             : 'No eligible users found for this world.'
                         }
                         loading={accessOptionsLoading}
+                        disabled={!canEdit || accessSaving}
                       />
                       <p className="help-text">
                         Choose players who have characters in this world.
@@ -1781,6 +1898,7 @@ export default function EntityDetailPage() {
                     onChange={(event) =>
                       handleAccessSettingChange('writeMode', event.target.value)
                     }
+                    disabled={!canEdit || accessSaving}
                   >
                     {ACCESS_MODE_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1808,6 +1926,7 @@ export default function EntityDetailPage() {
                             : 'No campaigns available for this world.'
                         }
                         loading={accessOptionsLoading}
+                        disabled={!canEdit || accessSaving}
                       />
                       <p className="help-text">
                         Dungeon Masters of these campaigns can edit this entity.
@@ -1830,6 +1949,7 @@ export default function EntityDetailPage() {
                             : 'No eligible users found for this world.'
                         }
                         loading={accessOptionsLoading}
+                        disabled={!canEdit || accessSaving}
                       />
                       <p className="help-text">
                         Grant edit access to specific players with characters here.
@@ -1838,6 +1958,26 @@ export default function EntityDetailPage() {
                   </>
                 ) : null}
               </div>
+            </div>
+            <div className="entity-access-actions">
+              {accessSaveError ? (
+                <div className="alert error" role="alert">
+                  {accessSaveError}
+                </div>
+              ) : null}
+              {accessSaveSuccess ? (
+                <div className="alert success" role="status">
+                  {accessSaveSuccess}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                className="btn submit"
+                onClick={handleAccessSave}
+                disabled={!canEdit || accessSaving || !isAccessDirty}
+              >
+                {accessSaving ? 'Saving...' : 'Save access settings'}
+              </button>
             </div>
           )}
         </section>
