@@ -9,6 +9,7 @@ export default function ListCollector({
   disabled = false,
   noOptionsMessage = 'No options available.',
   loading = false,
+  inputId,
 }) {
   const [query, setQuery] = useState('')
   const [isOpen, setIsOpen] = useState(false)
@@ -110,6 +111,7 @@ export default function ListCollector({
     <div className={`list-collector ${disabled ? 'disabled' : ''}`} ref={containerRef}>
       <div className="list-collector-input-wrapper">
         <input
+          id={inputId}
           type="text"
           className="list-collector-input"
           value={query}

@@ -1458,6 +1458,49 @@ th {
   border-bottom: 1px solid #e2e8f0;
 }
 
+.entity-access-card .entity-access-note {
+  margin-bottom: 1rem;
+  color: #64748b;
+}
+
+.entity-access-columns {
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .entity-access-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.entity-access-column h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+  color: #0f172a;
+}
+
+.entity-access-card .form-group {
+  margin-bottom: 1.25rem;
+}
+
+.entity-access-card .list-collector {
+  width: 100%;
+}
+
+.entity-access-card .help-text {
+  margin-top: 0.5rem;
+}
+
+body.theme-dark .entity-access-card .entity-access-note,
+body.theme-dark .entity-access-card .help-text {
+  color: #cbd5f5;
+}
+
+body.theme-dark .entity-access-column h3 {
+  color: #e2e8f0;
+}
+
 .entity-card-title {
   margin: 0;
   font-size: 1.25rem;

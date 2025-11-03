@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
 import FieldRenderer from '../../components/RecordForm/FieldRenderer.jsx'
+import ListCollector from '../../components/ListCollector.jsx'
 import TabNav from '../../components/TabNav.jsx'
 import DrawerPanel from '../../components/DrawerPanel.jsx'
 import EntityHeader from '../../components/entities/EntityHeader.jsx'
@@ -10,6 +11,8 @@ import EntityRelationshipFilters, {
   createDefaultRelationshipFilters,
 } from '../../components/entities/EntityRelationshipFilters.jsx'
 import { getEntity, updateEntity } from '../../api/entities.js'
+import { fetchCampaigns } from '../../api/campaigns.js'
+import { fetchCharacters } from '../../api/characters.js'
 import { getEntityRelationships } from '../../api/entityRelationships.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useFeatureFlag } from '../../context/FeatureFlagContext.jsx'
@@ -27,6 +30,48 @@ const VISIBILITY_OPTIONS = [
   { value: 'partial', label: 'Partial' },
   { value: 'visible', label: 'Visible' },
 ]
+
+const ACCESS_MODES = ['global', 'selective', 'hidden']
+
+const ACCESS_MODE_LABELS = {
+  global: 'Global',
+  selective: 'Selective',
+  hidden: 'Hidden',
+}
+
+const ACCESS_MODE_OPTIONS = ACCESS_MODES.map((value) => ({
+  value,
+  label: ACCESS_MODE_LABELS[value],
+}))
+
+const ACCESS_MODE_SET = new Set(ACCESS_MODES)
+
+const normaliseAccessMode = (value) => {
+  if (typeof value !== 'string') return 'global'
+  const key = value.toLowerCase()
+  return ACCESS_MODE_SET.has(key) ? key : 'global'
+}
+
+const normaliseIdArray = (value) => {
+  if (!value) return []
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => {
+        if (entry === undefined || entry === null) return ''
+        return String(entry).trim()
+      })
+      .filter(Boolean)
+  }
+
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  }
+
+  return []
+}
 
 const formatDateTime = (value) => {
   if (!value) return '—'
@@ -181,6 +226,17 @@ export default function EntityDetailPage() {
     createDefaultRelationshipFilters(),
   )
   const [toast, setToast] = useState(null)
+  const [accessSettings, setAccessSettings] = useState({
+    readMode: 'global',
+    readCampaigns: [],
+    readUsers: [],
+    writeMode: 'global',
+    writeCampaigns: [],
+    writeUsers: [],
+  })
+  const [accessOptions, setAccessOptions] = useState({ campaigns: [], users: [] })
+  const [accessOptionsLoading, setAccessOptionsLoading] = useState(false)
+  const [accessOptionsError, setAccessOptionsError] = useState('')
   const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
   const fromEntitiesSearch = location.state?.fromEntities?.search || ''
 
@@ -531,19 +587,6 @@ export default function EntityDetailPage() {
     }
   }, [metadataFields, metadataSectionTitle])
 
-  const accessSchema = useMemo(
-    () => ({
-      sections: [
-        {
-          title: 'Access',
-          columns: 1,
-          fields: [{ key: 'visibilityLabel', label: 'Visibility', type: 'readonly' }],
-        },
-      ],
-    }),
-    [],
-  )
-
   const systemSchema = useMemo(
     () => ({
       sections: [
@@ -613,6 +656,135 @@ export default function EntityDetailPage() {
   )
 
   const worldId = useMemo(() => entity?.world?.id || entity?.world_id || '', [entity])
+
+  useEffect(() => {
+    if (!entity) {
+      setAccessSettings({
+        readMode: 'global',
+        readCampaigns: [],
+        readUsers: [],
+        writeMode: 'global',
+        writeCampaigns: [],
+        writeUsers: [],
+      })
+      return
+    }
+
+    const readAccessValue = normaliseAccessMode(entity.read_access || entity.readAccess)
+    const writeAccessValue = normaliseAccessMode(entity.write_access || entity.writeAccess)
+
+    setAccessSettings({
+      readMode: readAccessValue,
+      readCampaigns: normaliseIdArray(entity.read_campaign_ids || entity.readCampaignIds),
+      readUsers: normaliseIdArray(entity.read_user_ids || entity.readUserIds),
+      writeMode: writeAccessValue,
+      writeCampaigns: normaliseIdArray(entity.write_campaign_ids || entity.writeCampaignIds),
+      writeUsers: normaliseIdArray(entity.write_user_ids || entity.writeUserIds),
+    })
+  }, [entity])
+
+  const loadAccessOptions = useCallback(async () => {
+    if (!token) return
+
+    if (!worldId) {
+      setAccessOptions({ campaigns: [], users: [] })
+      setAccessOptionsError('')
+      setAccessOptionsLoading(false)
+      return
+    }
+
+    setAccessOptionsLoading(true)
+    setAccessOptionsError('')
+
+    try {
+      const [campaignResponse, characterResponse] = await Promise.all([
+        fetchCampaigns({ world_id: worldId }),
+        fetchCharacters({ world_id: worldId }),
+      ])
+
+      const campaignData = Array.isArray(campaignResponse?.data)
+        ? campaignResponse.data
+        : Array.isArray(campaignResponse)
+          ? campaignResponse
+          : []
+
+      const campaigns = campaignData.map((item) => ({
+        value: String(item.id),
+        label: item.name || 'Untitled campaign',
+      }))
+
+      const characterData = Array.isArray(characterResponse?.data)
+        ? characterResponse.data
+        : Array.isArray(characterResponse)
+          ? characterResponse
+          : []
+
+      const userMap = new Map()
+      characterData.forEach((character) => {
+        const userId = character?.user_id || character?.player?.id
+        if (!userId) return
+        const key = String(userId)
+        if (userMap.has(key)) return
+
+        const player = character?.player || {}
+        const username = typeof player.username === 'string' ? player.username.trim() : ''
+        const email = typeof player.email === 'string' ? player.email.trim() : ''
+
+        let label = username || email || `User ${key.slice(0, 8)}`
+        if (username && email && username !== email) {
+          label = `${username} (${email})`
+        }
+
+        userMap.set(key, { value: key, label })
+      })
+
+      setAccessOptions({ campaigns, users: Array.from(userMap.values()) })
+    } catch (err) {
+      console.error('❌ Failed to load access options', err)
+      setAccessOptions({ campaigns: [], users: [] })
+      setAccessOptionsError(err.message || 'Failed to load access options')
+    } finally {
+      setAccessOptionsLoading(false)
+    }
+  }, [token, worldId])
+
+  useEffect(() => {
+    if (!sessionReady) return
+    loadAccessOptions()
+  }, [sessionReady, loadAccessOptions])
+
+  const handleAccessSettingChange = useCallback((key, value) => {
+    setAccessSettings((prev) => {
+      const next = { ...(prev || {}) }
+
+      if (key === 'readMode' || key === 'writeMode') {
+        next[key] = normaliseAccessMode(value)
+        return next
+      }
+
+      if (
+        key === 'readCampaigns' ||
+        key === 'readUsers' ||
+        key === 'writeCampaigns' ||
+        key === 'writeUsers'
+      ) {
+        const list = Array.isArray(value)
+          ? value
+              .map((entry) => {
+                if (entry === undefined || entry === null) return ''
+                return String(entry).trim()
+              })
+              .filter(Boolean)
+          : []
+
+        next[key] = list
+        return next
+      }
+
+      next[key] = value
+      return next
+    })
+  }, [])
 
   const normalisedRelationships = useMemo(() => {
     if (!Array.isArray(relationships)) return []
@@ -1512,7 +1684,163 @@ export default function EntityDetailPage() {
     {/* ACCESS TAB */}
     {activeTab === 'access' && (
       <div className="entity-tab-content">
-        {renderSchemaSections(accessSchema, viewData, 'access')}
+        <section className="entity-card entity-access-card">
+          <h2 className="entity-card-title">Access controls</h2>
+          <p className="entity-access-note help-text">
+            These controls are the foundation for upcoming access management. Changes are
+            currently informational only.
+          </p>
+
+          {accessOptionsError ? (
+            <div className="alert error" role="alert">
+              {accessOptionsError}
+            </div>
+          ) : null}
+
+          {!worldId ? (
+            <p className="entity-empty-state">
+              Assign this entity to a world to configure access settings.
+            </p>
+          ) : (
+            <div className="entity-access-columns">
+              <div className="entity-access-column">
+                <h3>Read access</h3>
+                <div className="form-group">
+                  <label htmlFor="entity-access-read-mode">Visibility</label>
+                  <select
+                    id="entity-access-read-mode"
+                    value={accessSettings.readMode}
+                    onChange={(event) =>
+                      handleAccessSettingChange('readMode', event.target.value)
+                    }
+                  >
+                    {ACCESS_MODE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {accessSettings.readMode === 'selective' ? (
+                  <>
+                    <div className="form-group">
+                      <label htmlFor="entity-access-read-campaigns">Campaigns</label>
+                      <ListCollector
+                        inputId="entity-access-read-campaigns"
+                        selected={accessSettings.readCampaigns}
+                        options={accessOptions.campaigns}
+                        onChange={(selection) =>
+                          handleAccessSettingChange('readCampaigns', selection)
+                        }
+                        placeholder="Select campaigns..."
+                        noOptionsMessage={
+                          accessOptionsLoading
+                            ? 'Loading campaigns...'
+                            : 'No campaigns available for this world.'
+                        }
+                        loading={accessOptionsLoading}
+                      />
+                      <p className="help-text">
+                        Members of selected campaigns can view this entity.
+                      </p>
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="entity-access-read-users">Users</label>
+                      <ListCollector
+                        inputId="entity-access-read-users"
+                        selected={accessSettings.readUsers}
+                        options={accessOptions.users}
+                        onChange={(selection) =>
+                          handleAccessSettingChange('readUsers', selection)
+                        }
+                        placeholder="Select users..."
+                        noOptionsMessage={
+                          accessOptionsLoading
+                            ? 'Loading users...'
+                            : 'No eligible users found for this world.'
+                        }
+                        loading={accessOptionsLoading}
+                      />
+                      <p className="help-text">
+                        Choose players who have characters in this world.
+                      </p>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+
+              <div className="entity-access-column">
+                <h3>Write access</h3>
+                <div className="form-group">
+                  <label htmlFor="entity-access-write-mode">Write</label>
+                  <select
+                    id="entity-access-write-mode"
+                    value={accessSettings.writeMode}
+                    onChange={(event) =>
+                      handleAccessSettingChange('writeMode', event.target.value)
+                    }
+                  >
+                    {ACCESS_MODE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {accessSettings.writeMode === 'selective' ? (
+                  <>
+                    <div className="form-group">
+                      <label htmlFor="entity-access-write-campaigns">Campaigns</label>
+                      <ListCollector
+                        inputId="entity-access-write-campaigns"
+                        selected={accessSettings.writeCampaigns}
+                        options={accessOptions.campaigns}
+                        onChange={(selection) =>
+                          handleAccessSettingChange('writeCampaigns', selection)
+                        }
+                        placeholder="Select campaigns..."
+                        noOptionsMessage={
+                          accessOptionsLoading
+                            ? 'Loading campaigns...'
+                            : 'No campaigns available for this world.'
+                        }
+                        loading={accessOptionsLoading}
+                      />
+                      <p className="help-text">
+                        Dungeon Masters of these campaigns can edit this entity.
+                      </p>
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="entity-access-write-users">Users</label>
+                      <ListCollector
+                        inputId="entity-access-write-users"
+                        selected={accessSettings.writeUsers}
+                        options={accessOptions.users}
+                        onChange={(selection) =>
+                          handleAccessSettingChange('writeUsers', selection)
+                        }
+                        placeholder="Select users..."
+                        noOptionsMessage={
+                          accessOptionsLoading
+                            ? 'Loading users...'
+                            : 'No eligible users found for this world.'
+                        }
+                        loading={accessOptionsLoading}
+                      />
+                      <p className="help-text">
+                        Grant edit access to specific players with characters here.
+                      </p>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          )}
+        </section>
       </div>
     )}
 

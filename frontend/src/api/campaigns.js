@@ -49,9 +49,19 @@ async function handleResponse(res, action = 'request') {
 
 // === API methods ===
 
-export async function fetchCampaigns() {
+export async function fetchCampaigns(params = {}) {
   const headers = await authHeaders()
-  const res = await fetch(API_BASE, { headers })
+  const query = new URLSearchParams()
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      query.set(key, value)
+    }
+  })
+
+  const queryString = query.toString()
+  const url = queryString ? `${API_BASE}?${queryString}` : API_BASE
+  const res = await fetch(url, { headers })
   return handleResponse(res, 'fetch campaigns')
 }
 
