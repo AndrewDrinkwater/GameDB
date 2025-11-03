@@ -724,6 +724,47 @@ export default function EntityDetailPage() {
         name = fallbackNameValue
       }
 
+      if (!name) {
+        const nestedType = candidates.find((candidate) => {
+          if (!candidate || typeof candidate !== 'object') return false
+          const nestedName =
+            candidate.name ??
+            candidate.label ??
+            candidate.title ??
+            candidate.display ??
+            candidate.typeName ??
+            candidate.type_name ??
+            candidate.entityTypeName ??
+            candidate.entity_type_name ??
+            candidate.entityTypeLabel ??
+            candidate.entity_type_label ??
+            ''
+          return Boolean(String(nestedName || '').trim())
+        })
+
+        if (nestedType) {
+          name =
+            nestedType.name ??
+            nestedType.label ??
+            nestedType.title ??
+            nestedType.display ??
+            nestedType.typeName ??
+            nestedType.type_name ??
+            nestedType.entityTypeName ??
+            nestedType.entity_type_name ??
+            nestedType.entityTypeLabel ??
+            nestedType.entity_type_label ??
+            ''
+        }
+      }
+
+      if (!name && typeof fallbackType === 'string') {
+        const trimmed = fallbackType.trim()
+        if (trimmed) {
+          name = trimmed
+        }
+      }
+
       if (
         !name &&
         entityValue &&
