@@ -1,7 +1,9 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PropTypes from '../../utils/propTypes.js'
 import './EntityInfoDrawer.css'
+
+const ANIMATION_DURATION = 250
 
 const formatDateTime = (value) => {
   if (!value) return '—'
@@ -117,85 +119,210 @@ export default function EntityInfoDrawer({
   error = '',
 }) {
   const navigate = useNavigate()
-  const isOpen = Boolean(entityId)
-  const metadataEntries = useMemo(() => extractMetadataEntries(entity), [entity])
-  const hasMetadata = metadataEntries.length > 0
-  const entityName = entity?.name || (isLoading ? 'Loading entity…' : 'Unknown entity')
-  const entityType = entity?.type?.name || entity?.typeName || 'Entity'
+  const [displayedState, setDisplayedState] = useState(() =>
+    entityId ? { entity, entityId, isLoading, error } : null,
+  )
+  const [animationState, setAnimationState] = useState(entityId ? 'open' : 'closed')
+  const pendingStateRef = useRef(null)
+  const closeTimerRef = useRef(null)
 
-  if (!isOpen) {
+  useEffect(() => () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (entityId && pendingStateRef.current?.entityId === entityId) {
+      pendingStateRef.current = { entity, entityId, isLoading, error }
+    }
+
+    if (entityId) {
+      if (!displayedState) {
+        setDisplayedState({ entity, entityId, isLoading, error })
+        setAnimationState('opening')
+        return
+      }
+
+      if (displayedState.entityId === entityId) {
+        setDisplayedState((prev) => {
+          if (!prev) return prev
+          if (
+            prev.entity === entity &&
+            prev.isLoading === isLoading &&
+            prev.error === error
+          ) {
+            return prev
+          }
+          return { ...prev, entity, isLoading, error }
+        })
+        if (animationState === 'closing' && closeTimerRef.current) {
+          clearTimeout(closeTimerRef.current)
+          closeTimerRef.current = null
+          pendingStateRef.current = null
+          setAnimationState('opening')
+        } else if (animationState === 'closed') {
+          setAnimationState('opening')
+        }
+        return
+      }
+
+      pendingStateRef.current = { entity, entityId, isLoading, error }
+      if (animationState !== 'closing') {
+        setAnimationState('closing')
+      }
+      if (!closeTimerRef.current) {
+        closeTimerRef.current = setTimeout(() => {
+          setDisplayedState(pendingStateRef.current)
+          pendingStateRef.current = null
+          setAnimationState('opening')
+          closeTimerRef.current = null
+        }, ANIMATION_DURATION)
+      }
+      return
+    }
+
+    if (displayedState) {
+      if (animationState !== 'closing') {
+        setAnimationState('closing')
+      }
+      if (!closeTimerRef.current) {
+        pendingStateRef.current = null
+        closeTimerRef.current = setTimeout(() => {
+          setDisplayedState(null)
+          setAnimationState('closed')
+          closeTimerRef.current = null
+        }, ANIMATION_DURATION)
+      }
+    }
+  }, [entity, entityId, isLoading, error, displayedState, animationState])
+
+  useEffect(() => {
+    if (animationState !== 'opening') {
+      return undefined
+    }
+
+    const raf = requestAnimationFrame(() => {
+      setAnimationState('open')
+    })
+
+    return () => cancelAnimationFrame(raf)
+  }, [animationState])
+
+  const isRendered = Boolean(displayedState)
+  const isClosing = animationState === 'closing'
+
+  const visibleEntity = displayedState?.entity
+  const visibleEntityId = displayedState?.entityId
+  const visibleLoading = displayedState?.isLoading ?? false
+  const visibleError = displayedState?.error ?? ''
+
+  const metadataEntries = useMemo(
+    () => extractMetadataEntries(visibleEntity),
+    [visibleEntity],
+  )
+  const hasMetadata = metadataEntries.length > 0
+  const entityName =
+    visibleEntity?.name || (visibleLoading ? 'Loading entity…' : 'Unknown entity')
+  const entityType =
+    visibleEntity?.type?.name || visibleEntity?.typeName || 'Entity'
+
+  if (!isRendered) {
     return null
   }
 
+  const wrapperClassName = [
+    'entity-info-drawer-wrapper',
+    animationState === 'open' ? 'entity-info-drawer-wrapper--open' : '',
+    isClosing ? 'entity-info-drawer-wrapper--closing' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   const handleNavigateToRecord = () => {
-    if (!entityId) return
-    navigate(`/entities/${entityId}`)
+    if (!visibleEntityId) return
+    navigate(`/entities/${visibleEntityId}`)
   }
 
   return (
-    <aside className="entity-info-drawer" role="complementary" aria-label="Entity details">
-      <button
-        type="button"
-        className="entity-info-drawer__close"
+    <div className={wrapperClassName} role="presentation">
+      <div
+        className="entity-info-drawer__overlay"
         onClick={onClose}
-        aria-label="Close entity details"
+        role="presentation"
+      />
+      <aside
+        className="entity-info-drawer"
+        role="complementary"
+        aria-label="Entity details"
       >
-        ×
-      </button>
-
-      <header className="entity-info-drawer__header">
-        <p className="entity-info-drawer__type" title={entityType}>
-          {entityType}
-        </p>
-        <h2 className="entity-info-drawer__title" title={entityName}>
-          {entityName}
-        </h2>
-      </header>
-
-      {entity?.summary && !isLoading && !error && (
-        <p className="entity-info-drawer__summary">{entity.summary}</p>
-      )}
-      {!entity?.summary && entity?.description && !isLoading && !error && (
-        <p className="entity-info-drawer__summary">{entity.description}</p>
-      )}
-
-      {isLoading && (
-        <p className="entity-info-drawer__status" aria-live="polite">
-          Loading entity information…
-        </p>
-      )}
-
-      {!!error && !isLoading && (
-        <p className="entity-info-drawer__status entity-info-drawer__status--error" aria-live="assertive">
-          {error}
-        </p>
-      )}
-
-      {!isLoading && !error && hasMetadata && (
-        <dl className="entity-info-drawer__metadata">
-          {metadataEntries.map((item) => (
-            <div key={item.key} className="entity-info-drawer__metadata-item">
-              <dt>{item.label}</dt>
-              <dd>{item.value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-
-      {!isLoading && !error && !hasMetadata && (
-        <p className="entity-info-drawer__status">No additional metadata available.</p>
-      )}
-
-      <div className="entity-info-drawer__actions">
         <button
           type="button"
-          className="entity-info-drawer__link"
-          onClick={handleNavigateToRecord}
+          className="entity-info-drawer__close"
+          onClick={onClose}
+          aria-label="Close entity details"
         >
-          View Full Record
+          ×
         </button>
-      </div>
-    </aside>
+
+        <header className="entity-info-drawer__header">
+          <p className="entity-info-drawer__type" title={entityType}>
+            {entityType}
+          </p>
+          <h2 className="entity-info-drawer__title" title={entityName}>
+            {entityName}
+          </h2>
+        </header>
+
+        {visibleEntity?.summary && !visibleLoading && !visibleError && (
+          <p className="entity-info-drawer__summary">{visibleEntity.summary}</p>
+        )}
+        {!visibleEntity?.summary &&
+          visibleEntity?.description &&
+          !visibleLoading &&
+          !visibleError && (
+          <p className="entity-info-drawer__summary">{visibleEntity.description}</p>
+        )}
+
+        {visibleLoading && (
+          <p className="entity-info-drawer__status" aria-live="polite">
+            Loading entity information…
+          </p>
+        )}
+
+        {!!visibleError && !visibleLoading && (
+          <p className="entity-info-drawer__status entity-info-drawer__status--error" aria-live="assertive">
+            {visibleError}
+          </p>
+        )}
+
+        {!visibleLoading && !visibleError && hasMetadata && (
+          <dl className="entity-info-drawer__metadata">
+            {metadataEntries.map((item) => (
+              <div key={item.key} className="entity-info-drawer__metadata-item">
+                <dt>{item.label}</dt>
+                <dd>{item.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+
+        {!visibleLoading && !visibleError && !hasMetadata && (
+          <p className="entity-info-drawer__status">No additional metadata available.</p>
+        )}
+
+        <div className="entity-info-drawer__actions">
+          <button
+            type="button"
+            className="entity-info-drawer__link"
+            onClick={handleNavigateToRecord}
+          >
+            View Full Record
+          </button>
+        </div>
+      </aside>
+    </div>
   )
 }
 
