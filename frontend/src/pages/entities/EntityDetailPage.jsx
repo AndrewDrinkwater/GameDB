@@ -1811,175 +1811,177 @@ export default function EntityDetailPage() {
             </div>
           ) : null}
 
-          {!worldId ? (
-            <p className="entity-empty-state">
-              Assign this entity to a world to configure access settings.
-            </p>
-          ) : (
-            <div className="entity-access-columns">
-              <div className="entity-access-column">
-                <h3>Read access</h3>
-                <div className="form-group">
-                  <label htmlFor="entity-access-read-mode">Visibility</label>
-                  <select
-                    id="entity-access-read-mode"
-                    value={accessSettings.readMode}
-                    onChange={(event) =>
-                      handleAccessSettingChange('readMode', event.target.value)
-                    }
-                    disabled={!canEdit || accessSaving}
+            {!worldId ? (
+              <p className="entity-empty-state">
+                Assign this entity to a world to configure access settings.
+              </p>
+            ) : (
+              <>
+                <div className="entity-access-columns">
+                  <div className="entity-access-column">
+                    <h3>Read access</h3>
+                    <div className="form-group">
+                      <label htmlFor="entity-access-read-mode">Visibility</label>
+                      <select
+                        id="entity-access-read-mode"
+                        value={accessSettings.readMode}
+                        onChange={(event) =>
+                          handleAccessSettingChange('readMode', event.target.value)
+                        }
+                        disabled={!canEdit || accessSaving}
+                      >
+                        {ACCESS_MODE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {accessSettings.readMode === 'selective' ? (
+                      <>
+                        <div className="form-group">
+                          <label htmlFor="entity-access-read-campaigns">Campaigns</label>
+                          <ListCollector
+                            inputId="entity-access-read-campaigns"
+                            selected={accessSettings.readCampaigns}
+                            options={accessOptions.campaigns}
+                            onChange={(selection) =>
+                              handleAccessSettingChange('readCampaigns', selection)
+                            }
+                            placeholder="Select campaigns..."
+                            noOptionsMessage={
+                              accessOptionsLoading
+                                ? 'Loading campaigns...'
+                                : 'No campaigns available for this world.'
+                            }
+                            loading={accessOptionsLoading}
+                            disabled={!canEdit || accessSaving}
+                          />
+                          <p className="help-text">
+                            Members of selected campaigns can view this entity.
+                          </p>
+                        </div>
+
+                        <div className="form-group">
+                          <label htmlFor="entity-access-read-users">Users</label>
+                          <ListCollector
+                            inputId="entity-access-read-users"
+                            selected={accessSettings.readUsers}
+                            options={accessOptions.users}
+                            onChange={(selection) =>
+                              handleAccessSettingChange('readUsers', selection)
+                            }
+                            placeholder="Select users..."
+                            noOptionsMessage={
+                              accessOptionsLoading
+                                ? 'Loading users...'
+                                : 'No eligible users found for this world.'
+                            }
+                            loading={accessOptionsLoading}
+                            disabled={!canEdit || accessSaving}
+                          />
+                          <p className="help-text">
+                            Choose players who have characters in this world.
+                          </p>
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+
+                  <div className="entity-access-column">
+                    <h3>Write access</h3>
+                    <div className="form-group">
+                      <label htmlFor="entity-access-write-mode">Write</label>
+                      <select
+                        id="entity-access-write-mode"
+                        value={accessSettings.writeMode}
+                        onChange={(event) =>
+                          handleAccessSettingChange('writeMode', event.target.value)
+                        }
+                        disabled={!canEdit || accessSaving}
+                      >
+                        {ACCESS_MODE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {accessSettings.writeMode === 'selective' ? (
+                      <>
+                        <div className="form-group">
+                          <label htmlFor="entity-access-write-campaigns">Campaigns</label>
+                          <ListCollector
+                            inputId="entity-access-write-campaigns"
+                            selected={accessSettings.writeCampaigns}
+                            options={accessOptions.campaigns}
+                            onChange={(selection) =>
+                              handleAccessSettingChange('writeCampaigns', selection)
+                            }
+                            placeholder="Select campaigns..."
+                            noOptionsMessage={
+                              accessOptionsLoading
+                                ? 'Loading campaigns...'
+                                : 'No campaigns available for this world.'
+                            }
+                            loading={accessOptionsLoading}
+                            disabled={!canEdit || accessSaving}
+                          />
+                          <p className="help-text">
+                            Dungeon Masters of these campaigns can edit this entity.
+                          </p>
+                        </div>
+
+                        <div className="form-group">
+                          <label htmlFor="entity-access-write-users">Users</label>
+                          <ListCollector
+                            inputId="entity-access-write-users"
+                            selected={accessSettings.writeUsers}
+                            options={accessOptions.users}
+                            onChange={(selection) =>
+                              handleAccessSettingChange('writeUsers', selection)
+                            }
+                            placeholder="Select users..."
+                            noOptionsMessage={
+                              accessOptionsLoading
+                                ? 'Loading users...'
+                                : 'No eligible users found for this world.'
+                            }
+                            loading={accessOptionsLoading}
+                            disabled={!canEdit || accessSaving}
+                          />
+                          <p className="help-text">
+                            Grant edit access to specific players with characters here.
+                          </p>
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="entity-access-actions">
+                  {accessSaveError ? (
+                    <div className="alert error" role="alert">
+                      {accessSaveError}
+                    </div>
+                  ) : null}
+                  {accessSaveSuccess ? (
+                    <div className="alert success" role="status">
+                      {accessSaveSuccess}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="btn submit"
+                    onClick={handleAccessSave}
+                    disabled={!canEdit || accessSaving || !isAccessDirty}
                   >
-                    {ACCESS_MODE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    {accessSaving ? 'Saving...' : 'Save access settings'}
+                  </button>
                 </div>
-
-                {accessSettings.readMode === 'selective' ? (
-                  <>
-                    <div className="form-group">
-                      <label htmlFor="entity-access-read-campaigns">Campaigns</label>
-                      <ListCollector
-                        inputId="entity-access-read-campaigns"
-                        selected={accessSettings.readCampaigns}
-                        options={accessOptions.campaigns}
-                        onChange={(selection) =>
-                          handleAccessSettingChange('readCampaigns', selection)
-                        }
-                        placeholder="Select campaigns..."
-                        noOptionsMessage={
-                          accessOptionsLoading
-                            ? 'Loading campaigns...'
-                            : 'No campaigns available for this world.'
-                        }
-                        loading={accessOptionsLoading}
-                        disabled={!canEdit || accessSaving}
-                      />
-                      <p className="help-text">
-                        Members of selected campaigns can view this entity.
-                      </p>
-                    </div>
-
-                    <div className="form-group">
-                      <label htmlFor="entity-access-read-users">Users</label>
-                      <ListCollector
-                        inputId="entity-access-read-users"
-                        selected={accessSettings.readUsers}
-                        options={accessOptions.users}
-                        onChange={(selection) =>
-                          handleAccessSettingChange('readUsers', selection)
-                        }
-                        placeholder="Select users..."
-                        noOptionsMessage={
-                          accessOptionsLoading
-                            ? 'Loading users...'
-                            : 'No eligible users found for this world.'
-                        }
-                        loading={accessOptionsLoading}
-                        disabled={!canEdit || accessSaving}
-                      />
-                      <p className="help-text">
-                        Choose players who have characters in this world.
-                      </p>
-                    </div>
-                  </>
-                ) : null}
-              </div>
-
-              <div className="entity-access-column">
-                <h3>Write access</h3>
-                <div className="form-group">
-                  <label htmlFor="entity-access-write-mode">Write</label>
-                  <select
-                    id="entity-access-write-mode"
-                    value={accessSettings.writeMode}
-                    onChange={(event) =>
-                      handleAccessSettingChange('writeMode', event.target.value)
-                    }
-                    disabled={!canEdit || accessSaving}
-                  >
-                    {ACCESS_MODE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {accessSettings.writeMode === 'selective' ? (
-                  <>
-                    <div className="form-group">
-                      <label htmlFor="entity-access-write-campaigns">Campaigns</label>
-                      <ListCollector
-                        inputId="entity-access-write-campaigns"
-                        selected={accessSettings.writeCampaigns}
-                        options={accessOptions.campaigns}
-                        onChange={(selection) =>
-                          handleAccessSettingChange('writeCampaigns', selection)
-                        }
-                        placeholder="Select campaigns..."
-                        noOptionsMessage={
-                          accessOptionsLoading
-                            ? 'Loading campaigns...'
-                            : 'No campaigns available for this world.'
-                        }
-                        loading={accessOptionsLoading}
-                        disabled={!canEdit || accessSaving}
-                      />
-                      <p className="help-text">
-                        Dungeon Masters of these campaigns can edit this entity.
-                      </p>
-                    </div>
-
-                    <div className="form-group">
-                      <label htmlFor="entity-access-write-users">Users</label>
-                      <ListCollector
-                        inputId="entity-access-write-users"
-                        selected={accessSettings.writeUsers}
-                        options={accessOptions.users}
-                        onChange={(selection) =>
-                          handleAccessSettingChange('writeUsers', selection)
-                        }
-                        placeholder="Select users..."
-                        noOptionsMessage={
-                          accessOptionsLoading
-                            ? 'Loading users...'
-                            : 'No eligible users found for this world.'
-                        }
-                        loading={accessOptionsLoading}
-                        disabled={!canEdit || accessSaving}
-                      />
-                      <p className="help-text">
-                        Grant edit access to specific players with characters here.
-                      </p>
-                    </div>
-                  </>
-                ) : null}
-              </div>
-            </div>
-            <div className="entity-access-actions">
-              {accessSaveError ? (
-                <div className="alert error" role="alert">
-                  {accessSaveError}
-                </div>
-              ) : null}
-              {accessSaveSuccess ? (
-                <div className="alert success" role="status">
-                  {accessSaveSuccess}
-                </div>
-              ) : null}
-              <button
-                type="button"
-                className="btn submit"
-                onClick={handleAccessSave}
-                disabled={!canEdit || accessSaving || !isAccessDirty}
-              >
-                {accessSaving ? 'Saving...' : 'Save access settings'}
-              </button>
-            </div>
-          )}
+              </>
+            )}
         </section>
       </div>
     )}
