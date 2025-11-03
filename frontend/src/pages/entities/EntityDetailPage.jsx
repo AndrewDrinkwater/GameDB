@@ -184,18 +184,35 @@ export default function EntityDetailPage() {
   const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
   const fromEntitiesSearch = location.state?.fromEntities?.search || ''
 
-  const buildFilterKey = useCallback((id, name) => {
+  const buildFilterKey = useCallback((id, name, fallbackLabel = '') => {
     if (id !== undefined && id !== null) {
       const trimmed = String(id).trim()
       if (trimmed) return trimmed
     }
 
-    if (!name) return ''
+    if (name !== undefined && name !== null) {
+      const trimmed = String(name).trim()
+      if (trimmed) {
+        return `name:${trimmed.toLowerCase()}`
+      }
+    }
 
-    const trimmed = String(name).trim()
-    if (!trimmed) return ''
+    if (fallbackLabel) {
+      const trimmed = String(fallbackLabel).trim()
+      if (trimmed) {
+        const normalized = trimmed
+          .toLowerCase()
+          .normalize('NFKD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '')
+        return `label:${normalized || 'fallback'}`
+      }
+    }
 
-    return `name:${trimmed.toLowerCase()}`
+    return ''
   }, [])
 
   const backUrl = useMemo(() => {
@@ -875,13 +892,17 @@ export default function EntityDetailPage() {
     const entityIdString = entity?.id != null ? String(entity.id) : ''
 
     sortedRelationships.forEach((relationship) => {
-      const typeKey = buildFilterKey(relationship.typeId, relationship.typeName)
+      const typeLabel =
+        relationship.typeName && relationship.typeName !== '—'
+          ? relationship.typeName
+          : 'Unknown type'
+      const typeKey = buildFilterKey(
+        relationship.typeId,
+        relationship.typeName,
+        typeLabel,
+      )
       if (typeKey && !typeMap.has(typeKey)) {
-        const label =
-          relationship.typeName && relationship.typeName !== '—'
-            ? relationship.typeName
-            : 'Unknown type'
-        typeMap.set(typeKey, label)
+        typeMap.set(typeKey, typeLabel)
       }
 
       if (!entityIdString) return
@@ -893,10 +914,15 @@ export default function EntityDetailPage() {
       const relatedTypeName = isSource
         ? relationship.toEntityTypeName
         : relationship.fromEntityTypeName
-      const relatedKey = buildFilterKey(relatedTypeId, relatedTypeName)
+      const relatedLabel = relatedTypeName || 'Unknown entity type'
+      const relatedKey = buildFilterKey(
+        relatedTypeId,
+        relatedTypeName,
+        relatedLabel,
+      )
       if (!relatedKey || relatedTypeMap.has(relatedKey)) return
 
-      relatedTypeMap.set(relatedKey, relatedTypeName || 'Unknown entity type')
+      relatedTypeMap.set(relatedKey, relatedLabel)
     })
 
     const relationshipTypes = Array.from(typeMap.entries())
@@ -968,7 +994,15 @@ export default function EntityDetailPage() {
     const entityIdString = entity?.id != null ? String(entity.id) : ''
 
     return sortedRelationships.filter((relationship) => {
-      const typeKey = buildFilterKey(relationship.typeId, relationship.typeName)
+      const typeLabel =
+        relationship.typeName && relationship.typeName !== '—'
+          ? relationship.typeName
+          : 'Unknown type'
+      const typeKey = buildFilterKey(
+        relationship.typeId,
+        relationship.typeName,
+        typeLabel,
+      )
       if (typeFilter.mode !== 'all' && typeFilter.values.length > 0) {
         const match = typeKey ? typeFilter.values.includes(typeKey) : false
         if (typeFilter.mode === 'include' && !match) return false
@@ -985,7 +1019,12 @@ export default function EntityDetailPage() {
         const relatedTypeName = isSource
           ? relationship.toEntityTypeName
           : relationship.fromEntityTypeName
-        const relatedKey = buildFilterKey(relatedTypeId, relatedTypeName)
+        const relatedLabel = relatedTypeName || 'Unknown entity type'
+        const relatedKey = buildFilterKey(
+          relatedTypeId,
+          relatedTypeName,
+          relatedLabel,
+        )
         const match = relatedKey ? relatedEntityTypeFilter.values.includes(relatedKey) : false
         if (relatedEntityTypeFilter.mode === 'include' && !match) return false
         if (relatedEntityTypeFilter.mode === 'exclude' && match) return false
