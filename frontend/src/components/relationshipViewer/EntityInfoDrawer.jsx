@@ -4,6 +4,7 @@ import PropTypes from '../../utils/propTypes.js'
 import './EntityInfoDrawer.css'
 
 const ANIMATION_DURATION = 250
+const PREPARING_OPEN_STATE = 'preparing-open'
 
 const formatDateTime = (value) => {
   if (!value) return '—'
@@ -141,7 +142,7 @@ export default function EntityInfoDrawer({
     if (entityId) {
       if (!displayedState) {
         setDisplayedState({ entity, entityId, isLoading, error })
-        setAnimationState('opening')
+        setAnimationState(PREPARING_OPEN_STATE)
         return
       }
 
@@ -163,7 +164,7 @@ export default function EntityInfoDrawer({
           pendingStateRef.current = null
           setAnimationState('opening')
         } else if (animationState === 'closed') {
-          setAnimationState('opening')
+          setAnimationState(PREPARING_OPEN_STATE)
         }
         return
       }
@@ -197,6 +198,18 @@ export default function EntityInfoDrawer({
       }
     }
   }, [entity, entityId, isLoading, error, displayedState, animationState])
+
+  useEffect(() => {
+    if (animationState !== PREPARING_OPEN_STATE) {
+      return undefined
+    }
+
+    const raf = requestAnimationFrame(() => {
+      setAnimationState('opening')
+    })
+
+    return () => cancelAnimationFrame(raf)
+  }, [animationState])
 
   useEffect(() => {
     if (animationState !== 'opening') {
@@ -248,6 +261,8 @@ export default function EntityInfoDrawer({
     navigate(`/entities/${visibleEntityId}`)
   }
 
+  const canNavigate = Boolean(visibleEntityId) && !visibleLoading && !visibleError
+
   return (
     <div className={wrapperClassName} role="presentation">
       <div
@@ -270,9 +285,19 @@ export default function EntityInfoDrawer({
         </button>
 
         <header className="entity-info-drawer__header">
-          <p className="entity-info-drawer__type" title={entityType}>
-            {entityType}
-          </p>
+          <div className="entity-info-drawer__header-top">
+            <p className="entity-info-drawer__type" title={entityType}>
+              {entityType}
+            </p>
+            <button
+              type="button"
+              className="entity-info-drawer__link"
+              onClick={handleNavigateToRecord}
+              disabled={!canNavigate}
+            >
+              Go to Record
+            </button>
+          </div>
           <h2 className="entity-info-drawer__title" title={entityName}>
             {entityName}
           </h2>
@@ -314,16 +339,6 @@ export default function EntityInfoDrawer({
         {!visibleLoading && !visibleError && !hasMetadata && (
           <p className="entity-info-drawer__status">No additional metadata available.</p>
         )}
-
-        <div className="entity-info-drawer__actions">
-          <button
-            type="button"
-            className="entity-info-drawer__link"
-            onClick={handleNavigateToRecord}
-          >
-            View Full Record
-          </button>
-        </div>
       </aside>
     </div>
   )
