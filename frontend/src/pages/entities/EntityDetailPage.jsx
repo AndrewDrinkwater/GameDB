@@ -189,6 +189,10 @@ export default function EntityDetailPage() {
     navigate(backUrl)
   }, [navigate, backUrl])
 
+  const handleExplore = useCallback(() => {
+    navigate(`/entities/${id}/relationship-viewer`)
+  }, [navigate, id])
+
   const tabItems = useMemo(
     () => [
       { id: 'dossier', label: 'Dossier' },
@@ -808,13 +812,14 @@ export default function EntityDetailPage() {
 {/* --- ENTITY DETAIL TOP BAR --- */}
 <div className="entity-detail-topbar">
   <div className="entity-detail-topbar-inner">
-    <EntityHeader
-      name={entity.name}
-      onBack={handleBack}
-      canEdit={canEdit}
-      isEditing={isEditing}
-      onToggleEdit={handleEditToggle}
-    />
+      <EntityHeader
+        name={entity.name}
+        onBack={handleBack}
+        onExplore={handleExplore}
+        canEdit={canEdit}
+        isEditing={isEditing}
+        onToggleEdit={handleEditToggle}
+      />
     <TabNav tabs={tabItems} activeTab={activeTab} onChange={setActiveTab} />
   </div>
 </div>
@@ -921,16 +926,38 @@ export default function EntityDetailPage() {
                           {isSource ? (
                             <>
                               <strong>{entity.name}</strong> {sourceLabel || '—'}{' '}
-                              <Link to={`/entities/${relatedId}`} className="entity-relationship-link">
-                                {relatedName || '—'}
-                              </Link>
+                              <span className="entity-link-with-preview">
+                                <Link
+                                  to={`/entities/${relatedId}`}
+                                  className="entity-relationship-link"
+                                >
+                                  {relatedName || '—'}
+                                </Link>
+                                {relatedId ? (
+                                  <EntityInfoPreview
+                                    entityId={relatedId}
+                                    entityName={relatedName || 'entity'}
+                                  />
+                                ) : null}
+                              </span>
                             </>
                           ) : (
                             <>
                               <strong>{entity.name}</strong> {targetLabel || '—'}{' '}
-                              <Link to={`/entities/${relatedId}`} className="entity-relationship-link">
-                                {relatedName || '—'}
-                              </Link>
+                              <span className="entity-link-with-preview">
+                                <Link
+                                  to={`/entities/${relatedId}`}
+                                  className="entity-relationship-link"
+                                >
+                                  {relatedName || '—'}
+                                </Link>
+                                {relatedId ? (
+                                  <EntityInfoPreview
+                                    entityId={relatedId}
+                                    entityName={relatedName || 'entity'}
+                                  />
+                                ) : null}
+                              </span>
                             </>
                           )}
                         </span>

@@ -1,6 +1,7 @@
 export default function EntityHeader({
   name,
   onBack,
+  onExplore,
   canEdit,
   isEditing,
   onToggleEdit,
@@ -10,6 +11,12 @@ export default function EntityHeader({
   const handleBackClick = () => {
     if (typeof onBack === 'function') {
       onBack()
+    }
+  }
+
+  const handleExploreClick = () => {
+    if (typeof onExplore === 'function') {
+      onExplore()
     }
   }
 
@@ -25,6 +32,11 @@ export default function EntityHeader({
         <button type="button" className="btn secondary" onClick={handleBackClick}>
           Back to entities
         </button>
+        {typeof onExplore === 'function' ? (
+          <button type="button" className="btn secondary" onClick={handleExploreClick}>
+            Explore
+          </button>
+        ) : null}
       </div>
       <div className="entity-header-center">
         <h1>{title}</h1>

@@ -67,9 +67,9 @@ export default function ClusterNode({ id, data }) {
     () => new Set((data?.placedEntityIds || []).map((value) => String(value))),
     [data?.placedEntityIds]
   )
-  const totalCount = data?.count ?? containedEntities.length
-  const placedCount = placedIds.size
-  const availableCount = Math.max(totalCount - placedCount, 0)
+  const hiddenCount = containedEntities.length
+  const totalCount = data?.count ?? hiddenCount + placedIds.size
+  const availableCount = hiddenCount
 
   const countLabel = totalCount
     ? `contains ${availableCount} of ${totalCount}`
@@ -129,6 +129,7 @@ export default function ClusterNode({ id, data }) {
           onReturnToGroup={data?.onReturnToGroup}
           onSetTargetEntity={data?.onSetTargetEntity}
           onOpenEntityInfo={data?.onOpenEntityInfo}
+          releasedEntityIds={data?.manuallyReleasedIds || []}
         />
       )}
     </>
