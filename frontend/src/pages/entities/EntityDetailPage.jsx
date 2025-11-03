@@ -783,6 +783,53 @@ export default function EntityDetailPage() {
       }
     }
 
+    const getFirstString = (...candidates) => {
+      for (const candidate of candidates) {
+        if (candidate === undefined || candidate === null) continue
+        if (typeof candidate === 'string' || typeof candidate === 'number') {
+          const trimmed = String(candidate).trim()
+          if (trimmed) return trimmed
+          continue
+        }
+
+        if (typeof candidate === 'object') {
+          const {
+            name,
+            label,
+            title,
+            display,
+            typeName,
+            type_name,
+            entityTypeName,
+            entity_type_name,
+            entityTypeLabel,
+            entity_type_label,
+          } = candidate
+
+          const valuesToCheck = [
+            name,
+            label,
+            title,
+            display,
+            typeName,
+            type_name,
+            entityTypeName,
+            entity_type_name,
+            entityTypeLabel,
+            entity_type_label,
+          ]
+
+          for (const value of valuesToCheck) {
+            if (value === undefined || value === null) continue
+            const trimmed = String(value).trim()
+            if (trimmed) return trimmed
+          }
+        }
+      }
+
+      return ''
+    }
+
     return relationships.map((relationship) => {
       const type =
         relationship.relationshipType ||
@@ -847,6 +894,62 @@ export default function EntityDetailPage() {
         relationship.to_entity_type_id ?? relationship.toEntityTypeId,
       )
 
+      const fromEntityTypeId =
+        fromEntityTypeInfo.id ||
+        getFirstString(
+          relationship.from_entity_type_id,
+          relationship.fromEntityTypeId,
+          relationship.from_entity_type?.id,
+          relationship.from_entity_type?.entity_type_id,
+          relationship.from_entity_type?.entityTypeId,
+        ) ||
+        ''
+
+      const toEntityTypeId =
+        toEntityTypeInfo.id ||
+        getFirstString(
+          relationship.to_entity_type_id,
+          relationship.toEntityTypeId,
+          relationship.to_entity_type?.id,
+          relationship.to_entity_type?.entity_type_id,
+          relationship.to_entity_type?.entityTypeId,
+        ) ||
+        ''
+
+      const fromEntityTypeName =
+        getFirstString(
+          fromEntityTypeInfo.name,
+          relationship.from_entity_type_name,
+          relationship.fromEntityTypeName,
+          relationship.from_entity_type_label,
+          relationship.fromEntityTypeLabel,
+          relationship.from_entity_type,
+          relationship.fromEntityType,
+          fromEntity?.entityType,
+          fromEntity?.entity_type,
+          fromEntity?.type,
+          fromEntity?.entityTypeInfo,
+          fromEntity?.entityTypeName,
+          fromEntity?.entity_type_name,
+        ) || ''
+
+      const toEntityTypeName =
+        getFirstString(
+          toEntityTypeInfo.name,
+          relationship.to_entity_type_name,
+          relationship.toEntityTypeName,
+          relationship.to_entity_type_label,
+          relationship.toEntityTypeLabel,
+          relationship.to_entity_type,
+          relationship.toEntityType,
+          toEntity?.entityType,
+          toEntity?.entity_type,
+          toEntity?.type,
+          toEntity?.entityTypeInfo,
+          toEntity?.entityTypeName,
+          toEntity?.entity_type_name,
+        ) || ''
+
       return {
         id: relationship.id,
         typeId,
@@ -868,8 +971,8 @@ export default function EntityDetailPage() {
           normaliseRelationshipEntityId(fromEntity) ||
           null,
         fromName: fromEntity?.name || '—',
-        fromEntityTypeId: fromEntityTypeInfo.id,
-        fromEntityTypeName: fromEntityTypeInfo.name,
+        fromEntityTypeId,
+        fromEntityTypeName,
         toId:
           normaliseRelationshipEntityId(
             relationship.to_entity_id ??
@@ -881,8 +984,8 @@ export default function EntityDetailPage() {
           normaliseRelationshipEntityId(toEntity) ||
           null,
         toName: toEntity?.name || '—',
-        toEntityTypeId: toEntityTypeInfo.id,
-        toEntityTypeName: toEntityTypeInfo.name,
+        toEntityTypeId,
+        toEntityTypeName,
         direction,
         bidirectional: Boolean(relationship.bidirectional),
       }
@@ -932,6 +1035,8 @@ export default function EntityDetailPage() {
     const relatedTypeMap = new Map()
     const entityIdString = entity?.id != null ? String(entity.id) : ''
 
+    const debugEntries = []
+
     sortedRelationships.forEach((relationship) => {
       const typeLabel =
         relationship.typeName && relationship.typeName !== '—'
@@ -964,6 +1069,22 @@ export default function EntityDetailPage() {
       if (!relatedKey || relatedTypeMap.has(relatedKey)) return
 
       relatedTypeMap.set(relatedKey, relatedLabel)
+
+      debugEntries.push({
+        relationshipId: relationship.id,
+        isSource,
+        type: {
+          id: relationship.typeId,
+          key: typeKey,
+          label: typeLabel,
+        },
+        related: {
+          id: relatedTypeId,
+          key: relatedKey,
+          label: relatedLabel,
+          name: relatedTypeName,
+        },
+      })
     })
 
     const relationshipTypes = Array.from(typeMap.entries())
@@ -973,6 +1094,16 @@ export default function EntityDetailPage() {
     const relatedEntityTypes = Array.from(relatedTypeMap.entries())
       .map(([value, label]) => ({ value, label }))
       .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
+
+    if (typeof console !== 'undefined' && console.debug) {
+      console.debug('[EntityDetailPage] Derived relationship filter options', {
+        entityId: entityIdString || null,
+        relationshipCount: sortedRelationships.length,
+        relationshipTypes,
+        relatedEntityTypes,
+        details: debugEntries,
+      })
+    }
 
     return { relationshipTypes, relatedEntityTypes }
   }, [sortedRelationships, entity?.id, buildFilterKey])
