@@ -6,6 +6,9 @@ import TabNav from '../../components/TabNav.jsx'
 import DrawerPanel from '../../components/DrawerPanel.jsx'
 import EntityHeader from '../../components/entities/EntityHeader.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
+import EntityRelationshipFilters, {
+  createDefaultRelationshipFilters,
+} from '../../components/entities/EntityRelationshipFilters.jsx'
 import { getEntity, updateEntity } from '../../api/entities.js'
 import { getEntityRelationships } from '../../api/entityRelationships.js'
 import { useAuth } from '../../context/AuthContext.jsx'
@@ -174,9 +177,26 @@ export default function EntityDetailPage() {
   const [relationshipsLoading, setRelationshipsLoading] = useState(false)
   const [showRelationshipForm, setShowRelationshipForm] = useState(false)
   const [relationshipPerspective, setRelationshipPerspective] = useState('source')
+  const [relationshipFilters, setRelationshipFilters] = useState(() =>
+    createDefaultRelationshipFilters(),
+  )
   const [toast, setToast] = useState(null)
   const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
   const fromEntitiesSearch = location.state?.fromEntities?.search || ''
+
+  const buildFilterKey = useCallback((id, name) => {
+    if (id !== undefined && id !== null) {
+      const trimmed = String(id).trim()
+      if (trimmed) return trimmed
+    }
+
+    if (!name) return ''
+
+    const trimmed = String(name).trim()
+    if (!trimmed) return ''
+
+    return `name:${trimmed.toLowerCase()}`
+  }, [])
 
   const backUrl = useMemo(() => {
     if (!fromEntitiesSearch) return '/entities'
@@ -344,6 +364,10 @@ export default function EntityDetailPage() {
 
   useEffect(() => {
     setRelationshipPerspective('source')
+  }, [entity?.id])
+
+  useEffect(() => {
+    setRelationshipFilters(createDefaultRelationshipFilters())
   }, [entity?.id])
 
   const visibilityLabel = useMemo(() => {
@@ -575,6 +599,7 @@ export default function EntityDetailPage() {
 
   const normalisedRelationships = useMemo(() => {
     if (!Array.isArray(relationships)) return []
+
     const normaliseRelationshipEntityId = (value) => {
       if (value === undefined || value === null) return ''
       if (typeof value === 'string' || typeof value === 'number') {
@@ -594,6 +619,112 @@ export default function EntityDetailPage() {
       }
       return ''
     }
+
+    const normaliseRelationshipTypeId = (value) => {
+      if (value === undefined || value === null) return ''
+      if (typeof value === 'string' || typeof value === 'number') {
+        const trimmed = String(value).trim()
+        return trimmed
+      }
+      if (typeof value === 'object') {
+        if (value.id !== undefined && value.id !== null) {
+          return String(value.id)
+        }
+        if (value.relationship_type_id !== undefined && value.relationship_type_id !== null) {
+          return String(value.relationship_type_id)
+        }
+        if (value.relationshipTypeId !== undefined && value.relationshipTypeId !== null) {
+          return String(value.relationshipTypeId)
+        }
+      }
+      return ''
+    }
+
+    const normaliseEntityTypeInfo = (entityValue, fallbackType, fallbackName, fallbackId) => {
+      const candidates = []
+
+      if (entityValue && typeof entityValue === 'object') {
+        candidates.push(
+          entityValue.entityType,
+          entityValue.entity_type,
+          entityValue.type,
+          entityValue.entityTypeInfo,
+        )
+      }
+
+      if (fallbackType && typeof fallbackType === 'object') {
+        candidates.push(
+          fallbackType.entityType,
+          fallbackType.entity_type,
+          fallbackType.type,
+          fallbackType,
+        )
+      }
+
+      let resolved = candidates.find((candidate) => candidate && typeof candidate === 'object') || null
+
+      let id =
+        resolved?.id ??
+        resolved?.entity_type_id ??
+        resolved?.entityTypeId ??
+        resolved?.type_id ??
+        resolved?.typeId ??
+        null
+
+      if (id === null || id === undefined || String(id).trim() === '') {
+        const fallbackIdValue =
+          fallbackId ??
+          (typeof fallbackType === 'object'
+            ? fallbackType?.id ??
+              fallbackType?.entity_type_id ??
+              fallbackType?.entityTypeId ??
+              fallbackType?.type_id ??
+              fallbackType?.typeId
+            : null)
+
+        if (fallbackIdValue !== null && fallbackIdValue !== undefined) {
+          const trimmed = String(fallbackIdValue).trim()
+          if (trimmed) {
+            id = trimmed
+          }
+        }
+      }
+
+      let name =
+        resolved?.name ??
+        resolved?.label ??
+        resolved?.title ??
+        resolved?.display ??
+        ''
+
+      const fallbackNameValue =
+        fallbackName ??
+        (typeof fallbackType === 'object'
+          ? fallbackType?.name ?? fallbackType?.label ?? fallbackType?.title ?? ''
+          : '')
+
+      if (!name && fallbackNameValue) {
+        name = fallbackNameValue
+      }
+
+      if (
+        !name &&
+        entityValue &&
+        typeof entityValue === 'object' &&
+        (entityValue.entityTypeName || entityValue.entity_type_name)
+      ) {
+        name = entityValue.entityTypeName || entityValue.entity_type_name || ''
+      }
+
+      return {
+        id:
+          id !== undefined && id !== null && String(id).trim() !== ''
+            ? String(id)
+            : '',
+        name: name ? String(name) : '',
+      }
+    }
+
     return relationships.map((relationship) => {
       const type =
         relationship.relationshipType ||
@@ -621,6 +752,13 @@ export default function EntityDetailPage() {
       const direction = context.__direction === 'reverse' ? 'reverse' : 'forward'
       const baseTypeName = type?.name || '—'
 
+      const typeId =
+        normaliseRelationshipTypeId(
+          relationship.relationship_type_id ??
+            relationship.relationshipTypeId ??
+            relationship.typeId,
+        ) || normaliseRelationshipTypeId(type)
+
       // Directional labels from relationship type
       const typeFromName = type?.from_name || type?.fromName || baseTypeName
       const typeToName = type?.to_name || type?.toName || baseTypeName
@@ -637,8 +775,23 @@ export default function EntityDetailPage() {
       const effectiveFromLabel = direction === 'reverse' ? targetLabel : sourceLabel
       const effectiveToLabel = direction === 'reverse' ? sourceLabel : targetLabel
 
+      const fromEntityTypeInfo = normaliseEntityTypeInfo(
+        fromEntity,
+        relationship.from_entity_type || relationship.fromEntityType,
+        relationship.from_entity_type_name || relationship.fromEntityTypeName,
+        relationship.from_entity_type_id ?? relationship.fromEntityTypeId,
+      )
+
+      const toEntityTypeInfo = normaliseEntityTypeInfo(
+        toEntity,
+        relationship.to_entity_type || relationship.toEntityType,
+        relationship.to_entity_type_name || relationship.toEntityTypeName,
+        relationship.to_entity_type_id ?? relationship.toEntityTypeId,
+      )
+
       return {
         id: relationship.id,
+        typeId,
         typeName: baseTypeName,
         typeFromName,
         typeToName,
@@ -657,6 +810,8 @@ export default function EntityDetailPage() {
           normaliseRelationshipEntityId(fromEntity) ||
           null,
         fromName: fromEntity?.name || '—',
+        fromEntityTypeId: fromEntityTypeInfo.id,
+        fromEntityTypeName: fromEntityTypeInfo.name,
         toId:
           normaliseRelationshipEntityId(
             relationship.to_entity_id ??
@@ -668,32 +823,13 @@ export default function EntityDetailPage() {
           normaliseRelationshipEntityId(toEntity) ||
           null,
         toName: toEntity?.name || '—',
+        toEntityTypeId: toEntityTypeInfo.id,
+        toEntityTypeName: toEntityTypeInfo.name,
         direction,
         bidirectional: Boolean(relationship.bidirectional),
       }
     })
   }, [relationships])
-
-  const sortedRelationships = useMemo(() => {
-    if (!Array.isArray(normalisedRelationships)) return []
-
-    const entityIdString = entity?.id != null ? String(entity.id) : null
-    if (!entityIdString) return [...normalisedRelationships]
-
-    return [...normalisedRelationships].sort((a, b) => {
-      const aIsSource = String(a?.fromId ?? '') === entityIdString
-      const bIsSource = String(b?.fromId ?? '') === entityIdString
-
-      if (aIsSource !== bIsSource) {
-        return aIsSource ? 1 : -1
-      }
-
-      const aRelatedName = aIsSource ? a?.toName || '' : a?.fromName || ''
-      const bRelatedName = bIsSource ? b?.toName || '' : b?.fromName || ''
-
-      return aRelatedName.localeCompare(bRelatedName, undefined, { sensitivity: 'base' })
-    })
-  }, [normalisedRelationships, entity?.id])
 
   const relationshipsByPerspective = useMemo(() => {
     const entityId = entity?.id
@@ -719,6 +855,181 @@ export default function EntityDetailPage() {
     () => relationshipsByPerspective[relationshipPerspective] || [],
     [relationshipsByPerspective, relationshipPerspective],
   )
+
+  const sortedRelationships = useMemo(() => {
+    if (!Array.isArray(relationshipsToDisplay)) return []
+    const entityIdString = entity?.id != null ? String(entity.id) : ''
+
+    return [...relationshipsToDisplay].sort((a, b) => {
+      const aIsSource = entityIdString && String(a?.fromId ?? '') === entityIdString
+      const bIsSource = entityIdString && String(b?.fromId ?? '') === entityIdString
+      const aRelatedName = aIsSource ? a?.toName || '' : a?.fromName || ''
+      const bRelatedName = bIsSource ? b?.toName || '' : b?.fromName || ''
+      return aRelatedName.localeCompare(bRelatedName, undefined, { sensitivity: 'base' })
+    })
+  }, [relationshipsToDisplay, entity?.id])
+
+  const relationshipFilterOptions = useMemo(() => {
+    const typeMap = new Map()
+    const relatedTypeMap = new Map()
+    const entityIdString = entity?.id != null ? String(entity.id) : ''
+
+    sortedRelationships.forEach((relationship) => {
+      const typeKey = buildFilterKey(relationship.typeId, relationship.typeName)
+      if (typeKey && !typeMap.has(typeKey)) {
+        const label =
+          relationship.typeName && relationship.typeName !== '—'
+            ? relationship.typeName
+            : 'Unknown type'
+        typeMap.set(typeKey, label)
+      }
+
+      if (!entityIdString) return
+
+      const isSource = String(relationship.fromId ?? '') === entityIdString
+      const relatedTypeId = isSource
+        ? relationship.toEntityTypeId
+        : relationship.fromEntityTypeId
+      const relatedTypeName = isSource
+        ? relationship.toEntityTypeName
+        : relationship.fromEntityTypeName
+      const relatedKey = buildFilterKey(relatedTypeId, relatedTypeName)
+      if (!relatedKey || relatedTypeMap.has(relatedKey)) return
+
+      relatedTypeMap.set(relatedKey, relatedTypeName || 'Unknown entity type')
+    })
+
+    const relationshipTypes = Array.from(typeMap.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
+
+    const relatedEntityTypes = Array.from(relatedTypeMap.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
+
+    return { relationshipTypes, relatedEntityTypes }
+  }, [sortedRelationships, entity?.id, buildFilterKey])
+
+  useEffect(() => {
+    setRelationshipFilters((prev) => {
+      const defaultGroup = { mode: 'all', values: [] }
+      const sanitizeGroup = (group, options) => {
+        const base = group && typeof group === 'object' ? group : defaultGroup
+        const allowedModes = new Set(['all', 'include', 'exclude'])
+        const mode = allowedModes.has(base.mode) ? base.mode : 'all'
+        if (!options || options.length === 0) {
+          return { mode: 'all', values: [] }
+        }
+        const optionValues = new Set(options.map((option) => String(option.value)))
+        const values =
+          mode === 'all'
+            ? []
+            : (Array.isArray(base.values) ? base.values : []).filter((value) =>
+                optionValues.has(String(value)),
+              )
+        return { mode, values }
+      }
+
+      const nextRelationshipTypes = sanitizeGroup(
+        prev?.relationshipTypes,
+        relationshipFilterOptions.relationshipTypes,
+      )
+      const nextRelatedEntityTypes = sanitizeGroup(
+        prev?.relatedEntityTypes,
+        relationshipFilterOptions.relatedEntityTypes,
+      )
+
+      const groupsEqual = (aInput, bInput) => {
+        const a = aInput && typeof aInput === 'object' ? aInput : defaultGroup
+        const b = bInput && typeof bInput === 'object' ? bInput : defaultGroup
+        if (a.mode !== b.mode) return false
+        if (a.values.length !== b.values.length) return false
+        return a.values.every((value, index) => value === b.values[index])
+      }
+
+      if (
+        groupsEqual(prev?.relationshipTypes, nextRelationshipTypes) &&
+        groupsEqual(prev?.relatedEntityTypes, nextRelatedEntityTypes)
+      ) {
+        return prev
+      }
+
+      return {
+        relationshipTypes: nextRelationshipTypes,
+        relatedEntityTypes: nextRelatedEntityTypes,
+      }
+    })
+  }, [relationshipFilterOptions])
+
+  const filteredRelationships = useMemo(() => {
+    const typeFilter = relationshipFilters?.relationshipTypes || { mode: 'all', values: [] }
+    const relatedEntityTypeFilter =
+      relationshipFilters?.relatedEntityTypes || { mode: 'all', values: [] }
+    const entityIdString = entity?.id != null ? String(entity.id) : ''
+
+    return sortedRelationships.filter((relationship) => {
+      const typeKey = buildFilterKey(relationship.typeId, relationship.typeName)
+      if (typeFilter.mode !== 'all' && typeFilter.values.length > 0) {
+        const match = typeKey ? typeFilter.values.includes(typeKey) : false
+        if (typeFilter.mode === 'include' && !match) return false
+        if (typeFilter.mode === 'exclude' && match) return false
+      }
+
+      if (relatedEntityTypeFilter.mode !== 'all' && relatedEntityTypeFilter.values.length > 0) {
+        if (!entityIdString) return false
+
+        const isSource = String(relationship.fromId ?? '') === entityIdString
+        const relatedTypeId = isSource
+          ? relationship.toEntityTypeId
+          : relationship.fromEntityTypeId
+        const relatedTypeName = isSource
+          ? relationship.toEntityTypeName
+          : relationship.fromEntityTypeName
+        const relatedKey = buildFilterKey(relatedTypeId, relatedTypeName)
+        const match = relatedKey ? relatedEntityTypeFilter.values.includes(relatedKey) : false
+        if (relatedEntityTypeFilter.mode === 'include' && !match) return false
+        if (relatedEntityTypeFilter.mode === 'exclude' && match) return false
+      }
+
+      return true
+    })
+  }, [sortedRelationships, relationshipFilters, entity?.id, buildFilterKey])
+
+  const filterButtonDisabled = relationshipsLoading
+
+  const handleRelationshipFiltersChange = useCallback((nextFilters) => {
+    if (!nextFilters || typeof nextFilters !== 'object') {
+      setRelationshipFilters(createDefaultRelationshipFilters())
+      return
+    }
+
+    const normalizeGroup = (group) => {
+      if (!group || typeof group !== 'object') {
+        return { mode: 'all', values: [] }
+      }
+
+      const allowedModes = new Set(['all', 'include', 'exclude'])
+      const mode = allowedModes.has(group.mode) ? group.mode : 'all'
+      if (mode === 'all') {
+        return { mode: 'all', values: [] }
+      }
+
+      const values = Array.isArray(group.values)
+        ? group.values.map((value) => String(value))
+        : []
+
+      return { mode, values }
+    }
+
+    setRelationshipFilters({
+      relationshipTypes: normalizeGroup(nextFilters.relationshipTypes),
+      relatedEntityTypes: normalizeGroup(nextFilters.relatedEntityTypes),
+    })
+  }, [])
+
+  const handleRelationshipFiltersReset = useCallback(() => {
+    setRelationshipFilters(createDefaultRelationshipFilters())
+  }, [])
 
   const relationshipsToggleLabel = useMemo(() => {
     const name = entity?.name || 'this entity'
@@ -870,15 +1181,24 @@ export default function EntityDetailPage() {
     <section className="entity-card">
       <div className="entity-card-header">
         <h2 className="entity-card-title">Relationships</h2>
-        {canEdit && (
-          <button
-            type="button"
-            className="btn"
-            onClick={() => setShowRelationshipForm(true)}
-          >
-            Add relationship
-          </button>
-        )}
+        <div className="entity-card-actions">
+          <EntityRelationshipFilters
+            options={relationshipFilterOptions}
+            value={relationshipFilters}
+            onChange={handleRelationshipFiltersChange}
+            onReset={handleRelationshipFiltersReset}
+            disabled={filterButtonDisabled}
+          />
+          {canEdit && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setShowRelationshipForm(true)}
+            >
+              Add relationship
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="entity-card-body">
@@ -888,9 +1208,11 @@ export default function EntityDetailPage() {
           <div className="alert error" role="alert">
             {relationshipsError}
           </div>
-        ) : normalisedRelationships.length === 0 ? (
+        ) : sortedRelationships.length === 0 ? (
+          <p className="entity-empty-state">{relationshipsEmptyMessage}</p>
+        ) : filteredRelationships.length === 0 ? (
           <p className="entity-empty-state">
-            No relationships found for this entity.
+            No relationships match your filters. Try adjusting or clearing the filters above.
           </p>
         ) : (
           <div className="entity-relationships-table-wrapper">
@@ -903,7 +1225,7 @@ export default function EntityDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {sortedRelationships.map((relationship) => {
+                {filteredRelationships.map((relationship) => {
                   const isSource = String(relationship.fromId) === String(entity.id)
                   const relatedName = isSource ? relationship.toName : relationship.fromName
                   const relatedId = isSource ? relationship.toId : relationship.fromId
