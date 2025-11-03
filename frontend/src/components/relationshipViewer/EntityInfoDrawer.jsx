@@ -232,9 +232,12 @@ export default function EntityInfoDrawer({
     return null
   }
 
+  const isOpening = animationState === 'opening'
+
   const wrapperClassName = [
     'entity-info-drawer-wrapper',
     animationState === 'open' ? 'entity-info-drawer-wrapper--open' : '',
+    isOpening ? 'entity-info-drawer-wrapper--opening' : '',
     isClosing ? 'entity-info-drawer-wrapper--closing' : '',
   ]
     .filter(Boolean)
