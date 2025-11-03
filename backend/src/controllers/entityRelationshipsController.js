@@ -8,6 +8,7 @@ import {
 import { ensureBidirectionalLink } from '../utils/relationshipHelpers.js'
 import { applyRelBuilderHeader } from '../utils/featureFlags.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
+import { buildEntityReadContext, canUserReadEntity } from '../utils/entityAccess.js'
 
 const normaliseId = (value) => {
   if (value === undefined || value === null) return ''
@@ -158,11 +159,10 @@ export async function listRelationships(req, res) {
       return res.status(400).json({ error: 'worldId query parameter is required' })
     }
 
-    if (!hasPrivilegedRelationshipRole(req.user)) {
-      const access = await checkWorldAccess(trimmedWorldId, req.user)
-      if (!access.isOwner && !access.isAdmin) {
-        return res.status(403).json({ error: 'Forbidden' })
-      }
+    const access = await checkWorldAccess(trimmedWorldId, req.user)
+
+    if (!access.world) {
+      return res.status(404).json({ error: 'World not found' })
     }
 
     const relationships = await EntityRelationship.findAll({
@@ -195,15 +195,38 @@ export async function listRelationships(req, res) {
       order: [['created_at', 'DESC']],
     })
 
+    const readContext = await buildEntityReadContext({
+      worldId: trimmedWorldId,
+      user: req.user,
+      worldAccess: access,
+    })
+
+    const privileged = hasPrivilegedRelationshipRole(req.user)
+    const effectiveContext = privileged ? { ...readContext, isAdmin: true } : readContext
+
     const filtered = relationships.filter((relationship) => {
       const fromWorld = relationship.from?.world_id
       const toWorld = relationship.to?.world_id
 
       if (fromWorld && toWorld) {
-        return fromWorld === trimmedWorldId && toWorld === trimmedWorldId
+        if (fromWorld !== trimmedWorldId || toWorld !== trimmedWorldId) {
+          return false
+        }
       }
 
-      return fromWorld === trimmedWorldId || toWorld === trimmedWorldId
+      const withinWorld = fromWorld === trimmedWorldId || toWorld === trimmedWorldId
+      if (!withinWorld) {
+        return false
+      }
+
+      const fromReadable = relationship.from
+        ? canUserReadEntity(relationship.from, effectiveContext)
+        : false
+      const toReadable = relationship.to
+        ? canUserReadEntity(relationship.to, effectiveContext)
+        : false
+
+      return fromReadable && toReadable
     })
 
     res.json({ success: true, data: filtered.map(mapRelationship) })
