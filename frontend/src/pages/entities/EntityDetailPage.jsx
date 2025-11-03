@@ -926,16 +926,38 @@ export default function EntityDetailPage() {
                           {isSource ? (
                             <>
                               <strong>{entity.name}</strong> {sourceLabel || '—'}{' '}
-                              <Link to={`/entities/${relatedId}`} className="entity-relationship-link">
-                                {relatedName || '—'}
-                              </Link>
+                              <span className="entity-link-with-preview">
+                                <Link
+                                  to={`/entities/${relatedId}`}
+                                  className="entity-relationship-link"
+                                >
+                                  {relatedName || '—'}
+                                </Link>
+                                {relatedId ? (
+                                  <EntityInfoPreview
+                                    entityId={relatedId}
+                                    entityName={relatedName || 'entity'}
+                                  />
+                                ) : null}
+                              </span>
                             </>
                           ) : (
                             <>
                               <strong>{entity.name}</strong> {targetLabel || '—'}{' '}
-                              <Link to={`/entities/${relatedId}`} className="entity-relationship-link">
-                                {relatedName || '—'}
-                              </Link>
+                              <span className="entity-link-with-preview">
+                                <Link
+                                  to={`/entities/${relatedId}`}
+                                  className="entity-relationship-link"
+                                >
+                                  {relatedName || '—'}
+                                </Link>
+                                {relatedId ? (
+                                  <EntityInfoPreview
+                                    entityId={relatedId}
+                                    entityName={relatedName || 'entity'}
+                                  />
+                                ) : null}
+                              </span>
                             </>
                           )}
                         </span>
