@@ -23,7 +23,49 @@ import {
 const VISIBILITY_VALUES = new Set(['hidden', 'visible', 'partial'])
 const PUBLIC_VISIBILITY = ['visible', 'partial']
 
+const ACCESS_VALUES = new Set(['global', 'selective', 'hidden'])
+
 const isEntityCreator = (entity, user) => entity?.created_by === user?.id
+
+const normaliseAccessValue = (value, fieldName) => {
+  if (value === undefined) return undefined
+
+  if (value === null) {
+    throw new Error(`${fieldName} cannot be null`)
+  }
+
+  if (typeof value !== 'string') {
+    throw new Error(`${fieldName} must be a string`)
+  }
+
+  const trimmed = value.trim().toLowerCase()
+
+  if (!ACCESS_VALUES.has(trimmed)) {
+    throw new Error(`${fieldName} must be one of: ${Array.from(ACCESS_VALUES).join(', ')}`)
+  }
+
+  return trimmed
+}
+
+const normaliseUuidArray = (value, fieldName) => {
+  if (value === undefined) return undefined
+
+  if (value === null) return []
+
+  if (Array.isArray(value)) {
+    const normalised = value
+      .map((entry) => {
+        if (entry === null || entry === undefined) return null
+        const trimmed = String(entry).trim()
+        return trimmed || null
+      })
+      .filter(Boolean)
+
+    return normalised
+  }
+
+  throw new Error(`${fieldName} must be an array`)
+}
 
 const FIELD_ORDER = [
   ['sort_order', 'ASC'],
@@ -374,7 +416,18 @@ export const createEntity = async (req, res) => {
 export const updateEntity = async (req, res) => {
   try {
     const { id } = req.params
-    const { name, description, visibility, metadata } = req.body
+    const {
+      name,
+      description,
+      visibility,
+      metadata,
+      read_access: readAccessInput,
+      write_access: writeAccessInput,
+      read_campaign_ids: readCampaignIdsInput,
+      read_user_ids: readUserIdsInput,
+      write_campaign_ids: writeCampaignIdsInput,
+      write_user_ids: writeUserIdsInput,
+    } = req.body
     const { user } = req
 
     const entity = await Entity.findByPk(id, {
@@ -399,6 +452,24 @@ export const updateEntity = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
+    let readAccess
+    let writeAccess
+    let readCampaignIds
+    let readUserIds
+    let writeCampaignIds
+    let writeUserIds
+
+    try {
+      readAccess = normaliseAccessValue(readAccessInput, 'read_access')
+      writeAccess = normaliseAccessValue(writeAccessInput, 'write_access')
+      readCampaignIds = normaliseUuidArray(readCampaignIdsInput, 'read_campaign_ids')
+      readUserIds = normaliseUuidArray(readUserIdsInput, 'read_user_ids')
+      writeCampaignIds = normaliseUuidArray(writeCampaignIdsInput, 'write_campaign_ids')
+      writeUserIds = normaliseUuidArray(writeUserIdsInput, 'write_user_ids')
+    } catch (err) {
+      return res.status(400).json({ success: false, message: err.message })
+    }
+
     const updates = {}
 
     if (name !== undefined) {
@@ -417,6 +488,38 @@ export const updateEntity = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid visibility value' })
       }
       updates.visibility = visibility
+    }
+
+    if (readAccess !== undefined) {
+      updates.read_access = readAccess
+      if (readAccess !== 'selective') {
+        readCampaignIds = []
+        readUserIds = []
+      }
+    }
+
+    if (writeAccess !== undefined) {
+      updates.write_access = writeAccess
+      if (writeAccess !== 'selective') {
+        writeCampaignIds = []
+        writeUserIds = []
+      }
+    }
+
+    if (readCampaignIds !== undefined) {
+      updates.read_campaign_ids = readCampaignIds
+    }
+
+    if (readUserIds !== undefined) {
+      updates.read_user_ids = readUserIds
+    }
+
+    if (writeCampaignIds !== undefined) {
+      updates.write_campaign_ids = writeCampaignIds
+    }
+
+    if (writeUserIds !== undefined) {
+      updates.write_user_ids = writeUserIds
     }
 
     const existingMetadata = entity.metadata ?? {}
