@@ -294,6 +294,17 @@ export default function EntityDetailPage() {
     navigate(`/entities/${id}/relationship-viewer`)
   }, [navigate, id])
 
+const canEdit = useMemo(() => {
+    if (entity?.permissions && typeof entity.permissions.canEdit === 'boolean') {
+      return entity.permissions.canEdit
+    }
+    if (!entity || !user) return false
+    if (user.role === 'system_admin') return true
+    if (entity.world?.created_by && entity.world.created_by === user.id) return true
+    if (entity.created_by && entity.created_by === user.id) return true
+    return false
+  }, [entity, user])
+
   const tabItems = useMemo(() => {
     const items = [
       { id: 'dossier', label: 'Dossier' },
@@ -622,17 +633,6 @@ export default function EntityDetailPage() {
     [],
   )
 
-  const canEdit = useMemo(() => {
-    if (entity?.permissions && typeof entity.permissions.canEdit === 'boolean') {
-      return entity.permissions.canEdit
-    }
-    if (!entity || !user) return false
-    if (user.role === 'system_admin') return true
-    if (entity.world?.created_by && entity.world.created_by === user.id) return true
-    if (entity.created_by && entity.created_by === user.id) return true
-    return false
-  }, [entity, user])
-
   const accessDefaults = useMemo(() => {
     if (!entity) {
       return {
@@ -655,327 +655,9 @@ export default function EntityDetailPage() {
     }
   }, [entity])
 
-  const handleEditToggle = useCallback(async () => {
-    if (!canEdit) return
-    setFormError('')
+const entityId = entity?.id
 
-    if (!isEditing) {
-      setAccessSaveError('')
-      setAccessSaveSuccess('')
-      setIsEditing(true)
-      return
-    }
-
-    const hasFormChanges = formState.isDirty
-    const hasAccessChanges = isAccessDirty
-
-    if (hasFormChanges || hasAccessChanges) {
-      const shouldSave = window.confirm(
-        'You have unsaved changes. Would you like to save them before leaving edit mode?',
-      )
-
-      if (shouldSave) {
-        const saved = await handleSaveAll()
-        if (!saved) {
-          return
-        }
-      } else {
-        formRef.current?.reset?.(editInitialData || {})
-        setAccessSettings(() => ({ ...accessDefaults }))
-        setAccessSaveError('')
-        setAccessSaveSuccess('')
-      }
-    }
-
-    setIsEditing(false)
-    setActiveTab('dossier')
-  }, [
-    canEdit,
-    isEditing,
-    formState.isDirty,
-    isAccessDirty,
-    handleSaveAll,
-    editInitialData,
-    accessDefaults,
-  ])
-
-  const handleUpdate = useCallback(
-    async (values) => {
-      if (!entity?.id) return false
-
-      setFormError('')
-
-      try {
-        const payload = {
-          name: values?.name,
-          description: values?.description,
-          visibility: values?.visibility,
-          metadata: values?.metadata || {},
-        }
-
-        const response = await updateEntity(entity.id, payload)
-        const updated = response?.data || response
-        if (!updated) {
-          throw new Error('Failed to update entity')
-        }
-
-        setEntity(updated)
-        return { message: 'Entity updated successfully.' }
-      } catch (err) {
-        console.error('❌ Failed to update entity', err)
-        setFormError(err.message || 'Failed to update entity')
-        return false
-      }
-    },
-    [entity?.id],
-  )
-
-  const worldId = useMemo(() => entity?.world?.id || entity?.world_id || '', [entity])
-
-  useEffect(() => {
-    setAccessSettings(accessDefaults)
-  }, [accessDefaults])
-
-  const loadAccessOptions = useCallback(async () => {
-    if (!token) return
-
-    if (!worldId) {
-      setAccessOptions({ campaigns: [], users: [] })
-      setAccessOptionsError('')
-      setAccessOptionsLoading(false)
-      return
-    }
-
-    setAccessOptionsLoading(true)
-    setAccessOptionsError('')
-
-    try {
-      const [campaignResponse, characterResponse] = await Promise.all([
-        fetchCampaigns({ world_id: worldId }),
-        fetchCharacters({ world_id: worldId }),
-      ])
-
-      const campaignData = Array.isArray(campaignResponse?.data)
-        ? campaignResponse.data
-        : Array.isArray(campaignResponse)
-          ? campaignResponse
-          : []
-
-      const campaigns = campaignData.map((item) => ({
-        value: String(item.id),
-        label: item.name || 'Untitled campaign',
-      }))
-
-      const characterData = Array.isArray(characterResponse?.data)
-        ? characterResponse.data
-        : Array.isArray(characterResponse)
-          ? characterResponse
-          : []
-
-      const userMap = new Map()
-      characterData.forEach((character) => {
-        const userId = character?.user_id || character?.player?.id
-        if (!userId) return
-        const key = String(userId)
-        if (userMap.has(key)) return
-
-        const player = character?.player || {}
-        const username = typeof player.username === 'string' ? player.username.trim() : ''
-        const email = typeof player.email === 'string' ? player.email.trim() : ''
-
-        let label = username || email || `User ${key.slice(0, 8)}`
-        if (username && email && username !== email) {
-          label = `${username} (${email})`
-        }
-
-        userMap.set(key, { value: key, label })
-      })
-
-      setAccessOptions({ campaigns, users: Array.from(userMap.values()) })
-    } catch (err) {
-      console.error('❌ Failed to load access options', err)
-      setAccessOptions({ campaigns: [], users: [] })
-      setAccessOptionsError(err.message || 'Failed to load access options')
-    } finally {
-      setAccessOptionsLoading(false)
-    }
-  }, [token, worldId])
-
-  useEffect(() => {
-    if (!sessionReady) return
-    loadAccessOptions()
-  }, [sessionReady, loadAccessOptions])
-
-  const isAccessDirty = useMemo(() => {
-    const keys = [
-      'readMode',
-      'readCampaigns',
-      'readUsers',
-      'writeMode',
-      'writeCampaigns',
-      'writeUsers',
-    ]
-
-    const normaliseArray = (value) => {
-      if (!Array.isArray(value)) return []
-      return value
-        .map((entry) => {
-          if (entry === null || entry === undefined) return null
-          const text = String(entry).trim()
-          return text || null
-        })
-        .filter(Boolean)
-        .sort()
-    }
-
-    return keys.some((key) => {
-      const currentValue = accessSettings?.[key]
-      const defaultValue = accessDefaults?.[key]
-
-      const currentIsArray = Array.isArray(currentValue)
-      const defaultIsArray = Array.isArray(defaultValue)
-
-      if (currentIsArray || defaultIsArray) {
-        const currentArray = normaliseArray(currentValue)
-        const defaultArray = normaliseArray(defaultValue)
-
-        if (currentArray.length !== defaultArray.length) return true
-        for (let index = 0; index < currentArray.length; index += 1) {
-          if (currentArray[index] !== defaultArray[index]) {
-            return true
-          }
-        }
-        return false
-      }
-
-      return currentValue !== defaultValue
-    })
-  }, [accessSettings, accessDefaults])
-
-  const hasUnsavedChanges = isEditing && (formState.isDirty || isAccessDirty)
-
-  useUnsavedChangesPrompt(hasUnsavedChanges, EDIT_MODE_PROMPT_MESSAGE)
-
-  const handleAccessSettingChange = useCallback(
-    (key, value) => {
-      if (!canEdit || accessSaving) return
-      setAccessSaveError('')
-      setAccessSaveSuccess('')
-
-      setAccessSettings((prev) => {
-        const next = { ...(prev || {}) }
-
-        if (key === 'readMode' || key === 'writeMode') {
-          const mode = normaliseAccessMode(value)
-          next[key] = mode
-
-          if (key === 'readMode' && mode !== 'selective') {
-            next.readCampaigns = []
-            next.readUsers = []
-          }
-
-          if (key === 'writeMode' && mode !== 'selective') {
-            next.writeCampaigns = []
-            next.writeUsers = []
-          }
-
-          return next
-        }
-
-        if (
-          key === 'readCampaigns' ||
-          key === 'readUsers' ||
-          key === 'writeCampaigns' ||
-          key === 'writeUsers'
-        ) {
-          const list = Array.isArray(value)
-            ? value
-                .map((entry) => {
-                  if (entry === undefined || entry === null) return ''
-                  return String(entry).trim()
-                })
-                .filter(Boolean)
-            : []
-
-          next[key] = list
-          return next
-        }
-
-        next[key] = value
-        return next
-      })
-    },
-    [canEdit, accessSaving],
-  )
-
-  const entityId = entity?.id
-
-  const handleAccessSave = useCallback(async () => {
-    if (!canEdit || !entityId) return false
-    if (!isAccessDirty) {
-      return true
-    }
-
-    setAccessSaveError('')
-    setAccessSaveSuccess('')
-    setAccessSaving(true)
-
-    try {
-      const payload = {
-        read_access: accessSettings.readMode,
-        write_access: accessSettings.writeMode,
-        read_campaign_ids:
-          accessSettings.readMode === 'selective' ? accessSettings.readCampaigns : [],
-        read_user_ids:
-          accessSettings.readMode === 'selective' ? accessSettings.readUsers : [],
-        write_campaign_ids:
-          accessSettings.writeMode === 'selective' ? accessSettings.writeCampaigns : [],
-        write_user_ids:
-          accessSettings.writeMode === 'selective' ? accessSettings.writeUsers : [],
-      }
-
-      const response = await updateEntity(entityId, payload)
-      const updated = response?.data || response
-
-      if (!updated) {
-        throw new Error('Failed to save access settings')
-      }
-
-      setEntity(updated)
-      setAccessSaveSuccess('Access settings saved.')
-      return true
-    } catch (err) {
-      console.error('❌ Failed to save access settings', err)
-      setAccessSaveError(err.message || 'Failed to save access settings')
-      return false
-    } finally {
-      setAccessSaving(false)
-    }
-  }, [canEdit, entityId, accessSettings, isAccessDirty])
-
-  const handleSaveAll = useCallback(async () => {
-    if (!canEdit) return false
-
-    let success = true
-
-    if (formState.isDirty && formRef.current?.submit) {
-      const result = await formRef.current.submit()
-      if (result === false) {
-        success = false
-      }
-    }
-
-    if (success && isAccessDirty) {
-      const accessResult = await handleAccessSave()
-      if (!accessResult) {
-        success = false
-      }
-    }
-
-    return success
-  }, [canEdit, formState.isDirty, isAccessDirty, handleAccessSave])
-
-  const normalisedRelationships = useMemo(() => {
+      const normalisedRelationships = useMemo(() => {
     if (!Array.isArray(relationships)) return []
 
     const normaliseRelationshipEntityId = (value) => {
@@ -1353,7 +1035,325 @@ export default function EntityDetailPage() {
     })
   }, [relationships])
 
-  const sortedRelationships = useMemo(() => {
+const isAccessDirty = useMemo(() => {
+    const keys = [
+      'readMode',
+      'readCampaigns',
+      'readUsers',
+      'writeMode',
+      'writeCampaigns',
+      'writeUsers',
+    ]
+
+    const normaliseArray = (value) => {
+      if (!Array.isArray(value)) return []
+      return value
+        .map((entry) => {
+          if (entry === null || entry === undefined) return null
+          const text = String(entry).trim()
+          return text || null
+        })
+        .filter(Boolean)
+        .sort()
+    }
+
+    return keys.some((key) => {
+      const currentValue = accessSettings?.[key]
+      const defaultValue = accessDefaults?.[key]
+
+      const currentIsArray = Array.isArray(currentValue)
+      const defaultIsArray = Array.isArray(defaultValue)
+
+      if (currentIsArray || defaultIsArray) {
+        const currentArray = normaliseArray(currentValue)
+        const defaultArray = normaliseArray(defaultValue)
+
+        if (currentArray.length !== defaultArray.length) return true
+        for (let index = 0; index < currentArray.length; index += 1) {
+          if (currentArray[index] !== defaultArray[index]) {
+            return true
+          }
+        }
+        return false
+      }
+
+      return currentValue !== defaultValue
+    })
+  }, [accessSettings, accessDefaults])
+
+const handleAccessSave = useCallback(async () => {
+    if (!canEdit || !entityId) return false
+    if (!isAccessDirty) {
+      return true
+    }
+
+    setAccessSaveError('')
+    setAccessSaveSuccess('')
+    setAccessSaving(true)
+
+    try {
+      const payload = {
+        read_access: accessSettings.readMode,
+        write_access: accessSettings.writeMode,
+        read_campaign_ids:
+          accessSettings.readMode === 'selective' ? accessSettings.readCampaigns : [],
+        read_user_ids:
+          accessSettings.readMode === 'selective' ? accessSettings.readUsers : [],
+        write_campaign_ids:
+          accessSettings.writeMode === 'selective' ? accessSettings.writeCampaigns : [],
+        write_user_ids:
+          accessSettings.writeMode === 'selective' ? accessSettings.writeUsers : [],
+      }
+
+      const response = await updateEntity(entityId, payload)
+      const updated = response?.data || response
+
+      if (!updated) {
+        throw new Error('Failed to save access settings')
+      }
+
+      setEntity(updated)
+      setAccessSaveSuccess('Access settings saved.')
+      return true
+    } catch (err) {
+      console.error('❌ Failed to save access settings', err)
+      setAccessSaveError(err.message || 'Failed to save access settings')
+      return false
+    } finally {
+      setAccessSaving(false)
+    }
+  }, [canEdit, entityId, accessSettings, isAccessDirty])
+
+const handleSaveAll = useCallback(async () => {
+    if (!canEdit) return false
+
+    let success = true
+
+    if (formState.isDirty && formRef.current?.submit) {
+      const result = await formRef.current.submit()
+      if (result === false) {
+        success = false
+      }
+    }
+
+    if (success && isAccessDirty) {
+      const accessResult = await handleAccessSave()
+      if (!accessResult) {
+        success = false
+      }
+    }
+
+    return success
+  }, [canEdit, formState.isDirty, isAccessDirty, handleAccessSave])
+
+  const handleEditToggle = useCallback(async () => {
+    if (!canEdit) return
+    setFormError('')
+
+    if (!isEditing) {
+      setAccessSaveError('')
+      setAccessSaveSuccess('')
+      setIsEditing(true)
+      return
+    }
+
+    const hasFormChanges = formState.isDirty
+    const hasAccessChanges = isAccessDirty
+
+    if (hasFormChanges || hasAccessChanges) {
+      const shouldSave = window.confirm(
+        'You have unsaved changes. Would you like to save them before leaving edit mode?',
+      )
+
+      if (shouldSave) {
+        const saved = await handleSaveAll()
+        if (!saved) {
+          return
+        }
+      } else {
+        formRef.current?.reset?.(editInitialData || {})
+        setAccessSettings(() => ({ ...accessDefaults }))
+        setAccessSaveError('')
+        setAccessSaveSuccess('')
+      }
+    }
+
+    setIsEditing(false)
+    setActiveTab('dossier')
+  }, [
+    canEdit,
+    isEditing,
+    formState.isDirty,
+    isAccessDirty,
+    handleSaveAll,
+    editInitialData,
+    accessDefaults,
+  ])
+
+  const handleUpdate = useCallback(
+    async (values) => {
+      if (!entity?.id) return false
+
+      setFormError('')
+
+      try {
+        const payload = {
+          name: values?.name,
+          description: values?.description,
+          visibility: values?.visibility,
+          metadata: values?.metadata || {},
+        }
+
+        const response = await updateEntity(entity.id, payload)
+        const updated = response?.data || response
+        if (!updated) {
+          throw new Error('Failed to update entity')
+        }
+
+        setEntity(updated)
+        return { message: 'Entity updated successfully.' }
+      } catch (err) {
+        console.error('❌ Failed to update entity', err)
+        setFormError(err.message || 'Failed to update entity')
+        return false
+      }
+    },
+    [entity?.id],
+  )
+
+  const worldId = useMemo(() => entity?.world?.id || entity?.world_id || '', [entity])
+
+  useEffect(() => {
+    setAccessSettings(accessDefaults)
+  }, [accessDefaults])
+
+  const loadAccessOptions = useCallback(async () => {
+    if (!token) return
+
+    if (!worldId) {
+      setAccessOptions({ campaigns: [], users: [] })
+      setAccessOptionsError('')
+      setAccessOptionsLoading(false)
+      return
+    }
+
+    setAccessOptionsLoading(true)
+    setAccessOptionsError('')
+
+    try {
+      const [campaignResponse, characterResponse] = await Promise.all([
+        fetchCampaigns({ world_id: worldId }),
+        fetchCharacters({ world_id: worldId }),
+      ])
+
+      const campaignData = Array.isArray(campaignResponse?.data)
+        ? campaignResponse.data
+        : Array.isArray(campaignResponse)
+          ? campaignResponse
+          : []
+
+      const campaigns = campaignData.map((item) => ({
+        value: String(item.id),
+        label: item.name || 'Untitled campaign',
+      }))
+
+      const characterData = Array.isArray(characterResponse?.data)
+        ? characterResponse.data
+        : Array.isArray(characterResponse)
+          ? characterResponse
+          : []
+
+      const userMap = new Map()
+      characterData.forEach((character) => {
+        const userId = character?.user_id || character?.player?.id
+        if (!userId) return
+        const key = String(userId)
+        if (userMap.has(key)) return
+
+        const player = character?.player || {}
+        const username = typeof player.username === 'string' ? player.username.trim() : ''
+        const email = typeof player.email === 'string' ? player.email.trim() : ''
+
+        let label = username || email || `User ${key.slice(0, 8)}`
+        if (username && email && username !== email) {
+          label = `${username} (${email})`
+        }
+
+        userMap.set(key, { value: key, label })
+      })
+
+      setAccessOptions({ campaigns, users: Array.from(userMap.values()) })
+    } catch (err) {
+      console.error('❌ Failed to load access options', err)
+      setAccessOptions({ campaigns: [], users: [] })
+      setAccessOptionsError(err.message || 'Failed to load access options')
+    } finally {
+      setAccessOptionsLoading(false)
+    }
+  }, [token, worldId])
+
+  useEffect(() => {
+    if (!sessionReady) return
+    loadAccessOptions()
+  }, [sessionReady, loadAccessOptions])
+
+  const hasUnsavedChanges = isEditing && (formState.isDirty || isAccessDirty)
+
+  useUnsavedChangesPrompt(hasUnsavedChanges, EDIT_MODE_PROMPT_MESSAGE)
+
+  const handleAccessSettingChange = useCallback(
+    (key, value) => {
+      if (!canEdit || accessSaving) return
+      setAccessSaveError('')
+      setAccessSaveSuccess('')
+
+      setAccessSettings((prev) => {
+        const next = { ...(prev || {}) }
+
+        if (key === 'readMode' || key === 'writeMode') {
+          const mode = normaliseAccessMode(value)
+          next[key] = mode
+
+          if (key === 'readMode' && mode !== 'selective') {
+            next.readCampaigns = []
+            next.readUsers = []
+          }
+
+          if (key === 'writeMode' && mode !== 'selective') {
+            next.writeCampaigns = []
+            next.writeUsers = []
+          }
+
+          return next
+        }
+
+        if (
+          key === 'readCampaigns' ||
+          key === 'readUsers' ||
+          key === 'writeCampaigns' ||
+          key === 'writeUsers'
+        ) {
+          const list = Array.isArray(value)
+            ? value
+                .map((entry) => {
+                  if (entry === undefined || entry === null) return ''
+                  return String(entry).trim()
+                })
+                .filter(Boolean)
+            : []
+
+          next[key] = list
+          return next
+        }
+
+        next[key] = value
+        return next
+      })
+    },
+    [canEdit, accessSaving],
+  )
+
+    const sortedRelationships = useMemo(() => {
     if (!Array.isArray(normalisedRelationships)) return []
     const entityIdString = entity?.id != null ? String(entity.id) : ''
 
