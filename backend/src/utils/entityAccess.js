@@ -9,6 +9,14 @@ const normaliseId = (value) => {
   return typeof value === 'string' ? value : value.id ?? null
 }
 
+const normaliseIdList = (value) => {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((entry) => entry !== null && entry !== undefined)
+    .map((entry) => String(entry))
+    .filter(Boolean)
+}
+
 export const fetchUserWorldCharacterCampaignIds = async (worldId, userId) => {
   if (!worldId || !userId) {
     return { campaignIds: new Set(), hasAnyCharacter: false }
@@ -69,15 +77,11 @@ export const buildEntityReadContext = async ({ worldId, user, worldAccess }) => 
   }
 }
 
-export const canUserReadEntity = (entityInput, context) => {
+export const canUserWriteEntity = (entityInput, context) => {
   const entity = toPlainEntity(entityInput)
-  const readAccess = entity.read_access ?? 'global'
-  const readCampaignIds = Array.isArray(entity.read_campaign_ids)
-    ? entity.read_campaign_ids.filter(Boolean)
-    : []
-  const readUserIds = Array.isArray(entity.read_user_ids)
-    ? entity.read_user_ids.filter(Boolean)
-    : []
+  const writeAccess = entity.write_access ?? 'global'
+  const writeCampaignIds = normaliseIdList(entity.write_campaign_ids)
+  const writeUserIds = normaliseIdList(entity.write_user_ids)
 
   const userId = context?.userId ?? null
   const isAdmin = Boolean(context?.isAdmin)
@@ -91,6 +95,57 @@ export const canUserReadEntity = (entityInput, context) => {
   const isCreator = Boolean(userId && createdBy && String(createdBy) === String(userId))
 
   if (isAdmin || isOwner || isCreator) {
+    return true
+  }
+
+  if (!userId) {
+    return false
+  }
+
+  if (writeUserIds.some((id) => String(id) === String(userId))) {
+    return true
+  }
+
+  if (campaignIds.size > 0 && writeCampaignIds.length > 0) {
+    const matchesCampaign = writeCampaignIds.some((id) => campaignIds.has(String(id)))
+    if (matchesCampaign) {
+      return true
+    }
+  }
+
+  if (writeAccess === 'global' || writeAccess === null) {
+    return hasWorldAccess || hasWorldCharacter
+  }
+
+  if (writeAccess === 'selective' || writeAccess === 'hidden') {
+    return false
+  }
+
+  return false
+}
+
+export const canUserReadEntity = (entityInput, context) => {
+  const entity = toPlainEntity(entityInput)
+  const readAccess = entity.read_access ?? 'global'
+  const readCampaignIds = normaliseIdList(entity.read_campaign_ids)
+  const readUserIds = normaliseIdList(entity.read_user_ids)
+
+  const userId = context?.userId ?? null
+  const isAdmin = Boolean(context?.isAdmin)
+  const isOwner = Boolean(context?.isOwner)
+  const worldAccess = context?.worldAccess ?? null
+  const hasWorldAccess = Boolean(worldAccess?.hasAccess)
+  const campaignIds = context?.campaignIds ?? new Set()
+  const hasWorldCharacter = Boolean(context?.hasWorldCharacter)
+
+  const createdBy = entity.created_by ?? entity.createdBy ?? entity.createdById ?? null
+  const isCreator = Boolean(userId && createdBy && String(createdBy) === String(userId))
+
+  if (isAdmin || isOwner || isCreator) {
+    return true
+  }
+
+  if (canUserWriteEntity(entity, context)) {
     return true
   }
 
@@ -135,7 +190,11 @@ export const buildReadableEntitiesWhereClause = (context) => {
 
   if (context.hasWorldCharacter || context.worldAccess?.hasAccess) {
     clauses.push({
-      [Op.or]: [{ read_access: 'global' }, { read_access: { [Op.is]: null } }],
+      [Op.or]: [
+        { read_access: 'global' },
+        { read_access: { [Op.is]: null } },
+        { write_access: 'global' },
+      ],
     })
   }
 
@@ -146,6 +205,9 @@ export const buildReadableEntitiesWhereClause = (context) => {
         { read_campaign_ids: { [Op.overlap]: Array.from(context.campaignIds) } },
       ],
     })
+    clauses.push({
+      write_campaign_ids: { [Op.overlap]: Array.from(context.campaignIds) },
+    })
   }
 
   if (userId) {
@@ -155,6 +217,7 @@ export const buildReadableEntitiesWhereClause = (context) => {
         { read_user_ids: { [Op.contains]: [userId] } },
       ],
     })
+    clauses.push({ write_user_ids: { [Op.contains]: [userId] } })
   }
 
   if (clauses.length === 0) {

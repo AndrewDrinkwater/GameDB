@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import FieldRenderer from './FieldRenderer'
 import useUnsavedChangesPrompt, {
   UNSAVED_CHANGES_MESSAGE,
@@ -10,13 +18,19 @@ import useUnsavedChangesPrompt, {
  * - schema.sections[{ title, columns, fields: [...] }]
  * - schema.fields (flat)
  */
-export default function FormRenderer({
-  schema,
-  initialData = {},
-  onSubmit,
-  onCancel,
-  onDelete, // optional
-}) {
+function FormRenderer(
+  {
+    schema,
+    initialData = {},
+    onSubmit,
+    onCancel,
+    onDelete, // optional
+    hideActions = false,
+    enableUnsavedPrompt = true,
+    onStateChange,
+  },
+  ref,
+) {
   const [formData, setFormData] = useState(() =>
     initialData ? { ...initialData } : {},
   )
@@ -114,10 +128,17 @@ export default function FormRenderer({
     }
   }, [isDirty, statusMessage])
 
-  useUnsavedChangesPrompt(isDirty, undefined, bypassRef)
+  useEffect(() => {
+    if (typeof onStateChange === 'function') {
+      onStateChange({ isDirty, isSubmitting })
+    }
+  }, [isDirty, isSubmitting, onStateChange])
 
-  const handleActionSubmit = async () => {
-    if (!onSubmit) return
+  const shouldPrompt = enableUnsavedPrompt && isDirty
+  useUnsavedChangesPrompt(shouldPrompt, undefined, bypassRef)
+
+  const handleActionSubmit = useCallback(async () => {
+    if (!onSubmit) return true
 
     const nextSignature = JSON.stringify(formData ?? {})
 
@@ -131,7 +152,7 @@ export default function FormRenderer({
       const result = await onSubmit(formData)
       if (result === false) {
         bypassRef.current = false
-        return
+        return false
       }
 
       const payload =
@@ -150,15 +171,17 @@ export default function FormRenderer({
       }
 
       bypassRef.current = false
+      return payload
     } catch (err) {
       console.error('Failed to submit form:', err)
       setStatusType('error')
       setStatusMessage(err.message || 'Failed to save changes.')
       bypassRef.current = false
+      return false
     } finally {
       setIsSubmitting(false)
     }
-  }
+  }, [formData, onSubmit, schema])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -191,6 +214,29 @@ export default function FormRenderer({
       console.error('Failed to delete record:', err)
     }
   }
+
+  const resetForm = useCallback(
+    (data = initialData) => {
+      const nextData = data ? { ...data } : {}
+      setFormData(nextData)
+      setInitialSignature(JSON.stringify(data ?? {}))
+      setStatusMessage('')
+      setStatusType('success')
+      bypassRef.current = false
+    },
+    [initialData],
+  )
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      submit: handleActionSubmit,
+      reset: resetForm,
+      isDirty: () => isDirty,
+      isSubmitting: () => isSubmitting,
+    }),
+    [handleActionSubmit, resetForm, isDirty, isSubmitting],
+  )
 
   return (
     <form className="record-form" onSubmit={handleSubmit}>
@@ -228,38 +274,42 @@ export default function FormRenderer({
         </div>
       ) : null}
 
-      <div className="form-actions sticky-actions" role="toolbar">
-        <div className="left-actions">
-          {onDelete ? (
+      {!hideActions ? (
+        <div className="form-actions sticky-actions" role="toolbar">
+          <div className="left-actions">
+            {onDelete ? (
+              <button
+                type="button"
+                className="btn delete"
+                onClick={handleDeleteClick}
+                disabled={isSubmitting}
+              >
+                {schema?.deleteLabel || 'Delete'}
+              </button>
+            ) : null}
+          </div>
+
+          <div className="right-actions">
             <button
               type="button"
-              className="btn delete"
-              onClick={handleDeleteClick}
+              className="btn cancel"
+              onClick={handleCancelClick}
               disabled={isSubmitting}
             >
-              {schema?.deleteLabel || 'Delete'}
+              {schema?.cancelLabel || 'Cancel'}
             </button>
-          ) : null}
+            <button
+              type="submit"
+              className="btn submit"
+              disabled={isSubmitting}
+            >
+              {schema?.saveLabel || 'Save'}
+            </button>
+          </div>
         </div>
-
-        <div className="right-actions">
-          <button
-            type="button"
-            className="btn cancel"
-            onClick={handleCancelClick}
-            disabled={isSubmitting}
-          >
-            {schema?.cancelLabel || 'Cancel'}
-          </button>
-          <button
-            type="submit"
-            className="btn submit"
-            disabled={isSubmitting}
-          >
-            {schema?.saveLabel || 'Save'}
-          </button>
-        </div>
-      </div>
+      ) : null}
     </form>
   )
 }
+
+export default forwardRef(FormRenderer)

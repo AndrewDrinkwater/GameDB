@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
 import FieldRenderer from '../../components/RecordForm/FieldRenderer.jsx'
@@ -17,6 +17,7 @@ import { getEntityRelationships } from '../../api/entityRelationships.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useFeatureFlag } from '../../context/FeatureFlagContext.jsx'
 import RelationshipBuilder from '../../modules/relationships3/RelationshipBuilder.jsx'
+import useUnsavedChangesPrompt from '../../hooks/useUnsavedChangesPrompt.js'
 
 
 const VISIBILITY_LABELS = {
@@ -51,6 +52,9 @@ const normaliseAccessMode = (value) => {
   const key = value.toLowerCase()
   return ACCESS_MODE_SET.has(key) ? key : 'global'
 }
+
+const EDIT_MODE_PROMPT_MESSAGE =
+  'You have unsaved changes. Do you want to save them before leaving this page?'
 
 const normaliseIdArray = (value) => {
   if (!value) return []
@@ -239,6 +243,8 @@ export default function EntityDetailPage() {
   const [accessSaving, setAccessSaving] = useState(false)
   const [accessSaveError, setAccessSaveError] = useState('')
   const [accessSaveSuccess, setAccessSaveSuccess] = useState('')
+  const formRef = useRef(null)
+  const [formState, setFormState] = useState({ isDirty: false, isSubmitting: false })
   const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
   const fromEntitiesSearch = location.state?.fromEntities?.search || ''
 
@@ -288,15 +294,26 @@ export default function EntityDetailPage() {
     navigate(`/entities/${id}/relationship-viewer`)
   }, [navigate, id])
 
-  const tabItems = useMemo(
-    () => [
+  const tabItems = useMemo(() => {
+    const items = [
       { id: 'dossier', label: 'Dossier' },
       { id: 'relationships', label: 'Relationships' },
-      { id: 'access', label: 'Access' },
       { id: 'system', label: 'System' },
-    ],
-    [],
-  )
+    ]
+
+    if (canEdit && isEditing) {
+      items.splice(2, 0, { id: 'access', label: 'Access' })
+    }
+
+    return items
+  }, [canEdit, isEditing])
+
+  useEffect(() => {
+    const availableTabs = new Set(tabItems.map((tab) => tab.id))
+    if (!availableTabs.has(activeTab)) {
+      setActiveTab('dossier')
+    }
+  }, [tabItems, activeTab])
 
   const renderSchemaSections = useCallback((schema, data, prefix) => {
     if (!schema) return null
@@ -638,11 +655,49 @@ export default function EntityDetailPage() {
     }
   }, [entity])
 
-  const handleEditToggle = useCallback(() => {
+  const handleEditToggle = useCallback(async () => {
     if (!canEdit) return
     setFormError('')
-    setIsEditing((prev) => !prev)
-  }, [canEdit])
+
+    if (!isEditing) {
+      setAccessSaveError('')
+      setAccessSaveSuccess('')
+      setIsEditing(true)
+      return
+    }
+
+    const hasFormChanges = formState.isDirty
+    const hasAccessChanges = isAccessDirty
+
+    if (hasFormChanges || hasAccessChanges) {
+      const shouldSave = window.confirm(
+        'You have unsaved changes. Would you like to save them before leaving edit mode?',
+      )
+
+      if (shouldSave) {
+        const saved = await handleSaveAll()
+        if (!saved) {
+          return
+        }
+      } else {
+        formRef.current?.reset?.(editInitialData || {})
+        setAccessSettings(() => ({ ...accessDefaults }))
+        setAccessSaveError('')
+        setAccessSaveSuccess('')
+      }
+    }
+
+    setIsEditing(false)
+    setActiveTab('dossier')
+  }, [
+    canEdit,
+    isEditing,
+    formState.isDirty,
+    isAccessDirty,
+    handleSaveAll,
+    editInitialData,
+    accessDefaults,
+  ])
 
   const handleUpdate = useCallback(
     async (values) => {
@@ -665,7 +720,6 @@ export default function EntityDetailPage() {
         }
 
         setEntity(updated)
-        setIsEditing(false)
         return { message: 'Entity updated successfully.' }
       } catch (err) {
         console.error('❌ Failed to update entity', err)
@@ -798,6 +852,10 @@ export default function EntityDetailPage() {
     })
   }, [accessSettings, accessDefaults])
 
+  const hasUnsavedChanges = isEditing && (formState.isDirty || isAccessDirty)
+
+  useUnsavedChangesPrompt(hasUnsavedChanges, EDIT_MODE_PROMPT_MESSAGE)
+
   const handleAccessSettingChange = useCallback(
     (key, value) => {
       if (!canEdit || accessSaving) return
@@ -853,7 +911,10 @@ export default function EntityDetailPage() {
   const entityId = entity?.id
 
   const handleAccessSave = useCallback(async () => {
-    if (!canEdit || !entityId) return
+    if (!canEdit || !entityId) return false
+    if (!isAccessDirty) {
+      return true
+    }
 
     setAccessSaveError('')
     setAccessSaveSuccess('')
@@ -882,13 +943,37 @@ export default function EntityDetailPage() {
 
       setEntity(updated)
       setAccessSaveSuccess('Access settings saved.')
+      return true
     } catch (err) {
       console.error('❌ Failed to save access settings', err)
       setAccessSaveError(err.message || 'Failed to save access settings')
+      return false
     } finally {
       setAccessSaving(false)
     }
-  }, [canEdit, entityId, accessSettings])
+  }, [canEdit, entityId, accessSettings, isAccessDirty])
+
+  const handleSaveAll = useCallback(async () => {
+    if (!canEdit) return false
+
+    let success = true
+
+    if (formState.isDirty && formRef.current?.submit) {
+      const result = await formRef.current.submit()
+      if (result === false) {
+        success = false
+      }
+    }
+
+    if (success && isAccessDirty) {
+      const accessResult = await handleAccessSave()
+      if (!accessResult) {
+        success = false
+      }
+    }
+
+    return success
+  }, [canEdit, formState.isDirty, isAccessDirty, handleAccessSave])
 
   const normalisedRelationships = useMemo(() => {
     if (!Array.isArray(relationships)) return []
@@ -1544,6 +1629,21 @@ export default function EntityDetailPage() {
     setToast({ message, tone })
   }, [])
 
+  const handleFormStateChange = useCallback((nextState) => {
+    setFormState((prev) => {
+      const next = {
+        isDirty: Boolean(nextState?.isDirty),
+        isSubmitting: Boolean(nextState?.isSubmitting),
+      }
+
+      if (prev.isDirty === next.isDirty && prev.isSubmitting === next.isSubmitting) {
+        return prev
+      }
+
+      return next
+    })
+  }, [])
+
   if (!sessionReady) return <p>Restoring session...</p>
   if (!token) return <p>Authenticating...</p>
 
@@ -1582,6 +1682,9 @@ export default function EntityDetailPage() {
         canEdit={canEdit}
         isEditing={isEditing}
         onToggleEdit={handleEditToggle}
+        onSave={handleSaveAll}
+        isSaving={formState.isSubmitting || accessSaving}
+        isSaveDisabled={!formState.isDirty && !isAccessDirty}
       />
     <TabNav tabs={tabItems} activeTab={activeTab} onChange={setActiveTab} />
   </div>
@@ -1604,10 +1707,13 @@ export default function EntityDetailPage() {
         {isEditing && canEdit ? (
           <section className="entity-card entity-card--form">
             <FormRenderer
+              ref={formRef}
               schema={editSchema}
               initialData={editInitialData || {}}
               onSubmit={handleUpdate}
-              onCancel={() => setIsEditing(false)}
+              onStateChange={handleFormStateChange}
+              hideActions
+              enableUnsavedPrompt={false}
             />
           </section>
         ) : (
@@ -1751,20 +1857,14 @@ export default function EntityDetailPage() {
 )}
 
     {/* ACCESS TAB */}
-    {activeTab === 'access' && (
+    {activeTab === 'access' && isEditing && canEdit && (
       <div className="entity-tab-content">
         <section className="entity-card entity-access-card">
           <h2 className="entity-card-title">Access controls</h2>
           <p className="entity-access-note help-text">
-            Configure who can view and edit this entity. Save your changes to update the access
-            rules.
+            Configure who can view and edit this entity. Users with write access will
+            automatically receive read access. Save your changes to update the access rules.
           </p>
-
-          {!canEdit ? (
-            <p className="entity-access-note help-text">
-              You do not have permission to change access settings for this entity.
-            </p>
-          ) : null}
 
           {accessOptionsError ? (
             <div className="alert error" role="alert">
