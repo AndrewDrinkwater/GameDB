@@ -221,7 +221,6 @@ export default function EntityDetailPage() {
   const [relationshipsError, setRelationshipsError] = useState('')
   const [relationshipsLoading, setRelationshipsLoading] = useState(false)
   const [showRelationshipForm, setShowRelationshipForm] = useState(false)
-  const [relationshipPerspective, setRelationshipPerspective] = useState('source')
   const [relationshipFilters, setRelationshipFilters] = useState(() =>
     createDefaultRelationshipFilters(),
   )
@@ -438,9 +437,6 @@ export default function EntityDetailPage() {
     setIsEditing(false)
   }, [entity?.id])
 
-  useEffect(() => {
-    setRelationshipPerspective('source')
-  }, [entity?.id])
 
   useEffect(() => {
     setRelationshipFilters(createDefaultRelationshipFilters())
@@ -1272,43 +1268,25 @@ export default function EntityDetailPage() {
     })
   }, [relationships])
 
-  const relationshipsByPerspective = useMemo(() => {
-    const entityId = entity?.id
-    if (!entityId) {
-      return { source: [], target: [] }
-    }
-
-    const entityIdString = String(entityId)
-    const source = normalisedRelationships.filter((relationship) => {
-      if (!relationship.fromId) return false
-      return String(relationship.fromId) === entityIdString
-    })
-
-    const target = normalisedRelationships.filter((relationship) => {
-      if (!relationship.toId) return false
-      return String(relationship.toId) === entityIdString
-    })
-
-    return { source, target }
-  }, [entity?.id, normalisedRelationships])
-
-  const relationshipsToDisplay = useMemo(
-    () => relationshipsByPerspective[relationshipPerspective] || [],
-    [relationshipsByPerspective, relationshipPerspective],
-  )
-
   const sortedRelationships = useMemo(() => {
-    if (!Array.isArray(relationshipsToDisplay)) return []
+    if (!Array.isArray(normalisedRelationships)) return []
     const entityIdString = entity?.id != null ? String(entity.id) : ''
 
-    return [...relationshipsToDisplay].sort((a, b) => {
-      const aIsSource = entityIdString && String(a?.fromId ?? '') === entityIdString
-      const bIsSource = entityIdString && String(b?.fromId ?? '') === entityIdString
-      const aRelatedName = aIsSource ? a?.toName || '' : a?.fromName || ''
-      const bRelatedName = bIsSource ? b?.toName || '' : b?.fromName || ''
-      return aRelatedName.localeCompare(bRelatedName, undefined, { sensitivity: 'base' })
-    })
-  }, [relationshipsToDisplay, entity?.id])
+    return normalisedRelationships
+      .filter((relationship) => {
+        if (!entityIdString) return true
+        const fromId = relationship?.fromId != null ? String(relationship.fromId) : ''
+        const toId = relationship?.toId != null ? String(relationship.toId) : ''
+        return fromId === entityIdString || toId === entityIdString
+      })
+      .sort((a, b) => {
+        const aIsSource = entityIdString && String(a?.fromId ?? '') === entityIdString
+        const bIsSource = entityIdString && String(b?.fromId ?? '') === entityIdString
+        const aRelatedName = aIsSource ? a?.toName || '' : a?.fromName || ''
+        const bRelatedName = bIsSource ? b?.toName || '' : b?.fromName || ''
+        return aRelatedName.localeCompare(bRelatedName, undefined, { sensitivity: 'base' })
+      })
+  }, [normalisedRelationships, entity?.id])
 
   const relationshipFilterOptions = useMemo(() => {
     const typeMap = new Map()
@@ -1522,27 +1500,10 @@ export default function EntityDetailPage() {
     setRelationshipFilters(createDefaultRelationshipFilters())
   }, [])
 
-  const relationshipsToggleLabel = useMemo(() => {
-    const name = entity?.name || 'this entity'
-    return relationshipPerspective === 'source'
-      ? `Showing relationships where ${name} is the source.`
-      : `Showing relationships where ${name} is the target.`
-  }, [entity?.name, relationshipPerspective])
-
-  const relationshipsToggleActionLabel = useMemo(
-    () =>
-      relationshipPerspective === 'source'
-        ? 'Show incoming relationships'
-        : 'Show outgoing relationships',
-    [relationshipPerspective],
-  )
-
   const relationshipsEmptyMessage = useMemo(() => {
     const name = entity?.name || 'this entity'
-    return relationshipPerspective === 'source'
-      ? `No relationships found where ${name} is the source.`
-      : `No relationships found where ${name} is the target.`
-  }, [entity?.name, relationshipPerspective])
+    return `No relationships found for ${name}.`
+  }, [entity?.name])
 
   const handleRelationshipCreated = useCallback(
     (mode, relationship) => {
