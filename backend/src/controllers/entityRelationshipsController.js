@@ -442,11 +442,12 @@ export async function getRelationshipsByEntity(req, res) {
       return res.status(404).json({ error: 'Entity not found' })
     }
 
-    if (!hasPrivilegedRelationshipRole(req.user)) {
-      const access = await checkWorldAccess(entity.world_id, req.user)
-      if (!access.isOwner && !access.isAdmin) {
-        return res.status(403).json({ error: 'Forbidden' })
-      }
+    const entityWorldId = normaliseId(entity.world_id)
+    const worldAccess = await checkWorldAccess(entityWorldId, req.user)
+    const privileged = hasPrivilegedRelationshipRole(req.user)
+
+    if (!privileged && !worldAccess.hasAccess && !worldAccess.isOwner && !worldAccess.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden' })
     }
 
     const relationships = await EntityRelationship.findAll({
@@ -478,7 +479,45 @@ export async function getRelationshipsByEntity(req, res) {
       ],
     })
 
-    res.json(relationships)
+    const readContext = await buildEntityReadContext({
+      worldId: entityWorldId,
+      user: req.user,
+      worldAccess,
+    })
+    const effectiveContext = privileged ? { ...readContext, isAdmin: true } : readContext
+    const entityIdString = normaliseId(entityId)
+
+    const filtered = relationships.filter((relationship) => {
+      const fromWorldId = normaliseId(relationship.from?.world_id)
+      const toWorldId = normaliseId(relationship.to?.world_id)
+
+      if (fromWorldId && fromWorldId !== entityWorldId) {
+        return false
+      }
+
+      if (toWorldId && toWorldId !== entityWorldId) {
+        return false
+      }
+
+      const fromId = normaliseId(
+        relationship.from_entity ?? relationship.from?.id ?? relationship.from_entity_id,
+      )
+      const toId = normaliseId(
+        relationship.to_entity ?? relationship.to?.id ?? relationship.to_entity_id,
+      )
+
+      const fromReadable =
+        (fromId && fromId === entityIdString) ||
+        (relationship.from ? canUserReadEntity(relationship.from, effectiveContext) : false)
+
+      const toReadable =
+        (toId && toId === entityIdString) ||
+        (relationship.to ? canUserReadEntity(relationship.to, effectiveContext) : false)
+
+      return fromReadable && toReadable
+    })
+
+    res.json({ success: true, data: filtered.map(mapRelationship) })
   } catch (err) {
     console.error('Failed to load relationships', err)
     res.status(500).json({ error: 'Failed to load relationships' })
