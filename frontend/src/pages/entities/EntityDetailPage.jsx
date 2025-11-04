@@ -11,14 +11,20 @@ import EntityRelationshipFilters, {
   createDefaultRelationshipFilters,
 } from '../../components/entities/EntityRelationshipFilters.jsx'
 import { getEntity, updateEntity } from '../../api/entities.js'
-import { fetchCampaigns } from '../../api/campaigns.js'
-import { fetchCharacters } from '../../api/characters.js'
 import { getEntityRelationships } from '../../api/entityRelationships.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useFeatureFlag } from '../../context/FeatureFlagContext.jsx'
 import RelationshipBuilder from '../../modules/relationships3/RelationshipBuilder.jsx'
 import useUnsavedChangesPrompt from '../../hooks/useUnsavedChangesPrompt.js'
 
+// hooks
+import useEntityAccess from '../../hooks/useEntityAccess.js'
+
+// tabs
+import DossierTab from './tabs/DossierTab.jsx'
+import RelationshipsTab from './tabs/RelationshipsTab.jsx'
+import AccessTab from './tabs/AccessTab.jsx'
+import SystemTab from './tabs/SystemTab.jsx'
 
 const VISIBILITY_LABELS = {
   hidden: 'Hidden',
@@ -32,50 +38,8 @@ const VISIBILITY_OPTIONS = [
   { value: 'visible', label: 'Visible' },
 ]
 
-const ACCESS_MODES = ['global', 'selective', 'hidden']
-
-const ACCESS_MODE_LABELS = {
-  global: 'Global',
-  selective: 'Selective',
-  hidden: 'Hidden',
-}
-
-const ACCESS_MODE_OPTIONS = ACCESS_MODES.map((value) => ({
-  value,
-  label: ACCESS_MODE_LABELS[value],
-}))
-
-const ACCESS_MODE_SET = new Set(ACCESS_MODES)
-
-const normaliseAccessMode = (value) => {
-  if (typeof value !== 'string') return 'global'
-  const key = value.toLowerCase()
-  return ACCESS_MODE_SET.has(key) ? key : 'global'
-}
-
 const EDIT_MODE_PROMPT_MESSAGE =
   'You have unsaved changes. Do you want to save them before leaving this page?'
-
-const normaliseIdArray = (value) => {
-  if (!value) return []
-  if (Array.isArray(value)) {
-    return value
-      .map((entry) => {
-        if (entry === undefined || entry === null) return ''
-        return String(entry).trim()
-      })
-      .filter(Boolean)
-  }
-
-  if (typeof value === 'string') {
-    return value
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-  }
-
-  return []
-}
 
 const formatDateTime = (value) => {
   if (!value) return '—'
@@ -205,52 +169,44 @@ const initialMetadataValue = (field) => {
 }
 
 // Helper to choose the correct directional label based on perspective
-const getRelationshipLabel = (rel) => (
+const getRelationshipLabel = (rel) =>
   rel.effectiveFromLabel || rel.typeFromName || rel.typeName
-)
-
 
 export default function EntityDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
   const { user, token, sessionReady } = useAuth()
+
   const [entity, setEntity] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
   const [activeTab, setActiveTab] = useState('dossier')
   const [isEditing, setIsEditing] = useState(false)
+
   const [relationships, setRelationships] = useState([])
   const [relationshipsError, setRelationshipsError] = useState('')
   const [relationshipsLoading, setRelationshipsLoading] = useState(false)
+
   const [showRelationshipForm, setShowRelationshipForm] = useState(false)
   const [relationshipFilters, setRelationshipFilters] = useState(() =>
     createDefaultRelationshipFilters(),
   )
   const [toast, setToast] = useState(null)
-  const [accessSettings, setAccessSettings] = useState({
-    readMode: 'global',
-    readCampaigns: [],
-    readUsers: [],
-    writeMode: 'global',
-    writeCampaigns: [],
-    writeUsers: [],
-  })
-  const [accessOptions, setAccessOptions] = useState({ campaigns: [], users: [] })
-  const [accessOptionsLoading, setAccessOptionsLoading] = useState(false)
-  const [accessOptionsError, setAccessOptionsError] = useState('')
-  const [accessSaving, setAccessSaving] = useState(false)
-  const [accessSaveError, setAccessSaveError] = useState('')
-  const [accessSaveSuccess, setAccessSaveSuccess] = useState('')
+
   const formRef = useRef(null)
-  const [formState, setFormState] = useState({ isDirty: false, isSubmitting: false })
+  const [formState, setFormState] = useState({
+    isDirty: false,
+    isSubmitting: false,
+  })
+
   const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
   const fromEntitiesSearch = location.state?.fromEntities?.search || ''
 
-  const buildFilterKey = useCallback((id, name, fallbackLabel = '') => {
-    if (id !== undefined && id !== null) {
-      const trimmed = String(id).trim()
+  const buildFilterKey = useCallback((idValue, name, fallbackLabel = '') => {
+    if (idValue !== undefined && idValue !== null) {
+      const trimmed = String(idValue).trim()
       if (trimmed) return trimmed
     }
 
@@ -294,7 +250,7 @@ export default function EntityDetailPage() {
     navigate(`/entities/${id}/relationship-viewer`)
   }, [navigate, id])
 
-const canEdit = useMemo(() => {
+  const canEdit = useMemo(() => {
     if (entity?.permissions && typeof entity.permissions.canEdit === 'boolean') {
       return entity.permissions.canEdit
     }
@@ -338,7 +294,9 @@ const canEdit = useMemo(() => {
 
       return (
         <section key={sectionKey} className="entity-card">
-          {section.title ? <h2 className="entity-card-title">{section.title}</h2> : null}
+          {section.title ? (
+            <h2 className="entity-card-title">{section.title}</h2>
+          ) : null}
           <div
             className="entity-field-grid"
             style={{ '--entity-field-columns': columnCount }}
@@ -406,9 +364,7 @@ const canEdit = useMemo(() => {
 
   const metadataFields = useMemo(() => {
     if (!entity?.fields) return []
-    return entity.fields
-      .map((field) => mapFieldToSchemaField(field))
-      .filter(Boolean)
+    return entity.fields.map((field) => mapFieldToSchemaField(field)).filter(Boolean)
   }, [entity])
 
   const metadataViewValues = useMemo(() => {
@@ -444,8 +400,8 @@ const canEdit = useMemo(() => {
       const list = Array.isArray(response)
         ? response
         : Array.isArray(response?.data)
-          ? response.data
-          : []
+        ? response.data
+        : []
       setRelationships(list)
     } catch (err) {
       console.error('❌ Failed to load relationships', err)
@@ -464,7 +420,6 @@ const canEdit = useMemo(() => {
   useEffect(() => {
     setIsEditing(false)
   }, [entity?.id])
-
 
   useEffect(() => {
     setRelationshipFilters(createDefaultRelationshipFilters())
@@ -497,13 +452,7 @@ const canEdit = useMemo(() => {
         '—',
       updatedBy: entity.updated_by || '—',
     }
-  }, [
-    entity,
-    visibilityLabel,
-    metadataViewValues,
-    createdAtValue,
-    updatedAtValue,
-  ])
+  }, [entity, visibilityLabel, metadataViewValues, createdAtValue, updatedAtValue])
 
   const editInitialData = useMemo(() => {
     if (!entity) return null
@@ -518,12 +467,7 @@ const canEdit = useMemo(() => {
       updatedAt: formatDateTime(updatedAtValue),
       metadata: metadataInitialValues,
     }
-  }, [
-    entity,
-    createdAtValue,
-    updatedAtValue,
-    metadataInitialValues,
-  ])
+  }, [entity, createdAtValue, updatedAtValue, metadataInitialValues])
 
   const metadataSectionTitle = 'Information'
 
@@ -549,7 +493,12 @@ const canEdit = useMemo(() => {
         title: 'Description',
         columns: 1,
         fields: [
-          { key: 'description', label: 'Description', type: 'textarea', rows: 4 },
+          {
+            key: 'description',
+            label: 'Description',
+            type: 'textarea',
+            rows: 4,
+          },
         ],
       },
       {
@@ -575,16 +524,17 @@ const canEdit = useMemo(() => {
   }, [metadataFields, metadataSectionTitle])
 
   const dossierSchema = useMemo(() => {
-    const metadataSectionFields = metadataFields.length > 0
-      ? metadataFields
-      : [
-          {
-            key: 'metadata.__placeholder',
-            name: 'metadata.__placeholder',
-            label: 'Information',
-            type: 'readonly',
-          },
-        ]
+    const metadataSectionFields =
+      metadataFields.length > 0
+        ? metadataFields
+        : [
+            {
+              key: 'metadata.__placeholder',
+              name: 'metadata.__placeholder',
+              label: 'Information',
+              type: 'readonly',
+            },
+          ]
 
     return {
       title: 'Entity Overview',
@@ -602,7 +552,12 @@ const canEdit = useMemo(() => {
           title: 'Description',
           columns: 1,
           fields: [
-            { key: 'description', label: 'Description', type: 'textarea', rows: 4 },
+            {
+              key: 'description',
+              label: 'Description',
+              type: 'textarea',
+              rows: 4,
+            },
           ],
         },
         {
@@ -633,31 +588,23 @@ const canEdit = useMemo(() => {
     [],
   )
 
-  const accessDefaults = useMemo(() => {
-    if (!entity) {
-      return {
-        readMode: 'global',
-        readCampaigns: [],
-        readUsers: [],
-        writeMode: 'global',
-        writeCampaigns: [],
-        writeUsers: [],
-      }
-    }
+  // --- access hook ---
+  const {
+    accessSettings,
+    accessOptions,
+    accessOptionsError,
+    accessOptionsLoading,
+    accessSaving,
+    accessSaveError,
+    accessSaveSuccess,
+    isAccessDirty,
+    handleAccessSettingChange,
+    handleAccessSave,
+  } = useEntityAccess(entity, token, canEdit)
 
-    return {
-      readMode: normaliseAccessMode(entity.read_access || entity.readAccess),
-      readCampaigns: normaliseIdArray(entity.read_campaign_ids || entity.readCampaignIds),
-      readUsers: normaliseIdArray(entity.read_user_ids || entity.readUserIds),
-      writeMode: normaliseAccessMode(entity.write_access || entity.writeAccess),
-      writeCampaigns: normaliseIdArray(entity.write_campaign_ids || entity.writeCampaignIds),
-      writeUsers: normaliseIdArray(entity.write_user_ids || entity.writeUserIds),
-    }
-  }, [entity])
+  const entityId = entity?.id
 
-const entityId = entity?.id
-
-      const normalisedRelationships = useMemo(() => {
+  const normalisedRelationships = useMemo(() => {
     if (!Array.isArray(relationships)) return []
 
     const normaliseRelationshipEntityId = (value) => {
@@ -690,17 +637,28 @@ const entityId = entity?.id
         if (value.id !== undefined && value.id !== null) {
           return String(value.id)
         }
-        if (value.relationship_type_id !== undefined && value.relationship_type_id !== null) {
+        if (
+          value.relationship_type_id !== undefined &&
+          value.relationship_type_id !== null
+        ) {
           return String(value.relationship_type_id)
         }
-        if (value.relationshipTypeId !== undefined && value.relationshipTypeId !== null) {
+        if (
+          value.relationshipTypeId !== undefined &&
+          value.relationshipTypeId !== null
+        ) {
           return String(value.relationshipTypeId)
         }
       }
       return ''
     }
 
-    const normaliseEntityTypeInfo = (entityValue, fallbackType, fallbackName, fallbackId) => {
+    const normaliseEntityTypeInfo = (
+      entityValue,
+      fallbackType,
+      fallbackName,
+      fallbackId,
+    ) => {
       const candidates = []
 
       if (entityValue && typeof entityValue === 'object') {
@@ -721,7 +679,10 @@ const entityId = entity?.id
         )
       }
 
-      let resolved = candidates.find((candidate) => candidate && typeof candidate === 'object') || null
+      let resolved =
+        candidates.find(
+          (candidate) => candidate && typeof candidate === 'object',
+        ) || null
 
       let id =
         resolved?.id ??
@@ -760,7 +721,10 @@ const entityId = entity?.id
       const fallbackNameValue =
         fallbackName ??
         (typeof fallbackType === 'object'
-          ? fallbackType?.name ?? fallbackType?.label ?? fallbackType?.title ?? ''
+          ? fallbackType?.name ??
+            fallbackType?.label ??
+            fallbackType?.title ??
+            ''
           : '')
 
       if (!name && fallbackNameValue) {
@@ -911,13 +875,9 @@ const entityId = entity?.id
       const typeFromName = type?.from_name || type?.fromName || baseTypeName
       const typeToName = type?.to_name || type?.toName || baseTypeName
       const sourceLabel =
-        type?.source_relationship_label ||
-        type?.sourceLabel ||
-        typeFromName
+        type?.source_relationship_label || type?.sourceLabel || typeFromName
       const targetLabel =
-        type?.target_relationship_label ||
-        type?.targetLabel ||
-        typeToName
+        type?.target_relationship_label || type?.targetLabel || typeToName
 
       // Resolve which label applies based on context direction
       const effectiveFromLabel = direction === 'reverse' ? targetLabel : sourceLabel
@@ -1010,9 +970,7 @@ const entityId = entity?.id
               relationship.from_id ??
               relationship.from_entity ??
               relationship.fromEntity,
-          ) ||
-          normaliseRelationshipEntityId(fromEntity) ||
-          null,
+          ) || normaliseRelationshipEntityId(fromEntity) || null,
         fromName: fromEntity?.name || '—',
         fromEntityTypeId,
         fromEntityTypeName,
@@ -1023,9 +981,7 @@ const entityId = entity?.id
               relationship.to_id ??
               relationship.to_entity ??
               relationship.toEntity,
-          ) ||
-          normaliseRelationshipEntityId(toEntity) ||
-          null,
+          ) || normaliseRelationshipEntityId(toEntity) || null,
         toName: toEntity?.name || '—',
         toEntityTypeId,
         toEntityTypeName,
@@ -1035,96 +991,7 @@ const entityId = entity?.id
     })
   }, [relationships])
 
-const isAccessDirty = useMemo(() => {
-    const keys = [
-      'readMode',
-      'readCampaigns',
-      'readUsers',
-      'writeMode',
-      'writeCampaigns',
-      'writeUsers',
-    ]
-
-    const normaliseArray = (value) => {
-      if (!Array.isArray(value)) return []
-      return value
-        .map((entry) => {
-          if (entry === null || entry === undefined) return null
-          const text = String(entry).trim()
-          return text || null
-        })
-        .filter(Boolean)
-        .sort()
-    }
-
-    return keys.some((key) => {
-      const currentValue = accessSettings?.[key]
-      const defaultValue = accessDefaults?.[key]
-
-      const currentIsArray = Array.isArray(currentValue)
-      const defaultIsArray = Array.isArray(defaultValue)
-
-      if (currentIsArray || defaultIsArray) {
-        const currentArray = normaliseArray(currentValue)
-        const defaultArray = normaliseArray(defaultValue)
-
-        if (currentArray.length !== defaultArray.length) return true
-        for (let index = 0; index < currentArray.length; index += 1) {
-          if (currentArray[index] !== defaultArray[index]) {
-            return true
-          }
-        }
-        return false
-      }
-
-      return currentValue !== defaultValue
-    })
-  }, [accessSettings, accessDefaults])
-
-const handleAccessSave = useCallback(async () => {
-    if (!canEdit || !entityId) return false
-    if (!isAccessDirty) {
-      return true
-    }
-
-    setAccessSaveError('')
-    setAccessSaveSuccess('')
-    setAccessSaving(true)
-
-    try {
-      const payload = {
-        read_access: accessSettings.readMode,
-        write_access: accessSettings.writeMode,
-        read_campaign_ids:
-          accessSettings.readMode === 'selective' ? accessSettings.readCampaigns : [],
-        read_user_ids:
-          accessSettings.readMode === 'selective' ? accessSettings.readUsers : [],
-        write_campaign_ids:
-          accessSettings.writeMode === 'selective' ? accessSettings.writeCampaigns : [],
-        write_user_ids:
-          accessSettings.writeMode === 'selective' ? accessSettings.writeUsers : [],
-      }
-
-      const response = await updateEntity(entityId, payload)
-      const updated = response?.data || response
-
-      if (!updated) {
-        throw new Error('Failed to save access settings')
-      }
-
-      setEntity(updated)
-      setAccessSaveSuccess('Access settings saved.')
-      return true
-    } catch (err) {
-      console.error('❌ Failed to save access settings', err)
-      setAccessSaveError(err.message || 'Failed to save access settings')
-      return false
-    } finally {
-      setAccessSaving(false)
-    }
-  }, [canEdit, entityId, accessSettings, isAccessDirty])
-
-const handleSaveAll = useCallback(async () => {
+  const handleSaveAll = useCallback(async () => {
     if (!canEdit) return false
 
     let success = true
@@ -1150,9 +1017,9 @@ const handleSaveAll = useCallback(async () => {
     if (!canEdit) return
     setFormError('')
 
+    // entering edit mode
     if (!isEditing) {
-      setAccessSaveError('')
-      setAccessSaveSuccess('')
+      // access hook manages its own defaults/state
       setIsEditing(true)
       return
     }
@@ -1172,9 +1039,7 @@ const handleSaveAll = useCallback(async () => {
         }
       } else {
         formRef.current?.reset?.(editInitialData || {})
-        setAccessSettings(() => ({ ...accessDefaults }))
-        setAccessSaveError('')
-        setAccessSaveSuccess('')
+        // access hook will keep its internal state; we just leave it as-is
       }
     }
 
@@ -1187,7 +1052,6 @@ const handleSaveAll = useCallback(async () => {
     isAccessDirty,
     handleSaveAll,
     editInitialData,
-    accessDefaults,
   ])
 
   const handleUpdate = useCallback(
@@ -1221,155 +1085,34 @@ const handleSaveAll = useCallback(async () => {
     [entity?.id],
   )
 
-  const worldId = useMemo(() => entity?.world?.id || entity?.world_id || '', [entity])
-
-  useEffect(() => {
-    setAccessSettings(accessDefaults)
-  }, [accessDefaults])
-
-  const loadAccessOptions = useCallback(async () => {
-    if (!token) return
-
-    if (!worldId) {
-      setAccessOptions({ campaigns: [], users: [] })
-      setAccessOptionsError('')
-      setAccessOptionsLoading(false)
-      return
-    }
-
-    setAccessOptionsLoading(true)
-    setAccessOptionsError('')
-
-    try {
-      const [campaignResponse, characterResponse] = await Promise.all([
-        fetchCampaigns({ world_id: worldId }),
-        fetchCharacters({ world_id: worldId }),
-      ])
-
-      const campaignData = Array.isArray(campaignResponse?.data)
-        ? campaignResponse.data
-        : Array.isArray(campaignResponse)
-          ? campaignResponse
-          : []
-
-      const campaigns = campaignData.map((item) => ({
-        value: String(item.id),
-        label: item.name || 'Untitled campaign',
-      }))
-
-      const characterData = Array.isArray(characterResponse?.data)
-        ? characterResponse.data
-        : Array.isArray(characterResponse)
-          ? characterResponse
-          : []
-
-      const userMap = new Map()
-      characterData.forEach((character) => {
-        const userId = character?.user_id || character?.player?.id
-        if (!userId) return
-        const key = String(userId)
-        if (userMap.has(key)) return
-
-        const player = character?.player || {}
-        const username = typeof player.username === 'string' ? player.username.trim() : ''
-        const email = typeof player.email === 'string' ? player.email.trim() : ''
-
-        let label = username || email || `User ${key.slice(0, 8)}`
-        if (username && email && username !== email) {
-          label = `${username} (${email})`
-        }
-
-        userMap.set(key, { value: key, label })
-      })
-
-      setAccessOptions({ campaigns, users: Array.from(userMap.values()) })
-    } catch (err) {
-      console.error('❌ Failed to load access options', err)
-      setAccessOptions({ campaigns: [], users: [] })
-      setAccessOptionsError(err.message || 'Failed to load access options')
-    } finally {
-      setAccessOptionsLoading(false)
-    }
-  }, [token, worldId])
-
-  useEffect(() => {
-    if (!sessionReady) return
-    loadAccessOptions()
-  }, [sessionReady, loadAccessOptions])
-
-  const hasUnsavedChanges = isEditing && (formState.isDirty || isAccessDirty)
-
-  useUnsavedChangesPrompt(hasUnsavedChanges, EDIT_MODE_PROMPT_MESSAGE)
-
-  const handleAccessSettingChange = useCallback(
-    (key, value) => {
-      if (!canEdit || accessSaving) return
-      setAccessSaveError('')
-      setAccessSaveSuccess('')
-
-      setAccessSettings((prev) => {
-        const next = { ...(prev || {}) }
-
-        if (key === 'readMode' || key === 'writeMode') {
-          const mode = normaliseAccessMode(value)
-          next[key] = mode
-
-          if (key === 'readMode' && mode !== 'selective') {
-            next.readCampaigns = []
-            next.readUsers = []
-          }
-
-          if (key === 'writeMode' && mode !== 'selective') {
-            next.writeCampaigns = []
-            next.writeUsers = []
-          }
-
-          return next
-        }
-
-        if (
-          key === 'readCampaigns' ||
-          key === 'readUsers' ||
-          key === 'writeCampaigns' ||
-          key === 'writeUsers'
-        ) {
-          const list = Array.isArray(value)
-            ? value
-                .map((entry) => {
-                  if (entry === undefined || entry === null) return ''
-                  return String(entry).trim()
-                })
-                .filter(Boolean)
-            : []
-
-          next[key] = list
-          return next
-        }
-
-        next[key] = value
-        return next
-      })
-    },
-    [canEdit, accessSaving],
+  const worldId = useMemo(
+    () => entity?.world?.id || entity?.world_id || '',
+    [entity],
   )
 
-    const sortedRelationships = useMemo(() => {
+  const sortedRelationships = useMemo(() => {
     if (!Array.isArray(normalisedRelationships)) return []
     const entityIdString = entity?.id != null ? String(entity.id) : ''
 
     return normalisedRelationships
       .filter((relationship) => {
         if (!entityIdString) return true
-        const fromId = relationship?.fromId != null ? String(relationship.fromId) : ''
-        const toId = relationship?.toId != null ? String(relationship.toId) : ''
+        const fromId =
+          relationship?.fromId != null ? String(relationship.fromId) : ''
+        const toId =
+          relationship?.toId != null ? String(relationship.toId) : ''
         return fromId === entityIdString || toId === entityIdString
       })
       .sort((a, b) => {
-        const aIsSource = entityIdString && String(a?.fromId ?? '') === entityIdString
-        const bIsSource = entityIdString && String(b?.fromId ?? '') === entityIdString
+        const aIsSource =
+          entityIdString && String(a?.fromId ?? '') === entityIdString
+        const bIsSource =
+          entityIdString && String(b?.fromId ?? '') === entityIdString
         const aRelatedName = aIsSource ? a?.toName || '' : a?.fromName || ''
         const bRelatedName = bIsSource ? b?.toName || '' : b?.fromName || ''
-        return aRelatedName.localeCompare(bRelatedName, undefined, { sensitivity: 'base' })
+        return aRelatedName.localeCompare(bRelatedName, undefined, {
+          sensitivity: 'base',
+        })
       })
   }, [normalisedRelationships, entity?.id])
 
@@ -1432,11 +1175,15 @@ const handleSaveAll = useCallback(async () => {
 
     const relationshipTypes = Array.from(typeMap.entries())
       .map(([value, label]) => ({ value, label }))
-      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
+      .sort((a, b) =>
+        a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
+      )
 
     const relatedEntityTypes = Array.from(relatedTypeMap.entries())
       .map(([value, label]) => ({ value, label }))
-      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
+      .sort((a, b) =>
+        a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }),
+      )
 
     if (typeof console !== 'undefined' && console.debug) {
       console.debug('[EntityDetailPage] Derived relationship filter options', {
@@ -1454,6 +1201,7 @@ const handleSaveAll = useCallback(async () => {
   useEffect(() => {
     setRelationshipFilters((prev) => {
       const defaultGroup = { mode: 'all', values: [] }
+
       const sanitizeGroup = (group, options) => {
         const base = group && typeof group === 'object' ? group : defaultGroup
         const allowedModes = new Set(['all', 'include', 'exclude'])
@@ -1503,7 +1251,10 @@ const handleSaveAll = useCallback(async () => {
   }, [relationshipFilterOptions])
 
   const filteredRelationships = useMemo(() => {
-    const typeFilter = relationshipFilters?.relationshipTypes || { mode: 'all', values: [] }
+    const typeFilter = relationshipFilters?.relationshipTypes || {
+      mode: 'all',
+      values: [],
+    }
     const relatedEntityTypeFilter =
       relationshipFilters?.relatedEntityTypes || { mode: 'all', values: [] }
     const entityIdString = entity?.id != null ? String(entity.id) : ''
@@ -1524,7 +1275,10 @@ const handleSaveAll = useCallback(async () => {
         if (typeFilter.mode === 'exclude' && match) return false
       }
 
-      if (relatedEntityTypeFilter.mode !== 'all' && relatedEntityTypeFilter.values.length > 0) {
+      if (
+        relatedEntityTypeFilter.mode !== 'all' &&
+        relatedEntityTypeFilter.values.length > 0
+      ) {
         if (!entityIdString) return false
 
         const isSource = String(relationship.fromId ?? '') === entityIdString
@@ -1540,7 +1294,9 @@ const handleSaveAll = useCallback(async () => {
           relatedTypeName,
           relatedLabel,
         )
-        const match = relatedKey ? relatedEntityTypeFilter.values.includes(relatedKey) : false
+        const match = relatedKey
+          ? relatedEntityTypeFilter.values.includes(relatedKey)
+          : false
         if (relatedEntityTypeFilter.mode === 'include' && !match) return false
         if (relatedEntityTypeFilter.mode === 'exclude' && match) return false
       }
@@ -1636,13 +1392,20 @@ const handleSaveAll = useCallback(async () => {
         isSubmitting: Boolean(nextState?.isSubmitting),
       }
 
-      if (prev.isDirty === next.isDirty && prev.isSubmitting === next.isSubmitting) {
+      if (
+        prev.isDirty === next.isDirty &&
+        prev.isSubmitting === next.isSubmitting
+      ) {
         return prev
       }
 
       return next
     })
   }, [])
+
+  const hasUnsavedChanges = isEditing && (formState.isDirty || isAccessDirty)
+
+  useUnsavedChangesPrompt(hasUnsavedChanges, EDIT_MODE_PROMPT_MESSAGE)
 
   if (!sessionReady) return <p>Restoring session...</p>
   if (!token) return <p>Authenticating...</p>
@@ -1654,407 +1417,113 @@ const handleSaveAll = useCallback(async () => {
   return (
     <div className="entity-detail-page">
       <DrawerPanel
-  isOpen={showRelationshipForm}
-  onClose={() => setShowRelationshipForm(false)}
-  title="Add relationship"
-  description="Link this entity to others without leaving the page."
-  size="lg"
->
-  <RelationshipBuilder
-  worldId={worldId}
-  fromEntity={entity} // ← crucial line
-  onCreated={() => {
-    setShowRelationshipForm(false)
-    loadRelationships()
-  }}
-  onCancel={() => setShowRelationshipForm(false)}
-/>
+        isOpen={showRelationshipForm}
+        onClose={() => setShowRelationshipForm(false)}
+        title="Add relationship"
+        description="Link this entity to others without leaving the page."
+        size="lg"
+      >
+        <RelationshipBuilder
+          worldId={worldId}
+          fromEntity={entity}
+          onCreated={() => {
+            setShowRelationshipForm(false)
+            loadRelationships()
+          }}
+          onCancel={() => setShowRelationshipForm(false)}
+        />
+      </DrawerPanel>
 
-</DrawerPanel>
-
-{/* --- ENTITY DETAIL TOP BAR --- */}
-<div className="entity-detail-topbar">
-  <div className="entity-detail-topbar-inner">
-      <EntityHeader
-        name={entity.name}
-        onBack={handleBack}
-        onExplore={handleExplore}
-        canEdit={canEdit}
-        isEditing={isEditing}
-        onToggleEdit={handleEditToggle}
-        onSave={handleSaveAll}
-        isSaving={formState.isSubmitting || accessSaving}
-        isSaveDisabled={!formState.isDirty && !isAccessDirty}
-      />
-    <TabNav tabs={tabItems} activeTab={activeTab} onChange={setActiveTab} />
-  </div>
-</div>
-
-{/* --- MAIN SHELL --- */}
-<div className="entity-detail-shell">
-  <div className="entity-detail-body" role="tabpanel">
-    {/* DOSSIER TAB */}
-    {activeTab === 'dossier' && (
-      <div className="entity-tab-content">
-        {formError && (
-          <section className="entity-card">
-            <div className="alert error" role="alert">
-              {formError}
-            </div>
-          </section>
-        )}
-
-        {isEditing && canEdit ? (
-          <section className="entity-card entity-card--form">
-            <FormRenderer
-              ref={formRef}
-              schema={editSchema}
-              initialData={editInitialData || {}}
-              onSubmit={handleUpdate}
-              onStateChange={handleFormStateChange}
-              hideActions
-              enableUnsavedPrompt={false}
-            />
-          </section>
-        ) : (
-          renderSchemaSections(dossierSchema, viewData, 'dossier')
-        )}
-      </div>
-    )}
-
-    {/* RELATIONSHIPS TAB */}
-{activeTab === 'relationships' && (
-  <div className="entity-tab-content">
-    {toast && (
-      <div className={`toast-banner ${toast.tone}`} role="status">
-        <span>{toast.message}</span>
-        {toast.link ? (
-          <Link to={toast.link.to} className="toast-banner-link">
-            {toast.link.label}
-          </Link>
-        ) : null}
-      </div>
-    )}
-
-    <section className="entity-card">
-      <div className="entity-card-header">
-        <h2 className="entity-card-title">Relationships</h2>
-        <div className="entity-card-actions">
-          <EntityRelationshipFilters
-            options={relationshipFilterOptions}
-            value={relationshipFilters}
-            onChange={handleRelationshipFiltersChange}
-            onReset={handleRelationshipFiltersReset}
-            disabled={filterButtonDisabled}
+      {/* --- ENTITY DETAIL TOP BAR --- */}
+      <div className="entity-detail-topbar">
+        <div className="entity-detail-topbar-inner">
+          <EntityHeader
+            name={entity.name}
+            onBack={handleBack}
+            onExplore={handleExplore}
+            canEdit={canEdit}
+            isEditing={isEditing}
+            onToggleEdit={handleEditToggle}
+            onSave={handleSaveAll}
+            isSaving={formState.isSubmitting || accessSaving}
+            isSaveDisabled={!formState.isDirty && !isAccessDirty}
           />
-          {canEdit && (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => setShowRelationshipForm(true)}
-            >
-              Add relationship
-            </button>
-          )}
+          <TabNav
+            tabs={tabItems}
+            activeTab={activeTab}
+            onChange={setActiveTab}
+          />
         </div>
       </div>
 
-      <div className="entity-card-body">
-        {relationshipsLoading ? (
-          <p>Loading relationships...</p>
-        ) : relationshipsError ? (
-          <div className="alert error" role="alert">
-            {relationshipsError}
-          </div>
-        ) : sortedRelationships.length === 0 ? (
-          <p className="entity-empty-state">{relationshipsEmptyMessage}</p>
-        ) : filteredRelationships.length === 0 ? (
-          <p className="entity-empty-state">
-            No relationships match your filters. Try adjusting or clearing the filters above.
-          </p>
-        ) : (
-          <div className="entity-relationships-table-wrapper">
-            <table className="entity-relationships-table">
-              <thead>
-                <tr>
-                  <th>Relationship</th>
-                  <th>Type</th>
-                  <th>Direction</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRelationships.map((relationship) => {
-                  const isSource = String(relationship.fromId) === String(entity.id)
-                  const relatedName = isSource ? relationship.toName : relationship.fromName
-                  const relatedId = isSource ? relationship.toId : relationship.fromId
+      {/* --- MAIN SHELL --- */}
+      <div className="entity-detail-shell">
+        <div className="entity-detail-body" role="tabpanel">
+          {/* DOSSIER TAB */}
+          {activeTab === 'dossier' && (
+            <DossierTab
+              isEditing={isEditing}
+              canEdit={canEdit}
+              formError={formError}
+              formRef={formRef}
+              editSchema={editSchema}
+              editInitialData={editInitialData}
+              handleUpdate={handleUpdate}
+              handleFormStateChange={handleFormStateChange}
+              dossierSchema={dossierSchema}
+              viewData={viewData}
+              renderSchemaSections={renderSchemaSections}
+            />
+          )}
 
-                  // Grab relationship type and directional labels
-                  const typeName = relationship.typeName || '—'
-                  const sourceLabel = relationship.sourceLabel || relationship.source_relationship_label || ''
-                  const targetLabel = relationship.targetLabel || relationship.target_relationship_label || ''
+          {/* RELATIONSHIPS TAB */}
+          {activeTab === 'relationships' && (
+            <RelationshipsTab
+              entity={entity}
+              toast={toast}
+              canEdit={canEdit}
+              relationshipsLoading={relationshipsLoading}
+              relationshipsError={relationshipsError}
+              sortedRelationships={sortedRelationships}
+              filteredRelationships={filteredRelationships}
+              relationshipsEmptyMessage={relationshipsEmptyMessage}
+              relationshipFilters={relationshipFilters}
+              relationshipFilterOptions={relationshipFilterOptions}
+              filterButtonDisabled={filterButtonDisabled}
+              handleRelationshipFiltersChange={handleRelationshipFiltersChange}
+              handleRelationshipFiltersReset={handleRelationshipFiltersReset}
+              setShowRelationshipForm={setShowRelationshipForm}
+            />
+          )}
 
-                  // Build contextual phrase
-                  const currentName = entity.name || 'Entity'
-                  const phrase = isSource
-                    ? `${currentName} ${sourceLabel || ''} ${relatedName || ''}`.trim()
-                    : `${currentName} ${targetLabel || ''} ${relatedName || ''}`.trim()
+          {/* ACCESS TAB */}
+          {activeTab === 'access' && isEditing && canEdit && (
+            <AccessTab
+              canEdit={canEdit}
+              worldId={worldId}
+              accessSettings={accessSettings}
+              accessOptions={accessOptions}
+              accessOptionsError={accessOptionsError}
+              accessOptionsLoading={accessOptionsLoading}
+              accessSaving={accessSaving}
+              accessSaveError={accessSaveError}
+              accessSaveSuccess={accessSaveSuccess}
+              isAccessDirty={isAccessDirty}
+              handleAccessSettingChange={handleAccessSettingChange}
+              handleAccessSave={handleAccessSave}
+            />
+          )}
 
-                  return (
-                    <tr key={relationship.id}>
-                      <td>
-                        <span className="relationship-phrase">
-                          {isSource ? (
-                            <>
-                              <strong>{entity.name}</strong> {sourceLabel || '—'}{' '}
-                              <span className="entity-link-with-preview">
-                                <Link
-                                  to={`/entities/${relatedId}`}
-                                  className="entity-relationship-link"
-                                >
-                                  {relatedName || '—'}
-                                </Link>
-                                {relatedId ? (
-                                  <EntityInfoPreview
-                                    entityId={relatedId}
-                                    entityName={relatedName || 'entity'}
-                                  />
-                                ) : null}
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <strong>{entity.name}</strong> {targetLabel || '—'}{' '}
-                              <span className="entity-link-with-preview">
-                                <Link
-                                  to={`/entities/${relatedId}`}
-                                  className="entity-relationship-link"
-                                >
-                                  {relatedName || '—'}
-                                </Link>
-                                {relatedId ? (
-                                  <EntityInfoPreview
-                                    entityId={relatedId}
-                                    entityName={relatedName || 'entity'}
-                                  />
-                                ) : null}
-                              </span>
-                            </>
-                          )}
-                        </span>
-                      </td>
-                      <td>{typeName}</td>
-                      <td>{isSource ? 'Outgoing' : 'Incoming'}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+          {/* SYSTEM TAB */}
+          {activeTab === 'system' && (
+            <SystemTab
+              renderSchemaSections={renderSchemaSections}
+              systemSchema={systemSchema}
+              viewData={viewData}
+            />
+          )}
+        </div>
       </div>
-    </section>
-  </div>
-)}
-
-    {/* ACCESS TAB */}
-    {activeTab === 'access' && isEditing && canEdit && (
-      <div className="entity-tab-content">
-        <section className="entity-card entity-access-card">
-          <h2 className="entity-card-title">Access controls</h2>
-          <p className="entity-access-note help-text">
-            Configure who can view and edit this entity. Users with write access will
-            automatically receive read access. Save your changes to update the access rules.
-          </p>
-
-          {accessOptionsError ? (
-            <div className="alert error" role="alert">
-              {accessOptionsError}
-            </div>
-          ) : null}
-
-            {!worldId ? (
-              <p className="entity-empty-state">
-                Assign this entity to a world to configure access settings.
-              </p>
-            ) : (
-              <>
-                <div className="entity-access-columns">
-                  <div className="entity-access-column">
-                    <h3>Read access</h3>
-                    <div className="form-group">
-                      <label htmlFor="entity-access-read-mode">Visibility</label>
-                      <select
-                        id="entity-access-read-mode"
-                        value={accessSettings.readMode}
-                        onChange={(event) =>
-                          handleAccessSettingChange('readMode', event.target.value)
-                        }
-                        disabled={!canEdit || accessSaving}
-                      >
-                        {ACCESS_MODE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {accessSettings.readMode === 'selective' ? (
-                      <>
-                        <div className="form-group">
-                          <label htmlFor="entity-access-read-campaigns">Campaigns</label>
-                          <ListCollector
-                            inputId="entity-access-read-campaigns"
-                            selected={accessSettings.readCampaigns}
-                            options={accessOptions.campaigns}
-                            onChange={(selection) =>
-                              handleAccessSettingChange('readCampaigns', selection)
-                            }
-                            placeholder="Select campaigns..."
-                            noOptionsMessage={
-                              accessOptionsLoading
-                                ? 'Loading campaigns...'
-                                : 'No campaigns available for this world.'
-                            }
-                            loading={accessOptionsLoading}
-                            disabled={!canEdit || accessSaving}
-                          />
-                          <p className="help-text">
-                            Members of selected campaigns can view this entity.
-                          </p>
-                        </div>
-
-                        <div className="form-group">
-                          <label htmlFor="entity-access-read-users">Users</label>
-                          <ListCollector
-                            inputId="entity-access-read-users"
-                            selected={accessSettings.readUsers}
-                            options={accessOptions.users}
-                            onChange={(selection) =>
-                              handleAccessSettingChange('readUsers', selection)
-                            }
-                            placeholder="Select users..."
-                            noOptionsMessage={
-                              accessOptionsLoading
-                                ? 'Loading users...'
-                                : 'No eligible users found for this world.'
-                            }
-                            loading={accessOptionsLoading}
-                            disabled={!canEdit || accessSaving}
-                          />
-                          <p className="help-text">
-                            Choose players who have characters in this world.
-                          </p>
-                        </div>
-                      </>
-                    ) : null}
-                  </div>
-
-                  <div className="entity-access-column">
-                    <h3>Write access</h3>
-                    <div className="form-group">
-                      <label htmlFor="entity-access-write-mode">Write</label>
-                      <select
-                        id="entity-access-write-mode"
-                        value={accessSettings.writeMode}
-                        onChange={(event) =>
-                          handleAccessSettingChange('writeMode', event.target.value)
-                        }
-                        disabled={!canEdit || accessSaving}
-                      >
-                        {ACCESS_MODE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {accessSettings.writeMode === 'selective' ? (
-                      <>
-                        <div className="form-group">
-                          <label htmlFor="entity-access-write-campaigns">Campaigns</label>
-                          <ListCollector
-                            inputId="entity-access-write-campaigns"
-                            selected={accessSettings.writeCampaigns}
-                            options={accessOptions.campaigns}
-                            onChange={(selection) =>
-                              handleAccessSettingChange('writeCampaigns', selection)
-                            }
-                            placeholder="Select campaigns..."
-                            noOptionsMessage={
-                              accessOptionsLoading
-                                ? 'Loading campaigns...'
-                                : 'No campaigns available for this world.'
-                            }
-                            loading={accessOptionsLoading}
-                            disabled={!canEdit || accessSaving}
-                          />
-                          <p className="help-text">
-                            Dungeon Masters of these campaigns can edit this entity.
-                          </p>
-                        </div>
-
-                        <div className="form-group">
-                          <label htmlFor="entity-access-write-users">Users</label>
-                          <ListCollector
-                            inputId="entity-access-write-users"
-                            selected={accessSettings.writeUsers}
-                            options={accessOptions.users}
-                            onChange={(selection) =>
-                              handleAccessSettingChange('writeUsers', selection)
-                            }
-                            placeholder="Select users..."
-                            noOptionsMessage={
-                              accessOptionsLoading
-                                ? 'Loading users...'
-                                : 'No eligible users found for this world.'
-                            }
-                            loading={accessOptionsLoading}
-                            disabled={!canEdit || accessSaving}
-                          />
-                          <p className="help-text">
-                            Grant edit access to specific players with characters here.
-                          </p>
-                        </div>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="entity-access-actions">
-                  {accessSaveError ? (
-                    <div className="alert error" role="alert">
-                      {accessSaveError}
-                    </div>
-                  ) : null}
-                  {accessSaveSuccess ? (
-                    <div className="alert success" role="status">
-                      {accessSaveSuccess}
-                    </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="btn submit"
-                    onClick={handleAccessSave}
-                    disabled={!canEdit || accessSaving || !isAccessDirty}
-                  >
-                    {accessSaving ? 'Saving...' : 'Save access settings'}
-                  </button>
-                </div>
-              </>
-            )}
-        </section>
-      </div>
-    )}
-
-    {/* SYSTEM TAB */}
-    {activeTab === 'system' && (
-      <div className="entity-tab-content">
-        {renderSchemaSections(systemSchema, viewData, 'system')}
-      </div>
-    )}
-  </div>
-</div>
-</div>
-)
+    </div>
+  )
 }
