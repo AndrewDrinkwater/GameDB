@@ -5,6 +5,9 @@ export default function EntityHeader({
   canEdit,
   isEditing,
   onToggleEdit,
+  onSave,
+  isSaving = false,
+  isSaveDisabled = false,
 }) {
   const title = name || 'Untitled entity'
 
@@ -26,6 +29,12 @@ export default function EntityHeader({
     }
   }
 
+  const handleSaveClick = () => {
+    if (typeof onSave === 'function') {
+      onSave()
+    }
+  }
+
   return (
     <div className="entity-header" role="banner">
       <div className="entity-header-left">
@@ -43,13 +52,30 @@ export default function EntityHeader({
       </div>
       <div className="entity-header-right">
         {canEdit ? (
-          <button
-            type="button"
-            className={`btn ${isEditing ? 'cancel' : 'submit'}`}
-            onClick={handleEditClick}
-          >
-            {isEditing ? 'Cancel editing' : 'Edit entity'}
-          </button>
+          <div className="entity-header-actions">
+            <button
+              type="button"
+              className={`edit-mode-toggle ${isEditing ? 'is-active' : ''}`}
+              role="switch"
+              aria-checked={isEditing}
+              onClick={handleEditClick}
+            >
+              <span className="edit-mode-toggle-track" aria-hidden="true">
+                <span className="edit-mode-toggle-thumb" />
+              </span>
+              <span className="edit-mode-toggle-text">Edit mode</span>
+            </button>
+            {isEditing && typeof onSave === 'function' ? (
+              <button
+                type="button"
+                className="btn submit"
+                onClick={handleSaveClick}
+                disabled={isSaveDisabled || isSaving}
+              >
+                {isSaving ? 'Saving…' : 'Save'}
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </div>

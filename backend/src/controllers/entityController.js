@@ -18,6 +18,7 @@ import {
   buildEntityReadContext,
   buildReadableEntitiesWhereClause,
   canUserReadEntity,
+  canUserWriteEntity,
 } from '../utils/entityAccess.js'
 
 const VISIBILITY_VALUES = new Set(['hidden', 'visible', 'partial'])
@@ -442,13 +443,18 @@ export const updateEntity = async (req, res) => {
     }
 
     const access = await checkWorldAccess(entity.world_id, user)
-    const isCreator = isEntityCreator(entity, user)
 
     if (!access.world) {
       return res.status(404).json({ success: false, message: 'World not found' })
     }
 
-    if (!access.isOwner && !access.isAdmin && !isCreator) {
+    const readContext = await buildEntityReadContext({
+      worldId: entity.world_id,
+      user,
+      worldAccess: access,
+    })
+
+    if (!canUserWriteEntity(entity, readContext)) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
@@ -621,7 +627,8 @@ export const getEntityById = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    const canSeeHidden = access.isOwner || access.isAdmin || isCreator
+    const canEdit = canUserWriteEntity(entity, readContext)
+    const canSeeHidden = access.isOwner || access.isAdmin || isCreator || canEdit
     if (!canSeeHidden && entity.visibility === 'hidden') {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
@@ -671,10 +678,10 @@ export const getEntityById = async (req, res) => {
       return plain
     })
 
-    const canEdit = access.isOwner || access.isAdmin || isCreator
+    const canDelete = access.isOwner || access.isAdmin || isCreator
     payload.permissions = {
       canEdit,
-      canDelete: canEdit,
+      canDelete,
       canManageSecrets: access.isOwner || access.isAdmin,
     }
     payload.access = {
