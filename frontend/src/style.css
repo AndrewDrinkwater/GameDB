@@ -1336,6 +1336,66 @@ th {
   align-items: center;
 }
 
+.entity-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.edit-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1f2937;
+  border-radius: 999px;
+  transition: color 0.2s ease;
+}
+
+.edit-mode-toggle:hover,
+.edit-mode-toggle:focus-visible {
+  color: #111827;
+  outline: none;
+}
+
+.edit-mode-toggle-track {
+  position: relative;
+  width: 2.75rem;
+  height: 1.5rem;
+  background: #cbd5f5;
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+
+.edit-mode-toggle-thumb {
+  position: absolute;
+  top: 0.2rem;
+  left: 0.2rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+  transition: transform 0.2s ease;
+}
+
+.edit-mode-toggle.is-active .edit-mode-toggle-track {
+  background: #2563eb;
+}
+
+.edit-mode-toggle.is-active .edit-mode-toggle-thumb {
+  transform: translateX(1.25rem);
+}
+
+.edit-mode-toggle-text {
+  white-space: nowrap;
+}
+
 .entity-header-left {
   justify-content: flex-start;
 }
@@ -1456,6 +1516,49 @@ th {
 .entity-card-header--subtle {
   padding-bottom: 0.75rem;
   border-bottom: 1px solid #e2e8f0;
+}
+
+.entity-access-card .entity-access-note {
+  margin-bottom: 1rem;
+  color: #64748b;
+}
+
+.entity-access-columns {
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .entity-access-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.entity-access-column h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+  color: #0f172a;
+}
+
+.entity-access-card .form-group {
+  margin-bottom: 1.25rem;
+}
+
+.entity-access-card .list-collector {
+  width: 100%;
+}
+
+.entity-access-card .help-text {
+  margin-top: 0.5rem;
+}
+
+body.theme-dark .entity-access-card .entity-access-note,
+body.theme-dark .entity-access-card .help-text {
+  color: #cbd5f5;
+}
+
+body.theme-dark .entity-access-column h3 {
+  color: #e2e8f0;
 }
 
 .entity-card-title {

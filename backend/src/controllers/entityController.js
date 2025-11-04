@@ -14,11 +14,59 @@ import {
   validateEntityMetadata,
 } from '../utils/entityMetadataValidator.js'
 import { applyRelBuilderHeader } from '../utils/featureFlags.js'
+import {
+  buildEntityReadContext,
+  buildReadableEntitiesWhereClause,
+  canUserReadEntity,
+  canUserWriteEntity,
+} from '../utils/entityAccess.js'
 
 const VISIBILITY_VALUES = new Set(['hidden', 'visible', 'partial'])
 const PUBLIC_VISIBILITY = ['visible', 'partial']
 
+const ACCESS_VALUES = new Set(['global', 'selective', 'hidden'])
+
 const isEntityCreator = (entity, user) => entity?.created_by === user?.id
+
+const normaliseAccessValue = (value, fieldName) => {
+  if (value === undefined) return undefined
+
+  if (value === null) {
+    throw new Error(`${fieldName} cannot be null`)
+  }
+
+  if (typeof value !== 'string') {
+    throw new Error(`${fieldName} must be a string`)
+  }
+
+  const trimmed = value.trim().toLowerCase()
+
+  if (!ACCESS_VALUES.has(trimmed)) {
+    throw new Error(`${fieldName} must be one of: ${Array.from(ACCESS_VALUES).join(', ')}`)
+  }
+
+  return trimmed
+}
+
+const normaliseUuidArray = (value, fieldName) => {
+  if (value === undefined) return undefined
+
+  if (value === null) return []
+
+  if (Array.isArray(value)) {
+    const normalised = value
+      .map((entry) => {
+        if (entry === null || entry === undefined) return null
+        const trimmed = String(entry).trim()
+        return trimmed || null
+      })
+      .filter(Boolean)
+
+    return normalised
+  }
+
+  throw new Error(`${fieldName} must be an array`)
+}
 
 const FIELD_ORDER = [
   ['sort_order', 'ASC'],
@@ -170,6 +218,12 @@ export const listWorldEntities = async (req, res) => {
       ]
     }
 
+    const readContext = await buildEntityReadContext({
+      worldId: world.id,
+      user,
+      worldAccess: access,
+    })
+
     const entities = await Entity.findAll({
       where,
       include: [
@@ -179,7 +233,9 @@ export const listWorldEntities = async (req, res) => {
       order: [['created_at', 'DESC']],
     })
 
-    res.json({ success: true, data: entities })
+    const filteredEntities = entities.filter((entity) => canUserReadEntity(entity, readContext))
+
+    res.json({ success: true, data: filteredEntities })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }
@@ -240,11 +296,26 @@ export const searchEntities = async (req, res) => {
     const trimmedQuery = typeof q === 'string' ? q.trim() : ''
     const where = { world_id: world.id }
 
+    const readContext = await buildEntityReadContext({
+      worldId: world.id,
+      user,
+      worldAccess: access,
+    })
+
     if (!access.isOwner && !access.isAdmin) {
       where[Op.or] = [
         { visibility: { [Op.in]: PUBLIC_VISIBILITY } },
         { created_by: user.id },
       ]
+    }
+
+    const readAccessWhere = buildReadableEntitiesWhereClause(readContext)
+    if (readAccessWhere) {
+      if (where[Op.and]) {
+        where[Op.and].push(readAccessWhere)
+      } else {
+        where[Op.and] = [readAccessWhere]
+      }
     }
 
     if (trimmedQuery) {
@@ -346,7 +417,18 @@ export const createEntity = async (req, res) => {
 export const updateEntity = async (req, res) => {
   try {
     const { id } = req.params
-    const { name, description, visibility, metadata } = req.body
+    const {
+      name,
+      description,
+      visibility,
+      metadata,
+      read_access: readAccessInput,
+      write_access: writeAccessInput,
+      read_campaign_ids: readCampaignIdsInput,
+      read_user_ids: readUserIdsInput,
+      write_campaign_ids: writeCampaignIdsInput,
+      write_user_ids: writeUserIdsInput,
+    } = req.body
     const { user } = req
 
     const entity = await Entity.findByPk(id, {
@@ -361,14 +443,37 @@ export const updateEntity = async (req, res) => {
     }
 
     const access = await checkWorldAccess(entity.world_id, user)
-    const isCreator = isEntityCreator(entity, user)
 
     if (!access.world) {
       return res.status(404).json({ success: false, message: 'World not found' })
     }
 
-    if (!access.isOwner && !access.isAdmin && !isCreator) {
+    const readContext = await buildEntityReadContext({
+      worldId: entity.world_id,
+      user,
+      worldAccess: access,
+    })
+
+    if (!canUserWriteEntity(entity, readContext)) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    let readAccess
+    let writeAccess
+    let readCampaignIds
+    let readUserIds
+    let writeCampaignIds
+    let writeUserIds
+
+    try {
+      readAccess = normaliseAccessValue(readAccessInput, 'read_access')
+      writeAccess = normaliseAccessValue(writeAccessInput, 'write_access')
+      readCampaignIds = normaliseUuidArray(readCampaignIdsInput, 'read_campaign_ids')
+      readUserIds = normaliseUuidArray(readUserIdsInput, 'read_user_ids')
+      writeCampaignIds = normaliseUuidArray(writeCampaignIdsInput, 'write_campaign_ids')
+      writeUserIds = normaliseUuidArray(writeUserIdsInput, 'write_user_ids')
+    } catch (err) {
+      return res.status(400).json({ success: false, message: err.message })
     }
 
     const updates = {}
@@ -389,6 +494,38 @@ export const updateEntity = async (req, res) => {
         return res.status(400).json({ success: false, message: 'Invalid visibility value' })
       }
       updates.visibility = visibility
+    }
+
+    if (readAccess !== undefined) {
+      updates.read_access = readAccess
+      if (readAccess !== 'selective') {
+        readCampaignIds = []
+        readUserIds = []
+      }
+    }
+
+    if (writeAccess !== undefined) {
+      updates.write_access = writeAccess
+      if (writeAccess !== 'selective') {
+        writeCampaignIds = []
+        writeUserIds = []
+      }
+    }
+
+    if (readCampaignIds !== undefined) {
+      updates.read_campaign_ids = readCampaignIds
+    }
+
+    if (readUserIds !== undefined) {
+      updates.read_user_ids = readUserIds
+    }
+
+    if (writeCampaignIds !== undefined) {
+      updates.write_campaign_ids = writeCampaignIds
+    }
+
+    if (writeUserIds !== undefined) {
+      updates.write_user_ids = writeUserIds
     }
 
     const existingMetadata = entity.metadata ?? {}
@@ -480,11 +617,18 @@ export const getEntityById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'World not found' })
     }
 
-    if (!access.hasAccess && !isCreator && !access.isAdmin && !access.isOwner) {
+    const readContext = await buildEntityReadContext({
+      worldId: entity.world_id,
+      user,
+      worldAccess: access,
+    })
+
+    if (!canUserReadEntity(entity, readContext)) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    const canSeeHidden = access.isOwner || access.isAdmin || isCreator
+    const canEdit = canUserWriteEntity(entity, readContext)
+    const canSeeHidden = access.isOwner || access.isAdmin || isCreator || canEdit
     if (!canSeeHidden && entity.visibility === 'hidden') {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
@@ -534,10 +678,10 @@ export const getEntityById = async (req, res) => {
       return plain
     })
 
-    const canEdit = access.isOwner || access.isAdmin || isCreator
+    const canDelete = access.isOwner || access.isAdmin || isCreator
     payload.permissions = {
       canEdit,
-      canDelete: canEdit,
+      canDelete,
       canManageSecrets: access.isOwner || access.isAdmin,
     }
     payload.access = {

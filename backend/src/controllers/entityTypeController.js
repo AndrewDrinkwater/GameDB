@@ -1,5 +1,9 @@
+import { Op } from 'sequelize'
 import { Entity, EntityType, sequelize } from '../models/index.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
+import { buildEntityReadContext, buildReadableEntitiesWhereClause } from '../utils/entityAccess.js'
+
+const PUBLIC_VISIBILITY = ['visible', 'partial']
 
 const isSystemAdmin = (user) => user?.role === 'system_admin'
 
@@ -151,8 +155,40 @@ export const listWorldEntityTypesWithEntities = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
+    const readContext = await buildEntityReadContext({
+      worldId: world.id,
+      user,
+      worldAccess: access,
+    })
+
+    const where = { world_id: world.id }
+
+    if (!access.isOwner && !access.isAdmin) {
+      const orClauses = [{ visibility: { [Op.in]: PUBLIC_VISIBILITY } }]
+
+      if (user?.id) {
+        orClauses.push({ created_by: user.id })
+      }
+
+      if (orClauses.length > 1) {
+        where[Op.or] = orClauses
+      } else {
+        where[Op.and] = [...(where[Op.and] ?? []), orClauses[0]]
+      }
+    }
+
+    const readAccessWhere = buildReadableEntitiesWhereClause(readContext)
+
+    if (readAccessWhere) {
+      if (where[Op.and]) {
+        where[Op.and].push(readAccessWhere)
+      } else {
+        where[Op.and] = [readAccessWhere]
+      }
+    }
+
     const usage = await Entity.findAll({
-      where: { world_id: world.id },
+      where,
       attributes: [
         'entity_type_id',
         [sequelize.fn('COUNT', sequelize.col('entity_type_id')), 'entityCount'],

@@ -37,22 +37,28 @@ export async function up(queryInterface, Sequelize) {
     },
   })
 
-  await queryInterface.addConstraint('entity_list_preferences', {
-    fields: ['entity_type_id', 'user_id'],
-    type: 'unique',
-    name: 'entity_list_preferences_unique_scope',
-  })
+  // Safely add the unique constraint only if it doesn't already exist
+  await queryInterface.sequelize.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'entity_list_preferences_unique_scope'
+      ) THEN
+        ALTER TABLE "entity_list_preferences"
+        ADD CONSTRAINT "entity_list_preferences_unique_scope"
+        UNIQUE ("entity_type_id", "user_id");
+      END IF;
+    END $$;
+  `)
 
+  // Add index on user_id (safe to re-run)
   await queryInterface.addIndex('entity_list_preferences', ['user_id'], {
     name: 'entity_list_preferences_user_idx',
-  })
+  }).catch(() => {})
 }
 
 export async function down(queryInterface) {
   await queryInterface.removeIndex('entity_list_preferences', 'entity_list_preferences_user_idx').catch(() => {})
-  await queryInterface.removeConstraint(
-    'entity_list_preferences',
-    'entity_list_preferences_unique_scope',
-  ).catch(() => {})
+  await queryInterface.removeConstraint('entity_list_preferences', 'entity_list_preferences_unique_scope').catch(() => {})
   await queryInterface.dropTable('entity_list_preferences').catch(() => {})
 }

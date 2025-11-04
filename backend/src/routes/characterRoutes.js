@@ -2,6 +2,7 @@ import express from 'express'
 import { Op } from 'sequelize'
 import { Character, Campaign, User, UserCampaignRole } from '../models/index.js'
 import { authenticate as authMiddleware } from '../middleware/authMiddleware.js'
+import { checkWorldAccess } from '../middleware/worldAccess.js'
 
 const router = express.Router()
 
@@ -42,6 +43,23 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const scope = req.query.scope
     const where = {}
+    const worldFilter =
+      typeof req.query.world_id === 'string'
+        ? req.query.world_id.trim()
+        : typeof req.query.worldId === 'string'
+          ? req.query.worldId.trim()
+          : ''
+
+    if (worldFilter) {
+      const access = await checkWorldAccess(worldFilter, req.user)
+      if (!access.world) {
+        return res.status(404).json({ success: false, message: 'World not found' })
+      }
+
+      if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+        return res.status(403).json({ success: false, message: 'Forbidden' })
+      }
+    }
 
     if (scope === 'my') {
       where.user_id = req.user.id
@@ -141,11 +159,22 @@ router.get('/', authMiddleware, async (req, res) => {
       if (req.query.user_id) where.user_id = req.query.user_id
     }
 
+    const campaignInclude = {
+      model: Campaign,
+      as: 'campaign',
+      attributes: ['id', 'name', 'world_id'],
+    }
+
+    if (worldFilter) {
+      campaignInclude.where = { world_id: worldFilter }
+      campaignInclude.required = true
+    }
+
     const characters = await Character.findAll({
       where,
       include: [
         { model: User, as: 'player', attributes: ['id', 'username', 'email'] },
-        { model: Campaign, as: 'campaign', attributes: ['id', 'name'] },
+        campaignInclude,
       ],
       order: [['createdAt', 'DESC']],
     })
