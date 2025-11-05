@@ -20,7 +20,8 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
 
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search])
   const activeEntityType = searchParams.get('entityType') ?? ''
-  const isEntitiesSection = location.pathname === '/entities' || location.pathname.startsWith('/entities/')
+  const isEntitiesSection =
+    location.pathname === '/entities' || location.pathname.startsWith('/entities/')
 
   const campaignWorldId = selectedCampaign?.world?.id ?? ''
 
@@ -33,6 +34,7 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
     )
   }, [selectedCampaign, user])
 
+  // --- Determine if user owns any world ---
   useEffect(() => {
     let cancelled = false
 
@@ -47,8 +49,8 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
         const list = Array.isArray(response?.data)
           ? response.data
           : Array.isArray(response)
-            ? response
-            : []
+          ? response
+          : []
 
         if (cancelled) return
 
@@ -68,12 +70,12 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
     }
 
     loadWorldOwnership()
-
     return () => {
       cancelled = true
     }
   }, [sessionReady, user])
 
+  // --- Load entity types for selected campaign world ---
   useEffect(() => {
     let cancelled = false
 
@@ -93,12 +95,10 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
         const list = Array.isArray(response?.data)
           ? response.data
           : Array.isArray(response)
-            ? response
-            : []
+          ? response
+          : []
 
-        if (!cancelled) {
-          setEntityTypes(list)
-        }
+        if (!cancelled) setEntityTypes(list)
       } catch (err) {
         if (!cancelled) {
           console.error('❌ Failed to load entity types for world', err)
@@ -106,14 +106,11 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
           setEntityTypeError('Unable to load entity types')
         }
       } finally {
-        if (!cancelled) {
-          setLoadingEntityTypes(false)
-        }
+        if (!cancelled) setLoadingEntityTypes(false)
       }
     }
 
     loadEntityTypes()
-
     return () => {
       cancelled = true
     }
@@ -152,6 +149,7 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
           Worlds
         </Link>
 
+        {/* --- Campaigns --- */}
         <div className={`nav-group ${campaignsCollapsed ? 'collapsed' : ''}`}>
           <button
             type="button"
@@ -176,6 +174,7 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
           </div>
         </div>
 
+        {/* --- Entities --- */}
         <div className={`nav-group ${entitiesCollapsed ? 'collapsed' : ''}`}>
           <button
             type="button"
@@ -191,15 +190,15 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
             />
           </button>
           <div id="entities-nav" className="nav-sub-links">
-            {loadingEntityTypes && (
-              <span className="nav-helper">Loading entity types…</span>
-            )}
+            {loadingEntityTypes && <span className="nav-helper">Loading entity types…</span>}
             {!loadingEntityTypes && entityTypeError && (
               <span className="nav-helper error">{entityTypeError}</span>
             )}
             {!loadingEntityTypes && !entityTypeError && entityTypes.length === 0 && (
               <span className="nav-helper">
-                {selectedCampaign ? 'No entities in this world yet' : 'Select a campaign to see entity types'}
+                {selectedCampaign
+                  ? 'No entities in this world yet'
+                  : 'Select a campaign to see entity types'}
               </span>
             )}
             {entityTypes.map((type) => (
@@ -214,6 +213,7 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
                 <span className="nav-entity-count">{type.entityCount}</span>
               </Link>
             ))}
+
             <Link
               to="/entities"
               className={`nav-entity-link ${
@@ -224,6 +224,20 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
               <Database size={16} className="nav-icon" />
               <span>All Entities</span>
             </Link>
+
+            {/* --- Bulk Upload (admins or world owners with campaign) --- */}
+            {(user?.role === 'system_admin' || (selectedCampaignId && ownsWorld)) && (
+              <Link
+                to="/entities/bulk-upload"
+                className={`nav-entity-link ${
+                  isActive('/entities/bulk-upload') ? 'active' : ''
+                }`}
+              >
+                <Database size={16} className="nav-icon" />
+                <span>Bulk Upload</span>
+              </Link>
+            )}
+
             {user?.role === 'system_admin' && (
               <Link
                 to="/entity-types"
@@ -263,6 +277,7 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
           </div>
         </div>
 
+        {/* --- Characters --- */}
         <div className={`nav-group ${charactersCollapsed ? 'collapsed' : ''}`}>
           <button
             type="button"
@@ -306,6 +321,7 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
           </div>
         </div>
 
+        {/* --- Admin Users --- */}
         {user?.role === 'system_admin' && (
           <Link
             to="/users"

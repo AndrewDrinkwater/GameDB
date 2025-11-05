@@ -1,7 +1,8 @@
-import multer from 'multer';
-import path from 'path';
-import { Router } from 'express';
-import { authenticate } from '../middleware/authMiddleware.js';
+import fs from 'fs'
+import path from 'path'
+import multer from 'multer'
+import { Router } from 'express'
+import { authenticate } from '../middleware/authMiddleware.js'
 import {
   createEntity,
   createEntitySecret,
@@ -10,31 +11,42 @@ import {
   getEntitySecrets,
   searchEntities,
   updateEntity,
-} from '../controllers/entityController.js';
-import { getEntityGraph } from '../controllers/entityGraphController.js';
-import { UploadedFile } from '../models/index.js';
+} from '../controllers/entityController.js'
+import { getEntityGraph } from '../controllers/entityGraphController.js'
+import { UploadedFile } from '../models/index.js'
 
-const router = Router();
+const router = Router()
+
+// -------------------------------------------
+// Ensure uploads directory exists
+// -------------------------------------------
+const uploadDir = path.resolve('uploads')
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true })
+  console.log('📁 Created uploads directory:', uploadDir)
+}
 
 // -------------------------------------------
 // Multer configuration for local file uploads
 // -------------------------------------------
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/'); // Folder must exist at project root
+    cb(null, uploadDir) // Files go in /uploads at project root
   },
   filename: (req, file, cb) => {
-    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
-    cb(null, uniqueName);
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(
+      file.originalname,
+    )}`
+    cb(null, uniqueName)
   },
-});
+})
 
-const upload = multer({ storage });
+const upload = multer({ storage })
 
 // -------------------------------------------
 // Authenticated routes
 // -------------------------------------------
-router.use(authenticate);
+router.use(authenticate)
 
 // -------------------------------------------------------------
 // POST /api/entities/upload → Upload a file + save metadata
@@ -42,7 +54,7 @@ router.use(authenticate);
 router.post('/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ success: false, message: 'No file uploaded.' });
+      return res.status(400).json({ success: false, message: 'No file uploaded.' })
     }
 
     // Save file metadata to DB
@@ -53,24 +65,24 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       file_path: `/uploads/${req.file.filename}`,
       mime_type: req.file.mimetype,
       size_bytes: req.file.size,
-    });
+    })
 
-    console.log('✅ File uploaded:', savedFile.file_name);
+    console.log('✅ File uploaded:', savedFile.file_name)
 
     return res.status(200).json({
       success: true,
       message: 'File uploaded successfully!',
       file: savedFile,
-    });
+    })
   } catch (err) {
-    console.error('❌ Upload failed:', err);
+    console.error('❌ Upload failed:', err)
     return res.status(500).json({
       success: false,
       message: 'File upload failed',
       error: err.message,
-    });
+    })
   }
-});
+})
 
 // -------------------------------------------------------------
 // GET /api/entities/upload → List files uploaded by user
@@ -80,29 +92,29 @@ router.get('/upload', async (req, res) => {
     const files = await UploadedFile.findAll({
       where: { user_id: req.user.id },
       order: [['created_at', 'DESC']],
-    });
+    })
 
-    return res.status(200).json({ success: true, files });
+    return res.status(200).json({ success: true, files })
   } catch (err) {
-    console.error('❌ Failed to list files:', err);
+    console.error('❌ Failed to list files:', err)
     return res.status(500).json({
       success: false,
       message: 'Failed to retrieve uploaded files',
       error: err.message,
-    });
+    })
   }
-});
+})
 
 // -------------------------------------------
 // Entity-related routes
 // -------------------------------------------
-router.get('/:id/graph', getEntityGraph);
-router.post('/', createEntity);
-router.get('/search', searchEntities);
-router.get('/:id', getEntityById);
-router.patch('/:id', updateEntity);
-router.delete('/:id', deleteEntity);
-router.get('/:id/secrets', getEntitySecrets);
-router.post('/:id/secrets', createEntitySecret);
+router.get('/:id/graph', getEntityGraph)
+router.post('/', createEntity)
+router.get('/search', searchEntities)
+router.get('/:id', getEntityById)
+router.patch('/:id', updateEntity)
+router.delete('/:id', deleteEntity)
+router.get('/:id/secrets', getEntitySecrets)
+router.post('/:id/secrets', createEntitySecret)
 
-export default router;
+export default router

@@ -24,7 +24,7 @@ import EditRelationshipType from './pages/relationshipTypes/EditRelationshipType
 import EntitySecretList from './pages/secrets/EntitySecretList.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import RelationshipViewerPage from './pages/entities/RelationshipViewerPage.jsx'
-
+import BulkUploadPage from './pages/entities/BulkUploadPage.jsx'
 
 const router = createBrowserRouter(
   createRoutesFromElements(
@@ -84,6 +84,9 @@ const router = createBrowserRouter(
 
 {/* Entity routes */}
 <Route path="entities" element={<EntityList />} />
+
+{/* Entity Bulk Update routes */}
+<Route path="/entities/bulk-upload" element={<BulkUploadPage />} />
 
 {/* ✅ Relationship viewer route */}
 <Route path="entities/:entityId/relationship-viewer" element={<RelationshipViewerPage />} />
