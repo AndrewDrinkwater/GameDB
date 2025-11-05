@@ -1,14 +1,38 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext.jsx'
-import { UploadCloud, FileText, Loader2, CheckCircle, AlertTriangle } from 'lucide-react'
+import { useCampaignContext } from '../../context/CampaignContext.jsx'
+import { getWorldEntityTypeUsage } from '../../api/entityTypes.js'
+import { UploadCloud, FileText, Loader2, CheckCircle, AlertTriangle, Download } from 'lucide-react'
 
 export default function BulkUploadPage() {
   const { token } = useAuth()
+  const { selectedCampaign } = useCampaignContext()
   const [file, setFile] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [uploadedFiles, setUploadedFiles] = useState([])
+  const [entityTypes, setEntityTypes] = useState([])
+  const [selectedType, setSelectedType] = useState('')
+  const [loadingTypes, setLoadingTypes] = useState(false)
+
+  // Fetch available entity types for the current world
+  useEffect(() => {
+    const loadEntityTypes = async () => {
+      if (!selectedCampaign?.world?.id) return
+      setLoadingTypes(true)
+      try {
+        const res = await getWorldEntityTypeUsage(selectedCampaign.world.id)
+        const data = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
+        setEntityTypes(data)
+      } catch (err) {
+        console.warn('⚠️ Failed to load entity types', err)
+      } finally {
+        setLoadingTypes(false)
+      }
+    }
+    loadEntityTypes()
+  }, [selectedCampaign])
 
   // Fetch uploaded files for the logged-in user
   useEffect(() => {
@@ -70,13 +94,71 @@ export default function BulkUploadPage() {
     }
   }
 
+  const handleGenerateTemplate = async () => {
+  if (!selectedType) return
+
+  try {
+    const res = await fetch(`/api/entities/template/${selectedType}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    if (!res.ok) throw new Error('Failed to generate template')
+
+    // Convert response to downloadable file
+    const blob = await res.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'Entity_Template.xlsx'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (err) {
+    console.error('❌ Template generation failed', err)
+    setError('Failed to generate template')
+  }
+}
+
+
   return (
     <div className="bulk-upload-page">
       <h2 className="page-title">Bulk Entity Upload</h2>
       <p className="page-subtitle">
-        Upload a spreadsheet or CSV file to bulk-create or update entities.
+        Generate a spreadsheet template for your entity type, then upload it to create or update entities.
       </p>
 
+      {/* Template generation section */}
+      <div className="template-section">
+        {loadingTypes ? (
+          <p>Loading entity types…</p>
+        ) : (
+          <>
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              className="entity-type-select"
+            >
+              <option value="">Select Entity Type</option>
+              {entityTypes.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+
+            <button
+              className="generate-btn"
+              disabled={!selectedType}
+              onClick={handleGenerateTemplate}
+            >
+              <Download size={16} /> Generate Template
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Upload section */}
       <div className="upload-section">
         <label className="file-input-label">
           <input type="file" onChange={handleFileChange} hidden />
@@ -139,6 +221,33 @@ export default function BulkUploadPage() {
         .page-subtitle {
           color: #666;
           margin-bottom: 1.5rem;
+        }
+        .template-section {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          margin-bottom: 2rem;
+        }
+        .entity-type-select {
+          flex: 1;
+          padding: 0.5rem;
+          border: 1px solid #ccc;
+          border-radius: 6px;
+        }
+        .generate-btn {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          background-color: #059669;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          padding: 0.5rem 1rem;
+          cursor: pointer;
+        }
+        .generate-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
         .upload-section {
           display: flex;
