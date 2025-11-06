@@ -17,7 +17,7 @@ import {
 } from '../controllers/entityController.js'
 import { getEntityGraph } from '../controllers/entityGraphController.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
-import { UploadedFile, EntityType, EntityTypeField, World } from '../models/index.js'
+import { UploadedFile, EntityType, EntityTypeField } from '../models/index.js'
 
 const router = Router()
 
@@ -229,7 +229,7 @@ router.get('/template/:entityTypeId', async (req, res) => {
 router.post('/preview/:entityTypeId', async (req, res) => {
   try {
     const { entityTypeId } = req.params
-    const { fileId } = req.body
+    const { fileId, worldId: bodyWorldId, world_id: legacyWorldId } = req.body ?? {}
 
     if (!fileId) {
       return res.status(400).json({ success: false, message: 'Missing fileId' })
@@ -249,19 +249,28 @@ router.post('/preview/:entityTypeId', async (req, res) => {
     if (!entityType) {
       return res.status(404).json({ success: false, message: 'Entity type not found' })
     }
-    const world = await World.findByPk(entityType.world_id)
-    if (!world) {
-      return res.status(404).json({ success: false, message: 'World not found for entity type' })
+    const requestedWorldId = bodyWorldId ?? legacyWorldId ?? entityType.world_id ?? null
+    if (!requestedWorldId) {
+      return res.status(400).json({ success: false, message: 'worldId is required for preview' })
     }
 
-    const access = await checkWorldAccess(world.id, req.user)
-    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+    const access = await checkWorldAccess(requestedWorldId, req.user)
+    const { world, hasAccess, isOwner, isAdmin } = access
+
+    if (!world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    if (!hasAccess && !isOwner && !isAdmin) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
     const existingEntities = await EntityType.sequelize.query(
-      `SELECT name FROM entities WHERE entity_type_id = :entityTypeId`,
-      { replacements: { entityTypeId }, type: EntityType.sequelize.QueryTypes.SELECT }
+      `SELECT name FROM entities WHERE entity_type_id = :entityTypeId AND world_id = :worldId`,
+      {
+        replacements: { entityTypeId, worldId: world.id },
+        type: EntityType.sequelize.QueryTypes.SELECT,
+      }
     )
     const existingNames = new Set(existingEntities.map(e => e.name.toLowerCase()))
 
@@ -316,7 +325,11 @@ router.post('/preview/:entityTypeId', async (req, res) => {
 router.post('/import/:entityTypeId', upload.single('file'), async (req, res) => {
   try {
     const { entityTypeId } = req.params
-    const { fileId } = req.body || {}
+    const {
+      fileId,
+      worldId: bodyWorldId,
+      world_id: legacyWorldId,
+    } = req.body || {}
     const userId = req.user.id
 
     let filePath = req.file?.path
@@ -344,13 +357,19 @@ router.post('/import/:entityTypeId', upload.single('file'), async (req, res) => 
     if (!entityType) {
       return res.status(404).json({ success: false, message: 'Entity type not found' })
     }
-    const world = await World.findByPk(entityType.world_id)
-    if (!world) {
-      return res.status(404).json({ success: false, message: 'World not found for entity type' })
+    const requestedWorldId = bodyWorldId ?? legacyWorldId ?? entityType.world_id ?? null
+    if (!requestedWorldId) {
+      return res.status(400).json({ success: false, message: 'worldId is required for import' })
     }
 
-    const access = await checkWorldAccess(world.id, req.user)
-    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+    const access = await checkWorldAccess(requestedWorldId, req.user)
+    const { world, hasAccess, isOwner, isAdmin } = access
+
+    if (!world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    if (!hasAccess && !isOwner && !isAdmin) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
     const fields = await EntityTypeField.findAll({
