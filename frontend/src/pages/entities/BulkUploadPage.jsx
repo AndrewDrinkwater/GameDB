@@ -18,6 +18,7 @@ import {
 export default function BulkUploadPage() {
   const { token } = useAuth()
   const { selectedCampaign } = useCampaignContext()
+  const worldId = selectedCampaign?.world?.id ?? ''
 
   const [file, setFile] = useState(null)
   const [uploading, setUploading] = useState(false)
@@ -153,6 +154,7 @@ export default function BulkUploadPage() {
   const handlePreview = async () => {
     if (!selectedType) return setError('Select an Entity Type first.')
     if (!selectedUpload) return setError('Select an uploaded file to preview.')
+    if (!worldId) return setError('No world selected for the current campaign.')
     setPreviewing(true)
     setError('')
     setMessage('')
@@ -168,7 +170,7 @@ export default function BulkUploadPage() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ fileId: selectedUpload }),
+        body: JSON.stringify({ fileId: selectedUpload, worldId }),
       })
 
       const data = await res.json()
@@ -190,6 +192,7 @@ export default function BulkUploadPage() {
   const handleImport = async () => {
     if (!selectedType) return setError('Select an Entity Type first.')
     if (!selectedUpload) return setError('Select an uploaded file to import.')
+    if (!worldId) return setError('No world selected for the current campaign.')
     setImporting(true)
     setMessage('')
     setError('')
@@ -201,7 +204,7 @@ export default function BulkUploadPage() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ fileId: selectedUpload }),
+        body: JSON.stringify({ fileId: selectedUpload, worldId }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Import failed')
