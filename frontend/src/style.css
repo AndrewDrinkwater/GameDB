@@ -1300,8 +1300,7 @@ th {
 }
 
 .entity-detail-topbar-inner {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -1398,6 +1397,7 @@ th {
 
 .entity-header-left {
   justify-content: flex-start;
+  gap: 0.75rem;
 }
 
 .entity-header-center {
@@ -1419,9 +1419,14 @@ th {
   display: flex;
   align-items: flex-end;
   gap: 0.75rem;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.45);
   overflow-x: auto;
-  padding-bottom: 0.35rem;
+  padding: 0.45rem 0.6rem 0.35rem;
+  background: rgba(148, 163, 184, 0.14);
+  border-radius: 0.85rem 0.85rem 0 0;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
 }
 
 .tab-nav::-webkit-scrollbar {
@@ -1431,7 +1436,7 @@ th {
 .tab-nav-button {
   appearance: none;
   border: none;
-  background: transparent;
+  background: rgba(148, 163, 184, 0.18);
   padding: 0.6rem 1.25rem;
   font-size: 0.95rem;
   font-weight: 600;
@@ -1439,20 +1444,26 @@ th {
   border-bottom: 3px solid transparent;
   border-radius: 0.75rem 0.75rem 0 0;
   cursor: pointer;
-  transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+  transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease,
+    box-shadow 0.2s ease;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
 }
 
 .tab-nav-button:hover,
 .tab-nav-button:focus-visible {
   color: #1e3a8a;
-  background-color: rgba(59, 130, 246, 0.08);
+  background-color: rgba(148, 163, 184, 0.26);
   outline: none;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
 }
 
 .tab-nav-button.is-active {
   color: #1e40af;
   border-color: #1d4ed8;
-  background-color: rgba(37, 99, 235, 0.12);
+  background-color: #ffffff;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
 }
 
 .entity-detail-topbar-inner .tab-nav {

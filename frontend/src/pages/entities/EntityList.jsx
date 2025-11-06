@@ -698,7 +698,7 @@ export default function EntityList() {
         case 'type':
           return getEntityTypeLabel(entity)
         case 'visibility':
-          return entity.visibility || 'hidden'
+          return entity.visibility || 'visible'
         case 'createdAt':
           return entity.createdAt || entity.created_at || ''
         case 'description':
@@ -836,7 +836,7 @@ export default function EntityList() {
       case 'type':
         return getEntityTypeLabel(entity)
       case 'visibility': {
-        const visibility = entity.visibility || 'hidden'
+        const visibility = entity.visibility || 'visible'
         const badgeClass = VISIBILITY_BADGES[visibility] || 'badge-hidden'
         return (
           <span className={`visibility-badge ${badgeClass}`}>

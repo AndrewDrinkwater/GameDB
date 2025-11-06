@@ -33,12 +33,6 @@ const VISIBILITY_LABELS = {
   visible: 'Visible',
 }
 
-const VISIBILITY_OPTIONS = [
-  { value: 'hidden', label: 'Hidden' },
-  { value: 'partial', label: 'Partial' },
-  { value: 'visible', label: 'Visible' },
-]
-
 const EDIT_MODE_PROMPT_MESSAGE =
   'You have unsaved changes. Do you want to save them before leaving this page?'
 
@@ -360,7 +354,7 @@ export default function EntityDetailPage() {
 
   const visibilityLabel = useMemo(() => {
     const key = (entity?.visibility || '').toLowerCase()
-    return VISIBILITY_LABELS[key] || 'Hidden'
+    return VISIBILITY_LABELS[key] || 'Visible'
   }, [entity])
 
   const createdAtValue = entity?.createdAt || entity?.created_at
@@ -393,7 +387,7 @@ export default function EntityDetailPage() {
     return {
       name: entity.name || '',
       description: entity.description || '',
-      visibility: entity.visibility || 'hidden',
+      visibility: entity.visibility || 'visible',
       entityTypeName: entity.entityType?.name || entity.entity_type?.name || '—',
       worldName: entity.world?.name || entity.world_name || '—',
       createdAt: formatDateTime(createdAtValue),
@@ -414,12 +408,6 @@ export default function EntityDetailPage() {
         fields: [
           { key: 'name', label: 'Name', type: 'text' },
           { key: 'entityTypeName', label: 'Type', type: 'readonly' },
-          {
-            key: 'visibility',
-            label: 'Visibility',
-            type: 'select',
-            options: VISIBILITY_OPTIONS,
-          },
         ],
       },
       {
@@ -632,7 +620,7 @@ export default function EntityDetailPage() {
         const payload = {
           name: values?.name,
           description: values?.description,
-          visibility: values?.visibility,
+          visibility: values?.visibility ?? entity?.visibility ?? 'visible',
           metadata: values?.metadata || {},
         }
 

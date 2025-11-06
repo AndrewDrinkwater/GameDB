@@ -325,7 +325,7 @@ export default function EntityForm({
             name: data.name || '',
             description: data.description || '',
             entityTypeId: data.entity_type_id || data.entityType?.id || '',
-            visibility: data.visibility || 'hidden',
+            visibility: data.visibility || 'visible',
           })
           setMetadataPairs(ensureAtLeastOnePair(metadataList))
         }
@@ -411,7 +411,7 @@ export default function EntityForm({
       return
     }
 
-    const visibility = isEditMode ? values.visibility || 'hidden' : 'visible'
+    const visibility = isEditMode ? values.visibility || 'visible' : 'visible'
     if (isEditMode && !VISIBILITY_OPTIONS.some((option) => option.value === visibility)) {
       setError('Invalid visibility selected.')
       return
@@ -748,25 +748,7 @@ export default function EntityForm({
           )}
 
           {isEditMode && (
-            <div className="form-two-column">
-              {renderTypeField()}
-              <div className="form-group">
-                <label htmlFor="entity-visibility">Visibility *</label>
-                <select
-                  id="entity-visibility"
-                  value={values.visibility}
-                  onChange={handleInputChange('visibility')}
-                  disabled={saving}
-                  required
-                >
-                  {VISIBILITY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+            <div className="form-two-column">{renderTypeField()}</div>
           )}
 
           {isEditMode && (
