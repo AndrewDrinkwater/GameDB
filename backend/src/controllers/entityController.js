@@ -134,7 +134,7 @@ const normaliseMetadata = (metadata) => {
   return metadata
 }
 
-const createEntityResponse = async ({ world, user, body }) => {
+export const createEntityResponse = async ({ world, user, body }) => {
   const {
     name,
     description,
