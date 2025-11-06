@@ -33,7 +33,9 @@ const upload = multer({ storage })
 
 router.use(authenticate)
 
-// File upload route
+// -------------------------------------------------------------
+// POST /api/entities/upload → Upload a file + save metadata
+// -------------------------------------------------------------
 router.post('/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded.' })
@@ -53,7 +55,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
   }
 })
 
-// List uploaded files
+// -------------------------------------------------------------
+// GET /api/entities/upload → List user’s uploaded files
+// -------------------------------------------------------------
 router.get('/upload', async (req, res) => {
   try {
     const files = await UploadedFile.findAll({
@@ -67,7 +71,30 @@ router.get('/upload', async (req, res) => {
 })
 
 // -------------------------------------------------------------
-// GET /api/entities/template/:entityTypeId → Excel Template (direct cell range validation)
+// DELETE /api/entities/upload/:id → Delete uploaded file
+// -------------------------------------------------------------
+router.delete('/upload/:id', async (req, res) => {
+  try {
+    const { id } = req.params
+    const file = await UploadedFile.findByPk(id)
+    if (!file || file.user_id !== req.user.id) {
+      return res.status(404).json({ success: false, message: 'File not found or not owned by user' })
+    }
+
+    const filePath = path.resolve(`.${file.file_path}`)
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    await file.destroy()
+
+    console.log('🗑️ Deleted upload:', file.file_name)
+    res.json({ success: true, message: 'File deleted successfully' })
+  } catch (err) {
+    console.error('❌ Delete failed:', err)
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
+// -------------------------------------------------------------
+// GET /api/entities/template/:entityTypeId → Excel Template
 // -------------------------------------------------------------
 router.get('/template/:entityTypeId', async (req, res) => {
   try {
@@ -77,12 +104,19 @@ router.get('/template/:entityTypeId', async (req, res) => {
     const entityType = await EntityType.findByPk(entityTypeId)
     if (!entityType) return res.status(404).json({ success: false, message: 'Entity type not found' })
 
-    let fields = await EntityTypeField.findAll({
-      where: { entity_type_id: entityTypeId },
-      order: [['sort_order', 'ASC']],
-    })
+    // Fetch metadata fields (may be none)
+    let fields = []
+    try {
+      fields = await EntityTypeField.findAll({
+        where: { entity_type_id: entityTypeId },
+        order: [['sort_order', 'ASC']],
+      })
+    } catch (err) {
+      console.warn('⚠️ Failed to fetch fields (continuing with no metadata):', err)
+      fields = []
+    }
 
-    // Normalise options
+    // Normalise options (works for {}, [], string, or { values: [] })
     fields = fields.map(f => ({
       name: f.name,
       label: f.label,
@@ -108,80 +142,245 @@ router.get('/template/:entityTypeId', async (req, res) => {
       })(),
     }))
 
-    console.log('🧩 Normalised fields:', fields)
+    console.log(`🧩 Normalised ${fields.length} fields for ${entityType.name}`)
 
     const workbook = new ExcelJS.Workbook()
     const mainSheet = workbook.addWorksheet('Template')
     const lookupSheet = workbook.addWorksheet('Lookups')
 
-    // Headers + hints
+    // --- Headers + hints ---
     const headers = ['Name', 'Description', ...fields.map(f => `${f.label || f.name}${f.required ? ' *' : ''}`)]
     const hints = ['string', 'string', ...fields.map(f => {
       if (f.data_type === 'enum' && f.options.length) return 'Select from dropdown'
       if (f.data_type === 'boolean') return 'TRUE / FALSE'
       return f.data_type || 'string'
     })]
+
     mainSheet.addRow(headers)
     mainSheet.addRow(hints)
 
-    // --- Lookup values ---
-    let col = 1
+    // --- Lookup setup (only if fields exist) ---
     const rangeRefs = {}
-    for (const f of fields) {
-      if ((f.data_type === 'enum' && f.options.length > 0) || f.data_type === 'boolean') {
-        const values = f.data_type === 'boolean' ? ['TRUE', 'FALSE'] : f.options
-        lookupSheet.getCell(1, col).value = f.name
-        values.forEach((opt, i) => lookupSheet.getCell(i + 2, col).value = opt)
-        const endRow = values.length + 1
-        const colLetter = String.fromCharCode(64 + col)
-        const absRange = `Lookups!$${colLetter}$2:$${colLetter}$${endRow}`
-        rangeRefs[f.name] = absRange
-        col++
+    let col = 1
+
+    if (fields.length > 0) {
+      for (const f of fields) {
+        if ((f.data_type === 'enum' && f.options.length > 0) || f.data_type === 'boolean') {
+          const values = f.data_type === 'boolean' ? ['TRUE', 'FALSE'] : f.options
+          lookupSheet.getCell(1, col).value = f.name
+          values.forEach((opt, i) => lookupSheet.getCell(i + 2, col).value = opt)
+          const endRow = values.length + 1
+          const colLetter = String.fromCharCode(64 + col)
+          const absRange = `Lookups!$${colLetter}$2:$${colLetter}$${endRow}`
+          rangeRefs[f.name] = absRange
+          col++
+        }
       }
     }
 
-    // Apply dropdowns using direct cell range (no named ranges)
-    fields.forEach((f, i) => {
-      const range = rangeRefs[f.name]
-      if (!range) return
-      const colIndex = i + 3 // skip name + description
-      for (let r = 3; r <= 1000; r++) {
-        const cell = mainSheet.getCell(r, colIndex)
-        cell.dataValidation = {
-          type: 'list',
-          allowBlank: !f.required,
-          formulae: [`=${range}`],
-          showErrorMessage: true,
-          showDropDown: true,
-          errorTitle: 'Invalid Option',
-          error: `Please choose a valid value for ${f.label || f.name}`,
-        }
-      }
-    })
+    if (fields.length === 0 || col === 1) {
+      lookupSheet.getCell('A1').value = 'No lookup data available'
+      lookupSheet.columns = [{ width: 25 }]
+    }
 
-    // Styling
+    // --- Apply dropdowns safely ---
+    if (fields.length > 0) {
+      fields.forEach((f, i) => {
+        const range = rangeRefs[f.name]
+        if (!range) return
+        const colIndex = i + 3
+        for (let r = 3; r <= 1000; r++) {
+          const cell = mainSheet.getCell(r, colIndex)
+          cell.dataValidation = {
+            type: 'list',
+            allowBlank: !f.required,
+            formulae: [`=${range}`],
+            showErrorMessage: true,
+            showDropDown: true,
+            errorTitle: 'Invalid Option',
+            error: `Please choose a valid value for ${f.label || f.name}`,
+          }
+        }
+      })
+    }
+
     mainSheet.getRow(1).font = { bold: true }
     mainSheet.getRow(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFEFEF' } }
     mainSheet.views = [{ state: 'frozen', ySplit: 2 }]
     mainSheet.columns.forEach(c => (c.width = 22))
     lookupSheet.columns.forEach(c => (c.width = 20))
 
-    // Send
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${entityType.name}_Template.xlsx"`
-    )
-    res.setHeader(
-      'Content-Type',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-
+    res.setHeader('Content-Disposition', `attachment; filename="${entityType.name}_Template.xlsx"`)
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     await workbook.xlsx.write(res)
     res.end()
-    console.log('✅ Template generated successfully with working dropdowns')
+    console.log('✅ Template generated successfully')
   } catch (err) {
     console.error('❌ Template generation failed:', err)
     res.status(500).json({ success: false, message: err.message })
+  }
+})
+
+// -------------------------------------------------------------
+// POST /api/entities/preview/:entityTypeId → Preview uploaded file
+// -------------------------------------------------------------
+router.post('/preview/:entityTypeId', async (req, res) => {
+  try {
+    const { entityTypeId } = req.params
+    const { fileId } = req.body
+
+    if (!fileId) {
+      return res.status(400).json({ success: false, message: 'Missing fileId' })
+    }
+
+    const uploadedFile = await UploadedFile.findByPk(fileId)
+    if (!uploadedFile) {
+      return res.status(404).json({ success: false, message: 'Uploaded file not found' })
+    }
+
+    const filePath = path.resolve(`.${uploadedFile.file_path}`)
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, message: 'File not found on server' })
+    }
+
+    const entityType = await EntityType.findByPk(entityTypeId)
+    if (!entityType) {
+      return res.status(404).json({ success: false, message: 'Entity type not found' })
+    }
+
+    const existingEntities = await EntityType.sequelize.query(
+      `SELECT name FROM entities WHERE entity_type_id = :entityTypeId`,
+      { replacements: { entityTypeId }, type: EntityType.sequelize.QueryTypes.SELECT }
+    )
+    const existingNames = new Set(existingEntities.map(e => e.name.toLowerCase()))
+
+    const workbook = XLSX.readFile(filePath)
+    const sheet = workbook.Sheets[workbook.SheetNames[0]]
+    // Skip first two header rows (title + hints)
+      const allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+      const dataRows = allRows.slice(2) // skip Name/Description headers + hint row
+      const headers = allRows[0] || []
+      const rows = dataRows.map(r => Object.fromEntries(r.map((v, i) => [headers[i] || `Column${i+1}`, v]))).filter(r => Object.values(r).some(Boolean))
+
+
+    if (!rows.length) {
+      return res.status(400).json({ success: false, message: 'No rows found in spreadsheet.' })
+    }
+
+    const toCreate = []
+    const duplicates = []
+    const invalid = []
+
+    rows.forEach((row, index) => {
+      const name = row['Name']?.trim()
+      if (!name) {
+        invalid.push({ row: index + 2, reason: 'Missing Name' })
+      } else if (existingNames.has(name.toLowerCase())) {
+        duplicates.push({ row: index + 2, name })
+      } else {
+        toCreate.push({ row: index + 2, name })
+      }
+    })
+
+    const summary = {
+      total: rows.length,
+      createCount: toCreate.length,
+      duplicateCount: duplicates.length,
+      invalidCount: invalid.length,
+      toCreate,
+      duplicates,
+      invalid,
+    }
+
+    res.json({ success: true, summary })
+  } catch (err) {
+    console.error('❌ Preview generation failed:', err)
+    res.status(500).json({ success: false, message: 'Preview failed', error: err.message })
+  }
+})
+
+// -------------------------------------------------------------
+// POST /api/entities/import/:entityTypeId → Parse & create entities
+// -------------------------------------------------------------
+router.post('/import/:entityTypeId', upload.single('file'), async (req, res) => {
+  try {
+    const { entityTypeId } = req.params
+    const userId = req.user.id
+
+    if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded.' })
+
+    console.log(`📥 Importing entities for EntityType ${entityTypeId}`)
+
+    const entityType = await EntityType.findByPk(entityTypeId)
+    const fields = await EntityTypeField.findAll({
+      where: { entity_type_id: entityTypeId },
+      order: [['sort_order', 'ASC']],
+    })
+
+    const workbook = XLSX.readFile(req.file.path)
+    const sheetName = workbook.SheetNames[0]
+    const sheet = workbook.Sheets[sheetName]
+// Skip first two header rows (title + hints)
+    const allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+    const dataRows = allRows.slice(2) // skip Name/Description headers + hint row
+    const headers = allRows[0] || []
+    const rows = dataRows.map(r => Object.fromEntries(r.map((v, i) => [headers[i] || `Column${i+1}`, v]))).filter(r => Object.values(r).some(Boolean))
+
+    if (!rows.length) {
+      return res.status(400).json({ success: false, message: 'No rows found in spreadsheet.' })
+    }
+
+    const fieldMap = {}
+    fields.forEach(f => {
+      fieldMap[f.label?.toLowerCase() || f.name.toLowerCase()] = f.name
+    })
+
+    const created = []
+    const failed = []
+
+    for (const row of rows) {
+      try {
+        const name = row['Name']?.trim()
+        if (!name) throw new Error('Missing Name column')
+
+        const description = row['Description']?.trim() || ''
+        const metadata = {}
+
+        for (const key of Object.keys(row)) {
+          if (key === 'Name' || key === 'Description') continue
+          const normalisedKey = key.trim().toLowerCase()
+          const mapped = fieldMap[normalisedKey]
+          if (mapped) metadata[mapped] = row[key]
+        }
+
+        const entity = await createEntity({
+          body: {
+            name,
+            description,
+            world_id: entityType.world_id,
+            entity_type_id: entityTypeId,
+            metadata,
+          },
+          user: { id: userId },
+        })
+        created.push(name)
+      } catch (err) {
+        failed.push({ row, error: err.message })
+      }
+    }
+
+    console.log(`✅ Imported ${created.length} entities, ${failed.length} failed`)
+    res.json({
+      success: true,
+      message: `Imported ${created.length} entities, ${failed.length} failed`,
+      created,
+      failed,
+    })
+  } catch (err) {
+    console.error('❌ Entity import failed:', err)
+    res.status(500).json({ success: false, message: 'Entity import failed', error: err.message })
+  } finally {
+    if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path)
   }
 })
 
