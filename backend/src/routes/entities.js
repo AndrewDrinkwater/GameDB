@@ -7,6 +7,7 @@ import { Router } from 'express'
 import { authenticate } from '../middleware/authMiddleware.js'
 import {
   createEntity,
+  createEntityResponse,
   createEntitySecret,
   deleteEntity,
   getEntityById,
@@ -15,7 +16,8 @@ import {
   updateEntity,
 } from '../controllers/entityController.js'
 import { getEntityGraph } from '../controllers/entityGraphController.js'
-import { UploadedFile, EntityType, EntityTypeField } from '../models/index.js'
+import { checkWorldAccess } from '../middleware/worldAccess.js'
+import { UploadedFile, EntityType, EntityTypeField, World } from '../models/index.js'
 
 const router = Router()
 
@@ -247,6 +249,15 @@ router.post('/preview/:entityTypeId', async (req, res) => {
     if (!entityType) {
       return res.status(404).json({ success: false, message: 'Entity type not found' })
     }
+    const world = await World.findByPk(entityType.world_id)
+    if (!world) {
+      return res.status(404).json({ success: false, message: 'World not found for entity type' })
+    }
+
+    const access = await checkWorldAccess(world.id, req.user)
+    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
 
     const existingEntities = await EntityType.sequelize.query(
       `SELECT name FROM entities WHERE entity_type_id = :entityTypeId`,
@@ -305,8 +316,8 @@ router.post('/preview/:entityTypeId', async (req, res) => {
 router.post('/import/:entityTypeId', upload.single('file'), async (req, res) => {
   try {
     const { entityTypeId } = req.params
-    const userId = req.user.id
     const { fileId } = req.body || {}
+    const userId = req.user.id
 
     let filePath = req.file?.path
     let uploadedFile
@@ -332,6 +343,15 @@ router.post('/import/:entityTypeId', upload.single('file'), async (req, res) => 
     const entityType = await EntityType.findByPk(entityTypeId)
     if (!entityType) {
       return res.status(404).json({ success: false, message: 'Entity type not found' })
+    }
+    const world = await World.findByPk(entityType.world_id)
+    if (!world) {
+      return res.status(404).json({ success: false, message: 'World not found for entity type' })
+    }
+
+    const access = await checkWorldAccess(world.id, req.user)
+    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
     }
     const fields = await EntityTypeField.findAll({
       where: { entity_type_id: entityTypeId },
@@ -378,17 +398,24 @@ router.post('/import/:entityTypeId', upload.single('file'), async (req, res) => 
           if (mapped) metadata[mapped] = row[key]
         }
 
-        const entity = await createEntity({
+        const result = await createEntityResponse({
+          world,
+          user: req.user,
           body: {
             name,
             description,
-            world_id: entityType.world_id,
+            world_id: world.id,
             entity_type_id: entityTypeId,
             metadata,
           },
-          user: { id: userId },
         })
-        created.push(name)
+
+        if (!result?.body?.success || result.status >= 400) {
+          throw new Error(result?.body?.message || 'Failed to create entity')
+        }
+
+        const createdName = result.body?.data?.name ?? name
+        created.push(createdName)
       } catch (err) {
         failed.push({ row, error: err.message })
       }
