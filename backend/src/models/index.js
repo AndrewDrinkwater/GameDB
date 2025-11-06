@@ -18,6 +18,7 @@ import EntityTypeFieldModel from './entityTypeField.js'
 import UserCampaignRoleModel from './userCampaignRole.js'
 import EntityRelationshipTypeEntityTypeModel from './entityRelationshipTypeEntityType.js'
 import EntityListPreferenceModel from './entityListPreference.js'
+import UploadedFileModel from './uploadedFile.js' // ✅ new model import
 
 // Create Sequelize instance
 export const sequelize = new Sequelize(process.env.DATABASE_URL, {
@@ -41,9 +42,11 @@ export const UserCampaignRole = UserCampaignRoleModel(sequelize, DataTypes)
 export const EntityRelationshipTypeEntityType =
   EntityRelationshipTypeEntityTypeModel(sequelize, DataTypes)
 export const EntityListPreference = EntityListPreferenceModel(sequelize, DataTypes)
+export const UploadedFile = UploadedFileModel(sequelize, DataTypes) // ✅ new model init
 
 // --- Associations ---
-if (User.associate) User.associate({ World, Campaign, Character, UserCampaignRole })
+if (User.associate)
+  User.associate({ World, Campaign, Character, UserCampaignRole, UploadedFile }) // ✅ link uploaded files to user
 if (World.associate) World.associate({ User, Campaign, Entity })
 if (Campaign.associate) Campaign.associate({ World, Character, User, UserCampaignRole })
 if (Character.associate) Character.associate({ Campaign, User })
@@ -55,6 +58,7 @@ if (Entity.associate)
     EntitySecret,
     User,
     EntityRelationship,
+    UploadedFile, // ✅ link uploaded files to entity
   })
 if (EntitySecret.associate)
   EntitySecret.associate({ Entity, User, EntitySecretPermission })
@@ -78,6 +82,7 @@ if (EntityRelationshipTypeEntityType.associate)
 if (UserCampaignRole.associate) UserCampaignRole.associate({ User, Campaign })
 if (EntityListPreference.associate)
   EntityListPreference.associate({ EntityType, User })
+if (UploadedFile.associate) UploadedFile.associate({ User, Entity }) // ✅ ensure associations registered
 
 // --- Init DB ---
 export async function initDB() {
@@ -104,4 +109,5 @@ export default {
   EntityRelationshipTypeEntityType,
   UserCampaignRole,
   EntityListPreference,
+  UploadedFile, // ✅ export for use in routes
 }
