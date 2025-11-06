@@ -47,6 +47,24 @@ export default function ClusterPopup({
     return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }
   }, [portalEl])
 
+  const placedIds = useMemo(
+    () => new Set((Array.isArray(placedEntityIds) ? placedEntityIds : []).map(String)),
+    [placedEntityIds],
+  )
+  const releasedIds = useMemo(
+    () =>
+      new Set((Array.isArray(releasedEntityIds) ? releasedEntityIds : []).map(String)),
+    [releasedEntityIds],
+  )
+  const visibleEntities = useMemo(
+    () =>
+      Array.isArray(entities)
+        ? entities.filter((entity) => !releasedIds.has(String(entity.id)))
+        : [],
+    [entities, releasedIds],
+  )
+  const entityCount = visibleEntities.length
+
   const bounds = useMemo(() => {
     const rect = getContainerRect()
     const width = panelRef.current?.offsetWidth ?? PANEL_WIDTH
@@ -58,6 +76,7 @@ export default function ClusterPopup({
       maxX: Math.max(offset, rect.width - width - offset),
       maxY: Math.max(offset, rect.height - height - offset),
       containerRect: rect,
+      entityCount,
     }
   }, [entityCount, getContainerRect])
 
@@ -139,24 +158,6 @@ export default function ClusterPopup({
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [handleClose])
-
-  const placedIds = useMemo(
-    () => new Set((Array.isArray(placedEntityIds) ? placedEntityIds : []).map(String)),
-    [placedEntityIds]
-  )
-  const releasedIds = useMemo(
-    () =>
-      new Set((Array.isArray(releasedEntityIds) ? releasedEntityIds : []).map(String)),
-    [releasedEntityIds]
-  )
-  const visibleEntities = useMemo(
-    () =>
-      Array.isArray(entities)
-        ? entities.filter((entity) => !releasedIds.has(String(entity.id)))
-        : [],
-    [entities, releasedIds]
-  )
-  const entityCount = visibleEntities.length
 
   useEffect(() => {
     setSelectedEntityId(null)
