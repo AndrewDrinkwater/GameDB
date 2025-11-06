@@ -1,19 +1,22 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import {
+  Download,
+  UploadCloud,
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  Sparkles,
+  ListChecks,
+  FileCheck,
+  ArrowRight,
+} from 'lucide-react'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import { getWorldEntityTypeUsage } from '../../api/entityTypes.js'
-import {
-  UploadCloud,
-  FileText,
-  Loader2,
-  CheckCircle,
-  AlertTriangle,
-  Download,
-  Trash2,
-  PlayCircle,
-  Eye,
-  XCircle,
-} from 'lucide-react'
+import StepCard from '../../components/bulkUpload/StepCard.jsx'
+import UploadedFileList from '../../components/bulkUpload/UploadedFileList.jsx'
+import PreviewPopout from '../../components/bulkUpload/PreviewPopout.jsx'
+import './BulkUploadPage.css'
 
 export default function BulkUploadPage() {
   const { token } = useAuth()
@@ -32,9 +35,10 @@ export default function BulkUploadPage() {
   const [importing, setImporting] = useState(false)
   const [previewing, setPreviewing] = useState(false)
   const [preview, setPreview] = useState(null)
-  const [showPreview, setShowPreview] = useState(false)
+  const [isPopoutOpen, setIsPopoutOpen] = useState(false)
+  const [previewError, setPreviewError] = useState('')
+  const fileInputRef = useRef(null)
 
-  // --- Fetch entity types for world ---
   useEffect(() => {
     const loadEntityTypes = async () => {
       if (!selectedCampaign?.world?.id) return
@@ -52,7 +56,6 @@ export default function BulkUploadPage() {
     loadEntityTypes()
   }, [selectedCampaign])
 
-  // --- Fetch uploaded files ---
   const fetchFiles = async () => {
     try {
       const res = await fetch('/api/entities/upload', {
@@ -70,9 +73,9 @@ export default function BulkUploadPage() {
     if (token) fetchFiles()
   }, [token])
 
-  // --- Handle file upload ---
   const handleFileChange = (e) => {
-    setFile(e.target.files[0])
+    const selectedFile = e.target.files?.[0] ?? null
+    setFile(selectedFile)
     setMessage('')
     setError('')
   }
@@ -93,8 +96,9 @@ export default function BulkUploadPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Upload failed')
-      setMessage('✅ File uploaded successfully!')
+      setMessage('File uploaded successfully.')
       setFile(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
       await fetchFiles()
     } catch (err) {
       console.error('Upload error:', err)
@@ -104,7 +108,6 @@ export default function BulkUploadPage() {
     }
   }
 
-  // --- Delete uploaded file ---
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this upload?')) return
     try {
@@ -115,6 +118,10 @@ export default function BulkUploadPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Failed to delete file')
       setMessage('File deleted.')
+      if (selectedUpload === id) {
+        setSelectedUpload(null)
+        setPreview(null)
+      }
       await fetchFiles()
     } catch (err) {
       console.error('❌ Delete error:', err)
@@ -122,7 +129,6 @@ export default function BulkUploadPage() {
     }
   }
 
-  // --- Generate Excel template ---
   const handleGenerateTemplate = async () => {
     if (!selectedType) return
     setError('')
@@ -143,25 +149,24 @@ export default function BulkUploadPage() {
       a.remove()
       window.URL.revokeObjectURL(url)
 
-      setMessage('✅ Template generated successfully.')
+      setMessage('Template generated successfully.')
     } catch (err) {
       console.error('❌ Template generation failed', err)
       setError('Failed to generate template')
     }
   }
 
-  // --- Preview import (matches backend preview route) ---
   const handlePreview = async () => {
     if (!selectedType) return setError('Select an Entity Type first.')
     if (!selectedUpload) return setError('Select an uploaded file to preview.')
     if (!worldId) return setError('No world selected for the current campaign.')
-    setPreviewing(true)
-    setError('')
-    setMessage('')
-    setShowPreview(false)
-    setPreview(null)
 
-    console.log('🟡 Preview request started:', { selectedType, selectedUpload })
+    setPreviewing(true)
+    setIsPopoutOpen(true)
+    setPreview(null)
+    setPreviewError('')
+    setMessage('')
+    setError('')
 
     try {
       const res = await fetch(`/api/entities/preview/${selectedType}`, {
@@ -174,25 +179,22 @@ export default function BulkUploadPage() {
       })
 
       const data = await res.json()
-      console.log('🟢 Preview response:', data)
-
       if (!res.ok || !data.success) throw new Error(data.message || 'Preview failed')
 
       setPreview(data.summary)
-      setShowPreview(true)
     } catch (err) {
       console.error('❌ Preview failed:', err)
-      setError(err.message)
+      setPreviewError(err.message)
     } finally {
       setPreviewing(false)
     }
   }
 
-  // --- Import selected file ---
   const handleImport = async () => {
     if (!selectedType) return setError('Select an Entity Type first.')
     if (!selectedUpload) return setError('Select an uploaded file to import.')
     if (!worldId) return setError('No world selected for the current campaign.')
+
     setImporting(true)
     setMessage('')
     setError('')
@@ -208,176 +210,207 @@ export default function BulkUploadPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Import failed')
-      setMessage(data.message || '✅ Import completed successfully.')
+      setMessage(data.message || 'Import completed successfully.')
+      setIsPopoutOpen(false)
+      setPreview(null)
+      await fetchFiles()
     } catch (err) {
       console.error('❌ Import error:', err)
-      setError(err.message)
+      setPreviewError(err.message)
     } finally {
       setImporting(false)
     }
   }
 
+  const handleClosePopout = () => {
+    if (importing || previewing) return
+    setIsPopoutOpen(false)
+    setPreviewError('')
+  }
+
+  const selectedTypeName = useMemo(
+    () => entityTypes.find((type) => String(type.id) === String(selectedType))?.name ?? '',
+    [entityTypes, selectedType],
+  )
+
+  const selectedUploadDetails = useMemo(
+    () => uploadedFiles.find((fileItem) => fileItem.id === selectedUpload) ?? null,
+    [uploadedFiles, selectedUpload],
+  )
+
+  useEffect(() => {
+    setSelectedUpload(null)
+    setPreview(null)
+    setIsPopoutOpen(false)
+    setFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    setMessage('')
+    setError('')
+    setPreviewError('')
+  }, [selectedType])
+
   return (
-    <>
-      <div className="bulk-upload-page">
-        <h2 className="page-title">Bulk Entity Upload</h2>
-        <p className="page-subtitle">
-          Generate a spreadsheet template, upload it, then preview and import to create or update entities.
+    <div className="bulk-upload-page">
+      <div className="bulk-upload-page__header">
+        <h1 className="bulk-upload-page__title">Bulk Entity Upload</h1>
+        <p className="bulk-upload-page__subtitle">
+          Follow the guided steps to prepare your template, upload a data file, preview the import, and
+          launch the upload from a dedicated review panel.
         </p>
+      </div>
 
-        {/* Template generation */}
-        <div className="template-section">
-          {loadingTypes ? (
-            <p>Loading entity types…</p>
-          ) : (
-            <>
-              <select
-                value={selectedType}
-                onChange={(e) => setSelectedType(e.target.value)}
-                className="entity-type-select"
-              >
-                <option value="">Select Entity Type</option>
-                {entityTypes.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-
-              <button className="generate-btn" disabled={!selectedType} onClick={handleGenerateTemplate}>
-                <Download size={16} /> Generate Template
-              </button>
-            </>
-          )}
+      {message && (
+        <div className="bulk-upload-page__status">
+          <CheckCircle2 size={18} />
+          <span>{message}</span>
         </div>
+      )}
 
-        {/* Upload */}
-        <div className="upload-section">
-          <label className="file-input-label">
-            <input type="file" onChange={handleFileChange} hidden />
-            <div className="file-input-display">
-              <UploadCloud size={20} />
-              <span>{file ? file.name : 'Select a file to upload'}</span>
-            </div>
-          </label>
-
-          <button className="upload-btn" onClick={handleUpload} disabled={!file || uploading}>
-            {uploading ? <Loader2 className="animate-spin" size={16} /> : 'Upload File'}
-          </button>
+      {error && (
+        <div className="bulk-upload-page__status bulk-upload-page__status--error">
+          <AlertTriangle size={18} />
+          <span>{error}</span>
         </div>
+      )}
 
-        {/* Status */}
-        {message && (
-          <div className="status-message success">
-            <CheckCircle size={16} /> {message}
-          </div>
-        )}
-        {error && (
-          <div className="status-message error">
-            <AlertTriangle size={16} /> {error}
-          </div>
-        )}
-
-        {/* Uploaded files */}
-        <div className="uploaded-files">
-          <h3>Uploaded Files</h3>
-          {uploadedFiles.length === 0 && <p>No files uploaded yet.</p>}
-          {uploadedFiles.length > 0 && (
-            <ul>
-              {uploadedFiles.map((f) => (
-                <li key={f.id} className={selectedUpload === f.id ? 'selected' : ''}>
-                  <button
-                    className="select-btn"
-                    onClick={() => setSelectedUpload(f.id === selectedUpload ? null : f.id)}
-                  >
-                    <FileText size={14} /> {f.file_name}
-                  </button>
-                  <small>({(f.size_bytes / 1024).toFixed(1)} KB)</small>
-                  <button className="delete-btn" onClick={() => handleDelete(f.id)}>
-                    <Trash2 size={14} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Preview + Import */}
-        <div className="import-section">
-          <button
-            className="preview-btn"
-            disabled={!selectedUpload || !selectedType || previewing}
-            onClick={handlePreview}
+      <div className="bulk-upload-page__grid">
+        <StepCard
+          step="Select"
+          title="Choose an entity type"
+          subtitle={
+            loadingTypes
+              ? 'Loading entity types for this world...'
+              : 'Pick which entity type you want to work with. Steps unlock after choosing.'
+          }
+        >
+          <select
+            value={selectedType}
+            onChange={(e) => setSelectedType(e.target.value)}
+            className="entity-type-select"
           >
-            {previewing ? <Loader2 className="animate-spin" size={16} /> : <Eye size={16} />}
-            Preview Import
-          </button>
+            <option value="">{loadingTypes ? 'Loading…' : 'Select Entity Type'}</option>
+            {entityTypes.map((type) => (
+              <option key={type.id} value={type.id}>
+                {type.name}
+              </option>
+            ))}
+          </select>
+        </StepCard>
 
-          <button
-            className="import-btn"
-            disabled={!selectedUpload || !selectedType || importing}
-            onClick={handleImport}
-          >
-            {importing ? <Loader2 className="animate-spin" size={16} /> : <PlayCircle size={16} />}
-            Proceed Import
-          </button>
-        </div>
-
-        {/* Preview results */}
-        {showPreview && preview && (
-          <div className="preview-panel">
-            <h3>Import Preview Summary</h3>
-            <p>Total rows: {preview.total}</p>
-            <p>Will create: {preview.createCount}</p>
-            <p>Duplicates: {preview.duplicateCount}</p>
-            <p>Invalid: {preview.invalidCount}</p>
-
-            {preview.duplicateCount > 0 && (
-              <div className="dupes-list">
-                <strong>Duplicates:</strong>
-                <ul>
-                  {preview.duplicates.map((d) => (
-                    <li key={d.row}>
-                      Row {d.row}: {d.name}
-                    </li>
-                  ))}
-                </ul>
+        {selectedType && (
+          <>
+            <StepCard
+              step={1}
+              title="Generate a template"
+              subtitle="Download a spreadsheet tailored to the selected entity type."
+            >
+              <div className="step-actions">
+                <button type="button" className="primary-action" onClick={handleGenerateTemplate}>
+                  <Download size={18} />
+                  Download template
+                </button>
+                {selectedTypeName && (
+                  <span className="selected-file-banner">
+                    <Sparkles size={16} /> Template matches {selectedTypeName}
+                  </span>
+                )}
               </div>
-            )}
+            </StepCard>
 
-            <button className="close-preview" onClick={() => setShowPreview(false)}>
-              <XCircle size={14} /> Close Preview
-            </button>
-          </div>
+            <StepCard
+              step={2}
+              title="Upload your file"
+              subtitle="Upload the filled spreadsheet and pick which file to preview."
+            >
+              <div className="file-input">
+                <label htmlFor="bulk-upload-file">
+                  <UploadCloud size={20} />
+                  <div>
+                    <div className="file-input__name">{file ? file.name : 'Select a file to upload'}</div>
+                    <small>Supported format: Excel (.xlsx)</small>
+                  </div>
+                </label>
+                <input
+                  ref={fileInputRef}
+                  id="bulk-upload-file"
+                  type="file"
+                  hidden
+                  onChange={handleFileChange}
+                />
+                <button
+                  type="button"
+                  className="secondary-action"
+                  onClick={handleUpload}
+                  disabled={!file || uploading}
+                >
+                  {uploading ? <Loader2 className="spin" size={18} /> : <UploadCloud size={18} />}
+                  Upload file
+                </button>
+              </div>
+              {selectedUploadDetails && (
+                <div className="selected-file-banner">
+                  <FileCheck size={16} /> Selected file: {selectedUploadDetails.file_name}
+                </div>
+              )}
+              <UploadedFileList
+                files={uploadedFiles}
+                selectedId={selectedUpload}
+                onSelect={(id) => {
+                  setSelectedUpload(id)
+                  setPreview(null)
+                }}
+                onDelete={handleDelete}
+              />
+            </StepCard>
+
+            <StepCard
+              step={3}
+              title="Run a preview"
+              subtitle="Review potential changes in the popout before committing to an upload."
+            >
+              <div className="step-actions">
+                <button
+                  type="button"
+                  className="primary-action"
+                  onClick={handlePreview}
+                  disabled={!selectedUpload || previewing}
+                >
+                  {previewing ? <Loader2 className="spin" size={18} /> : <ListChecks size={18} />}
+                  Preview import
+                </button>
+                <span className="bulk-upload-page__empty-state">
+                  The upload can only be launched from the preview popout.
+                </span>
+              </div>
+            </StepCard>
+
+            <StepCard
+              step={4}
+              title="Launch the upload"
+              subtitle="Confirm the summary inside the popout, then run the upload from there."
+            >
+              <div className="step-actions">
+                <span className="bulk-upload-page__empty-state">
+                  After reviewing the preview, use the <strong>Run upload</strong> button in the panel to finish.
+                </span>
+                <span className="selected-file-banner">
+                  <ArrowRight size={16} /> Preview popout controls the final import.
+                </span>
+              </div>
+            </StepCard>
+          </>
         )}
       </div>
 
-      {/* Styles */}
-      <style>{`
-        .bulk-upload-page { padding: 2rem; max-width: 750px; margin: 0 auto; }
-        .page-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem; }
-        .page-subtitle { color: #666; margin-bottom: 1.5rem; }
-        .template-section, .upload-section { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
-        .entity-type-select { flex: 1; padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; }
-        .generate-btn, .upload-btn, .import-btn, .preview-btn { display: flex; align-items: center; gap: 0.5rem; border: none; border-radius: 6px; padding: 0.5rem 1rem; cursor: pointer; color: white; }
-        .generate-btn { background-color: #059669; }
-        .upload-btn { background-color: #2563eb; }
-        .preview-btn { background-color: #f59e0b; }
-        .import-btn { background-color: #7c3aed; margin-top: 1rem; }
-        .delete-btn { background: transparent; border: none; color: #dc2626; cursor: pointer; }
-        .status-message { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 6px; }
-        .status-message.success { background: #e6fbe6; color: #166534; }
-        .status-message.error { background: #fef2f2; color: #991b1b; }
-        .uploaded-files { margin-top: 2rem; }
-        .uploaded-files ul { list-style: none; padding: 0; }
-        .uploaded-files li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin: 0.25rem 0; padding: 0.5rem; border: 1px solid #ddd; border-radius: 6px; }
-        .uploaded-files li.selected { background: #eef2ff; border-color: #6366f1; }
-        .select-btn { background: transparent; border: none; display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: #2563eb; font-weight: 500; }
-        .preview-panel { margin-top: 1.5rem; padding: 1rem; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; }
-        .dupes-list { margin-top: 1rem; }
-        .close-preview { background: transparent; border: none; color: #dc2626; margin-top: 0.5rem; cursor: pointer; display: flex; align-items: center; gap: 0.25rem; }
-      `}</style>
-    </>
+      <PreviewPopout
+        isOpen={isPopoutOpen}
+        onClose={handleClosePopout}
+        preview={preview}
+        previewing={previewing}
+        importing={importing}
+        onImport={handleImport}
+        error={previewError}
+      />
+    </div>
   )
 }
-
