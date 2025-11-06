@@ -306,21 +306,42 @@ router.post('/import/:entityTypeId', upload.single('file'), async (req, res) => 
   try {
     const { entityTypeId } = req.params
     const userId = req.user.id
+    const { fileId } = req.body || {}
 
-    if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded.' })
+    let filePath = req.file?.path
+    let uploadedFile
+
+    if (!filePath) {
+      if (!fileId) {
+        return res.status(400).json({ success: false, message: 'No file uploaded.' })
+      }
+
+      uploadedFile = await UploadedFile.findByPk(fileId)
+      if (!uploadedFile || uploadedFile.user_id !== userId) {
+        return res.status(404).json({ success: false, message: 'Uploaded file not found' })
+      }
+
+      filePath = path.resolve(`.${uploadedFile.file_path}`)
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ success: false, message: 'File not found on server' })
+      }
+    }
 
     console.log(`📥 Importing entities for EntityType ${entityTypeId}`)
 
     const entityType = await EntityType.findByPk(entityTypeId)
+    if (!entityType) {
+      return res.status(404).json({ success: false, message: 'Entity type not found' })
+    }
     const fields = await EntityTypeField.findAll({
       where: { entity_type_id: entityTypeId },
       order: [['sort_order', 'ASC']],
     })
 
-    const workbook = XLSX.readFile(req.file.path)
+    const workbook = XLSX.readFile(filePath)
     const sheetName = workbook.SheetNames[0]
     const sheet = workbook.Sheets[sheetName]
-// Skip first two header rows (title + hints)
+    // Skip first two header rows (title + hints)
     const allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
     const dataRows = allRows.slice(2) // skip Name/Description headers + hint row
     const headers = allRows[0] || []
@@ -330,9 +351,13 @@ router.post('/import/:entityTypeId', upload.single('file'), async (req, res) => 
       return res.status(400).json({ success: false, message: 'No rows found in spreadsheet.' })
     }
 
+    const normaliseHeader = (key) => (key || '').toString().replace(/\*/g, '').trim().toLowerCase()
+
     const fieldMap = {}
     fields.forEach(f => {
-      fieldMap[f.label?.toLowerCase() || f.name.toLowerCase()] = f.name
+      const labelKey = normaliseHeader(f.label)
+      if (labelKey) fieldMap[labelKey] = f.name
+      fieldMap[normaliseHeader(f.name)] = f.name
     })
 
     const created = []
@@ -348,7 +373,7 @@ router.post('/import/:entityTypeId', upload.single('file'), async (req, res) => 
 
         for (const key of Object.keys(row)) {
           if (key === 'Name' || key === 'Description') continue
-          const normalisedKey = key.trim().toLowerCase()
+          const normalisedKey = normaliseHeader(key)
           const mapped = fieldMap[normalisedKey]
           if (mapped) metadata[mapped] = row[key]
         }
