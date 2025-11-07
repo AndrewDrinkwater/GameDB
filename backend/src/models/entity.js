@@ -36,7 +36,7 @@ export default (sequelize, DataTypes) => {
       visibility: {
         type: DataTypes.ENUM('hidden', 'visible', 'partial'),
         allowNull: false,
-        defaultValue: 'hidden',
+        defaultValue: 'visible',
       },
       read_access: {
         type: DataTypes.ENUM('global', 'selective', 'hidden'),

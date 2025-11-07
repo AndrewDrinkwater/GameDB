@@ -155,7 +155,7 @@ export const createEntityResponse = async ({ world, user, body }) => {
     return { status: 404, body: { success: false, message: 'Entity type not found' } }
   }
 
-  const resolvedVisibility = visibility ?? 'hidden'
+  const resolvedVisibility = visibility ?? 'visible'
   if (!VISIBILITY_VALUES.has(resolvedVisibility)) {
     return { status: 400, body: { success: false, message: 'Invalid visibility value' } }
   }
