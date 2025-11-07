@@ -1,11 +1,14 @@
 import { Op } from 'sequelize'
 import {
+  Campaign,
   Entity,
   EntitySecret,
   EntitySecretPermission,
   EntityType,
   EntityTypeField,
+  User,
   World,
+  sequelize,
 } from '../models/index.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
 import {
@@ -66,6 +69,112 @@ const normaliseUuidArray = (value, fieldName) => {
   }
 
   throw new Error(`${fieldName} must be an array`)
+}
+
+const toUniqueStringList = (values) => {
+  if (!Array.isArray(values)) return []
+  const seen = new Set()
+  const result = []
+  values.forEach((entry) => {
+    if (entry === null || entry === undefined) return
+    const str = String(entry).trim()
+    if (!str || seen.has(str)) return
+    seen.add(str)
+    result.push(str)
+  })
+  return result
+}
+
+const normaliseSecretAudienceIds = (value, fieldName) => {
+  const baseValue = value === undefined ? [] : value
+  const normalised = normaliseUuidArray(baseValue, fieldName)
+  if (!Array.isArray(normalised)) return []
+  return toUniqueStringList(normalised)
+}
+
+const SECRET_PERMISSION_INCLUDE = {
+  model: EntitySecretPermission,
+  as: 'permissions',
+  attributes: ['id', 'user_id', 'campaign_id', 'can_view'],
+  required: false,
+  include: [
+    {
+      model: User,
+      as: 'user',
+      attributes: ['id', 'username', 'email'],
+      required: false,
+    },
+    {
+      model: Campaign,
+      as: 'campaign',
+      attributes: ['id', 'name'],
+      required: false,
+    },
+  ],
+}
+
+const SECRET_CREATOR_INCLUDE = {
+  association: 'creator',
+  attributes: ['id', 'username', 'email'],
+  required: false,
+}
+
+const formatSecretRecord = (secret, includePermissions = false) => {
+  if (!secret) return null
+  const plain =
+    typeof secret.get === 'function' ? secret.get({ plain: true }) : { ...secret }
+
+  if (plain.creator) {
+    const creator = plain.creator
+    plain.creator = {
+      id: creator.id,
+      username: creator.username,
+      email: creator.email,
+    }
+  }
+
+  if (includePermissions) {
+    plain.permissions = Array.isArray(plain.permissions)
+      ? plain.permissions.map((permission) => {
+          const permPlain =
+            typeof permission.get === 'function'
+              ? permission.get({ plain: true })
+              : { ...permission }
+
+          const payload = {
+            id: permPlain.id,
+            can_view: permPlain.can_view !== false,
+          }
+
+          if (permPlain.user_id) {
+            payload.user_id = permPlain.user_id
+          }
+          if (permPlain.user) {
+            payload.user = {
+              id: permPlain.user.id,
+              username: permPlain.user.username,
+              email: permPlain.user.email,
+            }
+          }
+
+          if (permPlain.campaign_id) {
+            payload.campaign_id = permPlain.campaign_id
+          }
+          if (permPlain.campaign) {
+            payload.campaign = {
+              id: permPlain.campaign.id,
+              name: permPlain.campaign.name,
+            }
+          }
+
+          return payload
+        })
+      : []
+  } else {
+    delete plain.permissions
+  }
+
+  return plain
 }
 
 const FIELD_ORDER = [
@@ -633,56 +742,59 @@ export const getEntityById = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
+    const canManageSecrets = access.isOwner || access.isAdmin
+    const campaignIds = Array.from(readContext?.campaignIds ?? [])
+
+    const secretQueryBase = {
+      where: { entity_id: entity.id },
+      include: [SECRET_PERMISSION_INCLUDE, SECRET_CREATOR_INCLUDE],
+      order: [['created_at', 'ASC']],
+      distinct: true,
+    }
+
     let secrets = []
 
-    if (access.isOwner || access.isAdmin) {
-      secrets = await EntitySecret.findAll({
-        where: { entity_id: entity.id },
-        order: [['created_at', 'ASC']],
-        include: [
-          {
-            model: EntitySecretPermission,
-            as: 'permissions',
-            attributes: ['id', 'user_id', 'can_view'],
-            required: false,
-          },
-        ],
-      })
+    if (canManageSecrets) {
+      secrets = await EntitySecret.findAll(secretQueryBase)
     } else {
-      secrets = await EntitySecret.findAll({
-        where: {
-          entity_id: entity.id,
-          [Op.or]: [
-            { created_by: user.id },
-            { '$permissions.user_id$': user.id, '$permissions.can_view$': true },
-          ],
-        },
-        include: [
-          {
-            model: EntitySecretPermission,
-            as: 'permissions',
-            attributes: ['id', 'user_id', 'can_view'],
-            required: false,
+      const visibilityClauses = []
+
+      if (user?.id) {
+        visibilityClauses.push({ created_by: user.id })
+        visibilityClauses.push({
+          '$permissions.user_id$': user.id,
+          '$permissions.can_view$': true,
+        })
+      }
+
+      if (campaignIds.length > 0) {
+        visibilityClauses.push({
+          '$permissions.campaign_id$': { [Op.in]: campaignIds },
+          '$permissions.can_view$': true,
+        })
+      }
+
+      if (visibilityClauses.length > 0) {
+        secrets = await EntitySecret.findAll({
+          ...secretQueryBase,
+          where: {
+            entity_id: entity.id,
+            [Op.or]: visibilityClauses,
           },
-        ],
-        order: [['created_at', 'ASC']],
-      })
+        })
+      }
     }
 
     const payload = await buildEntityPayload(entity)
-    payload.secrets = secrets.map((secret) => {
-      const plain = secret.get({ plain: true })
-      if (!access.isOwner && !access.isAdmin) {
-        delete plain.permissions
-      }
-      return plain
-    })
+    payload.secrets = secrets.map((secret) =>
+      formatSecretRecord(secret, canManageSecrets)
+    )
 
     const canDelete = access.isOwner || access.isAdmin || isCreator
     payload.permissions = {
       canEdit,
       canDelete,
-      canManageSecrets: access.isOwner || access.isAdmin,
+      canManageSecrets,
     }
     payload.access = {
       isOwner: access.isOwner,
@@ -718,18 +830,15 @@ export const getEntitySecrets = async (req, res) => {
 
     const secrets = await EntitySecret.findAll({
       where: { entity_id: entity.id },
-      include: [
-        {
-          model: EntitySecretPermission,
-          as: 'permissions',
-          attributes: ['id', 'user_id', 'can_view'],
-          required: false,
-        },
-      ],
+      include: [SECRET_PERMISSION_INCLUDE, SECRET_CREATOR_INCLUDE],
       order: [['created_at', 'ASC']],
+      distinct: true,
     })
 
-    res.json({ success: true, data: secrets })
+    res.json({
+      success: true,
+      data: secrets.map((secret) => formatSecretRecord(secret, true)),
+    })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }
@@ -739,11 +848,25 @@ export const createEntitySecret = async (req, res) => {
   try {
     const { user } = req
     const { id } = req.params
-    const { title, content } = req.body
+    const {
+      title,
+      summary,
+      content,
+      description,
+      user_ids: userIdsInput,
+      userIds: userIdsAlt,
+      campaign_ids: campaignIdsInput,
+      campaignIds: campaignIdsAlt,
+    } = req.body || {}
 
-    if (!content) {
-      return res.status(400).json({ success: false, message: 'content is required' })
+    const resolvedContent = (description ?? content ?? '').trim()
+    if (!resolvedContent) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'content is required' })
     }
+
+    const resolvedTitle = summary ?? title ?? ''
 
     const entity = await Entity.findByPk(id)
     if (!entity) {
@@ -759,25 +882,74 @@ export const createEntitySecret = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    const secret = await EntitySecret.create({
-      entity_id: entity.id,
-      created_by: user.id,
-      title,
-      content,
-    })
+    let userIds = []
+    let campaignIds = []
+    try {
+      userIds = normaliseSecretAudienceIds(
+        userIdsInput !== undefined ? userIdsInput : userIdsAlt,
+        'user_ids'
+      )
+      campaignIds = normaliseSecretAudienceIds(
+        campaignIdsInput !== undefined ? campaignIdsInput : campaignIdsAlt,
+        'campaign_ids'
+      )
+    } catch (validationError) {
+      return res
+        .status(400)
+        .json({ success: false, message: validationError.message })
+    }
 
-    const payload = await EntitySecret.findByPk(secret.id, {
-      include: [
+    const transaction = await sequelize.transaction()
+
+    try {
+      const secret = await EntitySecret.create(
         {
-          model: EntitySecretPermission,
-          as: 'permissions',
-          attributes: ['id', 'user_id', 'can_view'],
-          required: false,
+          entity_id: entity.id,
+          created_by: user.id,
+          title: resolvedTitle,
+          content: resolvedContent,
         },
-      ],
-    })
+        { transaction }
+      )
 
-    res.status(201).json({ success: true, data: payload })
+      const permissionPayload = []
+      userIds.forEach((userId) => {
+        permissionPayload.push({
+          secret_id: secret.id,
+          user_id: userId,
+          can_view: true,
+        })
+      })
+      campaignIds.forEach((campaignId) => {
+        permissionPayload.push({
+          secret_id: secret.id,
+          campaign_id: campaignId,
+          can_view: true,
+        })
+      })
+
+      if (permissionPayload.length > 0) {
+        await EntitySecretPermission.bulkCreate(permissionPayload, {
+          ignoreDuplicates: true,
+          transaction,
+        })
+      }
+
+      const payload = await EntitySecret.findByPk(secret.id, {
+        include: [SECRET_PERMISSION_INCLUDE, SECRET_CREATOR_INCLUDE],
+        transaction,
+      })
+
+      await transaction.commit()
+
+      res.status(201).json({
+        success: true,
+        data: formatSecretRecord(payload, true),
+      })
+    } catch (creationError) {
+      await transaction.rollback()
+      throw creationError
+    }
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }
