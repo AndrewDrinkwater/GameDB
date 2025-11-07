@@ -22,6 +22,7 @@ import {
   buildReadableEntitiesWhereClause,
   canUserReadEntity,
   canUserWriteEntity,
+  fetchUserWorldCharacterCampaignIds,
 } from '../utils/entityAccess.js'
 
 const VISIBILITY_VALUES = new Set(['hidden', 'visible', 'partial'])
@@ -117,6 +118,69 @@ const SECRET_CREATOR_INCLUDE = {
   association: 'creator',
   attributes: ['id', 'username', 'email'],
   required: false,
+}
+
+const fetchEntitySecretsForAccess = async ({
+  entityId,
+  worldId,
+  user,
+  canManageSecrets,
+  campaignIds = [],
+  isAdmin = false,
+}) => {
+  const secretQueryBase = {
+    where: { entity_id: entityId },
+    include: [SECRET_PERMISSION_INCLUDE, SECRET_CREATOR_INCLUDE],
+    order: [['created_at', 'ASC']],
+    distinct: true,
+  }
+
+  if (canManageSecrets) {
+    return EntitySecret.findAll(secretQueryBase)
+  }
+
+  const visibilityClauses = []
+
+  if (user?.id) {
+    visibilityClauses.push({ created_by: user.id })
+    visibilityClauses.push({
+      '$permissions.user_id$': user.id,
+      '$permissions.can_view$': true,
+    })
+  }
+
+  let effectiveCampaignIds = Array.isArray(campaignIds)
+    ? campaignIds.map((campaignId) => String(campaignId)).filter(Boolean)
+    : []
+
+  if (!canManageSecrets && isAdmin && user?.id && effectiveCampaignIds.length === 0) {
+    const { campaignIds: derivedCampaignIds } = await fetchUserWorldCharacterCampaignIds(
+      worldId,
+      user.id,
+    )
+    effectiveCampaignIds = Array.from(derivedCampaignIds).map((campaignId) =>
+      String(campaignId),
+    )
+  }
+
+  if (effectiveCampaignIds.length > 0) {
+    visibilityClauses.push({
+      '$permissions.campaign_id$': { [Op.in]: effectiveCampaignIds },
+      '$permissions.can_view$': true,
+    })
+  }
+
+  if (visibilityClauses.length === 0) {
+    return []
+  }
+
+  return EntitySecret.findAll({
+    ...secretQueryBase,
+    where: {
+      entity_id: entityId,
+      [Op.or]: visibilityClauses,
+    },
+  })
 }
 
 const formatSecretRecord = (secret, includePermissions = false) => {
@@ -742,48 +806,17 @@ export const getEntityById = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    const canManageSecrets = access.isOwner || access.isAdmin
+    const canManageSecrets = access.isOwner
     const campaignIds = Array.from(readContext?.campaignIds ?? [])
 
-    const secretQueryBase = {
-      where: { entity_id: entity.id },
-      include: [SECRET_PERMISSION_INCLUDE, SECRET_CREATOR_INCLUDE],
-      order: [['created_at', 'ASC']],
-      distinct: true,
-    }
-
-    let secrets = []
-
-    if (canManageSecrets) {
-      secrets = await EntitySecret.findAll(secretQueryBase)
-    } else {
-      const visibilityClauses = []
-
-      if (user?.id) {
-        visibilityClauses.push({ created_by: user.id })
-        visibilityClauses.push({
-          '$permissions.user_id$': user.id,
-          '$permissions.can_view$': true,
-        })
-      }
-
-      if (campaignIds.length > 0) {
-        visibilityClauses.push({
-          '$permissions.campaign_id$': { [Op.in]: campaignIds },
-          '$permissions.can_view$': true,
-        })
-      }
-
-      if (visibilityClauses.length > 0) {
-        secrets = await EntitySecret.findAll({
-          ...secretQueryBase,
-          where: {
-            entity_id: entity.id,
-            [Op.or]: visibilityClauses,
-          },
-        })
-      }
-    }
+    const secrets = await fetchEntitySecretsForAccess({
+      entityId: entity.id,
+      worldId: entity.world_id,
+      user,
+      canManageSecrets,
+      campaignIds,
+      isAdmin: access.isAdmin,
+    })
 
     const payload = await buildEntityPayload(entity)
     payload.secrets = secrets.map((secret) =>
@@ -828,16 +861,27 @@ export const getEntitySecrets = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    const secrets = await EntitySecret.findAll({
-      where: { entity_id: entity.id },
-      include: [SECRET_PERMISSION_INCLUDE, SECRET_CREATOR_INCLUDE],
-      order: [['created_at', 'ASC']],
-      distinct: true,
+    const readContext = await buildEntityReadContext({
+      worldId: entity.world_id,
+      user,
+      worldAccess: access,
+    })
+
+    const canManageSecrets = access.isOwner
+    const campaignIds = Array.from(readContext?.campaignIds ?? [])
+
+    const secrets = await fetchEntitySecretsForAccess({
+      entityId: entity.id,
+      worldId: entity.world_id,
+      user,
+      canManageSecrets,
+      campaignIds,
+      isAdmin: access.isAdmin,
     })
 
     res.json({
       success: true,
-      data: secrets.map((secret) => formatSecretRecord(secret, true)),
+      data: secrets.map((secret) => formatSecretRecord(secret, canManageSecrets)),
     })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })

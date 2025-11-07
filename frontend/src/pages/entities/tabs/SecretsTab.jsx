@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import DrawerPanel from '../../../components/DrawerPanel.jsx'
 import ListCollector from '../../../components/ListCollector.jsx'
 import { createEntitySecret } from '../../../api/entities.js'
 import { fetchCampaigns } from '../../../api/campaigns.js'
@@ -73,17 +74,47 @@ export default function SecretsTab({
   const [options, setOptions] = useState({ campaigns: [], users: [] })
   const [optionsLoading, setOptionsLoading] = useState(false)
   const [optionsError, setOptionsError] = useState('')
+  const [optionsFetched, setOptionsFetched] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [saveSuccess, setSaveSuccess] = useState('')
+  const [secretFormOpen, setSecretFormOpen] = useState(false)
+
+  const formId = useMemo(
+    () => `entity-secret-create-${entity?.id || 'new'}`,
+    [entity?.id],
+  )
 
   const secretList = useMemo(() => normaliseSecretList(secrets), [secrets])
+
+  const resetFormFields = useCallback(() => {
+    setSummary('')
+    setDescription('')
+    setSelectedCampaigns([])
+    setSelectedUsers([])
+  }, [])
+
+  const handleOpenForm = useCallback(() => {
+    if (saving) return
+    resetFormFields()
+    setSaveError('')
+    setSaveSuccess('')
+    setSecretFormOpen(true)
+  }, [resetFormFields, saving])
+
+  const handleCloseForm = useCallback(() => {
+    if (saving) return
+    setSecretFormOpen(false)
+    setSaveError('')
+    resetFormFields()
+  }, [resetFormFields, saving])
 
   const loadOptions = useCallback(async () => {
     if (!canManageSecrets || !worldId) {
       setOptions({ campaigns: [], users: [] })
       setOptionsError('')
       setOptionsLoading(false)
+      setOptionsFetched(true)
       return
     }
 
@@ -127,18 +158,27 @@ export default function SecretsTab({
       const users = dedupeById(userEntries, 'value')
 
       setOptions({ campaigns, users })
+      setOptionsFetched(true)
     } catch (err) {
       console.error('❌ Failed to load secret visibility options', err)
       setOptions({ campaigns: [], users: [] })
       setOptionsError(err.message || 'Failed to load share options')
+      setOptionsFetched(true)
     } finally {
       setOptionsLoading(false)
     }
   }, [canManageSecrets, worldId])
 
   useEffect(() => {
+    setOptionsFetched(false)
+    setOptions({ campaigns: [], users: [] })
+    setOptionsError('')
+  }, [worldId, canManageSecrets])
+
+  useEffect(() => {
+    if (!secretFormOpen || optionsFetched) return
     loadOptions()
-  }, [loadOptions])
+  }, [secretFormOpen, optionsFetched, loadOptions])
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -167,10 +207,8 @@ export default function SecretsTab({
       const created = response?.data || response
 
       onSecretCreated?.(created)
-      setSummary('')
-      setDescription('')
-      setSelectedCampaigns([])
-      setSelectedUsers([])
+      resetFormFields()
+      setSecretFormOpen(false)
       setSaveSuccess('Secret created successfully.')
     } catch (err) {
       setSaveError(err.message || 'Failed to create secret')
@@ -245,13 +283,33 @@ export default function SecretsTab({
   return (
     <div className="entity-tab-content">
       {canManageSecrets && (
-        <section className="entity-card entity-secret-form">
-          <h2 className="entity-card-title">Create a secret</h2>
-          <p className="help-text">
-            Secrets are hidden notes that are only visible to selected campaigns or players.
-            Use them to track plot twists, hidden knowledge, or session prep.
-          </p>
-          <form className="entity-secret-form-body" onSubmit={handleSubmit}>
+        <DrawerPanel
+          isOpen={secretFormOpen}
+          onClose={handleCloseForm}
+          title="Create a secret"
+          description="Secrets are hidden notes that are only visible to selected campaigns or players."
+          footerActions={
+            <>
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={handleCloseForm}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn submit"
+                form={formId}
+                disabled={saving}
+              >
+                {saving ? 'Creating secret...' : 'Save secret'}
+              </button>
+            </>
+          }
+        >
+          <form id={formId} className="entity-secret-form-body" onSubmit={handleSubmit}>
             <div className="form-group">
               <label htmlFor="entity-secret-summary">Summary</label>
               <input
@@ -261,6 +319,7 @@ export default function SecretsTab({
                 onChange={(event) => setSummary(event.target.value)}
                 placeholder="Short label for this secret (optional)"
                 disabled={saving}
+                data-autofocus="true"
               />
             </div>
 
@@ -332,26 +391,32 @@ export default function SecretsTab({
                 {saveError}
               </div>
             )}
-
-            {saveSuccess && (
-              <div className="alert success" role="status">
-                {saveSuccess}
-              </div>
-            )}
-
-            <div className="entity-secret-actions">
-              <button type="submit" className="btn submit" disabled={saving}>
-                {saving ? 'Creating secret...' : 'Save secret'}
-              </button>
-            </div>
           </form>
-        </section>
+        </DrawerPanel>
       )}
 
       <section className="entity-card entity-secret-list-card">
         <div className="entity-card-header entity-card-header--subtle">
           <h2 className="entity-card-title">Secrets for {entity?.name || 'this entity'}</h2>
+          {canManageSecrets && (
+            <div className="entity-card-actions">
+              <button
+                type="button"
+                className="btn submit"
+                onClick={handleOpenForm}
+                disabled={saving}
+              >
+                New secret
+              </button>
+            </div>
+          )}
         </div>
+
+        {saveSuccess && (
+          <div className="alert success" role="status">
+            {saveSuccess}
+          </div>
+        )}
 
         {secretList.length === 0 ? (
           <p className="entity-empty-state">No secrets available for this entity yet.</p>
