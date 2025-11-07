@@ -1283,25 +1283,26 @@ th {
 
 /* === ENTITY DETAIL PAGE === */
 .entity-detail-page {
+  --entity-page-horizontal-padding: 1.5rem;
   min-height: 100vh;
   background: #f8fafc;
-  padding: 0 1.5rem 3rem;
+  padding: 0 var(--entity-page-horizontal-padding) 3rem;
 }
 
 .entity-detail-topbar {
   position: sticky;
   top: 0;
   z-index: 20;
-  width: 100%;
+  width: calc(100% + (var(--entity-page-horizontal-padding, 1.5rem) * 2));
+  margin-left: calc(-1 * var(--entity-page-horizontal-padding, 1.5rem));
   background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
-  padding: 1rem 1.5rem;
+  padding: 1rem var(--entity-page-horizontal-padding, 1.5rem);
 }
 
 .entity-detail-topbar-inner {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -1313,7 +1314,7 @@ th {
   display: flex;
   flex-direction: column;
   gap: 2.5rem;
-  padding-top: 2.5rem;
+  padding-top: 1.5rem;
 }
 
 .entity-detail-body {
@@ -1398,6 +1399,7 @@ th {
 
 .entity-header-left {
   justify-content: flex-start;
+  gap: 0.75rem;
 }
 
 .entity-header-center {
@@ -1418,10 +1420,17 @@ th {
 .tab-nav {
   display: flex;
   align-items: flex-end;
-  gap: 0.75rem;
+  gap: 0.5rem;
   border-bottom: 1px solid #e2e8f0;
   overflow-x: auto;
-  padding-bottom: 0.35rem;
+  padding: 0.25rem 0;
+  margin: 0;
+  background: transparent;
+  border-radius: 0;
+  margin-bottom: -1px;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
 }
 
 .tab-nav::-webkit-scrollbar {
@@ -1430,29 +1439,37 @@ th {
 
 .tab-nav-button {
   appearance: none;
-  border: none;
+  border: 1px solid transparent;
   background: transparent;
-  padding: 0.6rem 1.25rem;
+  padding: 0.65rem 1.25rem;
   font-size: 0.95rem;
   font-weight: 600;
   color: #475569;
-  border-bottom: 3px solid transparent;
+  border-bottom: none;
   border-radius: 0.75rem 0.75rem 0 0;
   cursor: pointer;
-  transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+  transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease,
+    box-shadow 0.2s ease;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
 }
 
 .tab-nav-button:hover,
 .tab-nav-button:focus-visible {
   color: #1e3a8a;
-  background-color: rgba(59, 130, 246, 0.08);
+  background-color: rgba(148, 163, 184, 0.2);
+  border-color: rgba(148, 163, 184, 0.45);
   outline: none;
+  box-shadow: none;
 }
 
 .tab-nav-button.is-active {
-  color: #1e40af;
-  border-color: #1d4ed8;
-  background-color: rgba(37, 99, 235, 0.12);
+  color: #1e293b;
+  border-color: #e2e8f0;
+  border-bottom: 1px solid #ffffff;
+  background-color: #ffffff;
+  box-shadow: none;
 }
 
 .entity-detail-topbar-inner .tab-nav {
@@ -1737,15 +1754,16 @@ body.theme-dark .entity-access-column h3 {
 
 @media (max-width: 900px) {
   .entity-detail-page {
-    padding: 0 1rem 2.5rem;
+    --entity-page-horizontal-padding: 1rem;
+    padding: 0 var(--entity-page-horizontal-padding) 2.5rem;
   }
 
   .entity-detail-topbar {
-    padding: 0.75rem 1rem;
+    padding: 0.75rem var(--entity-page-horizontal-padding, 1rem);
   }
 
   .entity-detail-shell {
-    padding-top: 2rem;
+    padding-top: 1.25rem;
     gap: 2rem;
   }
 
