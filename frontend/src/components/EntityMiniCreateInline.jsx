@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createEntity } from '../api/entities.js'
 
-const DEFAULT_VISIBILITY = 'hidden'
+const DEFAULT_VISIBILITY = 'visible'
 
 const normaliseEntityTypeOption = (entry) => {
   if (!entry) return null
