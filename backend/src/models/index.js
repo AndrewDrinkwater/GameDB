@@ -63,7 +63,7 @@ if (Entity.associate)
 if (EntitySecret.associate)
   EntitySecret.associate({ Entity, User, EntitySecretPermission })
 if (EntitySecretPermission.associate)
-  EntitySecretPermission.associate({ EntitySecret, User })
+  EntitySecretPermission.associate({ EntitySecret, User, Campaign })
 if (EntityRelationshipType.associate)
   EntityRelationshipType.associate({
     EntityRelationship,

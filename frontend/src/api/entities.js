@@ -42,6 +42,10 @@ export const updateEntity = (id, data) => api.patch(`/entities/${id}`, data)
 
 export const deleteEntity = (id) => api.delete(`/entities/${id}`)
 
+export const fetchEntitySecrets = (id) => api.get(`/entities/${id}/secrets`)
+
+export const createEntitySecret = (id, data) => api.post(`/entities/${id}/secrets`, data)
+
 export const getEntityGraph = async (entityId, depth = 1) => {
   const params = new URLSearchParams()
   if (depth !== undefined && depth !== null) {
