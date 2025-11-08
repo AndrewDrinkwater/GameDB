@@ -265,17 +265,8 @@ export default function EntityDetailPage() {
   )
 
   const canManageSecrets = useMemo(
-    () =>
-      Boolean(
-        entity?.permissions?.canManageSecrets ||
-          entity?.access?.isOwner ||
-          entity?.access?.isAdmin
-      ),
-    [
-      entity?.permissions?.canManageSecrets,
-      entity?.access?.isOwner,
-      entity?.access?.isAdmin,
-    ]
+    () => Boolean(entity?.permissions?.canManageSecrets),
+    [entity?.permissions?.canManageSecrets]
   )
 
   const showSecretsTab = canManageSecrets || secrets.length > 0
