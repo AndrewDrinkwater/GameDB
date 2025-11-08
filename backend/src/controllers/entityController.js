@@ -128,6 +128,7 @@ const fetchEntitySecretsForAccess = async ({
   campaignIds = [],
   isAdmin = false,
 }) => {
+  const isSystemAdmin = user?.role === 'system_admin'
   const secretQueryBase = {
     where: { entity_id: entityId },
     include: [SECRET_PERMISSION_INCLUDE, SECRET_CREATOR_INCLUDE],
@@ -153,7 +154,10 @@ const fetchEntitySecretsForAccess = async ({
     ? campaignIds.map((campaignId) => String(campaignId)).filter(Boolean)
     : []
 
-  if (!canManageSecrets && isAdmin && user?.id && effectiveCampaignIds.length === 0) {
+  const allowAdminCampaignDerivation =
+    !canManageSecrets && isAdmin && !isSystemAdmin && user?.id
+
+  if (allowAdminCampaignDerivation && effectiveCampaignIds.length === 0) {
     const { campaignIds: derivedCampaignIds } = await fetchUserWorldCharacterCampaignIds(
       worldId,
       user.id,
@@ -898,7 +902,7 @@ export const getEntitySecrets = async (req, res) => {
       return res.status(404).json({ success: false, message: 'World not found' })
     }
 
-    if (!access.isOwner && !access.isAdmin) {
+    if (!access.isOwner) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
