@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import DrawerPanel from '../../../components/DrawerPanel.jsx'
 import ListCollector from '../../../components/ListCollector.jsx'
-import { createEntitySecret } from '../../../api/entities.js'
+import { createEntitySecret, updateEntitySecret } from '../../../api/entities.js'
 import { fetchCampaigns } from '../../../api/campaigns.js'
 import { fetchCharacters } from '../../../api/characters.js'
 
@@ -60,12 +60,42 @@ const dedupeById = (items, key) => {
   return result
 }
 
+const extractPermissionValues = (secret, key) => {
+  if (!secret) return []
+  const permissions = Array.isArray(secret.permissions) ? secret.permissions : []
+  const seen = new Set()
+  const values = []
+
+  permissions.forEach((entry) => {
+    if (!entry) return
+    let value = entry[key]
+
+    if (!value) {
+      if (key === 'user_id') {
+        value = entry.user?.id
+      } else if (key === 'campaign_id') {
+        value = entry.campaign?.id
+      }
+    }
+
+    if (!value) return
+
+    const str = String(value)
+    if (seen.has(str)) return
+    seen.add(str)
+    values.push(str)
+  })
+
+  return values
+}
+
 export default function SecretsTab({
   entity,
   secrets,
   worldId,
   canManageSecrets,
   onSecretCreated,
+  onSecretUpdated,
 }) {
   const [summary, setSummary] = useState('')
   const [description, setDescription] = useState('')
@@ -79,6 +109,9 @@ export default function SecretsTab({
   const [saveError, setSaveError] = useState('')
   const [saveSuccess, setSaveSuccess] = useState('')
   const [secretFormOpen, setSecretFormOpen] = useState(false)
+  const [editingSecret, setEditingSecret] = useState(null)
+
+  const isEditingSecret = useMemo(() => Boolean(editingSecret?.id), [editingSecret?.id])
 
   const formId = useMemo(
     () => `entity-secret-create-${entity?.id || 'new'}`,
@@ -94,18 +127,73 @@ export default function SecretsTab({
     setSelectedUsers([])
   }, [])
 
-  const handleOpenForm = useCallback(() => {
+  const handleOpenCreateForm = useCallback(() => {
     if (saving) return
+    setEditingSecret(null)
     resetFormFields()
     setSaveError('')
     setSaveSuccess('')
     setSecretFormOpen(true)
   }, [resetFormFields, saving])
 
+  const handleEditSecret = useCallback(
+    (secret) => {
+      if (!canManageSecrets || saving) return
+      if (!secret) return
+
+      const nextSummary = secret.title ?? ''
+      const nextDescription = secret.content ?? ''
+      setSummary(nextSummary ? String(nextSummary) : '')
+      setDescription(nextDescription ? String(nextDescription) : '')
+      setSelectedCampaigns(extractPermissionValues(secret, 'campaign_id'))
+      setSelectedUsers(extractPermissionValues(secret, 'user_id'))
+      setOptions((previous) => {
+        const nextCampaigns = Array.isArray(previous?.campaigns)
+          ? [...previous.campaigns]
+          : []
+        const nextUsers = Array.isArray(previous?.users) ? [...previous.users] : []
+
+        const addOption = (collection, value, label) => {
+          if (!value) return
+          const str = String(value)
+          if (collection.some((entry) => entry?.value === str)) return
+          collection.push({ value: str, label })
+        }
+
+        const permissions = Array.isArray(secret.permissions) ? secret.permissions : []
+        permissions.forEach((entry) => {
+          if (!entry) return
+
+          const userValue = entry.user_id ?? entry.user?.id
+          if (userValue) {
+            const userLabel = entry.user ? buildUserLabel(entry.user) : `User ${String(userValue).slice(0, 8)}`
+            addOption(nextUsers, userValue, userLabel)
+          }
+
+          const campaignValue = entry.campaign_id ?? entry.campaign?.id
+          if (campaignValue) {
+            const campaignLabel = entry.campaign?.name
+              ? entry.campaign.name
+              : `Campaign ${String(campaignValue).slice(0, 8)}`
+            addOption(nextCampaigns, campaignValue, campaignLabel)
+          }
+        })
+
+        return { campaigns: nextCampaigns, users: nextUsers }
+      })
+      setEditingSecret(secret)
+      setSaveError('')
+      setSaveSuccess('')
+      setSecretFormOpen(true)
+    },
+    [canManageSecrets, saving],
+  )
+
   const handleCloseForm = useCallback(() => {
     if (saving) return
     setSecretFormOpen(false)
     setSaveError('')
+    setEditingSecret(null)
     resetFormFields()
   }, [resetFormFields, saving])
 
@@ -203,15 +291,28 @@ export default function SecretsTab({
         user_ids: selectedUsers,
       }
 
-      const response = await createEntitySecret(entity.id, payload)
-      const created = response?.data || response
+      let response
+      if (isEditingSecret && editingSecret?.id) {
+        response = await updateEntitySecret(entity.id, editingSecret.id, payload)
+      } else {
+        response = await createEntitySecret(entity.id, payload)
+      }
 
-      onSecretCreated?.(created)
+      const record = response?.data || response
+
+      if (isEditingSecret && editingSecret?.id) {
+        onSecretUpdated?.(record)
+        setSaveSuccess('Secret updated successfully.')
+      } else {
+        onSecretCreated?.(record)
+        setSaveSuccess('Secret created successfully.')
+      }
+
       resetFormFields()
+      setEditingSecret(null)
       setSecretFormOpen(false)
-      setSaveSuccess('Secret created successfully.')
     } catch (err) {
-      setSaveError(err.message || 'Failed to create secret')
+      setSaveError(err.message || 'Failed to save secret')
     } finally {
       setSaving(false)
     }
@@ -280,14 +381,21 @@ export default function SecretsTab({
     )
   }
 
+  const drawerTitle = isEditingSecret ? 'Edit secret' : 'Create a secret'
+  const drawerDescription = isEditingSecret
+    ? 'Update the secret content or who can access it.'
+    : 'Secrets are hidden notes that are only visible to selected campaigns or players.'
+  const submitButtonLabel = isEditingSecret ? 'Update secret' : 'Save secret'
+  const submitButtonBusyLabel = isEditingSecret ? 'Updating secret...' : 'Creating secret...'
+
   return (
     <div className="entity-tab-content">
       {canManageSecrets && (
         <DrawerPanel
           isOpen={secretFormOpen}
           onClose={handleCloseForm}
-          title="Create a secret"
-          description="Secrets are hidden notes that are only visible to selected campaigns or players."
+          title={drawerTitle}
+          description={drawerDescription}
           footerActions={
             <>
               <button
@@ -304,7 +412,7 @@ export default function SecretsTab({
                 form={formId}
                 disabled={saving}
               >
-                {saving ? 'Creating secret...' : 'Save secret'}
+                {saving ? submitButtonBusyLabel : submitButtonLabel}
               </button>
             </>
           }
@@ -403,7 +511,7 @@ export default function SecretsTab({
               <button
                 type="button"
                 className="btn submit"
-                onClick={handleOpenForm}
+                onClick={handleOpenCreateForm}
                 disabled={saving}
               >
                 New secret
@@ -441,6 +549,19 @@ export default function SecretsTab({
                       )}
                     </div>
                   </div>
+
+                  {canManageSecrets && (
+                    <div className="entity-secret-actions">
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        onClick={() => handleEditSecret(secret)}
+                        disabled={saving}
+                      >
+                        Edit secret
+                      </button>
+                    </div>
+                  )}
 
                   {secret.content ? (
                     <p className="entity-secret-content">{secret.content}</p>

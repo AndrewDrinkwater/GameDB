@@ -174,12 +174,53 @@ const fetchEntitySecretsForAccess = async ({
     return []
   }
 
-  return EntitySecret.findAll({
+  const secrets = await EntitySecret.findAll({
     ...secretQueryBase,
     where: {
       entity_id: entityId,
       [Op.or]: visibilityClauses,
     },
+  })
+
+  if (!Array.isArray(secrets) || secrets.length === 0) {
+    return secrets
+  }
+
+  const userId = user?.id ? String(user.id) : null
+  const campaignIdSet = new Set(effectiveCampaignIds.map((campaignId) => String(campaignId)))
+
+  return secrets.filter((secret) => {
+    const plain =
+      typeof secret.get === 'function' ? secret.get({ plain: true }) : { ...secret }
+
+    const creatorId = plain.created_by ?? plain.createdBy ?? plain.createdById ?? null
+    if (userId && creatorId && String(creatorId) === userId) {
+      return true
+    }
+
+    const permissions = Array.isArray(plain.permissions) ? plain.permissions : []
+
+    return permissions.some((permission) => {
+      if (permission?.can_view === false) {
+        return false
+      }
+
+      const permUserId = permission.user_id ?? permission.user?.id ?? null
+      if (userId && permUserId && String(permUserId) === userId) {
+        return true
+      }
+
+      if (campaignIdSet.size === 0) {
+        return false
+      }
+
+      const permCampaignId = permission.campaign_id ?? permission.campaign?.id ?? null
+      if (permCampaignId && campaignIdSet.has(String(permCampaignId))) {
+        return true
+      }
+
+      return false
+    })
   })
 }
 
@@ -996,5 +1037,202 @@ export const createEntitySecret = async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+export const updateEntitySecret = async (req, res) => {
+  try {
+    const { user } = req
+    const { id, secretId } = req.params
+    const {
+      title,
+      summary,
+      content,
+      description,
+      user_ids: userIdsInput,
+      userIds: userIdsAlt,
+      campaign_ids: campaignIdsInput,
+      campaignIds: campaignIdsAlt,
+    } = req.body || {}
+
+    const entity = await Entity.findByPk(id)
+    if (!entity) {
+      return res.status(404).json({ success: false, message: 'Entity not found' })
+    }
+
+    const access = await checkWorldAccess(entity.world_id, user)
+    if (!access.world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    const secret = await EntitySecret.findByPk(secretId)
+    if (!secret || String(secret.entity_id) !== String(entity.id)) {
+      return res.status(404).json({ success: false, message: 'Secret not found' })
+    }
+
+    const isSecretCreator = secret.created_by === user?.id
+    const canManageSecret = access.isOwner || isSecretCreator
+
+    if (!canManageSecret) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const canModifyAudience = access.isOwner
+
+    const secretUpdates = {}
+    const resolvedTitle = summary ?? title
+    if (resolvedTitle !== undefined) {
+      secretUpdates.title = String(resolvedTitle).trim()
+    }
+
+    const contentInput = description ?? content
+    if (contentInput !== undefined) {
+      const trimmed = String(contentInput).trim()
+      if (!trimmed) {
+        return res.status(400).json({ success: false, message: 'content is required' })
+      }
+      secretUpdates.content = trimmed
+    }
+
+    const hasUserIdsInput = userIdsInput !== undefined || userIdsAlt !== undefined
+    const hasCampaignIdsInput = campaignIdsInput !== undefined || campaignIdsAlt !== undefined
+
+    if (!canModifyAudience && (hasUserIdsInput || hasCampaignIdsInput)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    let userIds = []
+    let campaignIds = []
+
+    try {
+      if (hasUserIdsInput) {
+        userIds = normaliseSecretAudienceIds(
+          userIdsInput !== undefined ? userIdsInput : userIdsAlt,
+          'user_ids',
+        )
+      }
+
+      if (hasCampaignIdsInput) {
+        campaignIds = normaliseSecretAudienceIds(
+          campaignIdsInput !== undefined ? campaignIdsInput : campaignIdsAlt,
+          'campaign_ids',
+        )
+      }
+    } catch (validationError) {
+      return res
+        .status(400)
+        .json({ success: false, message: validationError.message })
+    }
+
+    if (
+      Object.keys(secretUpdates).length === 0 &&
+      !hasUserIdsInput &&
+      !hasCampaignIdsInput
+    ) {
+      const payload = await EntitySecret.findByPk(secret.id, {
+        include: [SECRET_PERMISSION_INCLUDE, SECRET_CREATOR_INCLUDE],
+      })
+
+      return res.json({
+        success: true,
+        data: formatSecretRecord(payload, access.isOwner),
+      })
+    }
+
+    const transaction = await sequelize.transaction()
+
+    try {
+      if (Object.keys(secretUpdates).length > 0) {
+        await secret.update(secretUpdates, { transaction })
+      }
+
+      const permissionPayload = []
+
+      if (hasUserIdsInput) {
+        if (userIds.length > 0) {
+          await EntitySecretPermission.destroy({
+            where: {
+              secret_id: secret.id,
+              user_id: { [Op.notIn]: userIds },
+              campaign_id: null,
+            },
+            transaction,
+          })
+        } else {
+          await EntitySecretPermission.destroy({
+            where: {
+              secret_id: secret.id,
+              user_id: { [Op.ne]: null },
+              campaign_id: null,
+            },
+            transaction,
+          })
+        }
+
+        userIds.forEach((userId) => {
+          permissionPayload.push({
+            secret_id: secret.id,
+            user_id: userId,
+            campaign_id: null,
+            can_view: true,
+          })
+        })
+      }
+
+      if (hasCampaignIdsInput) {
+        if (campaignIds.length > 0) {
+          await EntitySecretPermission.destroy({
+            where: {
+              secret_id: secret.id,
+              campaign_id: { [Op.notIn]: campaignIds },
+              user_id: null,
+            },
+            transaction,
+          })
+        } else {
+          await EntitySecretPermission.destroy({
+            where: {
+              secret_id: secret.id,
+              campaign_id: { [Op.ne]: null },
+              user_id: null,
+            },
+            transaction,
+          })
+        }
+
+        campaignIds.forEach((campaignId) => {
+          permissionPayload.push({
+            secret_id: secret.id,
+            campaign_id: campaignId,
+            user_id: null,
+            can_view: true,
+          })
+        })
+      }
+
+      if (permissionPayload.length > 0) {
+        await EntitySecretPermission.bulkCreate(permissionPayload, {
+          ignoreDuplicates: true,
+          updateOnDuplicate: ['can_view', 'updated_at'],
+          transaction,
+        })
+      }
+
+      await transaction.commit()
+    } catch (updateError) {
+      await transaction.rollback()
+      throw updateError
+    }
+
+    const payload = await EntitySecret.findByPk(secret.id, {
+      include: [SECRET_PERMISSION_INCLUDE, SECRET_CREATOR_INCLUDE],
+    })
+
+    return res.json({
+      success: true,
+      data: formatSecretRecord(payload, access.isOwner),
+    })
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message })
   }
 }

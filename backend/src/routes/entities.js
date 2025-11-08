@@ -13,6 +13,7 @@ import {
   getEntityById,
   getEntitySecrets,
   searchEntities,
+  updateEntitySecret,
   updateEntity,
 } from '../controllers/entityController.js'
 import { getEntityGraph } from '../controllers/entityGraphController.js'
@@ -466,5 +467,6 @@ router.patch('/:id', updateEntity)
 router.delete('/:id', deleteEntity)
 router.get('/:id/secrets', getEntitySecrets)
 router.post('/:id/secrets', createEntitySecret)
+router.patch('/:id/secrets/:secretId', updateEntitySecret)
 
 export default router
