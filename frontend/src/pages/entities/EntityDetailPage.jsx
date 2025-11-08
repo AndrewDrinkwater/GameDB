@@ -208,7 +208,7 @@ export default function EntityDetailPage() {
     navigate(`/entities/${id}/relationship-viewer`)
   }, [navigate, id])
 
-  const handleSecretCreated = useCallback((secret) => {
+  const handleSecretUpsert = useCallback((secret) => {
     if (!secret) return
 
     setEntity((previous) => {
@@ -827,7 +827,8 @@ export default function EntityDetailPage() {
               secrets={secrets}
               worldId={worldId}
               canManageSecrets={canManageSecrets}
-              onSecretCreated={handleSecretCreated}
+              onSecretCreated={handleSecretUpsert}
+              onSecretUpdated={handleSecretUpsert}
             />
           )}
 
