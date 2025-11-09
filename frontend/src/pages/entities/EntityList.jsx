@@ -325,14 +325,9 @@ export default function EntityList() {
       setEntityFormUiState(createDrawerFooterState('create'))
       setEntitiesError('')
       setToast(null)
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete(FILTER_PARAM)
-        return next
-      })
       previousWorldIdRef.current = worldId
     }
-  }, [worldId, panelOpen, setSearchParams, viewingUnassigned])
+  }, [worldId, panelOpen, viewingUnassigned])
 
   useEffect(() => {
     if (!isSystemAdmin && viewingUnassigned) {
@@ -1304,13 +1299,6 @@ export default function EntityList() {
           </button>
         </div>
       </div>
-
-      {selectedCampaign && !canManage && !viewingUnassigned && (
-        <div className="alert info" role="status">
-          You can view the entities that are shared with you, but only the world owner,
-          a campaign DM, or a system administrator can create or edit them.
-        </div>
-      )}
 
       {viewingUnassigned && (
         <div className="alert info" role="status">
