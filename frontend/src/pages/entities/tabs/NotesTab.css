@@ -1,26 +1,76 @@
 .entity-notes {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 1.5rem;
 }
 
-@media (min-width: 1024px) {
-  .entity-notes {
-    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.1fr);
-  }
+.entity-notes-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
-.entity-notes-form header,
-.entity-notes-feed header {
+.entity-notes-feed-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.entity-notes-feed-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.entity-notes-create-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
 }
 
 .entity-notes-context {
   margin: 0;
   font-size: 0.9rem;
+  color: var(--text-muted, #5f6b7a);
+}
+
+.entity-notes-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: var(--surface-strong, #f3f6fb);
+  border: 1px solid var(--border-subtle, #d6dbe4);
+}
+
+.entity-notes-filter-bar label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.entity-notes-filter-bar select {
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle, #d6dbe4);
+  padding: 0.35rem 0.75rem;
+  font: inherit;
+  background: var(--surface-weak, #fff);
+  color: inherit;
+}
+
+.entity-notes-filter-bar select:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.entity-notes-filter-count {
+  margin-left: auto;
+  font-size: 0.85rem;
   color: var(--text-muted, #5f6b7a);
 }
 
@@ -150,13 +200,6 @@
   gap: 0.5rem;
 }
 
-.entity-notes-feed .ghost {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-}
-
 .entity-notes-loading {
   display: flex;
   align-items: center;
@@ -190,6 +233,7 @@
   display: flex;
   justify-content: space-between;
   gap: 0.75rem;
+  flex-wrap: wrap;
   align-items: center;
 }
 
@@ -198,6 +242,12 @@
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
+}
+
+.entity-note-timestamp {
+  font-size: 0.85rem;
+  color: var(--text-muted, #5f6b7a);
+  white-space: nowrap;
 }
 
 .entity-note-author {
