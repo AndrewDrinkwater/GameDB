@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, Loader2, RotateCcw } from 'lucide-react'
+import { AlertCircle, Loader2, Plus } from 'lucide-react'
 import PropTypes from '../../../utils/propTypes.js'
 import EntityInfoPreview from '../../../components/entities/EntityInfoPreview.jsx'
 import EntitySearchSelect from '../../../modules/relationships3/ui/EntitySearchSelect.jsx'
 import { fetchCharacters } from '../../../api/characters.js'
+import DrawerPanel from '../../../components/DrawerPanel.jsx'
 import './NotesTab.css'
 
 const SHARE_LABELS = {
@@ -109,6 +110,43 @@ const formatTimestamp = (value) => {
   }
 }
 
+const resolveAuthorLabel = (note) =>
+  note?.author?.username ||
+  note?.author?.name ||
+  note?.author?.email ||
+  note?.author_name ||
+  note?.author_email ||
+  'Unknown adventurer'
+
+const resolveAuthorKey = (note) => {
+  const author = note?.author || {}
+  const id =
+    author?.id ??
+    author?.authorId ??
+    note?.authorId ??
+    note?.author_id ??
+    note?.authorID
+  if (id !== undefined && id !== null) {
+    return `id:${String(id)}`
+  }
+
+  const email = author?.email ?? note?.author_email
+  if (email) {
+    return `email:${String(email).toLowerCase()}`
+  }
+
+  const username =
+    author?.username ??
+    author?.name ??
+    note?.author_username ??
+    note?.author_name
+  if (username) {
+    return `name:${String(username).toLowerCase()}`
+  }
+
+  return 'unknown'
+}
+
 const emptyArray = Object.freeze([])
 
 export default function NotesTab({
@@ -122,7 +160,6 @@ export default function NotesTab({
   notes = emptyArray,
   loading,
   error,
-  onReload,
   onCreateNote,
   creating,
   campaignMatchesEntityWorld,
@@ -137,6 +174,8 @@ export default function NotesTab({
   const [formSuccess, setFormSuccess] = useState('')
   const textareaRef = useRef(null)
   const [mentionPickerKey, setMentionPickerKey] = useState(0)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [selectedAuthor, setSelectedAuthor] = useState('all')
 
   const canShowForm =
     Boolean(selectedCampaignId) &&
@@ -159,9 +198,38 @@ export default function NotesTab({
     })
   }, [notes])
 
+  const authorFilters = useMemo(() => {
+    const options = [{ value: 'all', label: 'All notes' }]
+    const seen = new Set(['all'])
+
+    sortedNotes.forEach((note) => {
+      const key = resolveAuthorKey(note)
+      if (!key || seen.has(key)) return
+      seen.add(key)
+      options.push({ value: key, label: resolveAuthorLabel(note) })
+    })
+
+    return options
+  }, [sortedNotes])
+
+  const filteredNotes = useMemo(() => {
+    if (selectedAuthor === 'all') {
+      return sortedNotes
+    }
+
+    return sortedNotes.filter((note) => resolveAuthorKey(note) === selectedAuthor)
+  }, [selectedAuthor, sortedNotes])
+
   useEffect(() => {
     setShareType(isCampaignDm ? 'private' : 'private')
   }, [isCampaignDm, selectedCampaignId])
+
+  useEffect(() => {
+    if (authorFilters.some((option) => option.value === selectedAuthor)) {
+      return
+    }
+    setSelectedAuthor('all')
+  }, [authorFilters, selectedAuthor])
 
   useEffect(() => {
     let cancelled = false
@@ -296,12 +364,11 @@ export default function NotesTab({
         }
 
         setNoteContent('')
-        setFormSuccess('Note added')
         setMentionPickerKey((prev) => prev + 1)
         if (!isCampaignPlayer) {
           setCharacterId('')
         }
-        setTimeout(() => setFormSuccess(''), 4000)
+        closeDrawer()
       } catch (err) {
         console.error('Failed to submit note', err)
         setFormError(err.message || 'Failed to save note')
@@ -315,6 +382,7 @@ export default function NotesTab({
       selectedCampaignId,
       isCampaignPlayer,
       characterId,
+      closeDrawer,
     ],
   )
 
@@ -352,18 +420,69 @@ export default function NotesTab({
 
   const shareDisabled = creating
   const saveDisabled = creating || !noteContent.trim() || (isCampaignPlayer && !characterId)
+  const filterDisabled = sortedNotes.length === 0 || authorFilters.length <= 1
+
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false)
+    setFormError('')
+    setFormSuccess('')
+  }, [])
+
+  const openDrawer = useCallback(() => {
+    if (!canShowForm) return
+    setFormError('')
+    setFormSuccess('')
+    setDrawerOpen(true)
+  }, [canShowForm])
+
+  useEffect(() => {
+    if (!canShowForm && drawerOpen) {
+      closeDrawer()
+    }
+  }, [canShowForm, drawerOpen, closeDrawer])
 
   return (
     <div className="entity-notes">
-      <section className="entity-card entity-notes-form">
-        <header>
-          <h2>New note</h2>
-          {selectedCampaign?.name ? (
-            <p className="entity-notes-context">
-              Campaign: <strong>{selectedCampaign.name}</strong>
-            </p>
+      <section className="entity-card entity-notes-feed">
+        <header className="entity-notes-feed-header">
+          <div className="entity-notes-feed-title">
+            <h2>Notes</h2>
+            {selectedCampaign?.name ? (
+              <p className="entity-notes-context">
+                Campaign: <strong>{selectedCampaign.name}</strong>
+              </p>
+            ) : null}
+          </div>
+          {canShowForm ? (
+            <button
+              type="button"
+              className="primary entity-notes-create-button"
+              onClick={openDrawer}
+              disabled={creating}
+            >
+              <Plus size={16} /> Create note
+            </button>
           ) : null}
         </header>
+
+        <div className="entity-notes-filter-bar">
+          <label htmlFor="entity-notes-author-filter">Show notes from</label>
+          <select
+            id="entity-notes-author-filter"
+            value={selectedAuthor}
+            onChange={(event) => setSelectedAuthor(event.target.value)}
+            disabled={filterDisabled}
+          >
+            {authorFilters.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <span className="entity-notes-filter-count">
+            {filteredNotes.length} {filteredNotes.length === 1 ? 'note' : 'notes'}
+          </span>
+        </div>
 
         {!selectedCampaignId ? (
           <div className="entity-notes-alert info">
@@ -389,7 +508,74 @@ export default function NotesTab({
           </div>
         ) : null}
 
-        {canShowForm ? (
+        {error ? (
+          <div className="entity-notes-alert error">
+            <AlertCircle size={16} />
+            <p>{error}</p>
+          </div>
+        ) : null}
+
+        {loading ? (
+          <div className="entity-notes-loading">
+            <Loader2 className="spin" size={20} />
+            <span>Loading notes…</span>
+          </div>
+        ) : null}
+
+        {!loading && filteredNotes.length === 0 ? (
+          <p className="entity-notes-empty">
+            {sortedNotes.length === 0
+              ? 'No notes yet. Be the first to add one!'
+              : 'No notes from this person yet.'}
+          </p>
+        ) : null}
+
+        <div className="entity-notes-list" role="list">
+          {filteredNotes.map((note) => {
+            const createdAt = note?.createdAt ?? note?.created_at
+            const share = String(note?.shareType ?? note?.share_type ?? 'private')
+            const authorName = resolveAuthorLabel(note)
+            const characterName = note?.character?.name || ''
+            const formattedTimestamp = formatTimestamp(createdAt)
+            const createdAtDate = createdAt ? new Date(createdAt) : null
+            const isoTimestamp =
+              createdAtDate && !Number.isNaN(createdAtDate.getTime())
+                ? createdAtDate.toISOString()
+                : undefined
+
+            return (
+              <article key={note?.id} className="entity-note-card" role="listitem">
+                <header>
+                  <div className="entity-note-meta">
+                    <span className="entity-note-author">{authorName}</span>
+                    {characterName ? (
+                      <span className="entity-note-character">as {characterName}</span>
+                    ) : null}
+                    <span className={shareBadgeClass(share)}>
+                      {SHARE_LABELS[share] || 'Private'}
+                    </span>
+                  </div>
+                  <time
+                    className="entity-note-timestamp"
+                    dateTime={isoTimestamp}
+                    title={formattedTimestamp || undefined}
+                  >
+                    {formattedTimestamp || '—'}
+                  </time>
+                </header>
+                <div className="entity-note-body">{renderNoteBody(note)}</div>
+              </article>
+            )
+          })}
+        </div>
+      </section>
+
+      <DrawerPanel
+        isOpen={drawerOpen && canShowForm}
+        onClose={closeDrawer}
+        title="Create note"
+      >
+        <div className="entity-notes-form">
           <form onSubmit={handleSubmit} className="entity-notes-form-body">
             <label className="entity-notes-label" htmlFor="entity-note-content">
               Note
@@ -402,6 +588,7 @@ export default function NotesTab({
               placeholder="What do you want to remember?"
               rows={5}
               required
+              data-autofocus
             />
 
             <div className="entity-notes-mention-picker">
@@ -500,72 +687,8 @@ export default function NotesTab({
               </button>
             </div>
           </form>
-        ) : null}
-      </section>
-
-      <section className="entity-card entity-notes-feed">
-        <header>
-          <h2>Activity feed</h2>
-          <button
-            type="button"
-            onClick={onReload}
-            className="ghost"
-            disabled={loading}
-            title="Reload notes"
-          >
-            <RotateCcw size={16} />
-            Refresh
-          </button>
-        </header>
-
-        {error ? (
-          <div className="entity-notes-alert error">
-            <AlertCircle size={16} />
-            <p>{error}</p>
-          </div>
-        ) : null}
-
-        {loading ? (
-          <div className="entity-notes-loading">
-            <Loader2 className="spin" size={20} />
-            <span>Loading notes…</span>
-          </div>
-        ) : null}
-
-        {!loading && sortedNotes.length === 0 ? (
-          <p className="entity-notes-empty">No notes yet. Be the first to add one!</p>
-        ) : null}
-
-        <div className="entity-notes-list" role="list">
-          {sortedNotes.map((note) => {
-            const createdAt = note?.createdAt ?? note?.created_at
-            const share = String(note?.shareType ?? note?.share_type ?? 'private')
-            const authorName =
-              note?.author?.username || note?.author?.email || 'Unknown adventurer'
-            const characterName = note?.character?.name || ''
-
-            return (
-              <article key={note?.id} className="entity-note-card" role="listitem">
-                <header>
-                  <div className="entity-note-meta">
-                    <span className="entity-note-author">{authorName}</span>
-                    {characterName ? (
-                      <span className="entity-note-character">as {characterName}</span>
-                    ) : null}
-                    <span className={shareBadgeClass(share)}>
-                      {SHARE_LABELS[share] || 'Private'}
-                    </span>
-                  </div>
-                  <time dateTime={createdAt}>
-                    {formatTimestamp(createdAt)}
-                  </time>
-                </header>
-                <div className="entity-note-body">{renderNoteBody(note)}</div>
-              </article>
-            )
-          })}
         </div>
-      </section>
+      </DrawerPanel>
     </div>
   )
 }
@@ -584,7 +707,6 @@ NotesTab.propTypes = {
   notes: PropTypes.arrayOf(PropTypes.object),
   loading: PropTypes.bool,
   error: PropTypes.string,
-  onReload: PropTypes.func,
   onCreateNote: PropTypes.func,
   creating: PropTypes.bool,
   campaignMatchesEntityWorld: PropTypes.bool,
