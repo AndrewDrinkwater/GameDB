@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createEntityType } from '../../api/entityTypes.js'
 import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
@@ -12,7 +12,25 @@ export default function CreateEntityType() {
   const { selectedCampaign } = useCampaignContext()
   const [submitting, setSubmitting] = useState(false)
 
-  const canManage = user?.role === 'system_admin'
+  const selectedWorldOwnerId = useMemo(() => {
+    if (!selectedCampaign?.world) return ''
+    const world = selectedCampaign.world
+    return (
+      world.created_by ||
+      world.creator?.id ||
+      world.owner_id ||
+      world.owner?.id ||
+      ''
+    )
+  }, [selectedCampaign])
+
+  const isWorldOwner = Boolean(user?.id && selectedWorldOwnerId === user.id)
+
+  const canManage = useMemo(() => {
+    if (!user) return false
+    if (user.role === 'system_admin') return true
+    return isWorldOwner
+  }, [user, isWorldOwner])
   const selectedWorldId = selectedCampaign?.world?.id ?? ''
   const selectedWorldName = selectedCampaign?.world?.name ?? ''
 
@@ -28,7 +46,7 @@ export default function CreateEntityType() {
     return (
       <section className="page limited-access">
         <h1>Create Entity Type</h1>
-        <p>Only system administrators can create entity types.</p>
+        <p>Only system administrators or the world owner can create entity types.</p>
         <button type="button" className="btn cancel" onClick={() => navigate('/entity-types')}>
           Back to Entity Types
         </button>

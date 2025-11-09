@@ -16,7 +16,25 @@ export default function CreateRelationshipType() {
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const canManage = useMemo(() => user?.role === 'system_admin', [user?.role])
+  const selectedWorldOwnerId = useMemo(() => {
+    if (!selectedCampaign?.world) return ''
+    const world = selectedCampaign.world
+    return (
+      world.created_by ||
+      world.creator?.id ||
+      world.owner_id ||
+      world.owner?.id ||
+      ''
+    )
+  }, [selectedCampaign])
+
+  const isWorldOwner = Boolean(user?.id && selectedWorldOwnerId === user.id)
+
+  const canManage = useMemo(() => {
+    if (!user) return false
+    if (user.role === 'system_admin') return true
+    return isWorldOwner
+  }, [user, isWorldOwner])
   const worldId = selectedCampaign?.world?.id ?? ''
   const worldOptions = useMemo(() => {
     if (!selectedCampaign?.world?.id) return []
@@ -68,7 +86,7 @@ export default function CreateRelationshipType() {
     return (
       <section className="page relationship-type-form-page limited-access">
         <h1>Create Relationship Type</h1>
-        <p>Only system administrators can create relationship types.</p>
+        <p>Only system administrators or the world owner can create relationship types.</p>
         <button
           type="button"
           className="btn cancel"
