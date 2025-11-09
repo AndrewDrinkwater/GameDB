@@ -473,6 +473,27 @@ export const listWorldEntities = async (req, res) => {
   }
 }
 
+export const listUnassignedEntities = async (req, res) => {
+  try {
+    if (req.user?.role !== 'system_admin') {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const entities = await Entity.findAll({
+      where: { world_id: null },
+      include: [
+        { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
+        { model: World, as: 'world', attributes: ['id', 'name'] },
+      ],
+      order: [['created_at', 'DESC']],
+    })
+
+    res.json({ success: true, data: entities })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
 const normaliseIdList = (value) => {
   if (!value) return []
   if (Array.isArray(value)) {
