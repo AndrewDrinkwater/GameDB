@@ -25,6 +25,42 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
     location.pathname === '/entities' || location.pathname.startsWith('/entities/')
 
   const campaignWorldId = selectedCampaign?.world?.id ?? ''
+  const isSystemAdmin = user?.role === 'system_admin'
+
+  const membershipRole = useMemo(() => {
+    if (!selectedCampaign || !user) return ''
+    const member = selectedCampaign.members?.find((entry) => entry?.user_id === user.id)
+    return member?.role ?? ''
+  }, [selectedCampaign, user])
+
+  const isSelectedWorldOwner = useMemo(() => {
+    if (!selectedCampaign || !user) return false
+    const worldOwnerId =
+      selectedCampaign.world?.created_by ??
+      selectedCampaign.world?.creator?.id ??
+      selectedCampaign.world?.owner_id ??
+      selectedCampaign.world?.owner?.id ??
+      ''
+    return worldOwnerId === user.id
+  }, [selectedCampaign, user])
+
+  const canViewAllEntities = Boolean(
+    selectedCampaignId && (membershipRole === 'dm' || isSelectedWorldOwner),
+  )
+  const canViewEntityTypes = Boolean(selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner))
+  const canViewBulkEntityUpload = Boolean(
+    selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner),
+  )
+  const canViewRelationshipTypes = Boolean(
+    selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner),
+  )
+  const shouldShowWorldAdminGroup = Boolean(
+    selectedCampaignId &&
+      (canViewAllEntities ||
+        canViewEntityTypes ||
+        canViewBulkEntityUpload ||
+        canViewRelationshipTypes),
+  )
 
   const isPlayerInSelectedCampaign = useMemo(() => {
     if (!selectedCampaign || !Array.isArray(selectedCampaign.members)) return false
@@ -151,67 +187,71 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
         </Link>
 
         {/* --- World Admin --- */}
-        <div className={`nav-group ${worldAdminCollapsed ? 'collapsed' : ''}`}>
-          <button
-            type="button"
-            className="nav-heading-btn"
-            onClick={() => setWorldAdminCollapsed((prev) => !prev)}
-            aria-expanded={!worldAdminCollapsed}
-            aria-controls="world-admin-nav"
-          >
-            <span className="nav-heading">World Admin</span>
-            <ChevronDown
-              size={14}
-              className={`nav-heading-icon ${worldAdminCollapsed ? 'collapsed' : ''}`}
-            />
-          </button>
-          <div id="world-admin-nav" className="nav-sub-links">
-            <Link
-              to="/entities"
-              className={`nav-entity-link ${
-                isEntitiesSection && !activeEntityType ? 'active' : ''
-              }`}
-              onClick={handleEntitiesClick}
+        {shouldShowWorldAdminGroup && (
+          <div className={`nav-group ${worldAdminCollapsed ? 'collapsed' : ''}`}>
+            <button
+              type="button"
+              className="nav-heading-btn"
+              onClick={() => setWorldAdminCollapsed((prev) => !prev)}
+              aria-expanded={!worldAdminCollapsed}
+              aria-controls="world-admin-nav"
             >
-              <Database size={16} className="nav-icon" />
-              <span>All Entities</span>
-            </Link>
+              <span className="nav-heading">World Admin</span>
+              <ChevronDown
+                size={14}
+                className={`nav-heading-icon ${worldAdminCollapsed ? 'collapsed' : ''}`}
+              />
+            </button>
+            <div id="world-admin-nav" className="nav-sub-links">
+              {canViewAllEntities && (
+                <Link
+                  to="/entities"
+                  className={`nav-entity-link ${
+                    isEntitiesSection && !activeEntityType ? 'active' : ''
+                  }`}
+                  onClick={handleEntitiesClick}
+                >
+                  <Database size={16} className="nav-icon" />
+                  <span>All Entities</span>
+                </Link>
+              )}
 
-            {user?.role === 'system_admin' && (
-              <Link
-                to="/entity-types"
-                className={`nav-entity-link ${isActive('/entity-types') ? 'active' : ''}`}
-              >
-                <Shapes size={16} className="nav-icon" />
-                <span>Entity Types</span>
-              </Link>
-            )}
+              {canViewEntityTypes && (
+                <Link
+                  to="/entity-types"
+                  className={`nav-entity-link ${isActive('/entity-types') ? 'active' : ''}`}
+                >
+                  <Shapes size={16} className="nav-icon" />
+                  <span>Entity Types</span>
+                </Link>
+              )}
 
-            {(user?.role === 'system_admin' || (selectedCampaignId && ownsWorld)) && (
-              <Link
-                to="/entities/bulk-upload"
-                className={`nav-entity-link ${
-                  isActive('/entities/bulk-upload') ? 'active' : ''
-                }`}
-              >
-                <Database size={16} className="nav-icon" />
-                <span>Bulk Entity Upload</span>
-              </Link>
-            )}
+              {canViewBulkEntityUpload && (
+                <Link
+                  to="/entities/bulk-upload"
+                  className={`nav-entity-link ${
+                    isActive('/entities/bulk-upload') ? 'active' : ''
+                  }`}
+                >
+                  <Database size={16} className="nav-icon" />
+                  <span>Bulk Entity Upload</span>
+                </Link>
+              )}
 
-            {user?.role === 'system_admin' && (
-              <Link
-                to="/relationship-types"
-                className={`nav-entity-link ${
-                  isActive('/relationship-types') ? 'active' : ''
-                }`}
-              >
-                <Link2 size={16} className="nav-icon" />
-                <span>Relationship Types</span>
-              </Link>
-            )}
+              {canViewRelationshipTypes && (
+                <Link
+                  to="/relationship-types"
+                  className={`nav-entity-link ${
+                    isActive('/relationship-types') ? 'active' : ''
+                  }`}
+                >
+                  <Link2 size={16} className="nav-icon" />
+                  <span>Relationship Types</span>
+                </Link>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* --- Campaigns --- */}
         <div className={`nav-group ${campaignsCollapsed ? 'collapsed' : ''}`}>
