@@ -1,14 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Pin, ChevronDown, Database, Shapes, Link2, Lock } from 'lucide-react'
+import { Pin, ChevronDown, Database, Shapes, Link2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
 import { getWorldEntityTypeUsage } from '../api/entityTypes.js'
-import { fetchWorlds } from '../api/worlds.js'
 
 export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
   const location = useLocation()
-  const { user, sessionReady } = useAuth()
+  const { user } = useAuth()
   const { selectedCampaign, selectedCampaignId } = useCampaignContext()
   const [campaignsCollapsed, setCampaignsCollapsed] = useState(false)
   const [charactersCollapsed, setCharactersCollapsed] = useState(false)
@@ -17,7 +16,6 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
   const [entityTypes, setEntityTypes] = useState([])
   const [loadingEntityTypes, setLoadingEntityTypes] = useState(false)
   const [entityTypeError, setEntityTypeError] = useState('')
-  const [ownsWorld, setOwnsWorld] = useState(false)
 
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search])
   const activeEntityType = searchParams.get('entityType') ?? ''
@@ -70,47 +68,6 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
       (member) => member?.user_id === user.id && member?.role === 'player',
     )
   }, [selectedCampaign, user])
-
-  // --- Determine if user owns any world ---
-  useEffect(() => {
-    let cancelled = false
-
-    if (!sessionReady || !user) {
-      setOwnsWorld(false)
-      return
-    }
-
-    const loadWorldOwnership = async () => {
-      try {
-        const response = await fetchWorlds()
-        const list = Array.isArray(response?.data)
-          ? response.data
-          : Array.isArray(response)
-          ? response
-          : []
-
-        if (cancelled) return
-
-        const owns = list.some((world) => {
-          if (!world) return false
-          if (world.created_by && world.created_by === user.id) return true
-          return world.creator?.id === user.id
-        })
-
-        setOwnsWorld(owns)
-      } catch (err) {
-        if (!cancelled) {
-          console.warn('⚠️ Failed to determine world ownership', err)
-          setOwnsWorld(false)
-        }
-      }
-    }
-
-    loadWorldOwnership()
-    return () => {
-      cancelled = true
-    }
-  }, [sessionReady, user])
 
   // --- Load entity types for selected campaign world ---
   useEffect(() => {
@@ -216,6 +173,18 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
                 </Link>
               )}
 
+              {canViewAllEntities && (
+                <Link
+                  to="/entity-relationships"
+                  className={`nav-entity-link ${
+                    isActive('/entity-relationships') ? 'active' : ''
+                  }`}
+                >
+                  <Link2 size={16} className="nav-icon" />
+                  <span>All Relationships</span>
+                </Link>
+              )}
+
               {canViewEntityTypes && (
                 <Link
                   to="/entity-types"
@@ -318,22 +287,6 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
               </Link>
             ))}
 
-            <Link
-              to="/entity-relationships"
-              className={`nav-entity-link ${isActive('/entity-relationships') ? 'active' : ''}`}
-            >
-              <Link2 size={16} className="nav-icon" />
-              <span>Relationships</span>
-            </Link>
-            {ownsWorld && (
-              <Link
-                to="/entity-secrets"
-                className={`nav-entity-link ${isActive('/entity-secrets') ? 'active' : ''}`}
-              >
-                <Lock size={16} className="nav-icon" />
-                <span>Secrets</span>
-              </Link>
-            )}
           </div>
         </div>
 
