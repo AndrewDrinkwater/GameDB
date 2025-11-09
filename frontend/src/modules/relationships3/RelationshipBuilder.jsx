@@ -28,7 +28,7 @@ export default function RelationshipBuilder({
   useEffect(() => {
     if (!worldId) return
     setLoading(true)
-    Promise.all([getWorldEntities(worldId), getRelationshipTypes()])
+    Promise.all([getWorldEntities(worldId), getRelationshipTypes({ worldId })])
       .then(([entsRes, typesRes]) => {
         const ents = Array.isArray(entsRes?.data) ? entsRes.data : entsRes
         const types =

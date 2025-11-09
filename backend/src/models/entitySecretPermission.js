@@ -13,7 +13,11 @@ export default (sequelize, DataTypes) => {
       },
       user_id: {
         type: DataTypes.UUID,
-        allowNull: false,
+        allowNull: true,
+      },
+      campaign_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
       },
       can_view: {
         type: DataTypes.BOOLEAN,
@@ -35,11 +39,21 @@ export default (sequelize, DataTypes) => {
       as: 'secret',
       onDelete: 'CASCADE',
     })
-    EntitySecretPermission.belongsTo(models.User, {
-      foreignKey: 'user_id',
-      as: 'user',
-      onDelete: 'CASCADE',
-    })
+    if (models.User) {
+      EntitySecretPermission.belongsTo(models.User, {
+        foreignKey: 'user_id',
+        as: 'user',
+        onDelete: 'CASCADE',
+      })
+    }
+
+    if (models.Campaign) {
+      EntitySecretPermission.belongsTo(models.Campaign, {
+        foreignKey: 'campaign_id',
+        as: 'campaign',
+        onDelete: 'CASCADE',
+      })
+    }
   }
 
   return EntitySecretPermission

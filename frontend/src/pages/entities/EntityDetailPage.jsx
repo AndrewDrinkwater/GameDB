@@ -26,6 +26,7 @@ import DossierTab from './tabs/DossierTab.jsx'
 import RelationshipsTab from './tabs/RelationshipsTab.jsx'
 import AccessTab from './tabs/AccessTab.jsx'
 import SystemTab from './tabs/SystemTab.jsx'
+import SecretsTab from './tabs/SecretsTab.jsx'
 
 const VISIBILITY_LABELS = {
   hidden: 'Hidden',
@@ -207,6 +208,46 @@ export default function EntityDetailPage() {
     navigate(`/entities/${id}/relationship-viewer`)
   }, [navigate, id])
 
+  const handleSecretUpsert = useCallback((secret) => {
+    if (!secret) return
+
+    setEntity((previous) => {
+      if (!previous) return previous
+
+      const existingSecrets = Array.isArray(previous.secrets)
+        ? previous.secrets
+        : []
+
+      const findIndex = existingSecrets.findIndex((entry) => {
+        if (!entry || !secret) return false
+        if (!entry.id || !secret.id) return false
+        return String(entry.id) === String(secret.id)
+      })
+
+      const nextSecrets =
+        findIndex >= 0
+          ? existingSecrets.map((entry, index) =>
+              index === findIndex ? secret : entry
+            )
+          : [...existingSecrets, secret]
+
+      const parseTimestamp = (value) => {
+        if (!value) return 0
+        const resolved = new Date(value).getTime()
+        return Number.isNaN(resolved) ? 0 : resolved
+      }
+
+      const sortedSecrets = nextSecrets
+        .slice()
+        .sort((a, b) =>
+          parseTimestamp(a?.created_at || a?.createdAt) -
+          parseTimestamp(b?.created_at || b?.createdAt)
+        )
+
+      return { ...previous, secrets: sortedSecrets }
+    })
+  }, [])
+
   const canEdit = useMemo(() => {
     if (entity?.permissions && typeof entity.permissions.canEdit === 'boolean') {
       return entity.permissions.canEdit
@@ -218,19 +259,36 @@ export default function EntityDetailPage() {
     return false
   }, [entity, user])
 
+  const secrets = useMemo(
+    () => (Array.isArray(entity?.secrets) ? entity.secrets : []),
+    [entity?.secrets]
+  )
+
+  const canManageSecrets = useMemo(
+    () => Boolean(entity?.permissions?.canManageSecrets),
+    [entity?.permissions?.canManageSecrets]
+  )
+
+  const showSecretsTab = canManageSecrets || secrets.length > 0
+
   const tabItems = useMemo(() => {
     const items = [
       { id: 'dossier', label: 'Dossier' },
       { id: 'relationships', label: 'Relationships' },
-      { id: 'system', label: 'System' },
     ]
 
-    if (canEdit && isEditing) {
-      items.splice(2, 0, { id: 'access', label: 'Access' })
+    if (showSecretsTab) {
+      items.push({ id: 'secrets', label: 'Secrets' })
     }
 
+    if (canEdit && isEditing) {
+      items.push({ id: 'access', label: 'Access' })
+    }
+
+    items.push({ id: 'system', label: 'System' })
+
     return items
-  }, [canEdit, isEditing])
+  }, [showSecretsTab, canEdit, isEditing])
 
   useEffect(() => {
     const availableTabs = new Set(tabItems.map((tab) => tab.id))
@@ -750,6 +808,18 @@ export default function EntityDetailPage() {
               handleRelationshipFiltersChange={handleRelationshipFiltersChange}
               handleRelationshipFiltersReset={handleRelationshipFiltersReset}
               setShowRelationshipForm={setShowRelationshipForm}
+            />
+          )}
+
+          {/* SECRETS TAB */}
+          {activeTab === 'secrets' && showSecretsTab && (
+            <SecretsTab
+              entity={entity}
+              secrets={secrets}
+              worldId={worldId}
+              canManageSecrets={canManageSecrets}
+              onSecretCreated={handleSecretUpsert}
+              onSecretUpdated={handleSecretUpsert}
             />
           )}
 

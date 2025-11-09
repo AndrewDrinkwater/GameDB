@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { List, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { deleteEntityType, getEntityTypes, updateEntityType } from '../../api/entityTypes.js'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import EntityTypeForm from './EntityTypeForm.jsx'
 
 const MANAGER_ROLES = new Set(['system_admin'])
@@ -10,6 +11,7 @@ const MANAGER_ROLES = new Set(['system_admin'])
 export default function EntityTypeList() {
   const navigate = useNavigate()
   const { user, token, sessionReady } = useAuth()
+  const { selectedCampaign } = useCampaignContext()
   const [entityTypes, setEntityTypes] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -19,11 +21,33 @@ export default function EntityTypeList() {
   const [deletingId, setDeletingId] = useState('')
   const [formError, setFormError] = useState('')
   const [toast, setToast] = useState(null)
+  const previousWorldIdRef = useRef(selectedCampaign?.world?.id ?? '')
+
+  const worldId = selectedCampaign?.world?.id ?? ''
+  const hasWorldContext = Boolean(worldId)
+
+  const worldOptions = useMemo(() => {
+    if (!selectedCampaign?.world?.id) return []
+    const world = selectedCampaign.world
+    return [
+      {
+        id: world.id,
+        name: world.name || 'Untitled world',
+      },
+    ]
+  }, [selectedCampaign])
 
   const canManage = useMemo(
     () => (user?.role ? MANAGER_ROLES.has(user.role) : false),
     [user?.role],
   )
+
+  const selectedCampaignLabel = useMemo(() => {
+    if (!selectedCampaign) return ''
+    const campaignName = selectedCampaign.name || 'Selected campaign'
+    const worldName = selectedCampaign.world?.name
+    return worldName ? `${campaignName} · ${worldName}` : campaignName
+  }, [selectedCampaign])
 
   const showToast = useCallback((message, tone = 'info') => {
     setToast({ message, tone })
@@ -36,33 +60,64 @@ export default function EntityTypeList() {
   }, [toast])
 
   const loadEntityTypes = useCallback(async () => {
-    if (!token) return
+    if (!token || !worldId) {
+      setLoading(false)
+      setEntityTypes([])
+      return []
+    }
+
     setLoading(true)
     setError('')
+
     try {
-      const response = await getEntityTypes()
+      const response = await getEntityTypes({ worldId })
       const list = Array.isArray(response)
         ? response
         : Array.isArray(response?.data)
           ? response.data
           : []
       setEntityTypes(list)
+      return list
     } catch (err) {
       console.error('❌ Failed to load entity types', err)
       setError(err.message || 'Failed to load entity types')
+      setEntityTypes([])
+      return []
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, worldId])
 
   useEffect(() => {
-    if (sessionReady && token) {
-      loadEntityTypes()
+    if (!sessionReady || !token) return
+
+    if (!worldId) {
+      setEntityTypes([])
+      setError('')
+      setLoading(false)
+      return
     }
-  }, [sessionReady, token, loadEntityTypes])
+
+    loadEntityTypes()
+  }, [sessionReady, token, worldId, loadEntityTypes])
+
+  useEffect(() => {
+    if (previousWorldIdRef.current === worldId) return
+
+    setPanelOpen(false)
+    setEditingType(null)
+    setFormError('')
+    setToast(null)
+    setEntityTypes([])
+    setError('')
+    setSaving(false)
+    setDeletingId('')
+
+    previousWorldIdRef.current = worldId
+  }, [worldId])
 
   const openCreate = () => {
-    if (!canManage) return
+    if (!canManage || !hasWorldContext) return
     navigate('/entity-types/new')
   }
 
@@ -157,14 +212,23 @@ export default function EntityTypeList() {
       <div className="entity-types-header">
         <div>
           <h1>Entity Types</h1>
-          <p className="entity-types-subtitle">{createdCount} types defined</p>
+          {selectedCampaign ? (
+            <>
+              <p className="entity-types-subtitle">{selectedCampaignLabel}</p>
+              <p className="entity-types-subtitle">{createdCount} types defined</p>
+            </>
+          ) : (
+            <p className="entity-types-subtitle">
+              Select a campaign from the header to choose a world context.
+            </p>
+          )}
         </div>
 
         <button
           type="button"
           className="btn submit"
           onClick={openCreate}
-          disabled={!canManage || saving || deletingId}
+          disabled={!canManage || saving || deletingId || !hasWorldContext}
         >
           <Plus size={18} /> Add Entity Type
         </button>
@@ -190,7 +254,9 @@ export default function EntityTypeList() {
       )}
 
       <div className="entity-types-table-wrapper">
-        {loading ? (
+        {!hasWorldContext ? (
+          <div className="empty-state">Select a campaign to view entity types.</div>
+        ) : loading ? (
           <div className="empty-state">Loading entity types...</div>
         ) : entityTypes.length === 0 ? (
           <div className="empty-state">No entity types defined yet.</div>
@@ -200,6 +266,7 @@ export default function EntityTypeList() {
               <tr>
                 <th>Name</th>
                 <th>Description</th>
+                <th>World</th>
                 <th>Created</th>
                 <th className="actions-column">Actions</th>
               </tr>
@@ -207,12 +274,15 @@ export default function EntityTypeList() {
             <tbody>
               {entityTypes.map((type) => {
                 const createdAt = type.createdAt || type.created_at
+                const worldName =
+                  type?.world?.name || type?.world_name || type?.worldName || '—'
                 return (
                   <tr key={type.id}>
                     <td>{type.name}</td>
                     <td className="description-cell">
                       {type.description ? type.description : '—'}
                     </td>
+                    <td>{worldName}</td>
                     <td>{formatDate(createdAt)}</td>
                     <td className="actions-column">
                       <div className="entity-type-actions">
@@ -257,7 +327,11 @@ export default function EntityTypeList() {
       </div>
 
       <div className="entity-type-cards">
-        {loading ? (
+        {!hasWorldContext ? (
+          <div className="card-placeholder">
+            Select a campaign to view entity types.
+          </div>
+        ) : loading ? (
           <div className="card-placeholder">Loading entity types...</div>
         ) : entityTypes.length === 0 ? (
           <div className="card-placeholder">No entity types defined yet.</div>
@@ -305,6 +379,9 @@ export default function EntityTypeList() {
                   {type.description ? type.description : 'No description'}
                 </p>
                 <p className="card-meta">
+                  World: {type?.world?.name || type?.world_name || '—'}
+                </p>
+                <p className="card-meta">
                   Created {formatDate(createdAt)}
                 </p>
               </div>
@@ -335,6 +412,7 @@ export default function EntityTypeList() {
                 onCancel={closePanel}
                 submitting={saving}
                 errorMessage={formError}
+                worlds={worldOptions}
               />
             </div>
           </div>

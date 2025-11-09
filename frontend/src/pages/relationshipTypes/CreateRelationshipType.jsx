@@ -2,31 +2,43 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createRelationshipType } from '../../api/entityRelationshipTypes.js'
 import { getEntityTypes } from '../../api/entityTypes.js'
-import { fetchWorlds } from '../../api/worlds.js'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import RelationshipTypeForm from './RelationshipTypeForm.jsx'
 
 export default function CreateRelationshipType() {
   const navigate = useNavigate()
   const { user, token, sessionReady } = useAuth()
+  const { selectedCampaign } = useCampaignContext()
   const [entityTypes, setEntityTypes] = useState([])
-  const [worlds, setWorlds] = useState([])
   const [loadingOptions, setLoadingOptions] = useState(false)
   const [optionsError, setOptionsError] = useState('')
   const [formError, setFormError] = useState('')
   const [saving, setSaving] = useState(false)
 
   const canManage = useMemo(() => user?.role === 'system_admin', [user?.role])
+  const worldId = selectedCampaign?.world?.id ?? ''
+  const worldOptions = useMemo(() => {
+    if (!selectedCampaign?.world?.id) return []
+    const world = selectedCampaign.world
+    return [
+      {
+        id: world.id,
+        name: world.name || 'Untitled world',
+      },
+    ]
+  }, [selectedCampaign])
 
   const loadOptions = useCallback(async () => {
-    if (!token) return
+    if (!token || !worldId) {
+      setEntityTypes([])
+      setOptionsError('Select a campaign to choose a world context before creating relationship types.')
+      return
+    }
     setLoadingOptions(true)
     setOptionsError('')
     try {
-      const [typesResponse, worldsResponse] = await Promise.all([
-        getEntityTypes(),
-        fetchWorlds(),
-      ])
+      const typesResponse = await getEntityTypes({ worldId })
 
       const typeList = Array.isArray(typesResponse?.data)
         ? typesResponse.data
@@ -34,23 +46,15 @@ export default function CreateRelationshipType() {
           ? typesResponse
           : []
 
-      const worldList = Array.isArray(worldsResponse?.data)
-        ? worldsResponse.data
-        : Array.isArray(worldsResponse)
-          ? worldsResponse
-          : []
-
       setEntityTypes(typeList)
-      setWorlds(worldList)
     } catch (err) {
       console.error('❌ Failed to load relationship type options', err)
       setEntityTypes([])
-      setWorlds([])
       setOptionsError(err.message || 'Failed to load supporting data')
     } finally {
       setLoadingOptions(false)
     }
-  }, [token])
+  }, [token, worldId])
 
   useEffect(() => {
     if (!sessionReady || !token) return
@@ -76,6 +80,22 @@ export default function CreateRelationshipType() {
     )
   }
 
+  if (!worldId) {
+    return (
+      <section className="page relationship-type-form-page">
+        <h1>Create Relationship Type</h1>
+        <p>Select a campaign from the header to choose a world context before creating relationship types.</p>
+        <button
+          type="button"
+          className="btn cancel"
+          onClick={() => navigate('/relationship-types')}
+        >
+          Back to Relationship Types
+        </button>
+      </section>
+    )
+  }
+
   const handleCancel = () => navigate('/relationship-types')
 
   const handleSubmit = async (payload) => {
@@ -87,7 +107,7 @@ export default function CreateRelationshipType() {
       // ✅ Build clean, backend-ready payload
       const finalPayload = {
         ...payload,
-        world_id: payload.world_id ?? payload.worldId ?? payload.world?.id ?? '',
+        world_id: payload.world_id ?? payload.worldId ?? payload.world?.id ?? worldId,
       }
 
       if (!finalPayload.world_id) {
@@ -126,9 +146,9 @@ export default function CreateRelationshipType() {
       {optionsError && <div className="alert error">{optionsError}</div>}
 
       <RelationshipTypeForm
-        initialValues={{}}
+        initialValues={{ world_id: worldId }}
         entityTypes={entityTypes}
-        worlds={worlds}
+        worlds={worldOptions}
         saving={saving}
         optionsLoading={loadingOptions}
         errorMessage={formError}

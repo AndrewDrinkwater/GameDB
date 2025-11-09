@@ -47,10 +47,10 @@ export const UploadedFile = UploadedFileModel(sequelize, DataTypes) // ✅ new m
 // --- Associations ---
 if (User.associate)
   User.associate({ World, Campaign, Character, UserCampaignRole, UploadedFile }) // ✅ link uploaded files to user
-if (World.associate) World.associate({ User, Campaign, Entity })
+if (World.associate) World.associate({ User, Campaign, Entity, EntityType })
 if (Campaign.associate) Campaign.associate({ World, Character, User, UserCampaignRole })
 if (Character.associate) Character.associate({ Campaign, User })
-if (EntityType.associate) EntityType.associate({ Entity, EntityTypeField })
+if (EntityType.associate) EntityType.associate({ Entity, EntityTypeField, World })
 if (Entity.associate)
   Entity.associate({
     World,
@@ -63,7 +63,7 @@ if (Entity.associate)
 if (EntitySecret.associate)
   EntitySecret.associate({ Entity, User, EntitySecretPermission })
 if (EntitySecretPermission.associate)
-  EntitySecretPermission.associate({ EntitySecret, User })
+  EntitySecretPermission.associate({ EntitySecret, User, Campaign })
 if (EntityRelationshipType.associate)
   EntityRelationshipType.associate({
     EntityRelationship,

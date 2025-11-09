@@ -326,9 +326,15 @@ export default function EntityRelationshipForm({
     let cancelled = false
 
     const loadTypes = async () => {
+      if (!worldId) {
+        setEntityTypes([])
+        setLoadingEntityTypes(false)
+        return
+      }
+
       setLoadingEntityTypes(true)
       try {
-        const response = await getEntityTypes()
+        const response = await getEntityTypes({ worldId })
         const list = Array.isArray(response)
           ? response
           : Array.isArray(response?.data)
@@ -353,7 +359,7 @@ export default function EntityRelationshipForm({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [worldId])
 
   const resolveEntityTypeId = (entity) => {
     if (!entity) return ''

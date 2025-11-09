@@ -2,16 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getRelationshipType, updateRelationshipType } from '../../api/entityRelationshipTypes.js'
 import { getEntityTypes } from '../../api/entityTypes.js'
-import { fetchWorlds } from '../../api/worlds.js'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import RelationshipTypeForm from './RelationshipTypeForm.jsx'
 
 export default function EditRelationshipType() {
   const navigate = useNavigate()
   const { id } = useParams()
   const { user, token, sessionReady } = useAuth()
+  const { selectedCampaign } = useCampaignContext()
   const [entityTypes, setEntityTypes] = useState([])
-  const [worlds, setWorlds] = useState([])
   const [loadingOptions, setLoadingOptions] = useState(false)
   const [optionsError, setOptionsError] = useState('')
   const [formError, setFormError] = useState('')
@@ -21,16 +21,62 @@ export default function EditRelationshipType() {
   const [saving, setSaving] = useState(false)
 
   const canManage = useMemo(() => user?.role === 'system_admin', [user?.role])
+  const selectedWorldId = selectedCampaign?.world?.id ?? ''
+  const selectedWorldName = selectedCampaign?.world?.name ?? ''
+
+  const recordWorld = useMemo(() => {
+    if (!initialValues) return null
+    const id =
+      initialValues?.world?.id ||
+      initialValues?.world_id ||
+      initialValues?.worldId ||
+      ''
+    if (!id) return null
+    const name =
+      initialValues?.world?.name ||
+      initialValues?.world_name ||
+      initialValues?.worldName ||
+      ''
+    return {
+      id,
+      name: name || 'Untitled world',
+    }
+  }, [initialValues])
+
+  const [worldOptions, setWorldOptions] = useState([])
+
+  useEffect(() => {
+    const options = []
+    if (selectedWorldId) {
+      options.push({ id: selectedWorldId, name: selectedWorldName || 'Untitled world' })
+    }
+    if (recordWorld && !options.some((option) => option.id === recordWorld.id)) {
+      options.push(recordWorld)
+    }
+    setWorldOptions(options)
+  }, [selectedWorldId, selectedWorldName, recordWorld])
 
   const loadOptions = useCallback(async () => {
     if (!token) return
     setLoadingOptions(true)
     setOptionsError('')
     try {
-      const [typesResponse, worldsResponse] = await Promise.all([
-        getEntityTypes(),
-        fetchWorlds(),
-      ])
+      const worldToUse =
+        selectedWorldId ||
+        recordWorld?.id ||
+        initialValues?.world?.id ||
+        initialValues?.world_id ||
+        ''
+
+      if (!worldToUse) {
+        setEntityTypes([])
+        setOptionsError(
+          'Select a campaign to choose a world context before editing relationship types.',
+        )
+        return
+      }
+
+      const typesResponse = await getEntityTypes({ worldId: worldToUse })
 
       const typeList = Array.isArray(typesResponse?.data)
         ? typesResponse.data
@@ -38,23 +84,15 @@ export default function EditRelationshipType() {
           ? typesResponse
           : []
 
-      const worldList = Array.isArray(worldsResponse?.data)
-        ? worldsResponse.data
-        : Array.isArray(worldsResponse)
-          ? worldsResponse
-          : []
-
       setEntityTypes(typeList)
-      setWorlds(worldList)
     } catch (err) {
       console.error('❌ Failed to load relationship type options', err)
       setEntityTypes([])
-      setWorlds([])
       setOptionsError(err.message || 'Failed to load supporting data')
     } finally {
       setLoadingOptions(false)
     }
-  }, [token])
+  }, [token, selectedWorldId, recordWorld, initialValues])
 
   const loadRecord = useCallback(async () => {
     if (!token || !id) return
@@ -76,9 +114,14 @@ export default function EditRelationshipType() {
 
   useEffect(() => {
     if (!sessionReady || !token) return
-    loadOptions()
     loadRecord()
-  }, [sessionReady, token, loadOptions, loadRecord])
+  }, [sessionReady, token, loadRecord])
+
+  useEffect(() => {
+    if (!sessionReady || !token) return
+    if (loadingRecord) return
+    loadOptions()
+  }, [sessionReady, token, loadingRecord, loadOptions])
 
   if (!sessionReady) return <p>Restoring session...</p>
   if (!token) return <p>Authenticating...</p>
@@ -112,6 +155,7 @@ export default function EditRelationshipType() {
           payload.worldId ||
           payload.selectedWorldId ||
           payload.world?.id ||
+          selectedWorldId ||
           initialValues?.world_id,
       }
 
@@ -172,7 +216,7 @@ export default function EditRelationshipType() {
       <RelationshipTypeForm
         initialValues={initialValues}
         entityTypes={entityTypes}
-        worlds={worlds}
+        worlds={worldOptions}
         saving={saving}
         optionsLoading={loadingOptions}
         errorMessage={formError}

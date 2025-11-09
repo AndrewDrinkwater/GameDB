@@ -98,9 +98,15 @@ export default function EntityTypeFields() {
     }
   }, [typeId])
 
-  const loadReferenceTypes = useCallback(async () => {
+  const loadReferenceTypes = useCallback(async (worldId) => {
+    const trimmedWorldId = typeof worldId === 'string' ? worldId.trim() : worldId || ''
+    if (!trimmedWorldId) {
+      setReferenceTypes([])
+      return
+    }
+
     try {
-      const response = await getEntityTypes()
+      const response = await getEntityTypes({ worldId: trimmedWorldId })
       const list = normalizeResponse(response)
       if (Array.isArray(list)) {
         setReferenceTypes(list)
@@ -134,8 +140,17 @@ export default function EntityTypeFields() {
     if (!sessionReady || !token) return
     loadEntityType()
     loadFields()
-    loadReferenceTypes()
-  }, [sessionReady, token, loadEntityType, loadFields, loadReferenceTypes])
+  }, [sessionReady, token, loadEntityType, loadFields])
+
+  useEffect(() => {
+    if (!entityType) {
+      setReferenceTypes([])
+      return
+    }
+    const worldId =
+      entityType?.world_id || entityType?.worldId || entityType?.world?.id || ''
+    loadReferenceTypes(worldId)
+  }, [entityType, entityType?.world_id, entityType?.worldId, entityType?.world?.id, loadReferenceTypes])
 
   useEffect(() => {
     if (!sessionReady) return
