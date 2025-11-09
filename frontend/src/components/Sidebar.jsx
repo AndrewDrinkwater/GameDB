@@ -69,6 +69,15 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
     )
   }, [selectedCampaign, user])
 
+  const isDMInSelectedCampaign = useMemo(() => {
+    if (!selectedCampaign || !Array.isArray(selectedCampaign.members)) return false
+    if (!user?.id) return false
+
+    return selectedCampaign.members.some(
+      (member) => member?.user_id === user.id && member?.role === 'dm',
+    )
+  }, [selectedCampaign, user])
+
   // --- Load entity types for selected campaign world ---
   useEffect(() => {
     let cancelled = false
@@ -337,12 +346,14 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
                 My Companions
               </Link>
             )}
-            <Link
-              to="/characters/others"
-              className={isActive('/characters/others') ? 'active' : ''}
-            >
-              All Characters
-            </Link>
+            {selectedCampaignId && isDMInSelectedCampaign && (
+              <Link
+                to="/characters/others"
+                className={isActive('/characters/others') ? 'active' : ''}
+              >
+                All Characters
+              </Link>
+            )}
             {user?.role === 'system_admin' && (
               <Link
                 to="/characters/all"
