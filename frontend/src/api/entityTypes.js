@@ -17,9 +17,12 @@ export const getEntityTypes = (criteria) => {
 
   const searchParams = new URLSearchParams()
   const worldId = normaliseWorldId(params.worldId ?? params.world_id)
-  if (worldId) {
-    searchParams.set('worldId', worldId)
+
+  if (!worldId) {
+    return Promise.reject(new Error('worldId is required to list entity types'))
   }
+
+  searchParams.set('worldId', worldId)
 
   const queryString = searchParams.toString()
   const suffix = queryString ? `?${queryString}` : ''

@@ -99,8 +99,14 @@ export default function EntityTypeFields() {
   }, [typeId])
 
   const loadReferenceTypes = useCallback(async (worldId) => {
+    const trimmedWorldId = typeof worldId === 'string' ? worldId.trim() : worldId || ''
+    if (!trimmedWorldId) {
+      setReferenceTypes([])
+      return
+    }
+
     try {
-      const response = worldId ? await getEntityTypes({ worldId }) : await getEntityTypes()
+      const response = await getEntityTypes({ worldId: trimmedWorldId })
       const list = normalizeResponse(response)
       if (Array.isArray(list)) {
         setReferenceTypes(list)

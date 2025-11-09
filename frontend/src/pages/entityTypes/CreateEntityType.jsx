@@ -4,13 +4,17 @@ import { createEntityType } from '../../api/entityTypes.js'
 import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
 import newSchema from '../../components/RecordForm/formSchemas/entityType.new.json'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { useCampaignContext } from '../../context/CampaignContext.jsx'
 
 export default function CreateEntityType() {
   const navigate = useNavigate()
   const { user, token, sessionReady } = useAuth()
+  const { selectedCampaign } = useCampaignContext()
   const [submitting, setSubmitting] = useState(false)
 
   const canManage = user?.role === 'system_admin'
+  const selectedWorldId = selectedCampaign?.world?.id ?? ''
+  const selectedWorldName = selectedCampaign?.world?.name ?? ''
 
   if (!sessionReady) {
     return <p>Restoring session...</p>
@@ -25,6 +29,18 @@ export default function CreateEntityType() {
       <section className="page limited-access">
         <h1>Create Entity Type</h1>
         <p>Only system administrators can create entity types.</p>
+        <button type="button" className="btn cancel" onClick={() => navigate('/entity-types')}>
+          Back to Entity Types
+        </button>
+      </section>
+    )
+  }
+
+  if (!selectedWorldId) {
+    return (
+      <section className="page create-entity-type">
+        <h1>Create Entity Type</h1>
+        <p>Select a campaign from the header to choose a world context before creating entity types.</p>
         <button type="button" className="btn cancel" onClick={() => navigate('/entity-types')}>
           Back to Entity Types
         </button>
@@ -48,6 +64,7 @@ export default function CreateEntityType() {
       (typeof formData?.world_id === 'string' && formData.world_id) ||
       (typeof formData?.worldId === 'string' && formData.worldId) ||
       (formData?.world && typeof formData.world.id === 'string' && formData.world.id) ||
+      selectedWorldId ||
       ''
     const worldId = worldIdRaw.trim()
 
@@ -96,7 +113,12 @@ export default function CreateEntityType() {
       )}
       <FormRenderer
         schema={newSchema}
-        initialData={{}}
+        initialData={{
+          world_id: selectedWorldId,
+          world: selectedWorldId
+            ? { id: selectedWorldId, name: selectedWorldName || 'Selected world' }
+            : undefined,
+        }}
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         showUpdateAction={false}
