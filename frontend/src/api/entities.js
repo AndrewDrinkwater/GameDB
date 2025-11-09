@@ -50,6 +50,19 @@ export const createEntitySecret = (id, data) => api.post(`/entities/${id}/secret
 export const updateEntitySecret = (entityId, secretId, data) =>
   api.patch(`/entities/${entityId}/secrets/${secretId}`, data)
 
+export const fetchEntityNotes = (id, params = {}) => {
+  const query = new URLSearchParams()
+  const campaignId = params.campaignId ?? params.campaign_id
+  if (campaignId) {
+    query.set('campaignId', campaignId)
+  }
+
+  const queryString = query.toString()
+  return api.get(`/entities/${id}/notes${queryString ? `?${queryString}` : ''}`)
+}
+
+export const createEntityNote = (id, data) => api.post(`/entities/${id}/notes`, data)
+
 export const getEntityGraph = async (entityId, depth = 1) => {
   const params = new URLSearchParams()
   if (depth !== undefined && depth !== null) {
