@@ -199,6 +199,7 @@ export async function listRelationships(req, res) {
       worldId: trimmedWorldId,
       user: req.user,
       worldAccess: access,
+      campaignContextId: req.campaignContextId,
     })
 
     const privileged = hasPrivilegedRelationshipRole(req.user)
@@ -483,6 +484,7 @@ export async function getRelationshipsByEntity(req, res) {
       worldId: entityWorldId,
       user: req.user,
       worldAccess,
+      campaignContextId: req.campaignContextId,
     })
     const effectiveContext = privileged ? { ...readContext, isAdmin: true } : readContext
     const entityIdString = normaliseId(entityId)

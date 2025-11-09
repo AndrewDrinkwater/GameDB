@@ -285,6 +285,7 @@ export const listWorldEntityTypesWithEntities = async (req, res) => {
       worldId: world.id,
       user,
       worldAccess: access,
+      campaignContextId: req.campaignContextId,
     })
 
     const where = { world_id: world.id }
