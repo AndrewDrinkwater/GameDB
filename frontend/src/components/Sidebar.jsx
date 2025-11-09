@@ -120,7 +120,12 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
   }, [campaignWorldId])
 
   const isActive = useCallback(
-    (path) => location.pathname === path || location.pathname.startsWith(`${path}/`),
+    (path) => {
+      if (path === '/') {
+        return location.pathname === '/'
+      }
+      return location.pathname === path || location.pathname.startsWith(`${path}/`)
+    },
     [location.pathname],
   )
 
@@ -168,6 +173,10 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
         className="nav-links"
         onClick={!pinned ? handleNavContainerClick : undefined}
       >
+        <Link to="/" className={isActive('/') ? 'active' : ''}>
+          Home
+        </Link>
+
         <Link to="/worlds" className={isActive('/worlds') ? 'active' : ''}>
           Worlds
         </Link>
