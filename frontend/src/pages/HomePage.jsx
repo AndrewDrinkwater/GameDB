@@ -1,7 +1,9 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Crown, Loader2, Sparkles, Swords } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
+import { fetchCharacters } from '../api/characters.js'
 
 const ROLE_PRIORITY = { dm: 1, player: 2, other: 3 }
 
@@ -26,6 +28,13 @@ export default function HomePage() {
 
   const displayName = user?.username || 'Adventurer'
 
+  const [myCharacters, setMyCharacters] = useState([])
+  const [companions, setCompanions] = useState([])
+  const [myCharactersLoading, setMyCharactersLoading] = useState(false)
+  const [companionsLoading, setCompanionsLoading] = useState(false)
+  const [myCharactersError, setMyCharactersError] = useState('')
+  const [companionsError, setCompanionsError] = useState('')
+
   const sortedCampaigns = useMemo(() => {
     if (!Array.isArray(campaigns)) return []
 
@@ -46,6 +55,96 @@ export default function HomePage() {
     if (!campaignId) return
     setSelectedCampaignId(String(campaignId))
   }
+
+  useEffect(() => {
+    let cancelled = false
+
+    setMyCharacters([])
+    setCompanions([])
+    setMyCharactersError('')
+    setCompanionsError('')
+
+    if (!selectedCampaignId || !user?.id) {
+      setMyCharactersLoading(false)
+      setCompanionsLoading(false)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const mapSummary = (items) => {
+      const source = Array.isArray(items?.data) ? items.data : Array.isArray(items) ? items : []
+      return source.map((character) => {
+        const levelValue = Number(character?.level)
+        return {
+          id: character?.id,
+          name: character?.name || 'Unnamed character',
+          className: character?.class || '',
+          level: Number.isNaN(levelValue) ? null : levelValue,
+          isActive: character?.is_active ?? true,
+          playerName: character?.player?.username || '',
+        }
+      })
+    }
+
+    const loadCharacters = async () => {
+      setMyCharactersLoading(true)
+      setCompanionsLoading(false)
+
+      try {
+        const response = await fetchCharacters({ scope: 'my', campaign_id: selectedCampaignId })
+        if (cancelled) return
+
+        const myList = mapSummary(response)
+        setMyCharacters(myList)
+        setMyCharactersError('')
+        setMyCharactersLoading(false)
+
+        if (myList.length > 0) {
+          setCompanionsLoading(true)
+          try {
+            const companionsResponse = await fetchCharacters({
+              scope: 'companions',
+              campaign_id: selectedCampaignId,
+            })
+            if (cancelled) return
+
+            const companionList = mapSummary(companionsResponse)
+            setCompanions(companionList)
+            setCompanionsError('')
+          } catch (err) {
+            if (cancelled) return
+            console.error('❌ Failed to load companions for home widgets', err)
+            setCompanions([])
+            setCompanionsError(err.message || 'Failed to load companions')
+          } finally {
+            if (!cancelled) {
+              setCompanionsLoading(false)
+            }
+          }
+        } else {
+          setCompanions([])
+          setCompanionsError('')
+          setCompanionsLoading(false)
+        }
+      } catch (err) {
+        if (cancelled) return
+        console.error('❌ Failed to load characters for home widgets', err)
+        setMyCharacters([])
+        setCompanions([])
+        setMyCharactersError(err.message || 'Failed to load characters')
+        setCompanionsError('')
+        setMyCharactersLoading(false)
+        setCompanionsLoading(false)
+      }
+    }
+
+    loadCharacters()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedCampaignId, user?.id])
 
   const renderCampaignGrid = () => {
     if (loading) {
@@ -117,6 +216,108 @@ export default function HomePage() {
     )
   }
 
+  const renderMyCharacters = () => {
+    if (myCharactersLoading) {
+      return (
+        <div className="home-widget-empty">
+          <Loader2 className="spin" size={20} />
+          <p>Loading your characters…</p>
+        </div>
+      )
+    }
+
+    if (myCharactersError) {
+      return (
+        <div className="home-widget-error">
+          <p>{myCharactersError}</p>
+        </div>
+      )
+    }
+
+    if (!myCharacters.length) {
+      return (
+        <div className="home-widget-empty">
+          <p>No characters in this campaign yet.</p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="home-card-grid">
+        {myCharacters.map((character) => (
+          <article key={character.id} className="home-card">
+            <header>
+              <h3>{character.name}</h3>
+              <span
+                className={`home-card-status ${character.isActive ? 'active' : 'inactive'}`}
+              >
+                {character.isActive ? 'Active' : 'Inactive'}
+              </span>
+            </header>
+            <div className="home-card-meta">
+              {character.className && <span>{character.className}</span>}
+              {character.level !== null && <span>Level {character.level}</span>}
+            </div>
+          </article>
+        ))}
+      </div>
+    )
+  }
+
+  const renderCompanions = () => {
+    if (companionsLoading) {
+      return (
+        <div className="home-widget-empty">
+          <Loader2 className="spin" size={20} />
+          <p>Loading companions…</p>
+        </div>
+      )
+    }
+
+    if (companionsError) {
+      return (
+        <div className="home-widget-error">
+          <p>{companionsError}</p>
+        </div>
+      )
+    }
+
+    if (!companions.length) {
+      return (
+        <div className="home-widget-empty">
+          <p>No companions discovered in this campaign yet.</p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="home-card-grid">
+        {companions.map((character) => (
+          <article key={character.id} className="home-card">
+            <header>
+              <h3>{character.name}</h3>
+              <span
+                className={`home-card-status ${character.isActive ? 'active' : 'inactive'}`}
+              >
+                {character.isActive ? 'Active' : 'Inactive'}
+              </span>
+            </header>
+            <div className="home-card-meta">
+              {character.className && <span>{character.className}</span>}
+              {character.level !== null && <span>Level {character.level}</span>}
+            </div>
+            {character.playerName && (
+              <p className="home-card-player">Played by {character.playerName}</p>
+            )}
+          </article>
+        ))}
+      </div>
+    )
+  }
+
+  const showCharacterWidgets =
+    !!selectedCampaign && myCharacters.length > 0 && !myCharactersError
+
   return (
     <div className="home-page">
       <section className="home-hero">
@@ -155,6 +356,36 @@ export default function HomePage() {
         </div>
         {renderCampaignGrid()}
       </section>
+
+      {showCharacterWidgets && (
+        <>
+          <section className="home-section">
+            <div className="home-section-header">
+              <div>
+                <h2>My Characters</h2>
+                <p>Quick access to your heroes in {selectedCampaign.name}.</p>
+              </div>
+              <Link to="/characters/my" className="home-link">
+                Manage
+              </Link>
+            </div>
+            {renderMyCharacters()}
+          </section>
+
+          <section className="home-section">
+            <div className="home-section-header">
+              <div>
+                <h2>My Companions</h2>
+                <p>Meet the fellow adventurers journeying in {selectedCampaign.name}.</p>
+              </div>
+              <Link to="/characters/companions" className="home-link">
+                View list
+              </Link>
+            </div>
+            {renderCompanions()}
+          </section>
+        </>
+      )}
     </div>
   )
 }
