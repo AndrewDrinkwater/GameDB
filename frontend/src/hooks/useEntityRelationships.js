@@ -81,18 +81,43 @@ export default function useEntityRelationships(entity, token) {
       return ''
     }
 
-    return relationships.map((r) => ({
-      id: r.id,
-      typeId: normaliseId(r.relationship_type_id || r.relationshipTypeId || r.typeId || r.type),
-      typeName: r.relationshipType?.name || r.type?.name || '—',
-      fromId: normaliseId(r.from_entity_id || r.fromEntityId || r.from),
-      toId: normaliseId(r.to_entity_id || r.toEntityId || r.to),
-      fromName: r.from_entity?.name || r.from?.name || '—',
-      toName: r.to_entity?.name || r.to?.name || '—',
-      fromEntityTypeName: r.from_entity_type?.name || r.fromEntityTypeName || '',
-      toEntityTypeName: r.to_entity_type?.name || r.toEntityTypeName || '',
-      direction: r.context?.__direction === 'reverse' ? 'reverse' : 'forward',
-    }))
+    return relationships.map((r) => {
+      const typeDetails =
+        r.relationshipType ||
+        r.relationship_type ||
+        r.type ||
+        r.relationshipTypeId ||
+        {}
+
+      const sourceLabel =
+        typeDetails?.from_name ||
+        typeDetails?.fromName ||
+        r.source_relationship_label ||
+        r.sourceLabel ||
+        ''
+
+      const targetLabel =
+        typeDetails?.to_name ||
+        typeDetails?.toName ||
+        r.target_relationship_label ||
+        r.targetLabel ||
+        ''
+
+      return {
+        id: r.id,
+        typeId: normaliseId(r.relationship_type_id || r.relationshipTypeId || r.typeId || r.type),
+        typeName: r.relationshipType?.name || r.type?.name || '—',
+        fromId: normaliseId(r.from_entity_id || r.fromEntityId || r.from),
+        toId: normaliseId(r.to_entity_id || r.toEntityId || r.to),
+        fromName: r.from_entity?.name || r.from?.name || '—',
+        toName: r.to_entity?.name || r.to?.name || '—',
+        fromEntityTypeName: r.from_entity_type?.name || r.fromEntityTypeName || '',
+        toEntityTypeName: r.to_entity_type?.name || r.toEntityTypeName || '',
+        direction: r.context?.__direction === 'reverse' ? 'reverse' : 'forward',
+        sourceLabel: sourceLabel || '—',
+        targetLabel: targetLabel || '—',
+      }
+    })
   }, [relationships])
 
   /** Sort and filter */

@@ -587,17 +587,8 @@ export default function EntityList() {
   const isSavingUserColumns = columnsSavingScope === COLUMN_SCOPE_USER
   const isSavingSystemColumns = columnsSavingScope === COLUMN_SCOPE_SYSTEM
   const draftMatchesSystem = listsMatch(draftColumnKeys, systemBaselineColumns)
-  const draftMatchesFallback = listsMatch(draftColumnKeys, fallbackColumns)
-  const hasSystemDefault = Boolean(systemColumnDefault)
 
   const handleResetToBaseline = () => {
-    setDraftColumnKeys([...fallbackColumns])
-    setColumnSelectionError('')
-    setDraggingColumnKey('')
-    setDropTargetKey('')
-  }
-
-  const handleUseSystemDefault = () => {
     setDraftColumnKeys([...systemBaselineColumns])
     setColumnSelectionError('')
     setDraggingColumnKey('')
@@ -646,12 +637,6 @@ export default function EntityList() {
       }
     }
     setDropTargetKey(key)
-  }
-
-  const handleColumnDragLeave = (key) => {
-    if (dropTargetKey === key) {
-      setDropTargetKey('')
-    }
   }
 
   const handleColumnDrop = (targetKey) => {
@@ -1153,7 +1138,6 @@ export default function EntityList() {
                               const column = columnOptionList.find((c) => c.key === key)
                               if (!column) return null
                               const isDragging = draggingColumnKey === key
-                              const isDropTarget = dropTargetKey === key
                               const badgeLabel = column.type === 'metadata' ? 'Metadata' : 'Core'
 
                               return (
@@ -1260,7 +1244,7 @@ export default function EntityList() {
                           type="button"
                           className="btn secondary"
                           onClick={handleResetToBaseline}
-                          disabled={columnsLoading || draftMatchesFallback}
+                          disabled={columnsLoading || draftMatchesSystem}
                         >
                           Use system default
                         </button>

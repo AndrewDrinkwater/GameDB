@@ -20,7 +20,23 @@ export default function EditRelationshipType() {
   const [recordError, setRecordError] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const canManage = useMemo(() => user?.role === 'system_admin', [user?.role])
+  const isSystemAdmin = user?.role === 'system_admin'
+  const isSelectedWorldOwner = useMemo(() => {
+    if (!selectedCampaign || !user) return false
+    const worldOwnerId =
+      selectedCampaign.world?.created_by ??
+      selectedCampaign.world?.creator?.id ??
+      selectedCampaign.world?.owner_id ??
+      selectedCampaign.world?.owner?.id ??
+      ''
+    if (!worldOwnerId) return false
+    return worldOwnerId === user.id
+  }, [selectedCampaign, user])
+
+  const canManage = useMemo(
+    () => Boolean(isSystemAdmin || isSelectedWorldOwner),
+    [isSystemAdmin, isSelectedWorldOwner],
+  )
   const selectedWorldId = selectedCampaign?.world?.id ?? ''
   const selectedWorldName = selectedCampaign?.world?.name ?? ''
 
