@@ -37,16 +37,27 @@ const mapEntityType = (instance) => {
 
 export const listEntityTypes = async (req, res) => {
   try {
-    const { worldId: rawWorldId } = req.query ?? {}
-    const resolvedWorldId = normaliseWorldId(rawWorldId)
+    const { worldId: rawWorldId, world_id: rawLegacyWorldId } = req.query ?? {}
+    const resolvedWorldId = normaliseWorldId(rawWorldId ?? rawLegacyWorldId)
 
-    const where = {}
-    if (resolvedWorldId) {
-      where.world_id = resolvedWorldId
+    if (!resolvedWorldId) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'worldId is required to list entity types' })
+    }
+
+    const access = await checkWorldAccess(resolvedWorldId, req.user)
+
+    if (!access.world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
     const types = await EntityType.findAll({
-      where,
+      where: { world_id: resolvedWorldId },
       order: [['name', 'ASC']],
       include: [{ model: World, as: 'world', attributes: ['id', 'name', 'created_by'] }],
     })
