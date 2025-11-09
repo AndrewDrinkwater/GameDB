@@ -88,6 +88,13 @@ export default (sequelize, DataTypes) => {
         onDelete: 'CASCADE',
       })
     }
+    if (models.EntityNote) {
+      Entity.hasMany(models.EntityNote, {
+        foreignKey: 'entity_id',
+        as: 'notes',
+        onDelete: 'CASCADE',
+      })
+    }
     if (models.EntityRelationship) {
       Entity.hasMany(models.EntityRelationship, {
         foreignKey: 'from_entity',

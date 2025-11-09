@@ -12,6 +12,7 @@ import EntityModel from './entity.js'
 import EntityTypeModel from './entityType.js'
 import EntitySecretModel from './entitySecret.js'
 import EntitySecretPermissionModel from './entitySecretPermission.js'
+import EntityNoteModel from './entityNote.js'
 import EntityRelationshipTypeModel from './entityRelationshipType.js'
 import EntityRelationshipModel from './entityRelationship.js'
 import EntityTypeFieldModel from './entityTypeField.js'
@@ -35,6 +36,7 @@ export const EntityType = EntityTypeModel(sequelize, DataTypes)
 export const Entity = EntityModel(sequelize, DataTypes)
 export const EntitySecret = EntitySecretModel(sequelize, DataTypes)
 export const EntitySecretPermission = EntitySecretPermissionModel(sequelize, DataTypes)
+export const EntityNote = EntityNoteModel(sequelize, DataTypes)
 export const EntityRelationshipType = EntityRelationshipTypeModel(sequelize, DataTypes)
 export const EntityRelationship = EntityRelationshipModel(sequelize, DataTypes)
 export const EntityTypeField = EntityTypeFieldModel(sequelize, DataTypes)
@@ -56,6 +58,7 @@ if (Entity.associate)
     World,
     EntityType,
     EntitySecret,
+    EntityNote,
     User,
     EntityRelationship,
     UploadedFile, // ✅ link uploaded files to entity
@@ -64,6 +67,8 @@ if (EntitySecret.associate)
   EntitySecret.associate({ Entity, User, EntitySecretPermission })
 if (EntitySecretPermission.associate)
   EntitySecretPermission.associate({ EntitySecret, User, Campaign })
+if (EntityNote.associate)
+  EntityNote.associate({ Entity, User, Character, Campaign })
 if (EntityRelationshipType.associate)
   EntityRelationshipType.associate({
     EntityRelationship,
@@ -104,6 +109,7 @@ export default {
   Entity,
   EntitySecret,
   EntitySecretPermission,
+  EntityNote,
   EntityRelationshipType,
   EntityRelationship,
   EntityRelationshipTypeEntityType,

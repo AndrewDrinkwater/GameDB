@@ -11,8 +11,14 @@ import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 // import EntityRelationshipFilters, {
 //   createDefaultRelationshipFilters,
 // } from '../../components/entities/EntityRelationshipFilters.jsx'
-import { getEntity, updateEntity } from '../../api/entities.js'
+import {
+  getEntity,
+  updateEntity,
+  fetchEntityNotes,
+  createEntityNote,
+} from '../../api/entities.js'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import { useFeatureFlag } from '../../context/FeatureFlagContext.jsx'
 import RelationshipBuilder from '../../modules/relationships3/RelationshipBuilder.jsx'
 import useUnsavedChangesPrompt from '../../hooks/useUnsavedChangesPrompt.js'
@@ -27,6 +33,7 @@ import RelationshipsTab from './tabs/RelationshipsTab.jsx'
 import AccessTab from './tabs/AccessTab.jsx'
 import SystemTab from './tabs/SystemTab.jsx'
 import SecretsTab from './tabs/SecretsTab.jsx'
+import NotesTab from './tabs/NotesTab.jsx'
 
 const VISIBILITY_LABELS = {
   hidden: 'Hidden',
@@ -173,6 +180,7 @@ export default function EntityDetailPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, token, sessionReady } = useAuth()
+  const { selectedCampaign, selectedCampaignId } = useCampaignContext()
 
   const [entity, setEntity] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -184,6 +192,13 @@ export default function EntityDetailPage() {
   const [showRelationshipForm, setShowRelationshipForm] = useState(false)
   const [toast, setToast] = useState(null)
 
+  const [notesState, setNotesState] = useState({
+    items: [],
+    loading: false,
+    error: '',
+  })
+  const [notesSaving, setNotesSaving] = useState(false)
+
   const formRef = useRef(null)
   const [formState, setFormState] = useState({
     isDirty: false,
@@ -191,6 +206,60 @@ export default function EntityDetailPage() {
   })
 
   const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
+
+  const campaignMembership = useMemo(() => {
+    if (!selectedCampaign || !user?.id) return null
+    const members = Array.isArray(selectedCampaign.members)
+      ? selectedCampaign.members
+      : []
+    const match = members.find((member) => {
+      if (!member) return false
+      const memberUserId =
+        member.user_id ?? member.userId ?? member.user?.id ?? member.id ?? null
+      if (!memberUserId) return false
+      return String(memberUserId) === String(user.id)
+    })
+    return match || null
+  }, [selectedCampaign, user?.id])
+
+  const membershipRole = campaignMembership?.role ?? null
+
+  const isCampaignDm = useMemo(() => {
+    if (user?.role === 'system_admin') return true
+    return membershipRole === 'dm'
+  }, [membershipRole, user?.role])
+
+  const isCampaignPlayer = useMemo(
+    () => membershipRole === 'player',
+    [membershipRole],
+  )
+
+  const canCreateNotes = useMemo(
+    () => Boolean(isCampaignDm || isCampaignPlayer),
+    [isCampaignDm, isCampaignPlayer],
+  )
+
+  const entityWorldId = useMemo(() => {
+    if (!entity) return ''
+    if (entity.world?.id) return String(entity.world.id)
+    if (entity.world_id) return String(entity.world_id)
+    if (entity.worldId) return String(entity.worldId)
+    return ''
+  }, [entity])
+
+  const selectedCampaignWorldId = useMemo(() => {
+    if (!selectedCampaign) return ''
+    if (selectedCampaign.world?.id) return String(selectedCampaign.world.id)
+    if (selectedCampaign.world_id) return String(selectedCampaign.world_id)
+    return ''
+  }, [selectedCampaign])
+
+  const campaignMatchesEntityWorld = useMemo(() => {
+    if (!selectedCampaignId) return true
+    if (!entityWorldId || !selectedCampaignWorldId) return true
+    return String(entityWorldId) === String(selectedCampaignWorldId)
+  }, [selectedCampaignId, entityWorldId, selectedCampaignWorldId])
+
   const fromEntitiesSearch = location.state?.fromEntities?.search || ''
 
   const backUrl = useMemo(() => {
@@ -248,6 +317,128 @@ export default function EntityDetailPage() {
     })
   }, [])
 
+  const fetchNotes = useCallback(async () => {
+    const response = await fetchEntityNotes(id, {
+      campaignId: selectedCampaignId,
+    })
+    const data = Array.isArray(response?.data)
+      ? response.data
+      : Array.isArray(response)
+        ? response
+        : []
+    return data
+  }, [id, selectedCampaignId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!id || !selectedCampaignId || !campaignMatchesEntityWorld) {
+      setNotesState({ items: [], loading: false, error: '' })
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setNotesState((previous) => ({ ...previous, loading: true, error: '' }))
+
+    const loadNotes = async () => {
+      try {
+        const list = await fetchNotes()
+        if (!cancelled) {
+          setNotesState({ items: list, loading: false, error: '' })
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setNotesState((previous) => ({
+            ...previous,
+            loading: false,
+            error: err.message || 'Failed to load notes',
+          }))
+        }
+      }
+    }
+
+    loadNotes()
+
+    return () => {
+      cancelled = true
+    }
+  }, [id, selectedCampaignId, campaignMatchesEntityWorld, fetchNotes])
+
+  const handleNotesReload = useCallback(async () => {
+    if (!id || !selectedCampaignId || !campaignMatchesEntityWorld) {
+      setNotesState({ items: [], loading: false, error: '' })
+      return
+    }
+
+    setNotesState((previous) => ({ ...previous, loading: true, error: '' }))
+
+    try {
+      const list = await fetchNotes()
+      setNotesState({ items: list, loading: false, error: '' })
+    } catch (err) {
+      setNotesState((previous) => ({
+        ...previous,
+        loading: false,
+        error: err.message || 'Failed to load notes',
+      }))
+    }
+  }, [id, selectedCampaignId, campaignMatchesEntityWorld, fetchNotes])
+
+  const handleNoteCreate = useCallback(
+    async (payload) => {
+      if (!id) {
+        return { success: false, message: 'Entity not found' }
+      }
+      if (!selectedCampaignId) {
+        return { success: false, message: 'Select a campaign first' }
+      }
+
+      setNotesSaving(true)
+
+      try {
+        const requestPayload = {
+          ...payload,
+          campaignId: payload?.campaignId ?? selectedCampaignId,
+        }
+
+        const response = await createEntityNote(id, requestPayload)
+        const note = response?.data || response
+
+        if (!note) {
+          throw new Error('Note could not be created')
+        }
+
+        setNotesState((previous) => {
+          const currentItems = Array.isArray(previous?.items)
+            ? previous.items.slice()
+            : []
+          const noteId = note?.id
+          const filtered = noteId
+            ? currentItems.filter((entry) => entry?.id !== noteId)
+            : currentItems
+
+          return {
+            items: [note, ...filtered],
+            loading: false,
+            error: '',
+          }
+        })
+
+        return { success: true, note }
+      } catch (err) {
+        console.error('❌ Failed to create note', err)
+        return {
+          success: false,
+          message: err.message || 'Failed to create note',
+        }
+      } finally {
+        setNotesSaving(false)
+      }
+    },
+    [id, selectedCampaignId],
+  )
+
   const canEdit = useMemo(() => {
     if (entity?.permissions && typeof entity.permissions.canEdit === 'boolean') {
       return entity.permissions.canEdit
@@ -274,6 +465,7 @@ export default function EntityDetailPage() {
   const tabItems = useMemo(() => {
     const items = [
       { id: 'dossier', label: 'Dossier' },
+      { id: 'notes', label: 'Notes' },
       { id: 'relationships', label: 'Relationships' },
     ]
 
@@ -787,6 +979,26 @@ export default function EntityDetailPage() {
               dossierSchema={dossierSchema}
               viewData={viewData}
               renderSchemaSections={renderSchemaSections}
+            />
+          )}
+
+          {/* NOTES TAB */}
+          {activeTab === 'notes' && (
+            <NotesTab
+              entity={entity}
+              worldId={entityWorldId}
+              selectedCampaign={selectedCampaign}
+              selectedCampaignId={selectedCampaignId}
+              isCampaignDm={isCampaignDm}
+              isCampaignPlayer={isCampaignPlayer}
+              canCreateNote={canCreateNotes}
+              notes={notesState.items}
+              loading={notesState.loading}
+              error={notesState.error}
+              onReload={handleNotesReload}
+              onCreateNote={handleNoteCreate}
+              creating={notesSaving}
+              campaignMatchesEntityWorld={campaignMatchesEntityWorld}
             />
           )}
 
