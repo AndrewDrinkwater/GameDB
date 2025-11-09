@@ -60,6 +60,7 @@ export async function getEntityGraph(req, res) {
       worldId: center.world_id,
       user,
       worldAccess: access,
+      campaignContextId: req.campaignContextId,
     })
 
     if (!canUserReadEntity(center, readContext)) {

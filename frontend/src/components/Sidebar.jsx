@@ -69,6 +69,15 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
     )
   }, [selectedCampaign, user])
 
+  const isDMInSelectedCampaign = useMemo(() => {
+    if (!selectedCampaign || !Array.isArray(selectedCampaign.members)) return false
+    if (!user?.id) return false
+
+    return selectedCampaign.members.some(
+      (member) => member?.user_id === user.id && member?.role === 'dm',
+    )
+  }, [selectedCampaign, user])
+
   // --- Load entity types for selected campaign world ---
   useEffect(() => {
     let cancelled = false
@@ -125,20 +134,40 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
     [selectedCampaignId],
   )
 
+  const handleNavContainerClick = useCallback(
+    (event) => {
+      if (pinned) return
+      if (event.defaultPrevented) return
+      const target = event.target
+      const element = target instanceof Element ? target : target?.parentElement
+      if (!element || typeof element.closest !== 'function') return
+      const anchor = element.closest('a')
+      if (anchor && event.currentTarget.contains(anchor)) {
+        onClose()
+      }
+    },
+    [pinned, onClose],
+  )
+
   return (
     <aside className={`sidebar ${open ? 'open' : 'closed'}`}>
       <div className="sidebar-header">
         <span>Navigation</span>
         <button
-          className="pin-btn"
+          type="button"
+          className={`pin-btn ${pinned ? 'pinned' : ''}`}
           title={pinned ? 'Unpin menu' : 'Pin menu'}
+          aria-pressed={pinned}
           onClick={onPinToggle}
         >
-          <Pin size={16} style={{ opacity: pinned ? 1 : 0.6 }} />
+          <Pin size={16} className="pin-icon" />
         </button>
       </div>
 
-      <nav className="nav-links" onClick={!pinned ? onClose : undefined}>
+      <nav
+        className="nav-links"
+        onClick={!pinned ? handleNavContainerClick : undefined}
+      >
         <Link to="/worlds" className={isActive('/worlds') ? 'active' : ''}>
           Worlds
         </Link>
@@ -317,12 +346,14 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
                 My Companions
               </Link>
             )}
-            <Link
-              to="/characters/others"
-              className={isActive('/characters/others') ? 'active' : ''}
-            >
-              All Characters
-            </Link>
+            {selectedCampaignId && isDMInSelectedCampaign && (
+              <Link
+                to="/characters/others"
+                className={isActive('/characters/others') ? 'active' : ''}
+              >
+                All Characters
+              </Link>
+            )}
             {user?.role === 'system_admin' && (
               <Link
                 to="/characters/all"

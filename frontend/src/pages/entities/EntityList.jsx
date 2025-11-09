@@ -325,14 +325,9 @@ export default function EntityList() {
       setEntityFormUiState(createDrawerFooterState('create'))
       setEntitiesError('')
       setToast(null)
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete(FILTER_PARAM)
-        return next
-      })
       previousWorldIdRef.current = worldId
     }
-  }, [worldId, panelOpen, setSearchParams, viewingUnassigned])
+  }, [worldId, panelOpen, viewingUnassigned])
 
   useEffect(() => {
     if (!isSystemAdmin && viewingUnassigned) {
@@ -587,17 +582,8 @@ export default function EntityList() {
   const isSavingUserColumns = columnsSavingScope === COLUMN_SCOPE_USER
   const isSavingSystemColumns = columnsSavingScope === COLUMN_SCOPE_SYSTEM
   const draftMatchesSystem = listsMatch(draftColumnKeys, systemBaselineColumns)
-  const draftMatchesFallback = listsMatch(draftColumnKeys, fallbackColumns)
-  const hasSystemDefault = Boolean(systemColumnDefault)
 
   const handleResetToBaseline = () => {
-    setDraftColumnKeys([...fallbackColumns])
-    setColumnSelectionError('')
-    setDraggingColumnKey('')
-    setDropTargetKey('')
-  }
-
-  const handleUseSystemDefault = () => {
     setDraftColumnKeys([...systemBaselineColumns])
     setColumnSelectionError('')
     setDraggingColumnKey('')
@@ -646,12 +632,6 @@ export default function EntityList() {
       }
     }
     setDropTargetKey(key)
-  }
-
-  const handleColumnDragLeave = (key) => {
-    if (dropTargetKey === key) {
-      setDropTargetKey('')
-    }
   }
 
   const handleColumnDrop = (targetKey) => {
@@ -1153,7 +1133,6 @@ export default function EntityList() {
                               const column = columnOptionList.find((c) => c.key === key)
                               if (!column) return null
                               const isDragging = draggingColumnKey === key
-                              const isDropTarget = dropTargetKey === key
                               const badgeLabel = column.type === 'metadata' ? 'Metadata' : 'Core'
 
                               return (
@@ -1260,7 +1239,7 @@ export default function EntityList() {
                           type="button"
                           className="btn secondary"
                           onClick={handleResetToBaseline}
-                          disabled={columnsLoading || draftMatchesFallback}
+                          disabled={columnsLoading || draftMatchesSystem}
                         >
                           Use system default
                         </button>
@@ -1320,13 +1299,6 @@ export default function EntityList() {
           </button>
         </div>
       </div>
-
-      {selectedCampaign && !canManage && !viewingUnassigned && (
-        <div className="alert info" role="status">
-          You can view the entities that are shared with you, but only the world owner,
-          a campaign DM, or a system administrator can create or edit them.
-        </div>
-      )}
 
       {viewingUnassigned && (
         <div className="alert info" role="status">

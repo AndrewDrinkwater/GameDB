@@ -454,6 +454,7 @@ export const listWorldEntities = async (req, res) => {
       worldId: world.id,
       user,
       worldAccess: access,
+      campaignContextId: req.campaignContextId,
     })
 
     const entities = await Entity.findAll({
@@ -553,6 +554,7 @@ export const searchEntities = async (req, res) => {
       worldId: world.id,
       user,
       worldAccess: access,
+      campaignContextId: req.campaignContextId,
     })
 
     if (!access.isOwner && !access.isAdmin) {
@@ -705,6 +707,7 @@ export const updateEntity = async (req, res) => {
       worldId: entity.world_id,
       user,
       worldAccess: access,
+      campaignContextId: req.campaignContextId,
     })
 
     if (!canUserWriteEntity(entity, readContext)) {
@@ -874,6 +877,7 @@ export const getEntityById = async (req, res) => {
       worldId: entity.world_id,
       user,
       worldAccess: access,
+      campaignContextId: req.campaignContextId,
     })
 
     if (!canUserReadEntity(entity, readContext)) {
@@ -945,6 +949,7 @@ export const getEntitySecrets = async (req, res) => {
       worldId: entity.world_id,
       user,
       worldAccess: access,
+      campaignContextId: req.campaignContextId,
     })
 
     const canManageSecrets = access.isOwner

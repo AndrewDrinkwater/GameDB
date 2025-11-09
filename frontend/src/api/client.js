@@ -16,6 +16,9 @@ function normalizeApiBase(base) {
 
 const API_BASE = normalizeApiBase(apiBase) || 'http://localhost:3000/api'
 
+const CAMPAIGN_CONTEXT_STORAGE_KEY = 'gamedb_campaign_context'
+const CAMPAIGN_CONTEXT_HEADER = 'X-Campaign-Context-Id'
+
 async function request(method, url, data, config = {}) {
   const { headers: extraHeaders, ...restConfig } = config || {}
 
@@ -27,6 +30,15 @@ async function request(method, url, data, config = {}) {
   const token = getAuthToken()
   if (token) {
     headers.Authorization = `Bearer ${token}`
+  }
+
+  try {
+    const storedContextId = localStorage.getItem(CAMPAIGN_CONTEXT_STORAGE_KEY)
+    if (storedContextId) {
+      headers[CAMPAIGN_CONTEXT_HEADER] = storedContextId
+    }
+  } catch (err) {
+    console.warn('⚠️ Unable to include campaign context header', err)
   }
 
   const response = await fetch(`${API_BASE}${url}`, {
