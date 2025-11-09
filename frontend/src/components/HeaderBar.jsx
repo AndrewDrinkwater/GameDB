@@ -3,6 +3,7 @@ import { User, Menu, LogOut, Moon, Sun } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
 import { useTheme } from '../context/ThemeContext.jsx'
+import { Link } from 'react-router-dom'
 
 export default function HeaderBar({ onMenuToggle }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -58,7 +59,11 @@ export default function HeaderBar({ onMenuToggle }) {
         <button className="menu-btn" onClick={onMenuToggle}>
           <Menu size={20} />
         </button>
-        <h1 className="title">GameDB</h1>
+        <h1 className="title">
+          <Link to="/" className="title-link">
+            GameDB
+          </Link>
+        </h1>
       </div>
 
       <div className="header-center">

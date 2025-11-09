@@ -6,6 +6,7 @@ import {
   createRoutesFromElements,
 } from 'react-router-dom'
 import Layout from './components/Layout.jsx'
+import HomePage from './pages/HomePage.jsx'
 import WorldsPage from './pages/WorldsPage.jsx'
 import WorldDetailPage from './pages/WorldDetailPage.jsx'
 import CampaignsPage from './pages/CampaignsPage.jsx'
@@ -41,8 +42,8 @@ const router = createBrowserRouter(
           </ProtectedRoute>
         }
       >
-        {/* Redirect root → /worlds */}
-        <Route index element={<Navigate to="/worlds" replace />} />
+        {/* Home */}
+        <Route index element={<HomePage />} />
 
         {/* Worlds routes */}
         <Route path="worlds" element={<WorldsPage />} />
