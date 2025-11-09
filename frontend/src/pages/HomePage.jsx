@@ -121,11 +121,10 @@ export default function HomePage() {
     <div className="home-page">
       <section className="home-hero">
         <div className="home-hero-text">
-          <p className="home-eyebrow">Your tabletop control center</p>
+          <p className="home-eyebrow">Your Tabletop Worldbuilding Database</p>
           <h1>Welcome, {displayName}.</h1>
           <p className="home-description">
-            Select a campaign to jump into worldbuilding, manage your entities, and keep the
-            table in sync.
+            Select a campaign to explore and build the world.
           </p>
         </div>
         {selectedCampaign && (
