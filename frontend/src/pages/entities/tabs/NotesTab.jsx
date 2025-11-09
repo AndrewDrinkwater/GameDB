@@ -327,6 +327,19 @@ export default function NotesTab({
     setFormError('')
   }, [])
 
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false)
+    setFormError('')
+    setFormSuccess('')
+  }, [])
+
+  const openDrawer = useCallback(() => {
+    if (!canShowForm) return
+    setFormError('')
+    setFormSuccess('')
+    setDrawerOpen(true)
+  }, [canShowForm])
+
   const handleSubmit = useCallback(
     async (event) => {
       event.preventDefault()
@@ -421,19 +434,6 @@ export default function NotesTab({
   const shareDisabled = creating
   const saveDisabled = creating || !noteContent.trim() || (isCampaignPlayer && !characterId)
   const filterDisabled = sortedNotes.length === 0 || authorFilters.length <= 1
-
-  const closeDrawer = useCallback(() => {
-    setDrawerOpen(false)
-    setFormError('')
-    setFormSuccess('')
-  }, [])
-
-  const openDrawer = useCallback(() => {
-    if (!canShowForm) return
-    setFormError('')
-    setFormSuccess('')
-    setDrawerOpen(true)
-  }, [canShowForm])
 
   useEffect(() => {
     if (!canShowForm && drawerOpen) {
