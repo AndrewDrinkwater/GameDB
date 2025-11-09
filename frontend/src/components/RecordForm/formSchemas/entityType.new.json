@@ -7,6 +7,14 @@
       "fields": [
         { "key": "name", "label": "Name", "type": "text", "placeholder": "e.g. Faction" },
         {
+          "key": "world_id",
+          "label": "World",
+          "type": "select",
+          "optionsSource": "worlds",
+          "placeholder": "Select the world this type belongs to",
+          "required": true
+        },
+        {
           "key": "description",
           "label": "Description",
           "type": "textarea",

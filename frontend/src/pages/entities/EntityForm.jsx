@@ -248,9 +248,18 @@ export default function EntityForm({
     let cancelled = false
 
     const loadEntityTypes = async () => {
+      if (!cancelled) {
+        setError('')
+      }
+      if (!worldId) {
+        setEntityTypes([])
+        setLoadingTypes(false)
+        return
+      }
+
       setLoadingTypes(true)
       try {
-        const response = await getEntityTypes()
+        const response = await getEntityTypes({ worldId })
         const list = Array.isArray(response)
           ? response
           : Array.isArray(response?.data)
@@ -272,6 +281,7 @@ export default function EntityForm({
       } catch (err) {
         if (!cancelled) {
           setError(err.message || 'Failed to load entity types')
+          setEntityTypes([])
         }
       } finally {
         if (!cancelled) {
@@ -284,7 +294,21 @@ export default function EntityForm({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [worldId])
+
+  useEffect(() => {
+    if (!worldId) {
+      setValues((prev) => ({ ...prev, entityTypeId: '' }))
+      return
+    }
+
+    setValues((prev) => {
+      if (!prev.entityTypeId) return prev
+      const exists = entityTypes.some((type) => type.id === prev.entityTypeId)
+      if (exists) return prev
+      return { ...prev, entityTypeId: '' }
+    })
+  }, [worldId, entityTypes])
 
   useEffect(() => {
     let cancelled = false

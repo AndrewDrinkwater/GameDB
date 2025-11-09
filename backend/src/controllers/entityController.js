@@ -373,6 +373,20 @@ export const createEntityResponse = async ({ world, user, body }) => {
     return { status: 404, body: { success: false, message: 'Entity type not found' } }
   }
 
+  if (!entityType.world_id) {
+    return {
+      status: 400,
+      body: { success: false, message: 'Entity type is not assigned to a world' },
+    }
+  }
+
+  if (String(entityType.world_id) !== String(world.id)) {
+    return {
+      status: 400,
+      body: { success: false, message: 'Entity type belongs to a different world' },
+    }
+  }
+
   const resolvedVisibility = visibility ?? 'visible'
   if (!VISIBILITY_VALUES.has(resolvedVisibility)) {
     return { status: 400, body: { success: false, message: 'Invalid visibility value' } }

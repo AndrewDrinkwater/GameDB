@@ -11,15 +11,32 @@ export default function InlineEntityCreator({ worldId, onCreated }) {
   const [entityTypes, setEntityTypes] = useState([])
 
   useEffect(() => {
+    let cancelled = false
+
     const loadTypes = async () => {
+      if (!worldId) {
+        setEntityTypes([])
+        return
+      }
+
       try {
-        const res = await getEntityTypes(worldId)
-        setEntityTypes(res.data || res)
+        const res = await getEntityTypes({ worldId })
+        if (!cancelled) {
+          const payload = Array.isArray(res?.data) ? res.data : res
+          setEntityTypes(Array.isArray(payload) ? payload : [])
+        }
       } catch (err) {
-        console.error('❌ Failed to load entity types', err)
+        if (!cancelled) {
+          console.error('❌ Failed to load entity types', err)
+          setEntityTypes([])
+        }
       }
     }
+
     loadTypes()
+    return () => {
+      cancelled = true
+    }
   }, [worldId])
 
   const handleSubmit = async (e) => {
@@ -95,7 +112,7 @@ export default function InlineEntityCreator({ worldId, onCreated }) {
       </div>
 
       <div className="form-actions">
-        <button type="submit" className="btn primary" disabled={loading}>
+        <button type="submit" className="btn primary" disabled={loading || !worldId}>
           {loading ? 'Creating…' : 'Create Entity'}
         </button>
       </div>
