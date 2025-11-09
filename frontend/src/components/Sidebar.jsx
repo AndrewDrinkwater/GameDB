@@ -125,6 +125,21 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
     [selectedCampaignId],
   )
 
+  const handleNavContainerClick = useCallback(
+    (event) => {
+      if (pinned) return
+      if (event.defaultPrevented) return
+      const target = event.target
+      const element = target instanceof Element ? target : target?.parentElement
+      if (!element || typeof element.closest !== 'function') return
+      const anchor = element.closest('a')
+      if (anchor && event.currentTarget.contains(anchor)) {
+        onClose()
+      }
+    },
+    [pinned, onClose],
+  )
+
   return (
     <aside className={`sidebar ${open ? 'open' : 'closed'}`}>
       <div className="sidebar-header">
@@ -138,7 +153,10 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
         </button>
       </div>
 
-      <nav className="nav-links" onClick={!pinned ? onClose : undefined}>
+      <nav
+        className="nav-links"
+        onClick={!pinned ? handleNavContainerClick : undefined}
+      >
         <Link to="/worlds" className={isActive('/worlds') ? 'active' : ''}>
           Worlds
         </Link>
