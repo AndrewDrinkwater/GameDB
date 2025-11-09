@@ -30,6 +30,28 @@ export default function ListViewer({
 
   const visibleColumns = resolvedColumns.filter((column) => visibleCols.includes(column.key))
 
+  useEffect(() => {
+    setVisibleCols((prev) => {
+      const columnKeys = resolvedColumns.map((column) => column.key)
+      const filtered = prev.filter((key) => columnKeys.includes(key))
+
+      columnKeys.forEach((key) => {
+        if (!filtered.includes(key)) {
+          filtered.push(key)
+        }
+      })
+
+      if (
+        filtered.length === prev.length &&
+        filtered.every((key, index) => key === prev[index])
+      ) {
+        return prev
+      }
+
+      return filtered
+    })
+  }, [resolvedColumns])
+
   const handleHeaderClick = (column) => {
     explorer.toggleSort(column.key)
   }

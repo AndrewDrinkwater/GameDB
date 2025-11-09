@@ -45,13 +45,15 @@ export default function CharactersPage({ scope = 'my' }) {
   const navigate = useNavigate()
   const { id: routeId } = useParams()
   const { token, sessionReady, user } = useAuth()
-  const { selectedCampaign, selectedCampaignId } = useCampaignContext()
+  const { selectedCampaign, selectedCampaignId, setSelectedCampaignId } =
+    useCampaignContext()
   const [characters, setCharacters] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [viewMode, setViewMode] = useState('list')
   const [selectedCharacter, setSelectedCharacter] = useState(null)
   const [editingId, setEditingId] = useState(null)
+  const [accessMessage, setAccessMessage] = useState('')
   const basePath = useMemo(() => `/characters/${scope}`, [scope])
 
   const isPlayerInSelectedCampaign = useMemo(() => {
@@ -63,12 +65,23 @@ export default function CharactersPage({ scope = 'my' }) {
     )
   }, [selectedCampaign, user])
 
+  const isDMInSelectedCampaign = useMemo(() => {
+    if (!selectedCampaign || !Array.isArray(selectedCampaign.members)) return false
+    if (!user?.id) return false
+
+    return selectedCampaign.members.some(
+      (member) => member?.user_id === user.id && member?.role === 'dm',
+    )
+  }, [selectedCampaign, user])
+
   const title = useMemo(() => {
     switch (scope) {
       case 'my':
         return 'My Characters'
       case 'others':
-        return 'All Characters'
+        return selectedCampaign?.name
+          ? `All Characters – ${selectedCampaign.name}`
+          : 'All Characters'
       case 'all':
         return 'All Characters'
       case 'companions':
@@ -92,6 +105,7 @@ export default function CharactersPage({ scope = 'my' }) {
     setViewMode('list')
     setSelectedCharacter(null)
     setEditingId(null)
+    setAccessMessage('')
   }, [scope])
 
   useEffect(() => {
@@ -123,26 +137,52 @@ export default function CharactersPage({ scope = 'my' }) {
     if (!token) return
     if (scope === 'all' && user && user.role !== 'system_admin') return
 
+    setError(null)
+
     if (scope === 'companions') {
       if (!selectedCampaignId) {
         setCharacters([])
-        setError('Select a campaign to view your companions.')
+        setAccessMessage(
+          'Select a campaign to view your companions. Use Go to Campaign from My Characters to set one.',
+        )
+        setLoading(false)
         return
       }
 
       if (!isPlayerInSelectedCampaign) {
         setCharacters([])
-        setError('You must be a player in the selected campaign to view companions.')
+        setAccessMessage('You must be a player in the selected campaign to view companions.')
+        setLoading(false)
         return
       }
     }
 
+    if (scope === 'others') {
+      if (!selectedCampaignId) {
+        setCharacters([])
+        setAccessMessage(
+          'Select a campaign to view all characters. Use Go to Campaign from My Characters to set one.',
+        )
+        setLoading(false)
+        return
+      }
+
+      if (!isDMInSelectedCampaign) {
+        setCharacters([])
+        setAccessMessage('You must be a DM in the selected campaign to view all characters.')
+        setLoading(false)
+        return
+      }
+    }
+
+    setAccessMessage('')
     setLoading(true)
-    setError(null)
     try {
       const params = { scope }
 
-      if (scope === 'companions') {
+      if (scope === 'companions' || scope === 'others') {
+        params.campaign_id = selectedCampaignId
+      } else if (scope === 'my' && selectedCampaignId) {
         params.campaign_id = selectedCampaignId
       }
 
@@ -168,22 +208,58 @@ export default function CharactersPage({ scope = 'my' }) {
     user,
     selectedCampaignId,
     isPlayerInSelectedCampaign,
+    isDMInSelectedCampaign,
   ])
 
   useEffect(() => {
     if (sessionReady && token) loadCharacters()
   }, [sessionReady, token, loadCharacters])
 
-  const columns = [
-    { key: 'name', label: 'Name' },
-    { key: 'class', label: 'Class' },
-    { key: 'level', label: 'Level' },
-    { key: 'race', label: 'Race' },
-    { key: 'alignment', label: 'Alignment' },
-    { key: 'playerName', label: 'Player' },
-    { key: 'campaignName', label: 'Campaign' },
-    { key: 'status', label: 'Status' },
-  ]
+  const showGoToCampaignAction = scope === 'my' && !selectedCampaignId
+
+  const baseColumns = useMemo(
+    () => [
+      { key: 'name', label: 'Name' },
+      { key: 'class', label: 'Class' },
+      { key: 'level', label: 'Level' },
+      { key: 'race', label: 'Race' },
+      { key: 'alignment', label: 'Alignment' },
+      { key: 'playerName', label: 'Player' },
+      { key: 'campaignName', label: 'Campaign' },
+      { key: 'status', label: 'Status' },
+    ],
+    [],
+  )
+
+  const columns = useMemo(() => {
+    if (!showGoToCampaignAction) return baseColumns
+
+    return [
+      ...baseColumns,
+      {
+        key: 'campaignAction',
+        label: 'Actions',
+        render: (row) => {
+          if (!row.campaign_id) {
+            return 'No campaign'
+          }
+
+          return (
+            <button
+              type="button"
+              className="btn secondary compact"
+              onClick={(event) => {
+                event.stopPropagation()
+                setSelectedCampaignId(String(row.campaign_id))
+              }}
+            >
+              Go to Campaign
+            </button>
+          )
+        },
+      },
+    ]
+  }, [baseColumns, showGoToCampaignAction, setSelectedCampaignId])
 
   const handleNew = () => {
     if (!canCreate) return
@@ -291,6 +367,14 @@ export default function CharactersPage({ scope = 'my' }) {
         onCancel={handleCancel}
         onDelete={handleDelete}
       />
+    )
+  }
+
+  if (viewMode === 'list' && accessMessage) {
+    return (
+      <div className="empty-state">
+        <p>{accessMessage}</p>
+      </div>
     )
   }
 

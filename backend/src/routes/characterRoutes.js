@@ -63,47 +63,48 @@ router.get('/', authMiddleware, async (req, res) => {
 
     if (scope === 'my') {
       where.user_id = req.user.id
+
+      if (req.query.campaign_id) {
+        where.campaign_id = req.query.campaign_id
+      }
     } else if (scope === 'others') {
-      const [myCharacters, dmMemberships, ownedCampaigns] = await Promise.all([
-        Character.findAll({
-          where: { user_id: req.user.id },
-          attributes: ['campaign_id'],
-          raw: true,
-        }),
-        UserCampaignRole.findAll({
-          where: {
-            user_id: req.user.id,
-            role: { [Op.in]: ['dm'] },
-          },
-          attributes: ['campaign_id'],
-          raw: true,
-        }),
-        Campaign.findAll({
-          where: { created_by: req.user.id },
-          attributes: ['id'],
-          raw: true,
-        }),
-      ])
+      const campaignId = req.query.campaign_id
 
-      const campaignIds = [
-        ...new Set(
-          [
-            ...myCharacters.map((c) => c.campaign_id),
-            ...dmMemberships.map((c) => c.campaign_id),
-            ...ownedCampaigns.map((c) => c.id),
-          ].filter((id) => !!id)
-        ),
-      ]
-
-      if (campaignIds.length === 0) {
-        return res.json({ success: true, data: [] })
+      if (!campaignId) {
+        return res
+          .status(400)
+          .json({ success: false, message: 'Campaign is required to view all characters' })
       }
 
-      where.campaign_id = { [Op.in]: campaignIds }
-      where[Op.or] = [
-        { user_id: { [Op.ne]: req.user.id } },
-        { user_id: null },
-      ]
+      const campaign = await Campaign.findByPk(campaignId, {
+        attributes: ['id', 'created_by'],
+      })
+
+      if (!campaign) {
+        return res.status(404).json({ success: false, message: 'Campaign not found' })
+      }
+
+      const isOwner = String(campaign.created_by) === String(req.user.id)
+
+      if (!isOwner) {
+        const dmMembership = await UserCampaignRole.findOne({
+          where: {
+            campaign_id: campaignId,
+            user_id: req.user.id,
+            role: 'dm',
+          },
+          attributes: ['id'],
+        })
+
+        if (!dmMembership) {
+          return res.status(403).json({
+            success: false,
+            message: 'You must be a DM in this campaign to view all characters',
+          })
+        }
+      }
+
+      where.campaign_id = campaignId
     } else if (scope === 'companions') {
       const campaignId = req.query.campaign_id
 
