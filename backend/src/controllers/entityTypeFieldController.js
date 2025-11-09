@@ -1,5 +1,6 @@
 import { EntityType, EntityTypeField } from '../models/index.js'
 import { coerceValueForField } from '../utils/entityMetadataValidator.js'
+import { checkWorldAccess } from '../middleware/worldAccess.js'
 
 const FIELD_ORDER = [
   ['sort_order', 'ASC'],
@@ -10,7 +11,13 @@ const ALLOWED_TYPES = new Set(['string', 'number', 'boolean', 'text', 'date', 'e
 
 const isSystemAdmin = (user) => user?.role === 'system_admin'
 
-const ensureManageAccess = async (user) => isSystemAdmin(user)
+const ensureManageAccess = async (user, worldId) => {
+  if (isSystemAdmin(user)) return true
+  if (!worldId) return false
+
+  const access = await checkWorldAccess(worldId, user)
+  return access.isOwner
+}
 
 const normaliseOptions = (options) => {
   if (options === undefined || options === null) return {}
@@ -71,7 +78,7 @@ export const listEntityTypeFields = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Entity type not found' })
     }
 
-    const canManage = await ensureManageAccess(req.user)
+    const canManage = await ensureManageAccess(req.user, entityType.world_id)
     if (!canManage) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
@@ -97,7 +104,7 @@ export const createEntityTypeField = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Entity type not found' })
     }
 
-    const canManage = await ensureManageAccess(req.user)
+    const canManage = await ensureManageAccess(req.user, entityType.world_id)
     if (!canManage) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
@@ -163,7 +170,7 @@ export const updateEntityTypeField = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Entity type not found' })
     }
 
-    const canManage = await ensureManageAccess(req.user)
+    const canManage = await ensureManageAccess(req.user, entityType.world_id)
     if (!canManage) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }

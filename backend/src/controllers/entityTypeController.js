@@ -7,7 +7,13 @@ const PUBLIC_VISIBILITY = ['visible', 'partial']
 
 const isSystemAdmin = (user) => user?.role === 'system_admin'
 
-const ensureManageAccess = (user) => isSystemAdmin(user)
+const ensureManageAccess = async (user, worldId) => {
+  if (isSystemAdmin(user)) return true
+  if (!worldId) return false
+
+  const access = await checkWorldAccess(worldId, user)
+  return access.isOwner
+}
 
 const normaliseWorldId = (value) => {
   if (value === undefined || value === null) return ''
@@ -87,11 +93,6 @@ export const getEntityType = async (req, res) => {
 
 export const createEntityType = async (req, res) => {
   try {
-    const canManage = await ensureManageAccess(req.user)
-    if (!canManage) {
-      return res.status(403).json({ success: false, message: 'Forbidden' })
-    }
-
     const { name, description } = req.body ?? {}
     const trimmedName = typeof name === 'string' ? name.trim() : ''
 
@@ -110,6 +111,11 @@ export const createEntityType = async (req, res) => {
     const world = await World.findByPk(resolvedWorldId)
     if (!world) {
       return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    const canManage = await ensureManageAccess(req.user, world.id)
+    if (!canManage) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
     try {
@@ -140,16 +146,16 @@ export const createEntityType = async (req, res) => {
 
 export const updateEntityType = async (req, res) => {
   try {
-    const canManage = await ensureManageAccess(req.user)
-    if (!canManage) {
-      return res.status(403).json({ success: false, message: 'Forbidden' })
-    }
-
     const { id } = req.params
     const entityType = await EntityType.findByPk(id)
 
     if (!entityType) {
       return res.status(404).json({ success: false, message: 'Entity type not found' })
+    }
+
+    const canManageExisting = await ensureManageAccess(req.user, entityType.world_id)
+    if (!canManageExisting) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
     const { name, description } = req.body ?? {}
@@ -183,6 +189,11 @@ export const updateEntityType = async (req, res) => {
       const world = await World.findByPk(resolvedWorldId)
       if (!world) {
         return res.status(404).json({ success: false, message: 'World not found' })
+      }
+
+      const canManageTarget = await ensureManageAccess(req.user, resolvedWorldId)
+      if (!canManageTarget) {
+        return res.status(403).json({ success: false, message: 'Forbidden' })
       }
 
       const mismatchedEntities = await Entity.count({
@@ -230,16 +241,16 @@ export const updateEntityType = async (req, res) => {
 
 export const deleteEntityType = async (req, res) => {
   try {
-    const canManage = await ensureManageAccess(req.user)
-    if (!canManage) {
-      return res.status(403).json({ success: false, message: 'Forbidden' })
-    }
-
     const { id } = req.params
     const entityType = await EntityType.findByPk(id)
 
     if (!entityType) {
       return res.status(404).json({ success: false, message: 'Entity type not found' })
+    }
+
+    const canManage = await ensureManageAccess(req.user, entityType.world_id)
+    if (!canManage) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
     const entityCount = await Entity.count({ where: { entity_type_id: id } })
