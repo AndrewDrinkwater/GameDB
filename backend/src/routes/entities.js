@@ -4,7 +4,7 @@ import multer from 'multer'
 import XLSX from 'xlsx'
 import ExcelJS from 'exceljs'
 import { Router } from 'express'
-import { authenticate } from '../middleware/authMiddleware.js'
+import { authenticate, requireRole } from '../middleware/authMiddleware.js'
 import {
   createEntity,
   createEntityResponse,
@@ -15,6 +15,7 @@ import {
   searchEntities,
   updateEntitySecret,
   updateEntity,
+  listUnassignedEntities,
 } from '../controllers/entityController.js'
 import { getEntityGraph } from '../controllers/entityGraphController.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
@@ -35,6 +36,8 @@ const storage = multer.diskStorage({
 const upload = multer({ storage })
 
 router.use(authenticate)
+
+router.get('/unassigned', requireRole('system_admin'), listUnassignedEntities)
 
 // -------------------------------------------------------------
 // POST /api/entities/upload → Upload a file + save metadata

@@ -12,7 +12,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { deleteEntity, getWorldEntities } from '../../api/entities.js'
+import { deleteEntity, getUnassignedEntities, getWorldEntities } from '../../api/entities.js'
 import {
   getEntityTypeListColumns,
   updateEntityTypeListColumns,
@@ -157,6 +157,7 @@ export default function EntityList() {
     x: 0,
     y: 0,
   })
+  const [viewingUnassigned, setViewingUnassigned] = useState(false)
 
   const currentSearch = searchParams.toString()
 
@@ -213,8 +214,9 @@ export default function EntityList() {
   }, [selectedCampaign, user])
 
   const canManage = useMemo(() => {
-    if (!selectedCampaign || !user) return false
+    if (!user) return false
     if (MANAGER_ROLES.has(user.role)) return true
+    if (!selectedCampaign) return false
     if (membershipRole === 'dm') return true
     if (isWorldOwner) return true
     return false
@@ -223,9 +225,45 @@ export default function EntityList() {
   const isSystemAdmin = user?.role === 'system_admin'
 
   const loadEntities = useCallback(
-    async (targetWorldId) => {
+    async (targetWorldId, options = {}) => {
+      if (!token) {
+        setEntities([])
+        return []
+      }
+
+      const { useUnassigned = false } = options
+
+      if (useUnassigned) {
+        if (!isSystemAdmin) {
+          setEntities([])
+          setEntitiesError('Only system administrators can view unassigned entities')
+          return []
+        }
+
+        setLoadingEntities(true)
+        setEntitiesError('')
+
+        try {
+          const response = await getUnassignedEntities()
+          const list = Array.isArray(response)
+            ? response
+            : Array.isArray(response?.data)
+              ? response.data
+              : []
+          setEntities(list)
+          return list
+        } catch (err) {
+          console.error('❌ Failed to load unassigned entities', err)
+          setEntitiesError(err.message || 'Failed to load unassigned entities')
+          setEntities([])
+          return []
+        } finally {
+          setLoadingEntities(false)
+        }
+      }
+
       const worldToFetch = targetWorldId ?? worldId
-      if (!worldToFetch || !token) {
+      if (!worldToFetch) {
         setEntities([])
         return []
       }
@@ -251,18 +289,33 @@ export default function EntityList() {
         setLoadingEntities(false)
       }
     },
-    [token, worldId],
+    [token, worldId, isSystemAdmin],
   )
 
   useEffect(() => {
-    if (!worldId || !token) {
+    if (!token) {
       setEntities([])
       return
     }
+
+    if (viewingUnassigned) {
+      loadEntities(null, { useUnassigned: true })
+      return
+    }
+
+    if (!worldId) {
+      setEntities([])
+      return
+    }
+
     loadEntities(worldId)
-  }, [worldId, token, loadEntities])
+  }, [worldId, token, viewingUnassigned, loadEntities])
 
   useEffect(() => {
+    if (viewingUnassigned) {
+      return
+    }
+
     if (previousWorldIdRef.current !== worldId) {
       if (panelOpen) {
         setPanelOpen(false)
@@ -279,7 +332,23 @@ export default function EntityList() {
       })
       previousWorldIdRef.current = worldId
     }
-  }, [worldId, panelOpen, setSearchParams])
+  }, [worldId, panelOpen, setSearchParams, viewingUnassigned])
+
+  useEffect(() => {
+    if (!isSystemAdmin && viewingUnassigned) {
+      setViewingUnassigned(false)
+    }
+  }, [isSystemAdmin, viewingUnassigned])
+
+  useEffect(() => {
+    if (!viewingUnassigned) return
+    if (panelOpen) {
+      setPanelOpen(false)
+      setEditingEntityId(null)
+      setActiveEntityName('')
+      setEntityFormUiState(createDrawerFooterState('create'))
+    }
+  }, [viewingUnassigned, panelOpen])
 
   useEffect(() => {
     setColumnMenuOpen(false)
@@ -867,8 +936,11 @@ export default function EntityList() {
 
   const handleFormSaved = async (mode) => {
     closePanel()
-    if (!worldId) return
-    await loadEntities(worldId)
+    if (viewingUnassigned) {
+      await loadEntities(null, { useUnassigned: true })
+    } else if (worldId) {
+      await loadEntities(worldId)
+    }
     showToast(mode === 'create' ? 'Entity created' : 'Entity updated', 'success')
   }
 
@@ -883,7 +955,9 @@ export default function EntityList() {
       setDeletingId(entity.id)
       await deleteEntity(entity.id)
       showToast('Entity deleted', 'success')
-      if (worldId) {
+      if (viewingUnassigned) {
+        await loadEntities(null, { useUnassigned: true })
+      } else if (worldId) {
         await loadEntities(worldId)
       }
     } catch (err) {
@@ -895,12 +969,16 @@ export default function EntityList() {
   }
 
   const handleRefresh = () => {
+    if (viewingUnassigned) {
+      loadEntities(null, { useUnassigned: true })
+      return
+    }
     if (!worldId) return
     loadEntities(worldId)
   }
 
   const openCreate = () => {
-    if (!canManage || !worldId) return
+    if (!canManage || !worldId || viewingUnassigned) return
     setEditingEntityId(null)
     setActiveEntityName('')
     setEntityFormUiState(createDrawerFooterState('create'))
@@ -959,7 +1037,11 @@ export default function EntityList() {
       <div className="entities-header">
         <div>
           <h1>Entities</h1>
-          {selectedCampaign ? (
+          {viewingUnassigned ? (
+            <p className="entities-subtitle">
+              Showing entities without a world assignment.
+            </p>
+          ) : selectedCampaign ? (
             <p className="entities-subtitle">
               {selectedCampaign.name}
               {selectedCampaign.world?.name ? ` · ${selectedCampaign.world.name}` : ''}
@@ -981,6 +1063,21 @@ export default function EntityList() {
           )}
         </div>
         <div className="entities-controls">
+          {isSystemAdmin && (
+            <button
+              type="button"
+              className={`btn secondary compact${viewingUnassigned ? ' is-active' : ''}`}
+              onClick={() => setViewingUnassigned((prev) => !prev)}
+              aria-pressed={viewingUnassigned}
+              title={
+                viewingUnassigned
+                  ? 'Show entities for the selected world'
+                  : 'Show entities that do not have a world assigned'
+              }
+            >
+              No World
+            </button>
+          )}
           <SearchBar
             value={dataExplorer.searchTerm}
             onChange={dataExplorer.setSearchTerm}
@@ -1209,7 +1306,7 @@ export default function EntityList() {
             className="icon-btn"
             title="Refresh entities"
             onClick={handleRefresh}
-            disabled={!worldId || loadingEntities}
+            disabled={loadingEntities || (!viewingUnassigned && !worldId)}
           >
             <RotateCcw size={16} />
           </button>
@@ -1217,17 +1314,24 @@ export default function EntityList() {
             type="button"
             className="btn submit"
             onClick={openCreate}
-            disabled={!canManage || !worldId || loadingEntities}
+            disabled={!canManage || !worldId || loadingEntities || viewingUnassigned}
           >
             <Plus size={18} /> Add Entity
           </button>
         </div>
       </div>
 
-      {selectedCampaign && !canManage && (
+      {selectedCampaign && !canManage && !viewingUnassigned && (
         <div className="alert info" role="status">
           You can view the entities that are shared with you, but only the world owner,
           a campaign DM, or a system administrator can create or edit them.
+        </div>
+      )}
+
+      {viewingUnassigned && (
+        <div className="alert info" role="status">
+          Entities listed here do not have a world assigned. Open an entity to update its
+          world from the entity detail view.
         </div>
       )}
 
@@ -1245,7 +1349,7 @@ export default function EntityList() {
 
       {loadingEntities ? (
         <div className="empty-state">Loading entities...</div>
-      ) : !worldId ? (
+      ) : !worldId && !viewingUnassigned ? (
         <div className="empty-state">Select a campaign to view its entities.</div>
       ) : hasEntities ? (
         hasResults ? (
@@ -1478,7 +1582,7 @@ export default function EntityList() {
         }
       >
         <EntityForm
-          worldId={worldId}
+          worldId={viewingUnassigned ? '' : worldId}
           entityId={editingEntityId}
           onCancel={closePanel}
           onSaved={handleFormSaved}

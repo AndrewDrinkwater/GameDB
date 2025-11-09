@@ -1,22 +1,21 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Pin, ChevronDown, Database, Shapes, Link2, Lock } from 'lucide-react'
+import { Pin, ChevronDown, Database, Shapes, Link2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
 import { getWorldEntityTypeUsage } from '../api/entityTypes.js'
-import { fetchWorlds } from '../api/worlds.js'
 
 export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
   const location = useLocation()
-  const { user, sessionReady } = useAuth()
+  const { user } = useAuth()
   const { selectedCampaign, selectedCampaignId } = useCampaignContext()
   const [campaignsCollapsed, setCampaignsCollapsed] = useState(false)
   const [charactersCollapsed, setCharactersCollapsed] = useState(false)
+  const [worldAdminCollapsed, setWorldAdminCollapsed] = useState(false)
   const [entitiesCollapsed, setEntitiesCollapsed] = useState(false)
   const [entityTypes, setEntityTypes] = useState([])
   const [loadingEntityTypes, setLoadingEntityTypes] = useState(false)
   const [entityTypeError, setEntityTypeError] = useState('')
-  const [ownsWorld, setOwnsWorld] = useState(false)
 
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search])
   const activeEntityType = searchParams.get('entityType') ?? ''
@@ -24,6 +23,42 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
     location.pathname === '/entities' || location.pathname.startsWith('/entities/')
 
   const campaignWorldId = selectedCampaign?.world?.id ?? ''
+  const isSystemAdmin = user?.role === 'system_admin'
+
+  const membershipRole = useMemo(() => {
+    if (!selectedCampaign || !user) return ''
+    const member = selectedCampaign.members?.find((entry) => entry?.user_id === user.id)
+    return member?.role ?? ''
+  }, [selectedCampaign, user])
+
+  const isSelectedWorldOwner = useMemo(() => {
+    if (!selectedCampaign || !user) return false
+    const worldOwnerId =
+      selectedCampaign.world?.created_by ??
+      selectedCampaign.world?.creator?.id ??
+      selectedCampaign.world?.owner_id ??
+      selectedCampaign.world?.owner?.id ??
+      ''
+    return worldOwnerId === user.id
+  }, [selectedCampaign, user])
+
+  const canViewAllEntities = Boolean(
+    selectedCampaignId && (membershipRole === 'dm' || isSelectedWorldOwner),
+  )
+  const canViewEntityTypes = Boolean(selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner))
+  const canViewBulkEntityUpload = Boolean(
+    selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner),
+  )
+  const canViewRelationshipTypes = Boolean(
+    selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner),
+  )
+  const shouldShowWorldAdminGroup = Boolean(
+    selectedCampaignId &&
+      (canViewAllEntities ||
+        canViewEntityTypes ||
+        canViewBulkEntityUpload ||
+        canViewRelationshipTypes),
+  )
 
   const isPlayerInSelectedCampaign = useMemo(() => {
     if (!selectedCampaign || !Array.isArray(selectedCampaign.members)) return false
@@ -33,47 +68,6 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
       (member) => member?.user_id === user.id && member?.role === 'player',
     )
   }, [selectedCampaign, user])
-
-  // --- Determine if user owns any world ---
-  useEffect(() => {
-    let cancelled = false
-
-    if (!sessionReady || !user) {
-      setOwnsWorld(false)
-      return
-    }
-
-    const loadWorldOwnership = async () => {
-      try {
-        const response = await fetchWorlds()
-        const list = Array.isArray(response?.data)
-          ? response.data
-          : Array.isArray(response)
-          ? response
-          : []
-
-        if (cancelled) return
-
-        const owns = list.some((world) => {
-          if (!world) return false
-          if (world.created_by && world.created_by === user.id) return true
-          return world.creator?.id === user.id
-        })
-
-        setOwnsWorld(owns)
-      } catch (err) {
-        if (!cancelled) {
-          console.warn('⚠️ Failed to determine world ownership', err)
-          setOwnsWorld(false)
-        }
-      }
-    }
-
-    loadWorldOwnership()
-    return () => {
-      cancelled = true
-    }
-  }, [sessionReady, user])
 
   // --- Load entity types for selected campaign world ---
   useEffect(() => {
@@ -149,6 +143,85 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
           Worlds
         </Link>
 
+        {/* --- World Admin --- */}
+        {shouldShowWorldAdminGroup && (
+          <div className={`nav-group ${worldAdminCollapsed ? 'collapsed' : ''}`}>
+            <button
+              type="button"
+              className="nav-heading-btn"
+              onClick={() => setWorldAdminCollapsed((prev) => !prev)}
+              aria-expanded={!worldAdminCollapsed}
+              aria-controls="world-admin-nav"
+            >
+              <span className="nav-heading">World Admin</span>
+              <ChevronDown
+                size={14}
+                className={`nav-heading-icon ${worldAdminCollapsed ? 'collapsed' : ''}`}
+              />
+            </button>
+            <div id="world-admin-nav" className="nav-sub-links">
+              {canViewAllEntities && (
+                <Link
+                  to="/entities"
+                  className={`nav-entity-link ${
+                    isEntitiesSection && !activeEntityType ? 'active' : ''
+                  }`}
+                  onClick={handleEntitiesClick}
+                >
+                  <Database size={16} className="nav-icon" />
+                  <span>All Entities</span>
+                </Link>
+              )}
+
+              {canViewAllEntities && (
+                <Link
+                  to="/entity-relationships"
+                  className={`nav-entity-link ${
+                    isActive('/entity-relationships') ? 'active' : ''
+                  }`}
+                >
+                  <Link2 size={16} className="nav-icon" />
+                  <span>All Relationships</span>
+                </Link>
+              )}
+
+              {canViewEntityTypes && (
+                <Link
+                  to="/entity-types"
+                  className={`nav-entity-link ${isActive('/entity-types') ? 'active' : ''}`}
+                >
+                  <Shapes size={16} className="nav-icon" />
+                  <span>Entity Types</span>
+                </Link>
+              )}
+
+              {canViewBulkEntityUpload && (
+                <Link
+                  to="/entities/bulk-upload"
+                  className={`nav-entity-link ${
+                    isActive('/entities/bulk-upload') ? 'active' : ''
+                  }`}
+                >
+                  <Database size={16} className="nav-icon" />
+                  <span>Bulk Entity Upload</span>
+                </Link>
+              )}
+
+              {canViewRelationshipTypes && (
+                <Link
+                  to="/relationship-types"
+                  className={`nav-entity-link ${
+                    isActive('/relationship-types') ? 'active' : ''
+                  }`}
+                >
+                  <Link2 size={16} className="nav-icon" />
+                  <span>Relationship Types</span>
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* --- Campaigns --- */}
         <div className={`nav-group ${campaignsCollapsed ? 'collapsed' : ''}`}>
           <button
@@ -214,66 +287,6 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
               </Link>
             ))}
 
-            <Link
-              to="/entities"
-              className={`nav-entity-link ${
-                isEntitiesSection && !activeEntityType ? 'active' : ''
-              }`}
-              onClick={handleEntitiesClick}
-            >
-              <Database size={16} className="nav-icon" />
-              <span>All Entities</span>
-            </Link>
-
-            {/* --- Bulk Upload (admins or world owners with campaign) --- */}
-            {(user?.role === 'system_admin' || (selectedCampaignId && ownsWorld)) && (
-              <Link
-                to="/entities/bulk-upload"
-                className={`nav-entity-link ${
-                  isActive('/entities/bulk-upload') ? 'active' : ''
-                }`}
-              >
-                <Database size={16} className="nav-icon" />
-                <span>Bulk Upload</span>
-              </Link>
-            )}
-
-            {user?.role === 'system_admin' && (
-              <Link
-                to="/entity-types"
-                className={`nav-entity-link ${isActive('/entity-types') ? 'active' : ''}`}
-              >
-                <Shapes size={16} className="nav-icon" />
-                <span>Entity Types</span>
-              </Link>
-            )}
-            {user?.role === 'system_admin' && (
-              <Link
-                to="/relationship-types"
-                className={`nav-entity-link ${
-                  isActive('/relationship-types') ? 'active' : ''
-                }`}
-              >
-                <Link2 size={16} className="nav-icon" />
-                <span>Relationship Types</span>
-              </Link>
-            )}
-            <Link
-              to="/entity-relationships"
-              className={`nav-entity-link ${isActive('/entity-relationships') ? 'active' : ''}`}
-            >
-              <Link2 size={16} className="nav-icon" />
-              <span>Relationships</span>
-            </Link>
-            {ownsWorld && (
-              <Link
-                to="/entity-secrets"
-                className={`nav-entity-link ${isActive('/entity-secrets') ? 'active' : ''}`}
-              >
-                <Lock size={16} className="nav-icon" />
-                <span>Secrets</span>
-              </Link>
-            )}
           </div>
         </div>
 

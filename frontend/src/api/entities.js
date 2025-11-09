@@ -1,6 +1,7 @@
 import api from './client.js'
 
 export const getWorldEntities = (worldId) => api.get(`/worlds/${worldId}/entities`)
+export const getUnassignedEntities = () => api.get('/entities/unassigned')
 
 export const getEntity = (id) => api.get(`/entities/${id}`)
 
