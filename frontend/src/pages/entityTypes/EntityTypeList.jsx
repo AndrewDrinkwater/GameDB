@@ -37,10 +37,25 @@ export default function EntityTypeList() {
     ]
   }, [selectedCampaign])
 
-  const canManage = useMemo(
-    () => (user?.role ? MANAGER_ROLES.has(user.role) : false),
-    [user?.role],
-  )
+  const selectedWorldOwnerId = useMemo(() => {
+    if (!selectedCampaign?.world) return ''
+    const world = selectedCampaign.world
+    return (
+      world.created_by ||
+      world.creator?.id ||
+      world.owner_id ||
+      world.owner?.id ||
+      ''
+    )
+  }, [selectedCampaign])
+
+  const isWorldOwner = Boolean(user?.id && selectedWorldOwnerId === user.id)
+
+  const canManage = useMemo(() => {
+    if (!user) return false
+    if (user.role && MANAGER_ROLES.has(user.role)) return true
+    return isWorldOwner
+  }, [user, isWorldOwner])
 
   const selectedCampaignLabel = useMemo(() => {
     if (!selectedCampaign) return ''
@@ -237,7 +252,7 @@ export default function EntityTypeList() {
       {!canManage && (
         <div className="alert info" role="status">
           You can view the existing entity types, but only system administrators
-          can make changes.
+          or the world owner can make changes.
         </div>
       )}
 

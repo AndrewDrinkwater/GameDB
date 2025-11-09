@@ -41,7 +41,25 @@ export default function RelationshipTypeList() {
   const [toast, setToast] = useState(null)
   const [deletingId, setDeletingId] = useState('')
 
-  const canManage = useMemo(() => (user?.role ? MANAGER_ROLES.has(user.role) : false), [user?.role])
+  const selectedWorldOwnerId = useMemo(() => {
+    if (!selectedCampaign?.world) return ''
+    const world = selectedCampaign.world
+    return (
+      world.created_by ||
+      world.creator?.id ||
+      world.owner_id ||
+      world.owner?.id ||
+      ''
+    )
+  }, [selectedCampaign])
+
+  const isWorldOwner = Boolean(user?.id && selectedWorldOwnerId === user.id)
+
+  const canManage = useMemo(() => {
+    if (!user) return false
+    if (user.role && MANAGER_ROLES.has(user.role)) return true
+    return isWorldOwner
+  }, [user, isWorldOwner])
   const worldId = selectedCampaign?.world?.id ?? ''
   const hasWorldContext = Boolean(worldId)
   const previousWorldIdRef = useRef(worldId)
@@ -167,7 +185,9 @@ export default function RelationshipTypeList() {
         <div className="entity-types-header">
           <h1>Relationship Types</h1>
         </div>
-        <div className="alert info">Only system administrators can manage relationship types.</div>
+        <div className="alert info">
+          Only system administrators or the world owner can manage relationship types.
+        </div>
       </section>
     )
   }
