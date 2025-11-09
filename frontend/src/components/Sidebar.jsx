@@ -12,6 +12,7 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
   const { selectedCampaign, selectedCampaignId } = useCampaignContext()
   const [campaignsCollapsed, setCampaignsCollapsed] = useState(false)
   const [charactersCollapsed, setCharactersCollapsed] = useState(false)
+  const [worldAdminCollapsed, setWorldAdminCollapsed] = useState(false)
   const [entitiesCollapsed, setEntitiesCollapsed] = useState(false)
   const [entityTypes, setEntityTypes] = useState([])
   const [loadingEntityTypes, setLoadingEntityTypes] = useState(false)
@@ -149,6 +150,69 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
           Worlds
         </Link>
 
+        {/* --- World Admin --- */}
+        <div className={`nav-group ${worldAdminCollapsed ? 'collapsed' : ''}`}>
+          <button
+            type="button"
+            className="nav-heading-btn"
+            onClick={() => setWorldAdminCollapsed((prev) => !prev)}
+            aria-expanded={!worldAdminCollapsed}
+            aria-controls="world-admin-nav"
+          >
+            <span className="nav-heading">World Admin</span>
+            <ChevronDown
+              size={14}
+              className={`nav-heading-icon ${worldAdminCollapsed ? 'collapsed' : ''}`}
+            />
+          </button>
+          <div id="world-admin-nav" className="nav-sub-links">
+            <Link
+              to="/entities"
+              className={`nav-entity-link ${
+                isEntitiesSection && !activeEntityType ? 'active' : ''
+              }`}
+              onClick={handleEntitiesClick}
+            >
+              <Database size={16} className="nav-icon" />
+              <span>All Entities</span>
+            </Link>
+
+            {user?.role === 'system_admin' && (
+              <Link
+                to="/entity-types"
+                className={`nav-entity-link ${isActive('/entity-types') ? 'active' : ''}`}
+              >
+                <Shapes size={16} className="nav-icon" />
+                <span>Entity Types</span>
+              </Link>
+            )}
+
+            {(user?.role === 'system_admin' || (selectedCampaignId && ownsWorld)) && (
+              <Link
+                to="/entities/bulk-upload"
+                className={`nav-entity-link ${
+                  isActive('/entities/bulk-upload') ? 'active' : ''
+                }`}
+              >
+                <Database size={16} className="nav-icon" />
+                <span>Bulk Entity Upload</span>
+              </Link>
+            )}
+
+            {user?.role === 'system_admin' && (
+              <Link
+                to="/relationship-types"
+                className={`nav-entity-link ${
+                  isActive('/relationship-types') ? 'active' : ''
+                }`}
+              >
+                <Link2 size={16} className="nav-icon" />
+                <span>Relationship Types</span>
+              </Link>
+            )}
+          </div>
+        </div>
+
         {/* --- Campaigns --- */}
         <div className={`nav-group ${campaignsCollapsed ? 'collapsed' : ''}`}>
           <button
@@ -214,50 +278,6 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
               </Link>
             ))}
 
-            <Link
-              to="/entities"
-              className={`nav-entity-link ${
-                isEntitiesSection && !activeEntityType ? 'active' : ''
-              }`}
-              onClick={handleEntitiesClick}
-            >
-              <Database size={16} className="nav-icon" />
-              <span>All Entities</span>
-            </Link>
-
-            {/* --- Bulk Upload (admins or world owners with campaign) --- */}
-            {(user?.role === 'system_admin' || (selectedCampaignId && ownsWorld)) && (
-              <Link
-                to="/entities/bulk-upload"
-                className={`nav-entity-link ${
-                  isActive('/entities/bulk-upload') ? 'active' : ''
-                }`}
-              >
-                <Database size={16} className="nav-icon" />
-                <span>Bulk Upload</span>
-              </Link>
-            )}
-
-            {user?.role === 'system_admin' && (
-              <Link
-                to="/entity-types"
-                className={`nav-entity-link ${isActive('/entity-types') ? 'active' : ''}`}
-              >
-                <Shapes size={16} className="nav-icon" />
-                <span>Entity Types</span>
-              </Link>
-            )}
-            {user?.role === 'system_admin' && (
-              <Link
-                to="/relationship-types"
-                className={`nav-entity-link ${
-                  isActive('/relationship-types') ? 'active' : ''
-                }`}
-              >
-                <Link2 size={16} className="nav-icon" />
-                <span>Relationship Types</span>
-              </Link>
-            )}
             <Link
               to="/entity-relationships"
               className={`nav-entity-link ${isActive('/entity-relationships') ? 'active' : ''}`}
