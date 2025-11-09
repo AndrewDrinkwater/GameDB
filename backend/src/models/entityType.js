@@ -10,7 +10,10 @@ export default (sequelize, DataTypes) => {
       name: {
         type: DataTypes.STRING(100),
         allowNull: false,
-        unique: true,
+      },
+      world_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
       },
       description: {
         type: DataTypes.TEXT,
@@ -27,6 +30,8 @@ export default (sequelize, DataTypes) => {
 
   EntityType.associate = (models) => {
     EntityType.hasMany(models.Entity, { foreignKey: 'entity_type_id', as: 'entities' })
+    EntityType.belongsTo(models.World, { foreignKey: 'world_id', as: 'world' })
+
     if (models.EntityTypeField) {
       EntityType.hasMany(models.EntityTypeField, {
         foreignKey: 'entity_type_id',

@@ -173,10 +173,17 @@ const validateInput = async ({
   const combinedIds = [...new Set([...fromIds, ...toIds])]
   const entityTypes = await EntityType.findAll({
     where: { id: { [Op.in]: combinedIds } },
-    attributes: ['id', 'name'],
+    attributes: ['id', 'name', 'world_id'],
   })
   if (entityTypes.length !== combinedIds.length) {
     return { error: 'One or more selected entity types were not found' }
+  }
+
+  const mismatchedType = entityTypes.find(
+    (type) => String(type.world_id ?? '') !== resolvedWorldId,
+  )
+  if (mismatchedType) {
+    return { error: 'Selected entity types must belong to the chosen world' }
   }
 
   const existingType = await findExistingTypeByName(

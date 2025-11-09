@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { List, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { deleteEntityType, getEntityTypes, updateEntityType } from '../../api/entityTypes.js'
+import { fetchWorlds } from '../../api/worlds.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import EntityTypeForm from './EntityTypeForm.jsx'
 
@@ -19,6 +20,7 @@ export default function EntityTypeList() {
   const [deletingId, setDeletingId] = useState('')
   const [formError, setFormError] = useState('')
   const [toast, setToast] = useState(null)
+  const [worlds, setWorlds] = useState([])
 
   const canManage = useMemo(
     () => (user?.role ? MANAGER_ROLES.has(user.role) : false),
@@ -47,13 +49,32 @@ export default function EntityTypeList() {
           ? response.data
           : []
       setEntityTypes(list)
+
+      if (canManage) {
+        try {
+          const worldResponse = await fetchWorlds()
+          const worldList = Array.isArray(worldResponse?.data)
+            ? worldResponse.data
+            : Array.isArray(worldResponse)
+              ? worldResponse
+              : []
+          setWorlds(worldList)
+        } catch (worldError) {
+          console.error('⚠️ Failed to load worlds for entity type form', worldError)
+          setWorlds([])
+        }
+      } else {
+        setWorlds([])
+      }
     } catch (err) {
       console.error('❌ Failed to load entity types', err)
       setError(err.message || 'Failed to load entity types')
+      setEntityTypes([])
+      setWorlds([])
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, canManage])
 
   useEffect(() => {
     if (sessionReady && token) {
@@ -200,6 +221,7 @@ export default function EntityTypeList() {
               <tr>
                 <th>Name</th>
                 <th>Description</th>
+                <th>World</th>
                 <th>Created</th>
                 <th className="actions-column">Actions</th>
               </tr>
@@ -207,12 +229,15 @@ export default function EntityTypeList() {
             <tbody>
               {entityTypes.map((type) => {
                 const createdAt = type.createdAt || type.created_at
+                const worldName =
+                  type?.world?.name || type?.world_name || type?.worldName || '—'
                 return (
                   <tr key={type.id}>
                     <td>{type.name}</td>
                     <td className="description-cell">
                       {type.description ? type.description : '—'}
                     </td>
+                    <td>{worldName}</td>
                     <td>{formatDate(createdAt)}</td>
                     <td className="actions-column">
                       <div className="entity-type-actions">
@@ -305,6 +330,9 @@ export default function EntityTypeList() {
                   {type.description ? type.description : 'No description'}
                 </p>
                 <p className="card-meta">
+                  World: {type?.world?.name || type?.world_name || '—'}
+                </p>
+                <p className="card-meta">
                   Created {formatDate(createdAt)}
                 </p>
               </div>
@@ -335,6 +363,7 @@ export default function EntityTypeList() {
                 onCancel={closePanel}
                 submitting={saving}
                 errorMessage={formError}
+                worlds={worlds}
               />
             </div>
           </div>

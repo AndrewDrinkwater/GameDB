@@ -1,6 +1,30 @@
 import api from './client.js'
 
-export const getEntityTypes = () => api.get('/entity-types')
+const normaliseWorldId = (input) => {
+  if (input === undefined || input === null) return ''
+  const trimmed = String(input).trim()
+  return trimmed
+}
+
+export const getEntityTypes = (criteria) => {
+  let params = {}
+
+  if (typeof criteria === 'string') {
+    params = { worldId: criteria }
+  } else if (criteria && typeof criteria === 'object' && !Array.isArray(criteria)) {
+    params = { ...criteria }
+  }
+
+  const searchParams = new URLSearchParams()
+  const worldId = normaliseWorldId(params.worldId ?? params.world_id)
+  if (worldId) {
+    searchParams.set('worldId', worldId)
+  }
+
+  const queryString = searchParams.toString()
+  const suffix = queryString ? `?${queryString}` : ''
+  return api.get(`/entity-types${suffix}`)
+}
 
 export const createEntityType = (data) => api.post('/entity-types', data)
 

@@ -1,5 +1,5 @@
 import { Op } from 'sequelize'
-import { Entity, EntityType, sequelize } from '../models/index.js'
+import { Entity, EntityType, World, sequelize } from '../models/index.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
 import { buildEntityReadContext, buildReadableEntitiesWhereClause } from '../utils/entityAccess.js'
 
@@ -9,10 +9,49 @@ const isSystemAdmin = (user) => user?.role === 'system_admin'
 
 const ensureManageAccess = (user) => isSystemAdmin(user)
 
+const normaliseWorldId = (value) => {
+  if (value === undefined || value === null) return ''
+  const trimmed = String(value).trim()
+  return trimmed
+}
+
+const mapEntityType = (instance) => {
+  if (!instance) return null
+
+  const plain = instance.get({ plain: true })
+  const worldId =
+    plain.world_id ?? plain.worldId ?? (plain.world && plain.world.id) ?? null
+  const worldName = plain.world?.name ?? plain.world_name ?? null
+  const mappedWorld = worldId
+    ? { id: worldId, name: worldName ?? plain.world?.name ?? null }
+    : null
+
+  return {
+    ...plain,
+    world_id: worldId,
+    world_name: worldName,
+    world_owner_id: plain.world?.created_by ?? plain.world_owner_id ?? null,
+    world: mappedWorld,
+  }
+}
+
 export const listEntityTypes = async (req, res) => {
   try {
-    const types = await EntityType.findAll({ order: [['name', 'ASC']] })
-    res.json({ success: true, data: types })
+    const { worldId: rawWorldId } = req.query ?? {}
+    const resolvedWorldId = normaliseWorldId(rawWorldId)
+
+    const where = {}
+    if (resolvedWorldId) {
+      where.world_id = resolvedWorldId
+    }
+
+    const types = await EntityType.findAll({
+      where,
+      order: [['name', 'ASC']],
+      include: [{ model: World, as: 'world', attributes: ['id', 'name', 'created_by'] }],
+    })
+
+    res.json({ success: true, data: types.map((type) => mapEntityType(type)) })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }
@@ -21,13 +60,15 @@ export const listEntityTypes = async (req, res) => {
 export const getEntityType = async (req, res) => {
   try {
     const { id } = req.params
-    const entityType = await EntityType.findByPk(id)
+    const entityType = await EntityType.findByPk(id, {
+      include: [{ model: World, as: 'world', attributes: ['id', 'name', 'created_by'] }],
+    })
 
     if (!entityType) {
       return res.status(404).json({ success: false, message: 'Entity type not found' })
     }
 
-    return res.json({ success: true, data: entityType })
+    return res.json({ success: true, data: mapEntityType(entityType) })
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message })
   }
@@ -47,16 +88,37 @@ export const createEntityType = async (req, res) => {
       return res.status(400).json({ success: false, message: 'name is required' })
     }
 
+    const rawWorldId =
+      req.body?.world_id ?? req.body?.worldId ?? req.body?.world?.id ?? null
+    const resolvedWorldId = normaliseWorldId(rawWorldId)
+
+    if (!resolvedWorldId) {
+      return res.status(400).json({ success: false, message: 'world_id is required' })
+    }
+
+    const world = await World.findByPk(resolvedWorldId)
+    if (!world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
     try {
       const entityType = await EntityType.create({
         name: trimmedName,
         description: description ?? null,
+        world_id: resolvedWorldId,
       })
 
-      return res.status(201).json({ success: true, data: entityType })
+      await entityType.reload({
+        include: [{ model: World, as: 'world', attributes: ['id', 'name', 'created_by'] }],
+      })
+
+      return res.status(201).json({ success: true, data: mapEntityType(entityType) })
     } catch (error) {
       if (error.name === 'SequelizeUniqueConstraintError') {
-        return res.status(409).json({ success: false, message: 'An entity type with this name already exists' })
+        return res.status(409).json({
+          success: false,
+          message: 'An entity type with this name already exists in the selected world',
+        })
       }
       throw error
     }
@@ -94,6 +156,41 @@ export const updateEntityType = async (req, res) => {
       updates.description = description ?? null
     }
 
+    if (
+      Object.prototype.hasOwnProperty.call(req.body ?? {}, 'world_id') ||
+      Object.prototype.hasOwnProperty.call(req.body ?? {}, 'worldId') ||
+      (req.body?.world && Object.prototype.hasOwnProperty.call(req.body.world, 'id'))
+    ) {
+      const worldCandidate =
+        req.body?.world_id ?? req.body?.worldId ?? req.body?.world?.id ?? null
+      const resolvedWorldId = normaliseWorldId(worldCandidate)
+
+      if (!resolvedWorldId) {
+        return res.status(400).json({ success: false, message: 'world_id cannot be empty' })
+      }
+
+      const world = await World.findByPk(resolvedWorldId)
+      if (!world) {
+        return res.status(404).json({ success: false, message: 'World not found' })
+      }
+
+      const mismatchedEntities = await Entity.count({
+        where: {
+          entity_type_id: id,
+          world_id: { [Op.ne]: resolvedWorldId },
+        },
+      })
+
+      if (mismatchedEntities > 0) {
+        return res.status(409).json({
+          success: false,
+          message: 'Existing entities for this type belong to a different world',
+        })
+      }
+
+      updates.world_id = resolvedWorldId
+    }
+
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ success: false, message: 'No updates provided' })
     }
@@ -102,12 +199,19 @@ export const updateEntityType = async (req, res) => {
       await entityType.update(updates)
     } catch (error) {
       if (error.name === 'SequelizeUniqueConstraintError') {
-        return res.status(409).json({ success: false, message: 'An entity type with this name already exists' })
+        return res.status(409).json({
+          success: false,
+          message: 'An entity type with this name already exists in the selected world',
+        })
       }
       throw error
     }
 
-    return res.json({ success: true, data: entityType })
+    await entityType.reload({
+      include: [{ model: World, as: 'world', attributes: ['id', 'name', 'created_by'] }],
+    })
+
+    return res.json({ success: true, data: mapEntityType(entityType) })
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message })
   }
@@ -210,7 +314,7 @@ export const listWorldEntityTypesWithEntities = async (req, res) => {
     }
 
     const types = await EntityType.findAll({
-      where: { id: [...usageMap.keys()] },
+      where: { id: [...usageMap.keys()], world_id: world.id },
       order: [['name', 'ASC']],
     })
 

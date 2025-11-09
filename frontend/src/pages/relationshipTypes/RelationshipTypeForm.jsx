@@ -62,6 +62,71 @@ export default function RelationshipTypeForm({
     )
   }, [initialSnapshot, values])
 
+  const entityTypeOptions = useMemo(() => {
+    if (!Array.isArray(entityTypes)) return []
+    return entityTypes
+      .map((type) => {
+        const id =
+          type?.id || type?.entity_type_id || type?.entityTypeId || type?.value || ''
+        if (!id) return null
+        const worldId = type?.world_id || type?.worldId || type?.world?.id || ''
+        return {
+          value: String(id),
+          label: type?.name || type?.label || 'Untitled type',
+          worldId: worldId ? String(worldId) : '',
+        }
+      })
+      .filter(Boolean)
+  }, [entityTypes])
+
+  const filteredEntityTypeOptions = useMemo(() => {
+    const worldId = values.worldId ? String(values.worldId) : ''
+    if (!worldId) return []
+    return entityTypeOptions.filter((option) => option.worldId === worldId)
+  }, [entityTypeOptions, values.worldId])
+
+  useEffect(() => {
+    const worldId = values.worldId ? String(values.worldId) : ''
+    if (!worldId) {
+      setValues((prev) => {
+        if (prev.fromEntityTypeIds.length === 0 && prev.toEntityTypeIds.length === 0) {
+          return prev
+        }
+
+        return {
+          ...prev,
+          fromEntityTypeIds: [],
+          toEntityTypeIds: [],
+        }
+      })
+      return
+    }
+
+    const allowedIds = new Set(filteredEntityTypeOptions.map((option) => option.value))
+
+    setValues((prev) => {
+      const nextFrom = prev.fromEntityTypeIds.filter((id) =>
+        allowedIds.has(String(id)),
+      )
+      const nextTo = prev.toEntityTypeIds.filter((id) =>
+        allowedIds.has(String(id)),
+      )
+
+      if (
+        nextFrom.length === prev.fromEntityTypeIds.length &&
+        nextTo.length === prev.toEntityTypeIds.length
+      ) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        fromEntityTypeIds: nextFrom,
+        toEntityTypeIds: nextTo,
+      }
+    })
+  }, [filteredEntityTypeOptions, values.worldId])
+
   const handleChange = (field) => (e) => {
     const { value } = e.target
     setValues((prev) => ({ ...prev, [field]: value }))
@@ -183,12 +248,14 @@ export default function RelationshipTypeForm({
         <label htmlFor="relationship-type-from-entities">Allowed source entity types *</label>
         <ListCollector
           selected={values.fromEntityTypeIds}
-          options={entityTypes}
+          options={filteredEntityTypeOptions}
           onChange={handleListChange('fromEntityTypeIds')}
           placeholder="Search entity types..."
           disabled={saving || optionsLoading}
           loading={optionsLoading}
-          noOptionsMessage="No entity types available."
+          noOptionsMessage={
+            values.worldId ? 'No entity types available for this world.' : 'Select a world to choose entity types.'
+          }
         />
       </div>
 
@@ -196,12 +263,14 @@ export default function RelationshipTypeForm({
         <label htmlFor="relationship-type-to-entities">Allowed target entity types *</label>
         <ListCollector
           selected={values.toEntityTypeIds}
-          options={entityTypes}
+          options={filteredEntityTypeOptions}
           onChange={handleListChange('toEntityTypeIds')}
           placeholder="Search entity types..."
           disabled={saving || optionsLoading}
           loading={optionsLoading}
-          noOptionsMessage="No entity types available."
+          noOptionsMessage={
+            values.worldId ? 'No entity types available for this world.' : 'Select a world to choose entity types.'
+          }
         />
       </div>
 

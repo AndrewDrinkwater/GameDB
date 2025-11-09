@@ -6,14 +6,19 @@ export default function EntityTypeForm({
   onCancel,
   submitting = false,
   errorMessage,
+  worlds = [],
 }) {
-  const [values, setValues] = useState({ name: '', description: '' })
+  const [values, setValues] = useState({ name: '', description: '', worldId: '' })
   const [localError, setLocalError] = useState('')
 
   useEffect(() => {
+    const initialWorld =
+      initialData?.world_id || initialData?.worldId || initialData?.world?.id || ''
+
     setValues({
       name: initialData?.name || '',
       description: initialData?.description || '',
+      worldId: initialWorld ? String(initialWorld) : '',
     })
     setLocalError('')
   }, [initialData])
@@ -21,9 +26,11 @@ export default function EntityTypeForm({
   const isDirty = useMemo(() => {
     return (
       values.name !== (initialData?.name || '') ||
-      values.description !== (initialData?.description || '')
+      values.description !== (initialData?.description || '') ||
+      values.worldId !==
+        (initialData?.world_id || initialData?.worldId || initialData?.world?.id || '')
     )
-  }, [initialData, values.description, values.name])
+  }, [initialData, values.description, values.name, values.worldId])
 
   useEffect(() => {
     setLocalError(errorMessage || '')
@@ -43,11 +50,18 @@ export default function EntityTypeForm({
       return
     }
 
+    const trimmedWorldId = values.worldId.trim()
+    if (!trimmedWorldId) {
+      setLocalError('Select a world for this entity type.')
+      return
+    }
+
     setLocalError('')
 
     const payload = {
       name: trimmedName,
       description: values.description?.trim() || '',
+      world_id: trimmedWorldId,
     }
 
     try {
@@ -73,6 +87,24 @@ export default function EntityTypeForm({
           disabled={submitting}
           autoFocus
         />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="entity-type-world">World *</label>
+        <select
+          id="entity-type-world"
+          value={values.worldId}
+          onChange={handleChange('worldId')}
+          disabled={submitting}
+          required
+        >
+          <option value="">Select world...</option>
+          {worlds.map((world) => (
+            <option key={world.id} value={world.id}>
+              {world.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="form-group">

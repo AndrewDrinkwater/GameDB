@@ -44,15 +44,32 @@ export default function CreateEntityType() {
     const name = typeof formData?.name === 'string' ? formData.name.trim() : ''
     const description =
       typeof formData?.description === 'string' ? formData.description.trim() : ''
+    const worldIdRaw =
+      (typeof formData?.world_id === 'string' && formData.world_id) ||
+      (typeof formData?.worldId === 'string' && formData.worldId) ||
+      (formData?.world && typeof formData.world.id === 'string' && formData.world.id) ||
+      ''
+    const worldId = worldIdRaw.trim()
 
     if (!name) {
       alert('Name is required')
       return false
     }
 
+    if (!worldId) {
+      alert('Select a world before creating the entity type')
+      return false
+    }
+
     setSubmitting(true)
     try {
-      const response = await createEntityType({ name, description })
+      const payload = {
+        name,
+        description,
+        world_id: worldId,
+      }
+
+      const response = await createEntityType(payload)
       const created = response?.data ?? response
 
       if (!created || !created.id) {
