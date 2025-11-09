@@ -15,6 +15,8 @@ const allowedOrigins = [
   'https://your-production-domain.com', // add your deployed frontend if needed
 ]
 
+const CAMPAIGN_CONTEXT_HEADER = 'X-Campaign-Context-Id'
+
 app.use(
   cors({
     origin: function (origin, callback) {
@@ -28,7 +30,7 @@ app.use(
     },
     credentials: true, // ✅ allows cookies / Authorization header
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', CAMPAIGN_CONTEXT_HEADER],
   })
 )
 
@@ -37,6 +39,26 @@ app.use(express.json())
 // Simple request logger for debugging
 app.use((req, res, next) => {
   console.log(`➡️ ${req.method} ${req.url}`)
+  next()
+})
+
+app.use((req, res, next) => {
+  const rawHeader = req.headers[CAMPAIGN_CONTEXT_HEADER.toLowerCase()]
+
+  if (Array.isArray(rawHeader)) {
+    req.campaignContextId = rawHeader.length > 0 ? rawHeader[0] : ''
+  } else {
+    req.campaignContextId = rawHeader || ''
+  }
+
+  if (typeof req.campaignContextId === 'string') {
+    req.campaignContextId = req.campaignContextId.trim()
+  }
+
+  if (!req.campaignContextId) {
+    req.campaignContextId = null
+  }
+
   next()
 })
 
