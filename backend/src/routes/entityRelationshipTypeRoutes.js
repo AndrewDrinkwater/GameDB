@@ -6,16 +6,16 @@ import {
   listRelationshipTypes,
   updateRelationshipType,
 } from '../controllers/entityRelationshipTypeController.js'
-import { authenticate, requireRole } from '../middleware/authMiddleware.js'
+import { authenticate } from '../middleware/authMiddleware.js'
 
 const router = express.Router()
 
 router.use(authenticate)
 
 router.get('/', listRelationshipTypes)
-router.post('/', requireRole('system_admin'), createRelationshipType)
-router.get('/:id', requireRole('system_admin'), getRelationshipType)
-router.patch('/:id', requireRole('system_admin'), updateRelationshipType)
-router.delete('/:id', requireRole('system_admin'), deleteRelationshipType)
+router.post('/', createRelationshipType)
+router.get('/:id', getRelationshipType)
+router.patch('/:id', updateRelationshipType)
+router.delete('/:id', deleteRelationshipType)
 
 export default router

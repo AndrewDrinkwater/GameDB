@@ -7,8 +7,17 @@ import {
   World,
   sequelize,
 } from '../models/index.js'
+import { checkWorldAccess } from '../middleware/worldAccess.js'
 
 const isSystemAdmin = (user) => user?.role === 'system_admin'
+
+const ensureManageAccess = async (user, worldId) => {
+  if (isSystemAdmin(user)) return true
+  if (!worldId) return false
+
+  const access = await checkWorldAccess(worldId, user)
+  return access.isOwner
+}
 
 const normaliseIds = (input) => {
   if (!input) return []
@@ -125,13 +134,14 @@ export const listRelationshipTypes = async (req, res) => {
 
 export const getRelationshipType = async (req, res) => {
   try {
-    if (!isSystemAdmin(req.user)) {
-      return res.status(403).json({ success: false, message: 'Forbidden' })
-    }
-
     const instance = await fetchRelationshipType(req.params.id)
     if (!instance) {
       return res.status(404).json({ success: false, message: 'Relationship type not found' })
+    }
+
+    const canManage = await ensureManageAccess(req.user, instance.world_id)
+    if (!canManage) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
     res.json({ success: true, data: mapType(instance) })
@@ -210,10 +220,6 @@ const validateInput = async ({
 
 export const createRelationshipType = async (req, res) => {
   try {
-    if (!isSystemAdmin(req.user)) {
-      return res.status(403).json({ success: false, message: 'Forbidden' })
-    }
-
     const resolvedWorldId = req.body?.world_id ?? req.body?.worldId
 
     const { values, error } = await validateInput({
@@ -229,6 +235,11 @@ export const createRelationshipType = async (req, res) => {
     })
 
     if (error) return res.status(400).json({ success: false, message: error })
+
+    const canManage = await ensureManageAccess(req.user, values.world_id)
+    if (!canManage) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
 
     console.log('🧩 Incoming relationshipType payload:', {
       name: values.name,
@@ -276,13 +287,14 @@ export const createRelationshipType = async (req, res) => {
 
 export const updateRelationshipType = async (req, res) => {
   try {
-    if (!isSystemAdmin(req.user)) {
-      return res.status(403).json({ success: false, message: 'Forbidden' })
-    }
-
     const relationshipType = await EntityRelationshipType.findByPk(req.params.id)
     if (!relationshipType) {
       return res.status(404).json({ success: false, message: 'Relationship type not found' })
+    }
+
+    const canManageExisting = await ensureManageAccess(req.user, relationshipType.world_id)
+    if (!canManageExisting) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
     const resolvedWorldId = req.body?.world_id ?? req.body?.worldId ?? relationshipType.world_id
@@ -301,6 +313,11 @@ export const updateRelationshipType = async (req, res) => {
     })
 
     if (error) return res.status(400).json({ success: false, message: error })
+
+    const canManageTarget = await ensureManageAccess(req.user, values.world_id)
+    if (!canManageTarget) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
 
     await sequelize.transaction(async (transaction) => {
       await relationshipType.update(
@@ -345,13 +362,14 @@ export const updateRelationshipType = async (req, res) => {
 
 export const deleteRelationshipType = async (req, res) => {
   try {
-    if (!isSystemAdmin(req.user)) {
-      return res.status(403).json({ success: false, message: 'Forbidden' })
-    }
-
     const relationshipType = await EntityRelationshipType.findByPk(req.params.id)
     if (!relationshipType) {
       return res.status(404).json({ success: false, message: 'Relationship type not found' })
+    }
+
+    const canManage = await ensureManageAccess(req.user, relationshipType.world_id)
+    if (!canManage) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
     const relationshipsInUse = await EntityRelationship.count({
