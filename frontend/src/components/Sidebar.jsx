@@ -145,11 +145,13 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
       <div className="sidebar-header">
         <span>Navigation</span>
         <button
-          className="pin-btn"
+          type="button"
+          className={`pin-btn ${pinned ? 'pinned' : ''}`}
           title={pinned ? 'Unpin menu' : 'Pin menu'}
+          aria-pressed={pinned}
           onClick={onPinToggle}
         >
-          <Pin size={16} style={{ opacity: pinned ? 1 : 0.6 }} />
+          <Pin size={16} className="pin-icon" />
         </button>
       </div>
 
