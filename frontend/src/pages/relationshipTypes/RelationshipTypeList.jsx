@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { deleteRelationshipType, getRelationshipTypes } from '../../api/entityRelationshipTypes.js'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { useCampaignContext } from '../../context/CampaignContext.jsx'
 
 const MANAGER_ROLES = new Set(['system_admin'])
 
@@ -33,6 +34,7 @@ export default function RelationshipTypeList() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, token, sessionReady } = useAuth()
+  const { selectedCampaign } = useCampaignContext()
   const [relationshipTypes, setRelationshipTypes] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -40,6 +42,16 @@ export default function RelationshipTypeList() {
   const [deletingId, setDeletingId] = useState('')
 
   const canManage = useMemo(() => (user?.role ? MANAGER_ROLES.has(user.role) : false), [user?.role])
+  const worldId = selectedCampaign?.world?.id ?? ''
+  const hasWorldContext = Boolean(worldId)
+  const previousWorldIdRef = useRef(worldId)
+
+  const selectedCampaignLabel = useMemo(() => {
+    if (!selectedCampaign) return ''
+    const campaignName = selectedCampaign.name || 'Selected campaign'
+    const worldName = selectedCampaign.world?.name
+    return worldName ? `${campaignName} · ${worldName}` : campaignName
+  }, [selectedCampaign])
 
   useEffect(() => {
     if (!toast) return undefined
@@ -63,12 +75,28 @@ export default function RelationshipTypeList() {
     }
   }, [location.state, showToast, clearLocationToast])
 
+  useEffect(() => {
+    if (previousWorldIdRef.current === worldId) return
+    previousWorldIdRef.current = worldId
+    setRelationshipTypes([])
+    setError('')
+    setLoading(false)
+    setToast(null)
+    setDeletingId('')
+  }, [worldId])
+
   const loadRelationshipTypes = useCallback(async () => {
-    if (!token) return
+    if (!token || !canManage) return
+    if (!worldId) {
+      setRelationshipTypes([])
+      setError('')
+      return
+    }
+
     setLoading(true)
     setError('')
     try {
-      const response = await getRelationshipTypes()
+      const response = await getRelationshipTypes({ worldId })
       const list = Array.isArray(response)
         ? response
         : Array.isArray(response?.data)
@@ -82,20 +110,28 @@ export default function RelationshipTypeList() {
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, canManage, worldId])
 
   useEffect(() => {
-    if (!sessionReady || !token) return
+    if (!sessionReady || !token || !canManage) return
+
+    if (!worldId) {
+      setRelationshipTypes([])
+      setLoading(false)
+      setError('')
+      return
+    }
+
     loadRelationshipTypes()
-  }, [sessionReady, token, loadRelationshipTypes])
+  }, [sessionReady, token, canManage, worldId, loadRelationshipTypes])
 
   const handleRefresh = () => {
-    if (!token || loading) return
+    if (!token || loading || !hasWorldContext || !canManage) return
     loadRelationshipTypes()
   }
 
   const openCreate = () => {
-    if (!canManage) return
+    if (!canManage || !hasWorldContext) return
     navigate('/relationship-types/new')
   }
 
@@ -105,7 +141,7 @@ export default function RelationshipTypeList() {
   }
 
   const handleDelete = async (type) => {
-    if (!canManage || !type?.id) return
+    if (!canManage || !hasWorldContext || !type?.id) return
     const confirmed = window.confirm(`Delete relationship type "${type.name}"? This cannot be undone.`)
     if (!confirmed) return
 
@@ -141,14 +177,34 @@ export default function RelationshipTypeList() {
       <div className="entity-types-header">
         <div>
           <h1>Relationship Types</h1>
-          <p className="entity-types-subtitle">{relationshipTypes.length} types defined</p>
+          {selectedCampaign ? (
+            <p className="entity-types-subtitle">
+              {selectedCampaignLabel}
+              {hasWorldContext ? ` · ${relationshipTypes.length} types defined` : ''}
+            </p>
+          ) : (
+            <p className="entity-types-subtitle">
+              Select a campaign from the header to choose a world context.
+            </p>
+          )}
         </div>
 
         <div className="entity-types-actions">
-          <button type="button" className="icon-btn" title="Refresh" onClick={handleRefresh} disabled={loading}>
+          <button
+            type="button"
+            className="icon-btn"
+            title="Refresh"
+            onClick={handleRefresh}
+            disabled={loading || !hasWorldContext}
+          >
             <RotateCcw size={16} />
           </button>
-          <button type="button" className="btn submit" onClick={openCreate} disabled={loading}>
+          <button
+            type="button"
+            className="btn submit"
+            onClick={openCreate}
+            disabled={loading || !hasWorldContext}
+          >
             <Plus size={18} /> Add Relationship Type
           </button>
         </div>
@@ -158,7 +214,11 @@ export default function RelationshipTypeList() {
       {error && <div className="alert error">{error}</div>}
 
       <div className="entity-types-table-wrapper">
-        {loading ? (
+        {!hasWorldContext ? (
+          <div className="empty-state">
+            Select a campaign from the header to view relationship types.
+          </div>
+        ) : loading ? (
           <div className="empty-state">Loading relationship types...</div>
         ) : relationshipTypes.length === 0 ? (
           <div className="empty-state">No relationship types defined yet.</div>
