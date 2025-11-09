@@ -13,7 +13,7 @@ export default (sequelize, DataTypes) => {
       },
       world_id: {
         type: DataTypes.UUID,
-        allowNull: false,
+        allowNull: true,
       },
       description: {
         type: DataTypes.TEXT,
