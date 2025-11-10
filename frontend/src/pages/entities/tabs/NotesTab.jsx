@@ -91,7 +91,7 @@ const buildSegments = (content = '', mentionList = []) => {
 const formatTimestamp = (value) => {
   if (!value) return ''
   try {
-    const date = new Date(value)
+    const date = value instanceof Date ? value : new Date(value)
     if (Number.isNaN(date.getTime())) return ''
     return date.toLocaleString(undefined, {
       year: 'numeric',
@@ -99,6 +99,7 @@ const formatTimestamp = (value) => {
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      second: '2-digit',
     })
   } catch (err) {
     console.warn('Unable to format timestamp', err)
@@ -789,12 +790,12 @@ export default function NotesTab({
 
         <div className="entity-notes-list" role="list">
           {filteredNotes.map((note) => {
-            const createdAt = note?.createdAt ?? note?.created_at
+            const createdAtValue = note?.createdAt ?? note?.created_at
+            const createdAtDate = createdAtValue ? new Date(createdAtValue) : null
+            const formattedTimestamp = formatTimestamp(createdAtDate)
             const share = String(note?.shareType ?? note?.share_type ?? 'private')
             const authorName = resolveAuthorLabel(note)
             const characterName = note?.character?.name || ''
-            const formattedTimestamp = formatTimestamp(createdAt)
-            const createdAtDate = createdAt ? new Date(createdAt) : null
             const isoTimestamp =
               createdAtDate && !Number.isNaN(createdAtDate.getTime())
                 ? createdAtDate.toISOString()
