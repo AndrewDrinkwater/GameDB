@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertCircle, Filter, RotateCcw } from 'lucide-react'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import { fetchCampaignEntityNotes } from '../../api/campaigns.js'
+import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import './NotesPage.css'
 
 const SHARE_LABELS = {
@@ -70,6 +71,58 @@ const resolveEntityName = (note) => {
     return note.entityName
   }
   return 'Unnamed entity'
+}
+
+const buildNoteSegments = (content = '', mentionList = []) => {
+  const text = typeof content === 'string' ? content : ''
+  if (!text) {
+    return text ? [{ type: 'text', text }] : []
+  }
+
+  const mentions = Array.isArray(mentionList) ? mentionList : []
+  const mentionLookup = new Map()
+  mentions.forEach((mention) => {
+    if (!mention) return
+    const key =
+      mention.entityId ?? mention.entity_id ?? mention.id ?? mention.entityID ?? null
+    if (!key) return
+    const id = String(key)
+    if (!mentionLookup.has(id)) {
+      const label =
+        mention.entityName ?? mention.entity_name ?? mention.label ?? mention.name
+      mentionLookup.set(id, {
+        entityId: id,
+        entityName: label ? String(label) : '',
+      })
+    }
+  })
+
+  const segments = []
+  const regex = /@\[(.+?)]\(([^)]+)\)/g
+  let lastIndex = 0
+  let match
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ type: 'text', text: text.slice(lastIndex, match.index) })
+    }
+
+    const entityId = String(match[2])
+    const fallbackName = String(match[1])
+    const mention = mentionLookup.get(entityId) || {
+      entityId,
+      entityName: fallbackName,
+    }
+
+    segments.push({ type: 'mention', ...mention })
+    lastIndex = regex.lastIndex
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({ type: 'text', text: text.slice(lastIndex) })
+  }
+
+  return segments.length > 0 ? segments : [{ type: 'text', text }]
 }
 
 export default function EntityNotesPage() {
@@ -308,6 +361,7 @@ export default function EntityNotesPage() {
             const authorName = resolveAuthorName(note)
             const characterName = note?.character?.name ?? ''
             const entityName = resolveEntityName(note)
+            const contentSegments = buildNoteSegments(note?.content, note?.mentions)
 
             return (
               <article
@@ -337,7 +391,36 @@ export default function EntityNotesPage() {
                   ) : null}
                 </div>
 
-                <div className="note-content">{note?.content ?? ''}</div>
+                <div className="note-content">
+                  {contentSegments.length > 0
+                    ? contentSegments.map((segment, index) => {
+                        if (segment.type === 'mention' && segment.entityId) {
+                          const label = segment.entityName || 'entity'
+                          return (
+                            <span
+                              key={`${note?.id || entityId || 'note'}-mention-${index}`}
+                              className="note-mention"
+                            >
+                              @{label}
+                              <EntityInfoPreview
+                                entityId={segment.entityId}
+                                entityName={label}
+                              />
+                            </span>
+                          )
+                        }
+
+                        return (
+                          <span
+                            key={`${note?.id || entityId || 'note'}-text-${index}`}
+                            className="note-text"
+                          >
+                            {segment.text}
+                          </span>
+                        )
+                      })
+                    : null}
+                </div>
               </article>
             )
           })}

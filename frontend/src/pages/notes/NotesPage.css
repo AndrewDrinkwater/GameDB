@@ -189,6 +189,34 @@
   color: #1f2937;
 }
 
+.note-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.4rem;
+  margin: 0 0.15rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.16);
+  color: #1d4ed8;
+  font-weight: 500;
+}
+
+.note-mention .entity-info-trigger {
+  padding: 0.1rem;
+  background: transparent;
+  border: none;
+}
+
+.note-mention .entity-info-trigger:hover,
+.note-mention .entity-info-trigger:focus {
+  background: rgba(29, 78, 216, 0.12);
+  border-radius: 999px;
+}
+
+.note-text {
+  white-space: pre-wrap;
+}
+
 .notes-helper,
 .notes-error,
 .notes-empty {
