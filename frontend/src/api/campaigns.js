@@ -126,3 +126,48 @@ export async function fetchCampaignEntityNotes(campaignId, params = {}) {
   const res = await fetch(url, { headers })
   return handleResponse(res, 'fetch campaign entity notes')
 }
+
+export async function fetchCampaignSessionNotes(campaignId) {
+  if (!campaignId) {
+    throw new Error('campaignId is required to fetch session notes')
+  }
+
+  const headers = await authHeaders()
+  const url = `${API_BASE}/${campaignId}/session-notes`
+  const res = await fetch(url, { headers })
+  return handleResponse(res, 'fetch campaign session notes')
+}
+
+export async function createCampaignSessionNote(campaignId, payload = {}) {
+  if (!campaignId) {
+    throw new Error('campaignId is required to create a session note')
+  }
+
+  const headers = await authHeaders()
+  const res = await fetch(`${API_BASE}/${campaignId}/session-notes`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  })
+
+  return handleResponse(res, 'create session note')
+}
+
+export async function updateCampaignSessionNote(campaignId, noteId, payload = {}) {
+  if (!campaignId) {
+    throw new Error('campaignId is required to update a session note')
+  }
+
+  if (!noteId) {
+    throw new Error('noteId is required to update a session note')
+  }
+
+  const headers = await authHeaders()
+  const res = await fetch(`${API_BASE}/${campaignId}/session-notes/${noteId}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(payload),
+  })
+
+  return handleResponse(res, 'update session note')
+}
