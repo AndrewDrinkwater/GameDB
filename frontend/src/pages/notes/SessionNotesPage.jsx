@@ -277,6 +277,21 @@ export default function SessionNotesPage() {
     return sortedNotes.find((note) => note?.id === selectedNoteId) || null
   }, [sortedNotes, selectedNoteId])
 
+  const editorDateLabel = useMemo(() => {
+    if (!editorState?.sessionDate) return 'Undated session'
+    return formatDateDisplay(editorState.sessionDate)
+  }, [editorState?.sessionDate])
+
+  const editorUpdatedLabel = useMemo(() => {
+    if (!editorState?.updatedAt) return ''
+    return formatTimestamp(editorState.updatedAt)
+  }, [editorState?.updatedAt])
+
+  const editorPreviewSegments = useMemo(() => {
+    if (!editorState?.content) return emptyArray
+    return buildNoteSegments(editorState.content, editorState.mentions)
+  }, [editorState?.content, editorState?.mentions])
+
   useEffect(() => {
     if (!selectedNoteId && sortedNotes.length > 0) {
       setSelectedNoteId(sortedNotes[0].id)
@@ -861,6 +876,19 @@ export default function SessionNotesPage() {
               </div>
 
               <div className="session-note-fields">
+                <div className="session-note-summary">
+                  <div className="session-note-summary-primary">
+                    <span className="session-note-summary-title">
+                      {editorState.sessionTitle || 'Session note'}
+                    </span>
+                    <span className="session-note-summary-date">{editorDateLabel}</span>
+                  </div>
+                  {editorUpdatedLabel ? (
+                    <span className="session-note-summary-updated">
+                      Updated {editorUpdatedLabel}
+                    </span>
+                  ) : null}
+                </div>
                 <label htmlFor="session-note-title">Title</label>
                 <input
                   id="session-note-title"
@@ -942,6 +970,40 @@ export default function SessionNotesPage() {
                         No entities found for “{mentionState.query.trim()}”.
                       </div>
                     )}
+                  </div>
+                ) : null}
+
+                {editorPreviewSegments.length > 0 ? (
+                  <div className="session-note-preview" aria-live="polite">
+                    <h3>Preview</h3>
+                    <div className="session-note-preview-content">
+                      {editorPreviewSegments.map((segment, index) => {
+                        if (segment.type === 'mention' && segment.entityId) {
+                          const label = segment.entityName || 'entity'
+                          return (
+                            <span
+                              key={`${editorState?.id || 'note'}-preview-mention-${index}`}
+                              className="session-note-mention"
+                            >
+                              @{label}
+                              <EntityInfoPreview
+                                entityId={segment.entityId}
+                                entityName={label}
+                              />
+                            </span>
+                          )
+                        }
+
+                        return (
+                          <span
+                            key={`${editorState?.id || 'note'}-preview-text-${index}`}
+                            className="session-note-text"
+                          >
+                            {segment.text}
+                          </span>
+                        )
+                      })}
+                    </div>
                   </div>
                 ) : null}
               </div>

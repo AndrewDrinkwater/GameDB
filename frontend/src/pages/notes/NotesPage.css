@@ -305,7 +305,7 @@
 
 .session-notes-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) 1fr;
+  grid-template-columns: 1fr minmax(260px, 340px);
   gap: 1.5rem;
   align-items: flex-start;
 }
@@ -314,6 +314,7 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  grid-column: 2;
 }
 
 .session-notes-list {
@@ -336,6 +337,13 @@
   flex-direction: column;
   gap: 0.75rem;
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.session-notes-item-button:hover {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.35);
+  box-shadow: 0 16px 28px rgba(59, 130, 246, 0.12);
 }
 
 .session-notes-item.active .session-notes-item-button {
@@ -384,12 +392,46 @@
   padding: 1.25rem;
   border: 1px solid rgba(15, 23, 42, 0.08);
   box-shadow: 0 18px 32px rgba(15, 23, 42, 0.12);
+  grid-column: 1;
 }
 
 .session-note-form {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.session-note-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.session-note-summary-primary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.session-note-summary-title {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.session-note-summary-date {
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.session-note-summary-updated {
+  font-size: 0.8rem;
+  color: #475569;
+  white-space: nowrap;
 }
 
 .session-note-fields {
@@ -487,6 +529,56 @@
   color: #64748b;
 }
 
+.session-note-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.session-note-preview h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.session-note-preview-content {
+  white-space: pre-wrap;
+  line-height: 1.55;
+  color: #1f2937;
+}
+
+.session-note-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem 0.4rem;
+  margin: 0 0.15rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.16);
+  color: #1d4ed8;
+  font-weight: 500;
+}
+
+.session-note-mention .entity-info-trigger {
+  padding: 0.1rem;
+  background: transparent;
+  border: none;
+}
+
+.session-note-mention .entity-info-trigger:hover,
+.session-note-mention .entity-info-trigger:focus {
+  background: rgba(29, 78, 216, 0.12);
+  border-radius: 999px;
+}
+
+.session-note-text {
+  white-space: pre-wrap;
+}
+
 .spinner {
   animation: spinner-rotate 1s linear infinite;
 }
@@ -505,12 +597,9 @@
     grid-template-columns: 1fr;
   }
 
-  .session-notes-sidebar {
-    order: 2;
-  }
-
+  .session-notes-sidebar,
   .session-notes-editor {
-    order: 1;
+    grid-column: 1;
   }
 }
 
@@ -582,6 +671,12 @@ body.theme-dark .session-notes-editor {
   box-shadow: 0 18px 36px rgba(2, 6, 23, 0.55);
 }
 
+body.theme-dark .session-notes-item-button:hover {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(148, 163, 184, 0.45);
+  box-shadow: 0 18px 32px rgba(59, 130, 246, 0.28);
+}
+
 body.theme-dark .session-notes-item-header h2,
 body.theme-dark .session-note-fields label {
   color: #e2e8f0;
@@ -598,6 +693,20 @@ body.theme-dark .session-note-fields textarea {
   background: rgba(15, 23, 42, 0.9);
   border-color: rgba(148, 163, 184, 0.35);
   color: #e2e8f0;
+}
+
+body.theme-dark .session-note-summary {
+  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+body.theme-dark .session-note-summary-title {
+  color: #e2e8f0;
+}
+
+body.theme-dark .session-note-summary-date,
+body.theme-dark .session-note-summary-updated {
+  color: #cbd5f5;
 }
 
 body.theme-dark .session-note-mention-suggestions {
@@ -621,5 +730,15 @@ body.theme-dark .session-note-mention-type {
 body.theme-dark .session-note-mention-suggestion:hover,
 body.theme-dark .session-note-mention-suggestion.active {
   background: rgba(99, 102, 241, 0.22);
+  color: #c7d2fe;
+}
+
+body.theme-dark .session-note-preview h3,
+body.theme-dark .session-note-preview-content {
+  color: #e2e8f0;
+}
+
+body.theme-dark .session-note-mention {
+  background: rgba(99, 102, 241, 0.24);
   color: #c7d2fe;
 }
