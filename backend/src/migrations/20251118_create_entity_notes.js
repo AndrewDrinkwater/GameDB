@@ -1,4 +1,5 @@
 export async function up(queryInterface, Sequelize) {
+  // Create enum if missing
   await queryInterface.sequelize.query(`
     DO $$
     BEGIN
@@ -8,12 +9,13 @@ export async function up(queryInterface, Sequelize) {
         CREATE TYPE "public"."enum_entity_notes_share_type" AS ENUM ('private', 'companions', 'dm', 'party');
       END IF;
     END $$;
-  `)
+  `);
 
+  // Create table using gen_random_uuid for consistency
   await queryInterface.createTable('entity_notes', {
     id: {
       type: Sequelize.UUID,
-      defaultValue: Sequelize.literal('uuid_generate_v4()'),
+      defaultValue: Sequelize.literal('gen_random_uuid()'),
       primaryKey: true,
     },
     entity_id: {
@@ -25,19 +27,19 @@ export async function up(queryInterface, Sequelize) {
     campaign_id: {
       type: Sequelize.UUID,
       allowNull: false,
-      references: { model: 'campaigns', key: 'id' },
+      references: { model: 'Campaigns', key: 'id' },
       onDelete: 'CASCADE',
     },
     character_id: {
       type: Sequelize.UUID,
       allowNull: true,
-      references: { model: 'characters', key: 'id' },
+      references: { model: 'Characters', key: 'id' },
       onDelete: 'SET NULL',
     },
     created_by: {
       type: Sequelize.UUID,
       allowNull: false,
-      references: { model: 'users', key: 'id' },
+      references: { model: 'Users', key: 'id' },
       onDelete: 'CASCADE',
     },
     share_type: {
@@ -67,16 +69,16 @@ export async function up(queryInterface, Sequelize) {
       type: Sequelize.DATE,
       defaultValue: Sequelize.literal('CURRENT_TIMESTAMP'),
     },
-  })
+  });
 
-  await queryInterface.addIndex('entity_notes', ['entity_id'])
-  await queryInterface.addIndex('entity_notes', ['campaign_id'])
-  await queryInterface.addIndex('entity_notes', ['created_by'])
-  await queryInterface.addIndex('entity_notes', ['share_type'])
+  await queryInterface.addIndex('entity_notes', ['entity_id']);
+  await queryInterface.addIndex('entity_notes', ['campaign_id']);
+  await queryInterface.addIndex('entity_notes', ['created_by']);
+  await queryInterface.addIndex('entity_notes', ['share_type']);
 }
 
 export async function down(queryInterface) {
-  await queryInterface.dropTable('entity_notes')
+  await queryInterface.dropTable('entity_notes');
   await queryInterface.sequelize.query(`
     DO $$
     BEGIN
@@ -86,5 +88,5 @@ export async function down(queryInterface) {
         DROP TYPE "public"."enum_entity_notes_share_type";
       END IF;
     END $$;
-  `)
+  `);
 }

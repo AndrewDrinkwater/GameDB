@@ -16,7 +16,7 @@ const dropExistingNameConstraints = async (queryInterface) => {
 }
 
 export const up = async (queryInterface, Sequelize) => {
-  // Only add world_id if it doesn't already exist
+  // Add column if missing
   await queryInterface.sequelize.query(`
     DO $$
     BEGIN
@@ -33,7 +33,7 @@ export const up = async (queryInterface, Sequelize) => {
     END $$;
   `)
 
-  // Populate world_id values where possible
+  // Populate existing entity types from entities
   await queryInterface.sequelize.query(`
     UPDATE entity_types AS et
     SET world_id = sub.world_id
@@ -46,23 +46,33 @@ export const up = async (queryInterface, Sequelize) => {
     WHERE et.id = sub.entity_type_id AND et.world_id IS NULL;
   `)
 
-  // Drop any existing name-based unique constraints
+  // Drop old name-only constraints
   await dropExistingNameConstraints(queryInterface)
 
-  // Add new unique constraint on (world_id, name)
-  await queryInterface.addConstraint('entity_types', {
-    fields: ['world_id', 'name'],
-    type: 'unique',
-    name: 'entity_types_world_id_name_key',
-  })
+  // Only add constraint if it doesn't exist already
+  await queryInterface.sequelize.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'entity_types_world_id_name_key'
+      ) THEN
+        ALTER TABLE "entity_types"
+        ADD CONSTRAINT "entity_types_world_id_name_key" UNIQUE ("world_id", "name");
+      END IF;
+    END $$;
+  `)
 }
 
 export const down = async (queryInterface) => {
-  // Remove new constraint and column
-  await queryInterface.removeConstraint('entity_types', 'entity_types_world_id_name_key')
-  await queryInterface.removeColumn('entity_types', 'world_id')
+  await queryInterface.sequelize.query(`
+    ALTER TABLE IF EXISTS "entity_types"
+    DROP CONSTRAINT IF EXISTS "entity_types_world_id_name_key";
+  `)
 
-  // Reinstate old name-only unique constraint
+  await queryInterface.removeColumn('entity_types', 'world_id').catch(() => null)
+
   await queryInterface.addConstraint('entity_types', {
     fields: ['name'],
     type: 'unique',
