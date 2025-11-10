@@ -9,22 +9,28 @@ import {
   AlertCircle,
   CalendarDays,
   Check,
+  Edit3,
+  Eye,
   Loader2,
   NotebookPen,
   Plus,
   RotateCcw,
   Save,
+  Search,
   Sparkles,
+  Trash2,
   Users,
 } from 'lucide-react'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import {
   createCampaignSessionNote,
+  deleteCampaignSessionNote,
   fetchCampaignSessionNotes,
   updateCampaignSessionNote,
 } from '../../api/campaigns.js'
 import { searchEntities } from '../../api/entities.js'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
+import { useAuth } from '../../context/AuthContext.jsx'
 import './NotesPage.css'
 
 const AUTOSAVE_DELAY_MS = 2500
@@ -180,17 +186,23 @@ const getEntityTypeName = (entity) =>
   ''
 
 export default function SessionNotesPage() {
+  const { user } = useAuth()
   const { selectedCampaign, selectedCampaignId } = useCampaignContext()
   const [notesState, setNotesState] = useState({ items: emptyArray, loading: false, error: '' })
   const [selectedNoteId, setSelectedNoteId] = useState('')
   const [editorState, setEditorState] = useState(null)
   const [creating, setCreating] = useState(false)
   const [savingState, setSavingState] = useState({ status: 'idle', lastSaved: '', error: '' })
+  const [searchQuery, setSearchQuery] = useState('')
+  const [isEditing, setIsEditing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   const textareaRef = useRef(null)
   const editorRef = useRef(null)
   const selectedNoteIdRef = useRef('')
   const lastSavedRef = useRef(null)
   const savingRef = useRef(false)
+  const justCreatedNoteRef = useRef('')
 
   const [mentionState, setMentionState] = useState({
     active: false,
@@ -208,6 +220,20 @@ export default function SessionNotesPage() {
     if (selectedCampaign?.world_id) return selectedCampaign.world_id
     return ''
   }, [selectedCampaign])
+
+  const membershipRole = useMemo(() => {
+    if (!selectedCampaign || !Array.isArray(selectedCampaign.members) || !user) {
+      return null
+    }
+
+    const match = selectedCampaign.members.find((member) => member?.user_id === user.id)
+    return match?.role ?? null
+  }, [selectedCampaign, user])
+
+  const canDeleteNotes = useMemo(() => {
+    if (user?.role === 'system_admin') return true
+    return membershipRole === 'dm'
+  }, [membershipRole, user])
 
   const loadNotes = useCallback(async () => {
     if (!selectedCampaignId) return
@@ -272,6 +298,24 @@ export default function SessionNotesPage() {
     })
   }, [notesState.items])
 
+  const filteredNotes = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return sortedNotes
+
+    return sortedNotes.filter((note) => {
+      if (!note) return false
+      const title = String(
+        note?.session_title ?? note?.sessionTitle ?? 'Session note',
+      ).toLowerCase()
+      const content = String(note?.content ?? '').toLowerCase()
+      const dateLabel = formatDateDisplay(note?.session_date ?? note?.sessionDate ?? '')
+        .toString()
+        .toLowerCase()
+
+      return title.includes(query) || content.includes(query) || dateLabel.includes(query)
+    })
+  }, [searchQuery, sortedNotes])
+
   const selectedNote = useMemo(() => {
     if (!selectedNoteId) return null
     return sortedNotes.find((note) => note?.id === selectedNoteId) || null
@@ -293,9 +337,29 @@ export default function SessionNotesPage() {
   }, [editorState?.content, editorState?.mentions])
 
   useEffect(() => {
-    if (!selectedNoteId && sortedNotes.length > 0) {
-      setSelectedNoteId(sortedNotes[0].id)
+    const hasQuery = searchQuery.trim().length > 0
+    const availableNotes = filteredNotes.length > 0 ? filteredNotes : sortedNotes
+
+    if (!selectedNoteId && availableNotes.length > 0) {
+      setSelectedNoteId(availableNotes[0].id)
       return
+    }
+
+    if (hasQuery && filteredNotes.length === 0) {
+      if (selectedNoteId) {
+        setSelectedNoteId('')
+      }
+      setEditorState(null)
+      lastSavedRef.current = null
+      return
+    }
+
+    if (selectedNoteId && filteredNotes.length > 0) {
+      const visible = filteredNotes.some((note) => note?.id === selectedNoteId)
+      if (!visible) {
+        setSelectedNoteId(filteredNotes[0].id)
+        return
+      }
     }
 
     if (!selectedNoteId) {
@@ -315,7 +379,30 @@ export default function SessionNotesPage() {
     setEditorState(normalised)
     lastSavedRef.current = normalised
     setSavingState((prev) => ({ ...prev, status: 'idle', error: '' }))
-  }, [selectedNote, selectedNoteId, sortedNotes])
+  }, [filteredNotes, searchQuery, selectedNote, selectedNoteId, sortedNotes])
+
+  useEffect(() => {
+    if (!selectedNoteId) {
+      setIsEditing(false)
+      return
+    }
+
+    if (justCreatedNoteRef.current && justCreatedNoteRef.current === selectedNoteId) {
+      setIsEditing(true)
+      justCreatedNoteRef.current = ''
+      return
+    }
+
+    setIsEditing(false)
+  }, [selectedNoteId])
+
+  useEffect(() => {
+    setDeleteError('')
+  }, [selectedNoteId])
+
+  useEffect(() => {
+    setSearchQuery('')
+  }, [selectedCampaignId])
 
   const resetMentionState = useCallback(() => {
     setMentionState({ active: false, query: '', start: 0, end: 0 })
@@ -637,6 +724,37 @@ export default function SessionNotesPage() {
     void saveDraft()
   }, [saveDraft])
 
+  const handleDeleteNote = useCallback(async () => {
+    const campaignId = selectedCampaignId
+    const noteId = selectedNoteIdRef.current
+
+    if (!campaignId || !noteId) return
+
+    setDeleting(true)
+    setDeleteError('')
+
+    try {
+      await deleteCampaignSessionNote(campaignId, noteId)
+
+      setNotesState((previous) => {
+        const items = Array.isArray(previous.items) ? previous.items : emptyArray
+        const nextItems = items.filter((item) => String(item?.id) !== String(noteId))
+        return { ...previous, items: nextItems }
+      })
+
+      selectedNoteIdRef.current = ''
+      setSelectedNoteId('')
+      setEditorState(null)
+      lastSavedRef.current = null
+      setSavingState({ status: 'idle', lastSaved: '', error: '' })
+    } catch (error) {
+      console.error('❌ Failed to delete session note', error)
+      setDeleteError(error?.message || 'Failed to delete session note')
+    } finally {
+      setDeleting(false)
+    }
+  }, [selectedCampaignId])
+
   const handleCreateNote = useCallback(async () => {
     if (!selectedCampaignId) return
     setCreating(true)
@@ -656,9 +774,12 @@ export default function SessionNotesPage() {
         return { ...previous, items: [data, ...filtered], error: '' }
       })
 
+      setSearchQuery('')
+      justCreatedNoteRef.current = data.id
       setSelectedNoteId(data.id)
       setEditorState(normalised)
       lastSavedRef.current = normalised
+      setIsEditing(true)
       setSavingState({ status: 'idle', lastSaved: '', error: '' })
     } catch (error) {
       console.error('❌ Failed to create session note', error)
@@ -727,7 +848,7 @@ export default function SessionNotesPage() {
             disabled={creating || notesState.loading}
           >
             {creating ? <Loader2 size={16} className="spinner" /> : <Plus size={16} />}
-            <span>{creating ? 'Creating…' : 'New session note'}</span>
+            <span>{creating ? 'Creating…' : '+ New Session Notes'}</span>
           </button>
           <button
             type="button"
@@ -779,45 +900,232 @@ export default function SessionNotesPage() {
 
       <div className="session-notes-layout">
         <aside className="session-notes-sidebar">
-          {sortedNotes.length === 0 ? (
-            <div className="notes-empty">
-              <Sparkles size={20} />
-              <strong>No session notes yet</strong>
-              <span>Create the first note to kick off your campaign journal.</span>
+          <label className="session-notes-search" htmlFor="session-notes-search-input">
+            <Search size={16} />
+            <input
+              id="session-notes-search-input"
+              type="search"
+              placeholder="Search session notes"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
+          </label>
+
+          <div className="session-notes-list-container">
+            {notesState.loading ? (
+              <div className="session-notes-loading">
+                <Loader2 size={18} className="spinner" />
+                <span>Loading session notes…</span>
+              </div>
+            ) : filteredNotes.length === 0 ? (
+              sortedNotes.length === 0 ? (
+                <div className="notes-empty">
+                  <Sparkles size={20} />
+                  <strong>No session notes yet</strong>
+                  <span>Create the first note to kick off your campaign journal.</span>
+                </div>
+              ) : (
+                <div className="notes-empty">
+                  <Search size={18} />
+                  <strong>No matches</strong>
+                  <span>No session notes include “{searchQuery.trim()}”.</span>
+                </div>
+              )
+            ) : (
+              <ul className="session-notes-list" role="list">
+                {filteredNotes.map((note) => {
+                  const noteId = note?.id
+                  const isSelected = noteId === selectedNoteId
+                  const title = note?.session_title ?? note?.sessionTitle ?? 'Session note'
+                  const dateLabel = formatDateDisplay(note?.session_date ?? note?.sessionDate)
+
+                  return (
+                    <li
+                      key={noteId}
+                      className={`session-notes-item ${isSelected ? 'active' : ''}`}
+                    >
+                      <button
+                        type="button"
+                        className="session-notes-item-button"
+                        onClick={() => setSelectedNoteId(noteId)}
+                      >
+                        <span className="session-note-card-title">{title}</span>
+                        <span className="session-note-card-date">{dateLabel}</span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </aside>
+
+        <section className="session-notes-panel">
+          {!editorState?.id ? (
+            <div className="notes-helper">
+              <NotebookPen size={28} />
+              <strong>Select a session to get started</strong>
+              <span>Create a new note or choose one from the list to see its details.</span>
             </div>
           ) : (
-            <ul className="session-notes-list">
-              {sortedNotes.map((note) => {
-                const noteId = note?.id
-                const isSelected = noteId === selectedNoteId
-                const dateLabel = formatDateDisplay(note?.session_date ?? note?.sessionDate)
-                const updatedLabel = formatTimestamp(note?.updated_at ?? note?.updatedAt)
-                const segments = buildNoteSegments(note?.content, note?.mentions)
-                const mentionCount = Array.isArray(note?.mentions) ? note.mentions.length : 0
-
-                return (
-                  <li
-                    key={noteId}
-                    className={`session-notes-item ${isSelected ? 'active' : ''}`}
-                  >
+            <div className="session-note-shell">
+              <header className="session-note-header">
+                <div className="session-note-heading">
+                  <h2>{editorState.sessionTitle || 'Session note'}</h2>
+                  <span>{editorDateLabel}</span>
+                </div>
+                <div className="session-note-toolbar">
+                  {canDeleteNotes ? (
                     <button
                       type="button"
-                      className="session-notes-item-button"
-                      onClick={() => setSelectedNoteId(noteId)}
+                      className="session-note-action danger"
+                      onClick={handleDeleteNote}
+                      disabled={deleting}
                     >
-                      <div className="session-notes-item-header">
-                        <h2>{note?.session_title ?? note?.sessionTitle ?? 'Session note'}</h2>
-                        <span>{dateLabel}</span>
+                      {deleting ? <Loader2 size={16} className="spinner" /> : <Trash2 size={16} />}
+                      <span>{deleting ? 'Deleting…' : 'Delete'}</span>
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="session-note-action"
+                    onClick={() => setIsEditing((prev) => !prev)}
+                  >
+                    {isEditing ? <Eye size={16} /> : <Edit3 size={16} />}
+                    <span>{isEditing ? 'View note' : 'Edit note'}</span>
+                  </button>
+                </div>
+              </header>
+
+              {deleteError ? (
+                <div className="session-note-error" role="alert">
+                  <AlertCircle size={16} />
+                  <span>{deleteError}</span>
+                </div>
+              ) : null}
+
+              {isEditing ? (
+                <div className="session-note-form">
+                  <div className="session-note-fields">
+                    <label htmlFor="session-note-date">Session date</label>
+                    <input
+                      id="session-note-date"
+                      type="date"
+                      value={editorState.sessionDate || ''}
+                      onChange={(event) => handleFieldChange('sessionDate', event.target.value)}
+                      max="9999-12-31"
+                    />
+                  </div>
+
+                  <div className="session-note-fields">
+                    <div className="session-note-summary">
+                      <div className="session-note-summary-primary">
+                        <span className="session-note-summary-title">
+                          {editorState.sessionTitle || 'Session note'}
+                        </span>
+                        <span className="session-note-summary-date">{editorDateLabel}</span>
                       </div>
-                      <div className="session-notes-item-body">
-                        {segments.length > 0 ? (
-                          segments.slice(0, 2).map((segment, index) => {
+                      {editorUpdatedLabel ? (
+                        <span className="session-note-summary-updated">
+                          Updated {editorUpdatedLabel}
+                        </span>
+                      ) : null}
+                    </div>
+                    <label htmlFor="session-note-title">Title</label>
+                    <input
+                      id="session-note-title"
+                      type="text"
+                      value={editorState.sessionTitle || ''}
+                      onChange={(event) => handleFieldChange('sessionTitle', event.target.value)}
+                      placeholder="The mystery of the Violet Spire"
+                    />
+                  </div>
+
+                  <div className="session-note-fields">
+                    <label htmlFor="session-note-content">Notes</label>
+                    <textarea
+                      id="session-note-content"
+                      ref={textareaRef}
+                      value={editorState.content || ''}
+                      onChange={handleEditorChange}
+                      onKeyDown={handleTextareaKeyDown}
+                      onSelect={handleTextareaSelect}
+                      rows={14}
+                      placeholder="Use @ to tag entities mentioned in this session."
+                    />
+
+                    {mentionState.active ? (
+                      <div
+                        className="session-note-mention-suggestions"
+                        role="listbox"
+                        aria-label="Entity mention suggestions"
+                        onMouseDown={(event) => event.preventDefault()}
+                      >
+                        {!resolvedWorldId ? (
+                          <div className="session-note-mention-message">
+                            Select a campaign world to @mention entities.
+                          </div>
+                        ) : mentionState.query.trim().length === 0 ? (
+                          <div className="session-note-mention-message">
+                            Keep typing after <strong>@</strong> to search for entities.
+                          </div>
+                        ) : mentionLoading ? (
+                          <div className="session-note-mention-message">Searching…</div>
+                        ) : mentionResults.length > 0 ? (
+                          <ul className="session-note-mention-list" ref={mentionListRef}>
+                            {mentionResults.map((result, index) => {
+                              const name =
+                                result?.name ||
+                                result?.displayName ||
+                                result?.entity?.name ||
+                                'Unnamed entity'
+                              const typeName = getEntityTypeName(result)
+                              const key =
+                                result?.id ?? result?.entity?.id ?? `${name}-${String(index)}`
+                              const className = [
+                                'session-note-mention-suggestion',
+                                mentionSelectedIndex === index ? 'active' : '',
+                              ]
+                                .filter(Boolean)
+                                .join(' ')
+
+                              return (
+                                <li
+                                  key={String(key)}
+                                  role="option"
+                                  aria-selected={mentionSelectedIndex === index}
+                                  className={className}
+                                  data-index={index}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={() => handleMentionSelect(result)}
+                                >
+                                  <span className="session-note-mention-name">{name}</span>
+                                  {typeName ? (
+                                    <span className="session-note-mention-type">{typeName}</span>
+                                  ) : null}
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        ) : (
+                          <div className="session-note-mention-message">
+                            No entities found for “{mentionState.query.trim()}”.
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {editorPreviewSegments.length > 0 ? (
+                      <div className="session-note-preview" aria-live="polite">
+                        <h3>Preview</h3>
+                        <div className="session-note-preview-content">
+                          {editorPreviewSegments.map((segment, index) => {
                             if (segment.type === 'mention' && segment.entityId) {
                               const label = segment.entityName || 'entity'
                               return (
                                 <span
-                                  key={`${noteId || 'note'}-mention-${index}`}
-                                  className="note-mention"
+                                  key={`${editorState?.id || 'note'}-preview-mention-${index}`}
+                                  className="session-note-mention"
                                 >
                                   @{label}
                                   <EntityInfoPreview
@@ -830,159 +1138,59 @@ export default function SessionNotesPage() {
 
                             return (
                               <span
-                                key={`${noteId || 'note'}-text-${index}`}
-                                className="note-text"
+                                key={`${editorState?.id || 'note'}-preview-text-${index}`}
+                                className="session-note-text"
                               >
                                 {segment.text}
                               </span>
                             )
-                          })
-                        ) : (
-                          <span className="note-text">No notes captured yet.</span>
-                        )}
+                          })}
+                        </div>
                       </div>
-                      <footer className="session-notes-item-footer">
-                        {updatedLabel ? <span>Updated {updatedLabel}</span> : null}
-                        {mentionCount > 0 ? (
-                          <span>{mentionCount} {mentionCount === 1 ? 'mention' : 'mentions'}</span>
-                        ) : null}
-                      </footer>
+                    ) : null}
+                  </div>
+
+                  <div className="session-note-actions">
+                    <button
+                      type="button"
+                      className="session-note-action primary"
+                      onClick={handleManualSave}
+                      disabled={savingState.status === 'saving' || !hasUnsavedChanges}
+                    >
+                      {savingState.status === 'saving' ? (
+                        <Loader2 size={16} className="spinner" />
+                      ) : (
+                        <Save size={16} />
+                      )}
+                      <span>{savingState.status === 'saving' ? 'Saving…' : 'Save now'}</span>
                     </button>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </aside>
-
-        <section className="session-notes-editor">
-          {!editorState?.id ? (
-            <div className="notes-helper">
-              <NotebookPen size={28} />
-              <strong>Select a session to begin editing</strong>
-              <span>Create a new note or choose one from the list to see its details.</span>
-            </div>
-          ) : (
-            <div className="session-note-form">
-              <div className="session-note-fields">
-                <label htmlFor="session-note-date">Session date</label>
-                <input
-                  id="session-note-date"
-                  type="date"
-                  value={editorState.sessionDate || ''}
-                  onChange={(event) => handleFieldChange('sessionDate', event.target.value)}
-                  max="9999-12-31"
-                />
-              </div>
-
-              <div className="session-note-fields">
-                <div className="session-note-summary">
-                  <div className="session-note-summary-primary">
-                    <span className="session-note-summary-title">
-                      {editorState.sessionTitle || 'Session note'}
-                    </span>
-                    <span className="session-note-summary-date">{editorDateLabel}</span>
+                    {editorState.author?.username ? (
+                      <span className="session-note-meta">
+                        Created by {editorState.author.username}
+                        {editorState.lastEditor?.username &&
+                        editorState.lastEditor.username !== editorState.author.username
+                          ? ` · Last updated by ${editorState.lastEditor.username}`
+                          : ''}
+                      </span>
+                    ) : null}
                   </div>
-                  {editorUpdatedLabel ? (
-                    <span className="session-note-summary-updated">
-                      Updated {editorUpdatedLabel}
-                    </span>
-                  ) : null}
                 </div>
-                <label htmlFor="session-note-title">Title</label>
-                <input
-                  id="session-note-title"
-                  type="text"
-                  value={editorState.sessionTitle || ''}
-                  onChange={(event) => handleFieldChange('sessionTitle', event.target.value)}
-                  placeholder="The mystery of the Violet Spire"
-                />
-              </div>
-
-              <div className="session-note-fields">
-                <label htmlFor="session-note-content">Notes</label>
-                <textarea
-                  id="session-note-content"
-                  ref={textareaRef}
-                  value={editorState.content || ''}
-                  onChange={handleEditorChange}
-                  onKeyDown={handleTextareaKeyDown}
-                  onSelect={handleTextareaSelect}
-                  rows={14}
-                  placeholder="Use @ to tag entities mentioned in this session."
-                />
-
-                {mentionState.active ? (
-                  <div
-                    className="session-note-mention-suggestions"
-                    role="listbox"
-                    aria-label="Entity mention suggestions"
-                    onMouseDown={(event) => event.preventDefault()}
-                  >
-                    {!resolvedWorldId ? (
-                      <div className="session-note-mention-message">
-                        Select a campaign world to @mention entities.
-                      </div>
-                    ) : mentionState.query.trim().length === 0 ? (
-                      <div className="session-note-mention-message">
-                        Keep typing after <strong>@</strong> to search for entities.
-                      </div>
-                    ) : mentionLoading ? (
-                      <div className="session-note-mention-message">Searching…</div>
-                    ) : mentionResults.length > 0 ? (
-                      <ul className="session-note-mention-list" ref={mentionListRef}>
-                        {mentionResults.map((result, index) => {
-                          const name =
-                            result?.name ||
-                            result?.displayName ||
-                            result?.entity?.name ||
-                            'Unnamed entity'
-                          const typeName = getEntityTypeName(result)
-                          const key =
-                            result?.id ?? result?.entity?.id ?? `${name}-${String(index)}`
-                          const className = [
-                            'session-note-mention-suggestion',
-                            mentionSelectedIndex === index ? 'active' : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' ')
-
-                          return (
-                            <li
-                              key={String(key)}
-                              role="option"
-                              aria-selected={mentionSelectedIndex === index}
-                              className={className}
-                              data-index={index}
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => handleMentionSelect(result)}
-                            >
-                              <span className="session-note-mention-name">{name}</span>
-                              {typeName ? (
-                                <span className="session-note-mention-type">{typeName}</span>
-                              ) : null}
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    ) : (
-                      <div className="session-note-mention-message">
-                        No entities found for “{mentionState.query.trim()}”.
-                      </div>
-                    )}
+              ) : (
+                <article className="session-note-view" aria-live="polite">
+                  <div className="session-note-view-meta">
+                    <span>
+                      <CalendarDays size={16} /> {editorDateLabel}
+                    </span>
+                    {editorUpdatedLabel ? <span>Updated {editorUpdatedLabel}</span> : null}
                   </div>
-                ) : null}
-
-                {editorPreviewSegments.length > 0 ? (
-                  <div className="session-note-preview" aria-live="polite">
-                    <h3>Preview</h3>
-                    <div className="session-note-preview-content">
-                      {editorPreviewSegments.map((segment, index) => {
+                  <div className="session-note-view-body">
+                    {editorPreviewSegments.length > 0 ? (
+                      editorPreviewSegments.map((segment, index) => {
                         if (segment.type === 'mention' && segment.entityId) {
                           const label = segment.entityName || 'entity'
                           return (
                             <span
-                              key={`${editorState?.id || 'note'}-preview-mention-${index}`}
+                              key={`${editorState?.id || 'note'}-view-mention-${index}`}
                               className="session-note-mention"
                             >
                               @{label}
@@ -996,42 +1204,28 @@ export default function SessionNotesPage() {
 
                         return (
                           <span
-                            key={`${editorState?.id || 'note'}-preview-text-${index}`}
+                            key={`${editorState?.id || 'note'}-view-text-${index}`}
                             className="session-note-text"
                           >
                             {segment.text}
                           </span>
                         )
-                      })}
-                    </div>
+                      })
+                    ) : (
+                      <p className="session-note-view-empty">No notes captured yet.</p>
+                    )}
                   </div>
-                ) : null}
-              </div>
-
-              <div className="session-note-actions">
-                <button
-                  type="button"
-                  className="notes-action-button"
-                  onClick={handleManualSave}
-                  disabled={savingState.status === 'saving' || !hasUnsavedChanges}
-                >
-                  {savingState.status === 'saving' ? (
-                    <Loader2 size={16} className="spinner" />
-                  ) : (
-                    <Save size={16} />
-                  )}
-                  <span>{savingState.status === 'saving' ? 'Saving…' : 'Save now'}</span>
-                </button>
-                {editorState.author?.username ? (
-                  <span className="session-note-meta">
-                    Created by {editorState.author.username}
-                    {editorState.lastEditor?.username &&
-                    editorState.lastEditor.username !== editorState.author.username
-                      ? ` · Last updated by ${editorState.lastEditor.username}`
-                      : ''}
-                  </span>
-                ) : null}
-              </div>
+                  {editorState.author?.username ? (
+                    <div className="session-note-view-meta session-note-view-authors">
+                      <span>Created by {editorState.author.username}</span>
+                      {editorState.lastEditor?.username &&
+                      editorState.lastEditor.username !== editorState.author.username ? (
+                        <span>Last updated by {editorState.lastEditor.username}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </article>
+              )}
             </div>
           )}
         </section>
