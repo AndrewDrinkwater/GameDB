@@ -13,7 +13,7 @@ const SHARE_LABELS = {
 
 const formatDateTime = (value) => {
   if (!value) return ''
-  const date = new Date(value)
+  const date = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleString(undefined, {
     year: 'numeric',
@@ -21,6 +21,7 @@ const formatDateTime = (value) => {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
   })
 }
 
@@ -297,13 +298,22 @@ export default function EntityNotesPage() {
           {filteredNotes.map((note) => {
             const entityId = resolveEntityId(note)
             const shareType = String(note?.shareType || note?.share_type || 'private')
-            const createdAt = formatDateTime(note?.created_at || note?.createdAt)
+            const createdAtRaw = note?.created_at || note?.createdAt
+            const createdAtDate = createdAtRaw ? new Date(createdAtRaw) : null
+            const createdAtDisplay = formatDateTime(createdAtDate)
+            const createdAtIso =
+              createdAtDate && !Number.isNaN(createdAtDate.getTime())
+                ? createdAtDate.toISOString()
+                : ''
             const authorName = resolveAuthorName(note)
             const characterName = note?.character?.name ?? ''
             const entityName = resolveEntityName(note)
 
             return (
-              <article className="note-card" key={note.id ?? `${entityId}-${createdAt}`}>
+              <article
+                className="note-card"
+                key={note.id ?? `${entityId}-${createdAtIso || 'unknown'}`}
+              >
                 <header className="note-card-header">
                   <div className="note-entity-meta">
                     <h2>{entityName}</h2>
@@ -319,7 +329,12 @@ export default function EntityNotesPage() {
                 <div className="note-details">
                   <span>Author: {authorName}</span>
                   {characterName ? <span>Character: {characterName}</span> : null}
-                  {createdAt ? <span>Created: {createdAt}</span> : null}
+                  {createdAtDisplay ? (
+                    <span>
+                      Created:{' '}
+                      <time dateTime={createdAtIso || undefined}>{createdAtDisplay}</time>
+                    </span>
+                  ) : null}
                 </div>
 
                 <div className="note-content">{note?.content ?? ''}</div>

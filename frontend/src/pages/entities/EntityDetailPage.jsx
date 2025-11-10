@@ -409,6 +409,17 @@ export default function EntityDetailPage() {
           throw new Error('Note could not be created')
         }
 
+        const timestamp =
+          note?.createdAt ?? note?.created_at ?? new Date().toISOString()
+        const normalizedNote =
+          note?.createdAt && note?.created_at
+            ? note
+            : {
+                ...note,
+                ...(note?.createdAt ? {} : { createdAt: timestamp }),
+                ...(note?.created_at ? {} : { created_at: timestamp }),
+              }
+
         setNotesState((previous) => {
           const currentItems = Array.isArray(previous?.items)
             ? previous.items.slice()
@@ -419,13 +430,13 @@ export default function EntityDetailPage() {
             : currentItems
 
           return {
-            items: [note, ...filtered],
+            items: [normalizedNote, ...filtered],
             loading: false,
             error: '',
           }
         })
 
-        return { success: true, note }
+        return { success: true, note: normalizedNote }
       } catch (err) {
         console.error('❌ Failed to create note', err)
         return {
