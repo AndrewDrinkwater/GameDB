@@ -61,6 +61,32 @@ export const fetchEntityNotes = (id, params = {}) => {
   return api.get(`/entities/${id}/notes${queryString ? `?${queryString}` : ''}`)
 }
 
+export const fetchEntityMentionNotes = (id, params = {}) => {
+  const query = new URLSearchParams()
+  const campaignId = params.campaignId ?? params.campaign_id
+  if (campaignId) {
+    query.set('campaignId', campaignId)
+  }
+
+  const queryString = query.toString()
+  return api.get(
+    `/entities/${id}/mentions/entity-notes${queryString ? `?${queryString}` : ''}`,
+  )
+}
+
+export const fetchEntityMentionSessionNotes = (id, params = {}) => {
+  const query = new URLSearchParams()
+  const campaignId = params.campaignId ?? params.campaign_id
+  if (campaignId) {
+    query.set('campaignId', campaignId)
+  }
+
+  const queryString = query.toString()
+  return api.get(
+    `/entities/${id}/mentions/session-notes${queryString ? `?${queryString}` : ''}`,
+  )
+}
+
 export const createEntityNote = (id, data) => api.post(`/entities/${id}/notes`, data)
 
 export const getEntityGraph = async (entityId, depth = 1) => {

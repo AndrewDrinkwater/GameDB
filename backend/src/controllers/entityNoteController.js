@@ -344,6 +344,165 @@ export const getEntityNotes = async (req, res) => {
   }
 }
 
+export const listEntityMentionNotes = async (req, res) => {
+  try {
+    const { id } = req.params
+    const campaignId = resolveCampaignId(req)
+
+    if (!campaignId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Campaign id is required to view mentions',
+      })
+    }
+
+    const entity = await Entity.findByPk(id)
+    if (!entity) {
+      return res.status(404).json({ success: false, message: 'Entity not found' })
+    }
+
+    const access = await checkWorldAccess(entity.world_id, req.user)
+    if (!access.world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    const readContext = await buildEntityReadContext({
+      worldId: entity.world_id,
+      user: req.user,
+      worldAccess: access,
+      campaignContextId: campaignId,
+    })
+
+    if (!canUserReadEntity(entity, readContext)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const campaign = await Campaign.findByPk(campaignId, {
+      include: [
+        {
+          model: UserCampaignRole,
+          as: 'members',
+          attributes: ['user_id', 'role'],
+        },
+      ],
+    })
+
+    if (!campaign) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Campaign not found' })
+    }
+
+    if (
+      campaign.world_id &&
+      entity.world_id &&
+      String(campaign.world_id) !== String(entity.world_id)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Campaign must belong to the same world as the entity',
+      })
+    }
+
+    const userId = normaliseId(req.user?.id)
+    const isSystemAdmin = req.user?.role === 'system_admin'
+
+    let membershipRole = null
+    if (!isSystemAdmin && userId) {
+      const membership = Array.isArray(campaign.members)
+        ? campaign.members.find(
+            (member) => member && String(member.user_id) === String(userId),
+          )
+        : await findCampaignMembership(campaignId, userId)
+
+      membershipRole = membership?.role ?? null
+    }
+
+    const isCampaignDm = isSystemAdmin || membershipRole === 'dm'
+    const isCampaignPlayer = membershipRole === 'player'
+
+    if (!isCampaignDm && !isCampaignPlayer) {
+      return res.status(403).json({
+        success: false,
+        message: 'You must be part of this campaign to view notes',
+      })
+    }
+
+    const notes = await EntityNote.findAll({
+      where: { campaign_id: campaign.id },
+      include: [
+        {
+          model: Entity,
+          as: 'entity',
+          attributes: ['id', 'name', 'entity_type_id', 'world_id'],
+        },
+        {
+          model: User,
+          as: 'author',
+          attributes: ['id', 'username', 'email', 'role'],
+        },
+        { model: Character, as: 'character', attributes: ['id', 'name'] },
+      ],
+      order: [['created_at', 'DESC']],
+    })
+
+    const mentionId = normaliseId(id)
+
+    const filtered = notes.filter((note) => {
+      const plain =
+        typeof note.get === 'function' ? note.get({ plain: true }) : note
+
+      if (!Array.isArray(plain.mentions)) {
+        return false
+      }
+
+      const hasMention = plain.mentions.some((mention) => {
+        const mentionIdValue = normaliseId(
+          mention?.entityId ??
+            mention?.entity_id ??
+            mention?.id ??
+            mention?.entityID ??
+            null,
+        )
+        return mentionIdValue && mentionIdValue === mentionId
+      })
+
+      if (!hasMention) {
+        return false
+      }
+
+      if (isSystemAdmin || isCampaignDm) {
+        return true
+      }
+
+      const creatorId = plain.created_by ? String(plain.created_by) : null
+      if (userId && creatorId && creatorId === userId) {
+        return true
+      }
+
+      const shareType = plain.share_type
+      if (shareType === 'party') {
+        return true
+      }
+
+      if (shareType === 'companions' && isCampaignPlayer) {
+        return true
+      }
+
+      return false
+    })
+
+    const payload = filtered.map((note) => formatNoteRecord(note))
+    return res.json({ success: true, data: payload })
+  } catch (err) {
+    console.error('❌ Failed to fetch entity mention notes', err)
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to load mentions',
+    })
+  }
+}
+
 export const createEntityNote = async (req, res) => {
   try {
     const { id } = req.params
