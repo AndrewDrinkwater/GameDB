@@ -9,6 +9,7 @@ import {
   sequelize,
 } from '../models/index.js'
 import { authenticate as authMiddleware } from '../middleware/authMiddleware.js'
+import { listCampaignEntityNotes } from '../controllers/entityNoteController.js'
 
 const router = express.Router()
 
@@ -135,6 +136,8 @@ router.get('/:id', authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: err.message })
   }
 })
+
+router.get('/:id/entity-notes', authMiddleware, listCampaignEntityNotes)
 
 // ✅ Create campaign
 router.post('/', authMiddleware, async (req, res) => {

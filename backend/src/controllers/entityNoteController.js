@@ -133,6 +133,31 @@ const formatNoteRecord = (note) => {
     updated_at: plain.updated_at,
   }
 
+  if (plain.entity) {
+    const entityPlain =
+      typeof plain.entity.get === 'function'
+        ? plain.entity.get({ plain: true })
+        : plain.entity
+
+    payload.entity = {
+      id: entityPlain.id,
+      name: entityPlain.name,
+      entityTypeId: entityPlain.entity_type_id ?? entityPlain.entityTypeId ?? null,
+      entity_type_id:
+        entityPlain.entity_type_id ?? entityPlain.entityTypeId ?? null,
+    }
+
+    if (!payload.entityId) {
+      payload.entityId = entityPlain.id
+      payload.entity_id = entityPlain.id
+    }
+
+    payload.entityName = entityPlain.name ?? ''
+  } else {
+    payload.entity = null
+    payload.entityName = ''
+  }
+
   if (plain.author) {
     const authorPlain =
       typeof plain.author.get === 'function'
@@ -164,6 +189,39 @@ const formatNoteRecord = (note) => {
   }
 
   return payload
+}
+
+const collectIdFilters = (source, keys) => {
+  if (!source || !keys || keys.length === 0) return []
+
+  const values = new Set()
+
+  keys.forEach((key) => {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) return
+
+    const rawValue = source[key]
+    if (Array.isArray(rawValue)) {
+      rawValue.forEach((entry) => {
+        const resolved = normaliseId(entry)
+        if (resolved) values.add(resolved)
+      })
+      return
+    }
+
+    if (typeof rawValue === 'string' && rawValue.includes(',')) {
+      rawValue
+        .split(',')
+        .map((entry) => normaliseId(entry))
+        .filter(Boolean)
+        .forEach((entry) => values.add(entry))
+      return
+    }
+
+    const resolved = normaliseId(rawValue)
+    if (resolved) values.add(resolved)
+  })
+
+  return Array.from(values)
 }
 
 export const getEntityNotes = async (req, res) => {
@@ -467,5 +525,128 @@ export const createEntityNote = async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: err.message || 'Failed to create note' })
+  }
+}
+
+export const listCampaignEntityNotes = async (req, res) => {
+  try {
+    const campaignId = normaliseId(req.params?.id ?? req.params?.campaignId)
+
+    if (!campaignId) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Campaign id is required' })
+    }
+
+    const campaign = await Campaign.findByPk(campaignId, {
+      include: [
+        {
+          model: UserCampaignRole,
+          as: 'members',
+          attributes: ['user_id', 'role'],
+        },
+      ],
+    })
+
+    if (!campaign) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Campaign not found' })
+    }
+
+    const userId = normaliseId(req.user?.id)
+    const isSystemAdmin = req.user?.role === 'system_admin'
+
+    let membershipRole = null
+    if (!isSystemAdmin && userId) {
+      const membership = Array.isArray(campaign.members)
+        ? campaign.members.find((member) =>
+            member && String(member.user_id) === String(userId),
+          )
+        : await findCampaignMembership(campaignId, userId)
+
+      membershipRole = membership?.role ?? null
+    }
+
+    const isCampaignDm = isSystemAdmin || membershipRole === 'dm'
+    const isCampaignPlayer = membershipRole === 'player'
+
+    if (!isCampaignDm && !isCampaignPlayer) {
+      return res.status(403).json({
+        success: false,
+        message: 'You must be part of this campaign to view notes',
+      })
+    }
+
+    const where = { campaign_id: campaign.id }
+
+    const entityFilters = collectIdFilters(req.query ?? {}, [
+      'entityId',
+      'entity_id',
+      'entityIds',
+      'entity_ids',
+      'entityIds[]',
+      'entity_ids[]',
+    ])
+
+    if (entityFilters.length === 1) {
+      where.entity_id = entityFilters[0]
+    } else if (entityFilters.length > 1) {
+      where.entity_id = entityFilters
+    }
+
+    const authorFilters = collectIdFilters(req.query ?? {}, [
+      'authorId',
+      'author_id',
+      'authorIds',
+      'author_ids',
+      'authorIds[]',
+      'author_ids[]',
+      'createdBy',
+      'created_by',
+    ])
+
+    if (authorFilters.length === 1) {
+      where.created_by = authorFilters[0]
+    } else if (authorFilters.length > 1) {
+      where.created_by = authorFilters
+    }
+
+    const notes = await EntityNote.findAll({
+      where,
+      include: [
+        {
+          model: Entity,
+          as: 'entity',
+          attributes: ['id', 'name', 'entity_type_id'],
+          required: true,
+        },
+        { model: User, as: 'author', attributes: ['id', 'username', 'email', 'role'] },
+        { model: Character, as: 'character', attributes: ['id', 'name'] },
+      ],
+      order: [['created_at', 'DESC']],
+    })
+
+    const filtered = notes.filter((note) => {
+      if (isSystemAdmin || isCampaignDm) return true
+
+      const plain =
+        typeof note.get === 'function' ? note.get({ plain: true }) : note
+      const creatorId = plain.created_by ? String(plain.created_by) : null
+      if (userId && creatorId && creatorId === userId) return true
+
+      const shareType = plain.share_type
+      if (shareType === 'party') return true
+      if (shareType === 'companions' && isCampaignPlayer) return true
+      return false
+    })
+
+    const payload = filtered.map((note) => formatNoteRecord(note))
+    return res.json({ success: true, data: payload })
+  } catch (err) {
+    console.error('❌ Failed to fetch campaign entity notes', err)
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || 'Failed to load notes' })
   }
 }
