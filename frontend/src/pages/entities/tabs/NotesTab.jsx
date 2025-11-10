@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, Loader2, Plus } from 'lucide-react'
 import PropTypes from '../../../utils/propTypes.js'
 import EntityInfoPreview from '../../../components/entities/EntityInfoPreview.jsx'
-import EntitySearchSelect from '../../../modules/relationships3/ui/EntitySearchSelect.jsx'
 import { fetchCharacters } from '../../../api/characters.js'
 import DrawerPanel from '../../../components/DrawerPanel.jsx'
+import { searchEntities } from '../../../api/entities.js'
 import './NotesTab.css'
 
 const SHARE_LABELS = {
@@ -22,10 +22,6 @@ const SHARE_OPTIONS_PLAYER = [
   {
     value: 'companions',
     label: 'My Companions (all players in this campaign)',
-  },
-  {
-    value: 'dm',
-    label: 'Share with DM',
   },
 ]
 
@@ -149,6 +145,49 @@ const resolveAuthorKey = (note) => {
 
 const emptyArray = Object.freeze([])
 
+const mentionBoundaryRegex = /[\s()[\]{}.,;:!?/\\"'`~]/
+
+const findActiveMention = (value, caret) => {
+  if (typeof value !== 'string' || typeof caret !== 'number') {
+    return null
+  }
+
+  const prefix = value.slice(0, caret)
+  const atIndex = prefix.lastIndexOf('@')
+  if (atIndex === -1) {
+    return null
+  }
+
+  if (prefix.slice(atIndex, atIndex + 2) === '@[') {
+    return null
+  }
+
+  if (atIndex > 0) {
+    const charBefore = prefix[atIndex - 1]
+    if (charBefore && !mentionBoundaryRegex.test(charBefore)) {
+      return null
+    }
+  }
+
+  const query = prefix.slice(atIndex + 1)
+  if (query.includes('\n') || query.includes('\r')) {
+    return null
+  }
+
+  return {
+    start: atIndex,
+    query,
+  }
+}
+
+const getEntityTypeName = (entity) =>
+  entity?.entity_type?.name ||
+  entity?.entityType?.name ||
+  entity?.typeName ||
+  entity?.entity?.entity_type?.name ||
+  entity?.entity?.entityType?.name ||
+  ''
+
 export default function NotesTab({
   entity,
   worldId,
@@ -173,7 +212,16 @@ export default function NotesTab({
   const [formError, setFormError] = useState('')
   const [formSuccess, setFormSuccess] = useState('')
   const textareaRef = useRef(null)
-  const [mentionPickerKey, setMentionPickerKey] = useState(0)
+  const [mentionState, setMentionState] = useState({
+    active: false,
+    query: '',
+    start: 0,
+    end: 0,
+  })
+  const [mentionResults, setMentionResults] = useState(emptyArray)
+  const [mentionLoading, setMentionLoading] = useState(false)
+  const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0)
+  const mentionListRef = useRef(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selectedAuthor, setSelectedAuthor] = useState('all')
 
@@ -185,6 +233,54 @@ export default function NotesTab({
   const shareOptions = useMemo(
     () => (isCampaignDm ? SHARE_OPTIONS_DM : SHARE_OPTIONS_PLAYER),
     [isCampaignDm],
+  )
+
+  const resolvedWorldId = useMemo(() => {
+    if (worldId) {
+      return worldId
+    }
+
+    if (entity && typeof entity === 'object') {
+      const nestedWorld = entity.world || {}
+      return nestedWorld.id || entity.world_id || ''
+    }
+
+    return ''
+  }, [entity, worldId])
+
+  const resetMentionState = useCallback(() => {
+    setMentionState({ active: false, query: '', start: 0, end: 0 })
+    setMentionResults(emptyArray)
+    setMentionLoading(false)
+    setMentionSelectedIndex(0)
+  }, [])
+
+  const updateMentionTracking = useCallback(
+    (value, caret) => {
+      if (typeof caret !== 'number') {
+        return
+      }
+
+      const trigger = findActiveMention(value, caret)
+      if (trigger) {
+        if (
+          mentionState.query !== trigger.query ||
+          mentionState.start !== trigger.start
+        ) {
+          setMentionSelectedIndex(0)
+        }
+
+        setMentionState({
+          active: true,
+          query: trigger.query,
+          start: trigger.start,
+          end: caret,
+        })
+      } else if (mentionState.active) {
+        resetMentionState()
+      }
+    },
+    [mentionState.active, mentionState.query, mentionState.start, resetMentionState],
   )
 
   const sortedNotes = useMemo(() => {
@@ -323,15 +419,97 @@ export default function NotesTab({
       return nextValue
     })
 
-    setMentionPickerKey((prev) => prev + 1)
     setFormError('')
   }, [])
+
+  const handleMentionSelect = useCallback(
+    (entityOption) => {
+      if (!entityOption) return
+
+      const textarea = textareaRef.current
+      if (textarea) {
+        const { start, end } = mentionState
+        textarea.focus()
+        textarea.setSelectionRange(start, end)
+      }
+
+      handleInsertMention(entityOption)
+      resetMentionState()
+    },
+    [handleInsertMention, mentionState, resetMentionState],
+  )
+
+  const handleNoteContentChange = useCallback(
+    (event) => {
+      const { value, selectionStart } = event.target
+      setNoteContent(value)
+      updateMentionTracking(value, selectionStart)
+    },
+    [updateMentionTracking],
+  )
+
+  const handleTextareaSelect = useCallback(
+    (event) => {
+      updateMentionTracking(event.target.value, event.target.selectionStart)
+    },
+    [updateMentionTracking],
+  )
+
+  const handleTextareaKeyDown = useCallback(
+    (event) => {
+      if (!mentionState.active) {
+        return
+      }
+
+      if (event.key === 'Escape') {
+        resetMentionState()
+        return
+      }
+
+      if (event.key === 'ArrowDown') {
+        if (mentionResults.length === 0) {
+          return
+        }
+        event.preventDefault()
+        setMentionSelectedIndex((prev) => (prev + 1) % mentionResults.length)
+        return
+      }
+
+      if (event.key === 'ArrowUp') {
+        if (mentionResults.length === 0) {
+          return
+        }
+        event.preventDefault()
+        setMentionSelectedIndex((prev) =>
+          prev <= 0 ? mentionResults.length - 1 : prev - 1,
+        )
+        return
+      }
+
+      if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
+        const choice = mentionResults[mentionSelectedIndex]
+        if (!choice) {
+          return
+        }
+        event.preventDefault()
+        handleMentionSelect(choice)
+      }
+    },
+    [
+      handleMentionSelect,
+      mentionResults,
+      mentionSelectedIndex,
+      mentionState.active,
+      resetMentionState,
+    ],
+  )
 
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false)
     setFormError('')
     setFormSuccess('')
-  }, [])
+    resetMentionState()
+  }, [resetMentionState])
 
   const openDrawer = useCallback(() => {
     if (!canShowForm) return
@@ -377,7 +555,7 @@ export default function NotesTab({
         }
 
         setNoteContent('')
-        setMentionPickerKey((prev) => prev + 1)
+        resetMentionState()
         if (!isCampaignPlayer) {
           setCharacterId('')
         }
@@ -396,8 +574,87 @@ export default function NotesTab({
       isCampaignPlayer,
       characterId,
       closeDrawer,
+      resetMentionState,
     ],
   )
+
+  useEffect(() => {
+    if (!mentionState.active) {
+      setMentionLoading(false)
+      setMentionResults(emptyArray)
+      return
+    }
+
+    const trimmedQuery = mentionState.query.trim()
+    if (!resolvedWorldId || trimmedQuery.length === 0) {
+      setMentionLoading(false)
+      setMentionResults(emptyArray)
+      return
+    }
+
+    let cancelled = false
+    setMentionLoading(true)
+
+    const timeout = setTimeout(async () => {
+      try {
+        const response = await searchEntities({
+          worldId: resolvedWorldId,
+          query: trimmedQuery,
+          limit: 8,
+        })
+        if (cancelled) return
+        const data = Array.isArray(response?.data) ? response.data : response
+        setMentionResults(Array.isArray(data) ? data : [])
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Failed to search entities for mentions', err)
+          setMentionResults(emptyArray)
+        }
+      } finally {
+        if (!cancelled) {
+          setMentionLoading(false)
+        }
+      }
+    }, 250)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timeout)
+    }
+  }, [mentionState.active, mentionState.query, resolvedWorldId])
+
+  useEffect(() => {
+    if (!mentionState.active) {
+      return
+    }
+
+    if (mentionResults.length === 0) {
+      setMentionSelectedIndex(0)
+      return
+    }
+
+    if (mentionSelectedIndex >= mentionResults.length) {
+      setMentionSelectedIndex(mentionResults.length - 1)
+    }
+  }, [mentionResults, mentionSelectedIndex, mentionState.active])
+
+  useEffect(() => {
+    if (!mentionState.active) {
+      return
+    }
+
+    const listElement = mentionListRef.current
+    if (!listElement) {
+      return
+    }
+
+    const activeItem = listElement.querySelector(
+      `[data-index="${mentionSelectedIndex}"]`,
+    )
+    if (activeItem && activeItem.scrollIntoView) {
+      activeItem.scrollIntoView({ block: 'nearest' })
+    }
+  }, [mentionSelectedIndex, mentionState.active])
 
   const renderNoteBody = useCallback((note) => {
     const segments = buildSegments(note?.content, note?.mentions)
@@ -584,28 +841,81 @@ export default function NotesTab({
               id="entity-note-content"
               ref={textareaRef}
               value={noteContent}
-              onChange={(event) => setNoteContent(event.target.value)}
+              onChange={handleNoteContentChange}
+              onKeyDown={handleTextareaKeyDown}
+              onSelect={handleTextareaSelect}
               placeholder="What do you want to remember?"
               rows={5}
               required
               data-autofocus
             />
 
-            <div className="entity-notes-mention-picker">
-              <EntitySearchSelect
-                key={mentionPickerKey}
-                worldId={worldId || entity?.world?.id || entity?.world_id || ''}
-                label="Tag an entity"
-                value={null}
-                onChange={handleInsertMention}
-                disabled={!worldId && !entity?.world?.id && !entity?.world_id}
-                placeholder="Search entities to @mention"
-              />
-              <p className="entity-notes-mention-help">
-                Selecting an entity inserts an @mention with quick access to its
-                info drawer.
-              </p>
-            </div>
+            {mentionState.active ? (
+              <div
+                className="entity-notes-mention-suggestions"
+                role="listbox"
+                aria-label="Entity mention suggestions"
+                onMouseDown={(event) => event.preventDefault()}
+              >
+                {!resolvedWorldId ? (
+                  <div className="entity-notes-mention-message">
+                    Select a world to @mention entities in this note.
+                  </div>
+                ) : mentionState.query.trim().length === 0 ? (
+                  <div className="entity-notes-mention-message">
+                    Keep typing after <strong>@</strong> to search for entities.
+                  </div>
+                ) : mentionLoading ? (
+                  <div className="entity-notes-mention-message">Searching…</div>
+                ) : mentionResults.length > 0 ? (
+                  <ul className="entity-notes-mention-list" ref={mentionListRef}>
+                    {mentionResults.map((result, index) => {
+                      const name =
+                        result?.name ||
+                        result?.displayName ||
+                        result?.entity?.name ||
+                        'Unnamed entity'
+                      const typeName = getEntityTypeName(result)
+                      const itemClassName = [
+                        'entity-notes-mention-suggestion',
+                        mentionSelectedIndex === index ? 'active' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')
+                      const key =
+                        result?.id ??
+                        result?.entity?.id ??
+                        `${name}-${String(index)}`
+
+                      return (
+                        <li
+                          key={String(key)}
+                          role="option"
+                          aria-selected={mentionSelectedIndex === index}
+                          className={itemClassName}
+                          data-index={index}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => handleMentionSelect(result)}
+                        >
+                          <span className="entity-notes-mention-suggestion-name">
+                            {name}
+                          </span>
+                          {typeName ? (
+                            <span className="entity-notes-mention-suggestion-type">
+                              {typeName}
+                            </span>
+                          ) : null}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : (
+                  <div className="entity-notes-mention-message">
+                    No entities found for “{mentionState.query.trim()}”.
+                  </div>
+                )}
+              </div>
+            ) : null}
 
             <fieldset className="entity-notes-share">
               <legend>Share with</legend>
