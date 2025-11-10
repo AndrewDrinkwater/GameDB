@@ -544,9 +544,8 @@
 }
 
 .session-note-view-body {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
+  display: block;
+  white-space: pre-wrap;
 }
 
 .session-note-view-empty {
