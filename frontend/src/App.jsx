@@ -26,6 +26,8 @@ import EntitySecretList from './pages/secrets/EntitySecretList.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
 import RelationshipViewerPage from './pages/entities/RelationshipViewerPage.jsx'
 import BulkUploadPage from './pages/entities/BulkUploadPage.jsx'
+import SessionNotesPage from './pages/notes/SessionNotesPage.jsx'
+import EntityNotesPage from './pages/notes/EntityNotesPage.jsx'
 
 const router = createBrowserRouter(
   createRoutesFromElements(
@@ -57,20 +59,37 @@ const router = createBrowserRouter(
           <Route path="all" element={<CampaignsPage scope="all" />} />
           <Route path="all/:id" element={<CampaignsPage scope="all" />} />
         </Route>
+
+        {/* Entity routes */}
         <Route path="entities" element={<EntityList />} />
+        <Route path="entities/bulk-upload" element={<BulkUploadPage />} />
+        <Route
+          path="entities/:entityId/relationship-viewer"
+          element={<RelationshipViewerPage />}
+        />
         <Route path="entities/:id" element={<EntityDetailPage />} />
+
         <Route path="entity-types">
           <Route index element={<EntityTypeList />} />
           <Route path="new" element={<CreateEntityType />} />
           <Route path=":id/fields" element={<EntityTypeFields />} />
         </Route>
+
         <Route path="relationship-types">
           <Route index element={<RelationshipTypeList />} />
           <Route path="new" element={<CreateRelationshipType />} />
           <Route path=":id/edit" element={<EditRelationshipType />} />
         </Route>
+
         <Route path="entity-relationships" element={<EntityRelationshipList />} />
         <Route path="entity-secrets" element={<EntitySecretList />} />
+
+        <Route path="notes">
+          <Route index element={<Navigate to="/notes/session" replace />} />
+          <Route path="session" element={<SessionNotesPage />} />
+          <Route path="entities" element={<EntityNotesPage />} />
+        </Route>
+
         <Route path="characters">
           <Route index element={<Navigate to="/characters/my" replace />} />
           <Route path="my" element={<CharactersPage scope="my" />} />
@@ -83,20 +102,6 @@ const router = createBrowserRouter(
           <Route path="all/:id" element={<CharactersPage scope="all" />} />
         </Route>
 
-{/* Entity routes */}
-<Route path="entities" element={<EntityList />} />
-
-{/* Entity Bulk Update routes */}
-<Route path="/entities/bulk-upload" element={<BulkUploadPage />} />
-
-{/* ✅ Relationship viewer route */}
-<Route path="entities/:entityId/relationship-viewer" element={<RelationshipViewerPage />} />
-
-{/* ✅ Entity details route */}
-<Route path="entities/:id" element={<EntityDetailPage />} />
-
-
-          <Route path="entities/:id" element={<EntityDetailPage />} />
         {/* Admin-only route */}
         <Route path="users" element={<UsersPage />} />
       </Route>

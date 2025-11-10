@@ -31,6 +31,13 @@ export default (sequelize, DataTypes) => {
     if (models.UserCampaignRole) {
       Campaign.hasMany(models.UserCampaignRole, { foreignKey: 'campaign_id', as: 'members' })
     }
+
+    if (models.SessionNote) {
+      Campaign.hasMany(models.SessionNote, {
+        foreignKey: 'campaign_id',
+        as: 'sessionNotes',
+      })
+    }
   }
 
   return Campaign

@@ -12,6 +12,8 @@ import EntityModel from './entity.js'
 import EntityTypeModel from './entityType.js'
 import EntitySecretModel from './entitySecret.js'
 import EntitySecretPermissionModel from './entitySecretPermission.js'
+import EntityNoteModel from './entityNote.js'
+import SessionNoteModel from './sessionNote.js'
 import EntityRelationshipTypeModel from './entityRelationshipType.js'
 import EntityRelationshipModel from './entityRelationship.js'
 import EntityTypeFieldModel from './entityTypeField.js'
@@ -35,6 +37,8 @@ export const EntityType = EntityTypeModel(sequelize, DataTypes)
 export const Entity = EntityModel(sequelize, DataTypes)
 export const EntitySecret = EntitySecretModel(sequelize, DataTypes)
 export const EntitySecretPermission = EntitySecretPermissionModel(sequelize, DataTypes)
+export const EntityNote = EntityNoteModel(sequelize, DataTypes)
+export const SessionNote = SessionNoteModel(sequelize, DataTypes)
 export const EntityRelationshipType = EntityRelationshipTypeModel(sequelize, DataTypes)
 export const EntityRelationship = EntityRelationshipModel(sequelize, DataTypes)
 export const EntityTypeField = EntityTypeFieldModel(sequelize, DataTypes)
@@ -48,7 +52,8 @@ export const UploadedFile = UploadedFileModel(sequelize, DataTypes) // ✅ new m
 if (User.associate)
   User.associate({ World, Campaign, Character, UserCampaignRole, UploadedFile }) // ✅ link uploaded files to user
 if (World.associate) World.associate({ User, Campaign, Entity, EntityType })
-if (Campaign.associate) Campaign.associate({ World, Character, User, UserCampaignRole })
+if (Campaign.associate)
+  Campaign.associate({ World, Character, User, UserCampaignRole, SessionNote })
 if (Character.associate) Character.associate({ Campaign, User })
 if (EntityType.associate) EntityType.associate({ Entity, EntityTypeField, World })
 if (Entity.associate)
@@ -56,6 +61,7 @@ if (Entity.associate)
     World,
     EntityType,
     EntitySecret,
+    EntityNote,
     User,
     EntityRelationship,
     UploadedFile, // ✅ link uploaded files to entity
@@ -64,6 +70,9 @@ if (EntitySecret.associate)
   EntitySecret.associate({ Entity, User, EntitySecretPermission })
 if (EntitySecretPermission.associate)
   EntitySecretPermission.associate({ EntitySecret, User, Campaign })
+if (EntityNote.associate)
+  EntityNote.associate({ Entity, User, Character, Campaign })
+if (SessionNote.associate) SessionNote.associate({ Campaign, User })
 if (EntityRelationshipType.associate)
   EntityRelationshipType.associate({
     EntityRelationship,
@@ -104,6 +113,8 @@ export default {
   Entity,
   EntitySecret,
   EntitySecretPermission,
+  EntityNote,
+  SessionNote,
   EntityRelationshipType,
   EntityRelationship,
   EntityRelationshipTypeEntityType,

@@ -5,7 +5,7 @@ const dropExistingNameConstraints = async (queryInterface) => {
   dropStatements.push(`ALTER TABLE IF EXISTS entity_types DROP CONSTRAINT IF EXISTS "${CONSTRAINT_BASENAME}";`)
   for (let index = 1; index <= 40; index += 1) {
     dropStatements.push(
-      `ALTER TABLE IF EXISTS entity_types DROP CONSTRAINT IF EXISTS "${CONSTRAINT_BASENAME}${index}";`,
+      `ALTER TABLE IF EXISTS entity_types DROP CONSTRAINT IF EXISTS "${CONSTRAINT_BASENAME}${index}";`
     )
   }
 
@@ -16,43 +16,63 @@ const dropExistingNameConstraints = async (queryInterface) => {
 }
 
 export const up = async (queryInterface, Sequelize) => {
-  await queryInterface.addColumn('entity_types', 'world_id', {
-    type: Sequelize.DataTypes.UUID,
-    allowNull: true,
-    references: {
-      model: 'Worlds',
-      key: 'id',
-    },
-    onUpdate: 'CASCADE',
-    onDelete: 'CASCADE',
-  })
+  // Add column if missing
+  await queryInterface.sequelize.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'entity_types'
+          AND column_name = 'world_id'
+      ) THEN
+        ALTER TABLE "entity_types"
+        ADD COLUMN "world_id" UUID REFERENCES "Worlds" ("id")
+        ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$;
+  `)
 
-  await queryInterface.sequelize.query(
-    `UPDATE entity_types AS et
-     SET world_id = sub.world_id
-     FROM (
-       SELECT DISTINCT ON (entity_type_id) entity_type_id, world_id
-       FROM entities
-       WHERE world_id IS NOT NULL
-       ORDER BY entity_type_id, created_at DESC
-     ) AS sub
-     WHERE et.id = sub.entity_type_id AND et.world_id IS NULL`,
-  )
+  // Populate existing entity types from entities
+  await queryInterface.sequelize.query(`
+    UPDATE entity_types AS et
+    SET world_id = sub.world_id
+    FROM (
+      SELECT DISTINCT ON (entity_type_id) entity_type_id, world_id
+      FROM entities
+      WHERE world_id IS NOT NULL
+      ORDER BY entity_type_id, created_at DESC
+    ) AS sub
+    WHERE et.id = sub.entity_type_id AND et.world_id IS NULL;
+  `)
 
+  // Drop old name-only constraints
   await dropExistingNameConstraints(queryInterface)
 
-  await queryInterface.addConstraint('entity_types', {
-    fields: ['world_id', 'name'],
-    type: 'unique',
-    name: 'entity_types_world_id_name_key',
-  })
+  // Only add constraint if it doesn't exist already
+  await queryInterface.sequelize.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'entity_types_world_id_name_key'
+      ) THEN
+        ALTER TABLE "entity_types"
+        ADD CONSTRAINT "entity_types_world_id_name_key" UNIQUE ("world_id", "name");
+      END IF;
+    END $$;
+  `)
 }
 
 export const down = async (queryInterface) => {
-  await queryInterface.removeConstraint('entity_types', 'entity_types_world_id_name_key')
-  await queryInterface.removeColumn('entity_types', 'world_id')
+  await queryInterface.sequelize.query(`
+    ALTER TABLE IF EXISTS "entity_types"
+    DROP CONSTRAINT IF EXISTS "entity_types_world_id_name_key";
+  `)
 
-  // Recreate a simple unique constraint on name for backwards compatibility
+  await queryInterface.removeColumn('entity_types', 'world_id').catch(() => null)
+
   await queryInterface.addConstraint('entity_types', {
     fields: ['name'],
     type: 'unique',

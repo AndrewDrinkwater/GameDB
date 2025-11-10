@@ -20,6 +20,12 @@ import {
 import { getEntityGraph } from '../controllers/entityGraphController.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
 import { UploadedFile, EntityType, EntityTypeField } from '../models/index.js'
+import {
+  getEntityNotes,
+  createEntityNote,
+  listEntityMentionNotes,
+} from '../controllers/entityNoteController.js'
+import { listEntityMentionSessionNotes } from '../controllers/sessionNoteController.js'
 
 const router = Router()
 
@@ -471,5 +477,9 @@ router.delete('/:id', deleteEntity)
 router.get('/:id/secrets', getEntitySecrets)
 router.post('/:id/secrets', createEntitySecret)
 router.patch('/:id/secrets/:secretId', updateEntitySecret)
+router.get('/:id/mentions/entity-notes', listEntityMentionNotes)
+router.get('/:id/mentions/session-notes', listEntityMentionSessionNotes)
+router.get('/:id/notes', getEntityNotes)
+router.post('/:id/notes', createEntityNote)
 
 export default router
