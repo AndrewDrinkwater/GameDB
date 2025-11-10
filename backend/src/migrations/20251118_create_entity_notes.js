@@ -71,10 +71,19 @@ export async function up(queryInterface, Sequelize) {
     },
   });
 
-  await queryInterface.addIndex('entity_notes', ['entity_id']);
-  await queryInterface.addIndex('entity_notes', ['campaign_id']);
-  await queryInterface.addIndex('entity_notes', ['created_by']);
-  await queryInterface.addIndex('entity_notes', ['share_type']);
+  // Ensure indexes exist without failing if they were created previously
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "entity_notes_entity_id" ON "entity_notes" ("entity_id")'
+  );
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "entity_notes_campaign_id" ON "entity_notes" ("campaign_id")'
+  );
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "entity_notes_created_by" ON "entity_notes" ("created_by")'
+  );
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "entity_notes_share_type" ON "entity_notes" ("share_type")'
+  );
 }
 
 export async function down(queryInterface) {
