@@ -171,3 +171,21 @@ export async function updateCampaignSessionNote(campaignId, noteId, payload = {}
 
   return handleResponse(res, 'update session note')
 }
+
+export async function deleteCampaignSessionNote(campaignId, noteId) {
+  if (!campaignId) {
+    throw new Error('campaignId is required to delete a session note')
+  }
+
+  if (!noteId) {
+    throw new Error('noteId is required to delete a session note')
+  }
+
+  const headers = await authHeaders()
+  const res = await fetch(`${API_BASE}/${campaignId}/session-notes/${noteId}`, {
+    method: 'DELETE',
+    headers,
+  })
+
+  return handleResponse(res, 'delete session note')
+}

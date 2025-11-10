@@ -12,6 +12,7 @@ import { authenticate as authMiddleware } from '../middleware/authMiddleware.js'
 import { listCampaignEntityNotes } from '../controllers/entityNoteController.js'
 import {
   createCampaignSessionNote,
+  deleteCampaignSessionNote,
   listCampaignSessionNotes,
   updateCampaignSessionNote,
 } from '../controllers/sessionNoteController.js'
@@ -146,6 +147,7 @@ router.get('/:id/entity-notes', authMiddleware, listCampaignEntityNotes)
 router.get('/:id/session-notes', authMiddleware, listCampaignSessionNotes)
 router.post('/:id/session-notes', authMiddleware, createCampaignSessionNote)
 router.put('/:id/session-notes/:noteId', authMiddleware, updateCampaignSessionNote)
+router.delete('/:id/session-notes/:noteId', authMiddleware, deleteCampaignSessionNote)
 
 // ✅ Create campaign
 router.post('/', authMiddleware, async (req, res) => {

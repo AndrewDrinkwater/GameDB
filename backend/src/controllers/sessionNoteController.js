@@ -328,3 +328,50 @@ export const updateCampaignSessionNote = async (req, res) => {
       .json({ success: false, message: err.message || 'Failed to update session note' })
   }
 }
+
+export const deleteCampaignSessionNote = async (req, res) => {
+  try {
+    const campaignId = req.params?.id ?? req.params?.campaignId
+    const noteId = req.params?.noteId ?? req.params?.sessionNoteId
+    const access = await ensureCampaignAccess(campaignId, req.user)
+    if (access.error) {
+      return res.status(access.error.status).json({
+        success: false,
+        message: access.error.message,
+      })
+    }
+
+    if (!access.isSystemAdmin && access.membershipRole !== 'dm') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only Dungeon Masters can delete session notes',
+      })
+    }
+
+    const resolvedNoteId = normaliseId(noteId)
+    if (!resolvedNoteId) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Session note id is required' })
+    }
+
+    const note = await SessionNote.findOne({
+      where: { id: resolvedNoteId, campaign_id: access.campaign.id },
+    })
+
+    if (!note) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Session note not found' })
+    }
+
+    await note.destroy()
+
+    return res.json({ success: true, data: { id: resolvedNoteId } })
+  } catch (err) {
+    console.error('❌ Failed to delete session note', err)
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || 'Failed to delete session note' })
+  }
+}
