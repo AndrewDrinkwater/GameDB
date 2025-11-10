@@ -385,6 +385,26 @@
   transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
+.session-notes-new-button {
+  justify-content: center;
+  gap: 0.5rem;
+  background: #1e293b;
+  color: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.45);
+  font-weight: 600;
+}
+
+.session-notes-new-button:hover:not(:disabled) {
+  background: #334155;
+  color: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.6);
+}
+
+.session-notes-new-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .session-notes-item-button:hover {
   background: rgba(59, 130, 246, 0.12);
   border-color: rgba(59, 130, 246, 0.35);
@@ -850,6 +870,17 @@ body.theme-dark .session-notes-loading {
 body.theme-dark .session-notes-item-button {
   background: rgba(15, 23, 42, 0.6);
   color: #e2e8f0;
+}
+
+body.theme-dark .session-notes-new-button {
+  background: rgba(51, 65, 85, 0.95);
+  border-color: rgba(148, 163, 184, 0.45);
+  color: #f8fafc;
+}
+
+body.theme-dark .session-notes-new-button:hover:not(:disabled) {
+  background: rgba(71, 85, 105, 0.95);
+  border-color: rgba(148, 163, 184, 0.6);
 }
 
 body.theme-dark .session-notes-item-button:hover {
