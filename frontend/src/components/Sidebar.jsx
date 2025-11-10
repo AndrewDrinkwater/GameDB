@@ -1,6 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Pin, ChevronDown, Database, Shapes, Link2 } from 'lucide-react'
+import {
+  Pin,
+  ChevronDown,
+  Database,
+  Shapes,
+  Link2,
+  FileText,
+  NotebookPen,
+} from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
 import { getWorldEntityTypeUsage } from '../api/entityTypes.js'
@@ -13,6 +21,7 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
   const [charactersCollapsed, setCharactersCollapsed] = useState(false)
   const [worldAdminCollapsed, setWorldAdminCollapsed] = useState(false)
   const [entitiesCollapsed, setEntitiesCollapsed] = useState(false)
+  const [notesCollapsed, setNotesCollapsed] = useState(false)
   const [entityTypes, setEntityTypes] = useState([])
   const [loadingEntityTypes, setLoadingEntityTypes] = useState(false)
   const [entityTypeError, setEntityTypeError] = useState('')
@@ -77,6 +86,12 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
       (member) => member?.user_id === user.id && member?.role === 'dm',
     )
   }, [selectedCampaign, user])
+
+  const canAccessCampaignNotes = useMemo(() => {
+    if (!selectedCampaignId) return false
+    if (isSystemAdmin) return true
+    return isDMInSelectedCampaign || isPlayerInSelectedCampaign
+  }, [isSystemAdmin, isDMInSelectedCampaign, isPlayerInSelectedCampaign, selectedCampaignId])
 
   // --- Load entity types for selected campaign world ---
   useEffect(() => {
@@ -325,6 +340,49 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
               </Link>
             ))}
 
+          </div>
+        </div>
+
+        {/* --- Notes --- */}
+        <div className={`nav-group ${notesCollapsed ? 'collapsed' : ''}`}>
+          <button
+            type="button"
+            className="nav-heading-btn"
+            onClick={() => setNotesCollapsed((prev) => !prev)}
+            aria-expanded={!notesCollapsed}
+            aria-controls="notes-nav"
+          >
+            <span className="nav-heading">Notes</span>
+            <ChevronDown
+              size={14}
+              className={`nav-heading-icon ${notesCollapsed ? 'collapsed' : ''}`}
+            />
+          </button>
+          <div id="notes-nav" className="nav-sub-links">
+            {!selectedCampaignId && (
+              <span className="nav-helper">Select a campaign to view notes</span>
+            )}
+            {selectedCampaignId && !canAccessCampaignNotes && (
+              <span className="nav-helper">Notes are available to campaign members</span>
+            )}
+            {canAccessCampaignNotes && (
+              <>
+                <Link
+                  to="/notes/session"
+                  className={isActive('/notes/session') ? 'active' : ''}
+                >
+                  <NotebookPen size={16} className="nav-icon" />
+                  <span>Session Notes</span>
+                </Link>
+                <Link
+                  to="/notes/entities"
+                  className={isActive('/notes/entities') ? 'active' : ''}
+                >
+                  <FileText size={16} className="nav-icon" />
+                  <span>Entity Notes</span>
+                </Link>
+              </>
+            )}
           </div>
         </div>
 
