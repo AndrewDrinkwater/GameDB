@@ -14,7 +14,6 @@ import {
   Loader2,
   NotebookPen,
   Plus,
-  RotateCcw,
   Save,
   Search,
   Sparkles,
@@ -35,6 +34,13 @@ import './NotesPage.css'
 
 const AUTOSAVE_DELAY_MS = 2500
 const emptyArray = Object.freeze([])
+const uuidSuffixPattern = /\s*\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)$/i
+
+const cleanEntityName = (value) => {
+  if (!value) return ''
+  const trimmed = String(value).trim()
+  return trimmed.replace(uuidSuffixPattern, '').trim()
+}
 
 const mentionBoundaryRegex = /[\s()[\]{}.,;:!?/\\"'`~]/
 
@@ -78,9 +84,10 @@ const buildNoteSegments = (content = '', mentionList = []) => {
     if (mentionLookup.has(id)) return
     const label =
       mention.entityName ?? mention.entity_name ?? mention.label ?? mention.name
+    const entityName = label ? cleanEntityName(label) : ''
     mentionLookup.set(id, {
       entityId: id,
-      entityName: label ? String(label) : '',
+      entityName,
     })
   })
 
@@ -95,7 +102,8 @@ const buildNoteSegments = (content = '', mentionList = []) => {
     }
 
     const entityId = String(match[2])
-    const fallbackName = String(match[1])
+    const rawFallback = match[1]
+    const fallbackName = cleanEntityName(rawFallback) || String(rawFallback ?? '')
     const mention = mentionLookup.get(entityId) || {
       entityId,
       entityName: fallbackName,
@@ -130,7 +138,20 @@ const normaliseSessionNote = (note) => {
   const sessionDate = note.sessionDate ?? note.session_date ?? ''
   const sessionTitle = note.sessionTitle ?? note.session_title ?? 'Session note'
   const content = typeof note.content === 'string' ? note.content : ''
-  const mentions = Array.isArray(note.mentions) ? note.mentions : emptyArray
+  const mentions = Array.isArray(note.mentions)
+    ? note.mentions
+        .filter(Boolean)
+        .map((mention) => {
+          const label =
+            mention?.entityName ??
+            mention?.entity_name ??
+            mention?.label ??
+            mention?.name ??
+            ''
+          const entityName = cleanEntityName(label)
+          return { ...mention, entityName }
+        })
+    : emptyArray
 
   return {
     id: note.id ?? '',
@@ -514,7 +535,7 @@ export default function SessionNotesPage() {
       entityOption?.displayName ||
       entityOption?.entity?.name ||
       'Entity'
-    const entityName = String(name)
+    const entityName = cleanEntityName(name) || 'Entity'
     const entityId =
       entityOption?.id ?? entityOption?.entity?.id ?? entityOption?.entityId
     if (!entityId) return
@@ -840,31 +861,6 @@ export default function SessionNotesPage() {
             @mention key entities, and keep everyone aligned with auto-saving notes.
           </p>
         </div>
-        <div className="notes-actions">
-          <button
-            type="button"
-            className="notes-action-button"
-            onClick={handleCreateNote}
-            disabled={creating || notesState.loading}
-          >
-            {creating ? <Loader2 size={16} className="spinner" /> : <Plus size={16} />}
-            <span>{creating ? 'Creating…' : '+ New Session Notes'}</span>
-          </button>
-          <button
-            type="button"
-            className="notes-action-button"
-            onClick={loadNotes}
-            disabled={notesState.loading}
-            title="Reload session notes"
-          >
-            {notesState.loading ? (
-              <Loader2 size={16} className="spinner" />
-            ) : (
-              <RotateCcw size={16} />
-            )}
-            <span>{notesState.loading ? 'Loading…' : 'Reload'}</span>
-          </button>
-        </div>
       </div>
 
       <div className="session-notes-meta">
@@ -910,6 +906,16 @@ export default function SessionNotesPage() {
               onChange={(event) => setSearchQuery(event.target.value)}
             />
           </label>
+
+          <button
+            type="button"
+            className="session-notes-item-button session-notes-new-button"
+            onClick={handleCreateNote}
+            disabled={creating || notesState.loading}
+          >
+            {creating ? <Loader2 size={16} className="spinner" /> : <Plus size={16} />}
+            <span>{creating ? 'Creating…' : '+ New Session'}</span>
+          </button>
 
           <div className="session-notes-list-container">
             {notesState.loading ? (
@@ -1007,17 +1013,6 @@ export default function SessionNotesPage() {
               {isEditing ? (
                 <div className="session-note-form">
                   <div className="session-note-fields">
-                    <label htmlFor="session-note-date">Session date</label>
-                    <input
-                      id="session-note-date"
-                      type="date"
-                      value={editorState.sessionDate || ''}
-                      onChange={(event) => handleFieldChange('sessionDate', event.target.value)}
-                      max="9999-12-31"
-                    />
-                  </div>
-
-                  <div className="session-note-fields">
                     <div className="session-note-summary">
                       <div className="session-note-summary-primary">
                         <span className="session-note-summary-title">
@@ -1031,6 +1026,17 @@ export default function SessionNotesPage() {
                         </span>
                       ) : null}
                     </div>
+                    <label htmlFor="session-note-date">Session date</label>
+                    <input
+                      id="session-note-date"
+                      type="date"
+                      value={editorState.sessionDate || ''}
+                      onChange={(event) => handleFieldChange('sessionDate', event.target.value)}
+                      max="9999-12-31"
+                    />
+                  </div>
+
+                  <div className="session-note-fields">
                     <label htmlFor="session-note-title">Title</label>
                     <input
                       id="session-note-title"
@@ -1074,11 +1080,12 @@ export default function SessionNotesPage() {
                         ) : mentionResults.length > 0 ? (
                           <ul className="session-note-mention-list" ref={mentionListRef}>
                             {mentionResults.map((result, index) => {
-                              const name =
+                              const rawName =
                                 result?.name ||
                                 result?.displayName ||
                                 result?.entity?.name ||
                                 'Unnamed entity'
+                              const name = cleanEntityName(rawName) || 'Unnamed entity'
                               const typeName = getEntityTypeName(result)
                               const key =
                                 result?.id ?? result?.entity?.id ?? `${name}-${String(index)}`
