@@ -261,6 +261,259 @@
   max-width: 48ch;
 }
 
+.session-notes-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+  color: #475569;
+}
+
+.session-notes-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.session-notes-autosave {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  background: rgba(15, 23, 42, 0.08);
+  color: #1e293b;
+}
+
+.session-notes-autosave.status-saving {
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+}
+
+.session-notes-autosave.status-saved {
+  background: rgba(16, 185, 129, 0.12);
+  color: #0f766e;
+}
+
+.session-notes-autosave.status-error {
+  background: rgba(248, 113, 113, 0.16);
+  color: #b91c1c;
+}
+
+.session-notes-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) 1fr;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+.session-notes-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.session-notes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.session-notes-item-button {
+  width: 100%;
+  text-align: left;
+  background: white;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.session-notes-item.active .session-notes-item-button {
+  border-color: rgba(59, 130, 246, 0.45);
+  box-shadow: 0 18px 32px rgba(59, 130, 246, 0.18);
+}
+
+.session-notes-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.session-notes-item-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.session-notes-item-header span {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.session-notes-item-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  color: #475569;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.session-notes-item-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.session-notes-editor {
+  background: white;
+  border-radius: 16px;
+  padding: 1.25rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.12);
+}
+
+.session-note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.session-note-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.session-note-fields label {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.session-note-fields input,
+.session-note-fields textarea {
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.65);
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+  color: inherit;
+  background: white;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.session-note-fields textarea {
+  resize: vertical;
+  min-height: 220px;
+}
+
+.session-note-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.session-note-meta {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.session-note-mention-suggestions {
+  margin-top: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 10px;
+  background: white;
+  box-shadow: 0 12px 24px -16px rgba(15, 23, 42, 0.28);
+  max-height: 260px;
+  overflow: hidden;
+}
+
+.session-note-mention-message {
+  padding: 0.85rem 1rem;
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.session-note-mention-message strong {
+  color: #1f2937;
+}
+
+.session-note-mention-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.session-note-mention-suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.session-note-mention-suggestion:hover {
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+}
+
+.session-note-mention-suggestion.active {
+  background: rgba(59, 130, 246, 0.18);
+  color: #1d4ed8;
+}
+
+.session-note-mention-name {
+  font-weight: 600;
+}
+
+.session-note-mention-type {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.spinner {
+  animation: spinner-rotate 1s linear infinite;
+}
+
+@keyframes spinner-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 960px) {
+  .session-notes-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .session-notes-sidebar {
+    order: 2;
+  }
+
+  .session-notes-editor {
+    order: 1;
+  }
+}
+
 body.theme-dark .notes-page {
   color: #e2e8f0;
 }
@@ -300,4 +553,73 @@ body.theme-dark .notes-error {
   background: rgba(248, 113, 113, 0.16);
   color: #fecaca;
   border-color: rgba(239, 68, 68, 0.45);
+}
+
+body.theme-dark .session-notes-autosave {
+  background: rgba(148, 163, 184, 0.18);
+  color: #e2e8f0;
+}
+
+body.theme-dark .session-notes-autosave.status-saving {
+  background: rgba(99, 102, 241, 0.22);
+  color: #c7d2fe;
+}
+
+body.theme-dark .session-notes-autosave.status-saved {
+  background: rgba(34, 197, 94, 0.18);
+  color: #bbf7d0;
+}
+
+body.theme-dark .session-notes-autosave.status-error {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fecaca;
+}
+
+body.theme-dark .session-notes-item-button,
+body.theme-dark .session-notes-editor {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(148, 163, 184, 0.25);
+  box-shadow: 0 18px 36px rgba(2, 6, 23, 0.55);
+}
+
+body.theme-dark .session-notes-item-header h2,
+body.theme-dark .session-note-fields label {
+  color: #e2e8f0;
+}
+
+body.theme-dark .session-notes-item-header span,
+body.theme-dark .session-notes-item-footer,
+body.theme-dark .session-note-meta {
+  color: #cbd5f5;
+}
+
+body.theme-dark .session-note-fields input,
+body.theme-dark .session-note-fields textarea {
+  background: rgba(15, 23, 42, 0.9);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #e2e8f0;
+}
+
+body.theme-dark .session-note-mention-suggestions {
+  background: rgba(15, 23, 42, 0.95);
+  border-color: rgba(148, 163, 184, 0.35);
+  box-shadow: 0 12px 24px -18px rgba(8, 15, 30, 0.75);
+}
+
+body.theme-dark .session-note-mention-message {
+  color: rgba(226, 232, 240, 0.75);
+}
+
+body.theme-dark .session-note-mention-message strong {
+  color: rgba(248, 250, 252, 0.92);
+}
+
+body.theme-dark .session-note-mention-type {
+  color: rgba(148, 163, 184, 0.85);
+}
+
+body.theme-dark .session-note-mention-suggestion:hover,
+body.theme-dark .session-note-mention-suggestion.active {
+  background: rgba(99, 102, 241, 0.22);
+  color: #c7d2fe;
 }
