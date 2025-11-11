@@ -2167,10 +2167,44 @@ body.theme-dark .campaign-tab.is-active {
   padding-top: 1.5rem;
 }
 
+.entity-detail-page--mobile .entity-detail-shell {
+  gap: 1.5rem;
+  padding-top: 1rem;
+}
+
 .entity-detail-body {
   display: flex;
   flex-direction: column;
   gap: 2.5rem;
+}
+
+.entity-detail-page--mobile .entity-detail-topbar-inner {
+  gap: 0.5rem;
+}
+
+.entity-detail-page--mobile .tab-nav {
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+  padding-bottom: 0.15rem;
+}
+
+.entity-detail-page--mobile .tab-nav-button {
+  flex: 1 0 auto;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.entity-detail-page--mobile .entity-detail-body {
+  gap: 1.75rem;
+}
+
+.entity-detail-page--mobile .entity-tab-content {
+  gap: 1.5rem;
+}
+
+.entity-detail-page--mobile .entity-card {
+  padding: 1.25rem;
+  gap: 1.25rem;
 }
 
 .entity-header {
@@ -3773,6 +3807,24 @@ body.theme-dark .entity-mini-create-inline {
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.entities-page--mobile .entities-controls {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+}
+
+.entities-page--mobile .entities-controls > * {
+  width: 100%;
+}
+
+.entities-page--mobile .entities-controls .btn {
+  justify-content: center;
+}
+
+.entities-page--mobile .entities-controls .search-input {
+  width: 100%;
 }
 
 .entities-group-row td {
