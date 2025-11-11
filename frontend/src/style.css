@@ -1015,6 +1015,20 @@ body.theme-dark .login-subtitle {
   color: #cbd5f5;
 }
 
+body.theme-dark .form-group.readonly label {
+  color: #cbd5f5;
+}
+
+body.theme-dark .form-group.readonly .readonly-control,
+body.theme-dark .form-group.readonly input[disabled],
+body.theme-dark .form-group.readonly select[disabled],
+body.theme-dark .form-group.readonly textarea[disabled],
+body.theme-dark .form-group.readonly .textarea-field:disabled {
+  background: #0f172a;
+  border-color: #1f2937;
+  color: #f8fafc;
+}
+
 body.theme-dark .form-section h3 {
   color: #e0e7ff;
 }
@@ -2147,10 +2161,6 @@ body.theme-dark .campaign-tab.is-active {
   color: #1f2937;
   border-radius: 999px;
   transition: color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.edit-mode-toggle:hover {
-  color: inherit;
 }
 
 .edit-mode-toggle:focus-visible {
