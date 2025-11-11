@@ -1031,16 +1031,7 @@ export default function EntityList() {
               Select a campaign from the header to choose a world context.
             </p>
           )}
-          {filterActive && (
-            <div className="entities-filter-chip">
-              <span>
-                Showing {activeTypeName || 'selected type'}
-              </span>
-              <button type="button" className="link-btn" onClick={clearFilter}>
-                Clear
-              </button>
-            </div>
-          )}
+          {/* Filter chip removed for streamlined type-specific lists */}
         </div>
         <div className="entities-controls">
           {isSystemAdmin && (

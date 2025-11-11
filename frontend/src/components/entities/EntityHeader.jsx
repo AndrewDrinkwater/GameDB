@@ -53,6 +53,16 @@ export default function EntityHeader({
       <div className="entity-header-right">
         {canEdit ? (
           <div className="entity-header-actions">
+            {isEditing && typeof onSave === 'function' ? (
+              <button
+                type="button"
+                className="btn submit"
+                onClick={handleSaveClick}
+                disabled={isSaveDisabled || isSaving}
+              >
+                {isSaving ? 'Saving…' : 'Save'}
+              </button>
+            ) : null}
             <button
               type="button"
               className={`edit-mode-toggle ${isEditing ? 'is-active' : ''}`}
@@ -65,16 +75,6 @@ export default function EntityHeader({
               </span>
               <span className="edit-mode-toggle-text">Edit mode</span>
             </button>
-            {isEditing && typeof onSave === 'function' ? (
-              <button
-                type="button"
-                className="btn submit"
-                onClick={handleSaveClick}
-                disabled={isSaveDisabled || isSaving}
-              >
-                {isSaving ? 'Saving…' : 'Save'}
-              </button>
-            ) : null}
           </div>
         ) : null}
       </div>
