@@ -35,12 +35,6 @@ import SystemTab from './tabs/SystemTab.jsx'
 import SecretsTab from './tabs/SecretsTab.jsx'
 import NotesTab from './tabs/NotesTab.jsx'
 
-const VISIBILITY_LABELS = {
-  hidden: 'Hidden',
-  partial: 'Partial',
-  visible: 'Visible',
-}
-
 const EDIT_MODE_PROMPT_MESSAGE =
   'You have unsaved changes. Do you want to save them before leaving this page?'
 
@@ -613,11 +607,6 @@ export default function EntityDetailPage() {
     setIsEditing(false)
   }, [entity?.id])
 
-  const visibilityLabel = useMemo(() => {
-    const key = (entity?.visibility || '').toLowerCase()
-    return VISIBILITY_LABELS[key] || 'Visible'
-  }, [entity])
-
   const createdAtValue = entity?.createdAt || entity?.created_at
   const updatedAtValue = entity?.updatedAt || entity?.updated_at
 
@@ -628,7 +617,6 @@ export default function EntityDetailPage() {
       name: entity.name || '—',
       description: entity.description || '',
       typeName: entity.entityType?.name || entity.entity_type?.name || '—',
-      visibilityLabel,
       worldName: entity.world?.name || entity.world_name || '—',
       createdAt: formatDateTime(createdAtValue),
       updatedAt: formatDateTime(updatedAtValue),
@@ -640,7 +628,7 @@ export default function EntityDetailPage() {
         '—',
       updatedBy: entity.updated_by || '—',
     }
-  }, [entity, visibilityLabel, metadataViewValues, createdAtValue, updatedAtValue])
+  }, [entity, metadataViewValues, createdAtValue, updatedAtValue])
 
   const editInitialData = useMemo(() => {
     if (!entity) return null
@@ -727,7 +715,6 @@ export default function EntityDetailPage() {
           fields: [
             { key: 'name', label: 'Name', type: 'readonly' },
             { key: 'typeName', label: 'Type', type: 'readonly' },
-            { key: 'visibilityLabel', label: 'Visibility', type: 'readonly' },
           ],
         },
         {
@@ -881,8 +868,11 @@ export default function EntityDetailPage() {
         const payload = {
           name: values?.name,
           description: values?.description,
-          visibility: values?.visibility ?? entity?.visibility ?? 'visible',
           metadata: values?.metadata || {},
+        }
+
+        if (entity?.visibility) {
+          payload.visibility = entity.visibility
         }
 
         const response = await updateEntity(entity.id, payload)
