@@ -2234,7 +2234,7 @@ body.theme-dark .campaign-tab.is-active {
 
 .tab-nav-button {
   appearance: none;
-  border: 1px solid transparent;
+  border: 1px solid rgba(148, 163, 184, 0.4);
   background: transparent;
   padding: 0.65rem 1.25rem;
   font-size: 0.95rem;
@@ -2252,18 +2252,18 @@ body.theme-dark .campaign-tab.is-active {
 
 .tab-nav-button:hover,
 .tab-nav-button:focus-visible {
-  color: #1e3a8a;
-  background-color: rgba(148, 163, 184, 0.2);
+  color: #334155;
+  background-color: rgba(148, 163, 184, 0.14);
   border-color: rgba(148, 163, 184, 0.45);
   outline: none;
   box-shadow: none;
 }
 
 .tab-nav-button.is-active {
-  color: #1e293b;
-  border-color: #e2e8f0;
-  border-bottom: 1px solid #ffffff;
-  background-color: #ffffff;
+  color: #1e3a8a;
+  border-color: rgba(148, 163, 184, 0.45);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.75);
+  background-color: rgba(148, 163, 184, 0.2);
   box-shadow: none;
 }
 
