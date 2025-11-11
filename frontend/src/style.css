@@ -1457,6 +1457,133 @@ body.theme-dark .entity-relationships-toggle p {
   overflow-x: auto;
 }
 
+@media (max-width: 768px) {
+  .list-viewer {
+    padding: 0.75rem;
+  }
+
+  .list-viewer-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .list-viewer-header h2 {
+    width: 100%;
+    margin-bottom: 0;
+  }
+
+  .list-controls {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: stretch;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .list-controls > * {
+    width: 100%;
+  }
+
+  .list-controls .extra-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .list-controls .extra-actions > * {
+    flex: 1 1 45%;
+  }
+
+  .list-controls .search-input.compact,
+  .list-controls .btn.compact,
+  .list-controls .btn.primary {
+    width: 100%;
+  }
+
+  .list-controls .column-picker-wrapper {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .list-controls .column-picker-wrapper .icon-btn {
+    margin-left: auto;
+  }
+
+  .list-viewer-table-wrapper {
+    overflow: visible;
+  }
+
+  .list-viewer-table-wrapper table,
+  .list-viewer-table-wrapper thead,
+  .list-viewer-table-wrapper tbody,
+  .list-viewer-table-wrapper th,
+  .list-viewer-table-wrapper td,
+  .list-viewer-table-wrapper tr {
+    display: block;
+    width: 100%;
+  }
+
+  .list-viewer-table-wrapper thead {
+    display: none;
+  }
+
+  .list-viewer-table-wrapper tbody {
+    display: block;
+  }
+
+  .list-viewer-table-wrapper tr {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    margin-bottom: 1rem;
+    overflow: hidden;
+  }
+
+  .list-viewer-table-wrapper td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .list-viewer-table-wrapper td:last-child {
+    border-bottom: none;
+  }
+
+  .list-viewer-table-wrapper td::before {
+    content: attr(data-column);
+    flex: 0 0 40%;
+    font-weight: 600;
+    color: #334155;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .list-viewer-table-wrapper td[colspan] {
+    display: block;
+    padding: 0.75rem 1rem;
+  }
+
+  .list-viewer-table-wrapper td[colspan]::before {
+    content: none;
+  }
+
+  .group-header-row td {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-bottom: none;
+  }
+
+  .group-header-row .group-label {
+    font-size: 0.95rem;
+  }
+}
+
 .sortable-header {
   cursor: pointer;
   user-select: none;

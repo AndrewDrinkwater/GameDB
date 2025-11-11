@@ -203,7 +203,12 @@ export default function ListViewer({
                             className={onRowClick ? 'clickable-row' : ''}
                           >
                             {visibleColumns.map((column) => (
-                              <td key={column.key}>{renderCell(row, column)}</td>
+                              <td
+                                key={column.key}
+                                data-column={column.label || column.key}
+                              >
+                                {renderCell(row, column)}
+                              </td>
                             ))}
                           </tr>
                         ))}
@@ -216,7 +221,12 @@ export default function ListViewer({
                       className={onRowClick ? 'clickable-row' : ''}
                     >
                       {visibleColumns.map((column) => (
-                        <td key={column.key}>{renderCell(row, column)}</td>
+                        <td
+                          key={column.key}
+                          data-column={column.label || column.key}
+                        >
+                          {renderCell(row, column)}
+                        </td>
                       ))}
                     </tr>
                   ))}
