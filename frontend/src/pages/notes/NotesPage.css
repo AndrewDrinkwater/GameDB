@@ -798,6 +798,18 @@ body.theme-dark .notes-empty {
   color: #cbd5f5;
 }
 
+body.theme-dark .notes-filter-group label {
+  color: #cbd5f5;
+}
+
+body.theme-dark .notes-meta strong {
+  color: #f8fafc;
+}
+
+body.theme-dark .notes-empty strong {
+  color: #e2e8f0;
+}
+
 body.theme-dark .notes-action-button {
   background: #1e3a8a;
   border-color: rgba(148, 163, 184, 0.25);
