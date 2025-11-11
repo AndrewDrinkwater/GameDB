@@ -88,6 +88,10 @@
   color: var(--text-muted, #5f6b7a);
 }
 
+body.theme-dark .entity-notes-context {
+  color: rgba(203, 213, 225, 0.78);
+}
+
 .entity-notes-filter-bar {
   display: flex;
   flex-wrap: wrap;
@@ -99,9 +103,19 @@
   border: 1px solid var(--border-subtle, #d6dbe4);
 }
 
+body.theme-dark .entity-notes-filter-bar {
+  background: rgba(15, 23, 42, 0.82);
+  border-color: rgba(148, 163, 184, 0.3);
+  box-shadow: 0 18px 32px rgba(2, 6, 23, 0.55);
+}
+
 .entity-notes-filter-bar label {
   font-weight: 600;
   font-size: 0.9rem;
+}
+
+body.theme-dark .entity-notes-filter-bar label {
+  color: rgba(226, 232, 240, 0.88);
 }
 
 .entity-notes-filter-bar select {
@@ -113,6 +127,12 @@
   color: inherit;
 }
 
+body.theme-dark .entity-notes-filter-bar select {
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #e2e8f0;
+}
+
 .entity-notes-filter-bar select:disabled {
   opacity: 0.65;
   cursor: not-allowed;
@@ -122,6 +142,10 @@
   margin-left: auto;
   font-size: 0.85rem;
   color: var(--text-muted, #5f6b7a);
+}
+
+body.theme-dark .entity-notes-filter-count {
+  color: rgba(203, 213, 225, 0.75);
 }
 
 .entity-notes-mentions {
@@ -598,6 +622,12 @@ body.theme-dark .entity-session-note-toggle:focus-visible {
   gap: 0.75rem;
 }
 
+body.theme-dark .entity-note-card {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(148, 163, 184, 0.25);
+  box-shadow: 0 16px 32px rgba(2, 6, 23, 0.55);
+}
+
 .entity-note-card header {
   display: flex;
   justify-content: space-between;
@@ -619,6 +649,10 @@ body.theme-dark .entity-session-note-toggle:focus-visible {
   white-space: nowrap;
 }
 
+body.theme-dark .entity-note-timestamp {
+  color: rgba(148, 163, 184, 0.78);
+}
+
 .entity-note-author {
   font-weight: 600;
 }
@@ -626,6 +660,10 @@ body.theme-dark .entity-session-note-toggle:focus-visible {
 .entity-note-character {
   font-size: 0.85rem;
   color: var(--text-muted, #5f6b7a);
+}
+
+body.theme-dark .entity-note-character {
+  color: rgba(203, 213, 225, 0.75);
 }
 
 .entity-note-share {
@@ -659,10 +697,34 @@ body.theme-dark .entity-session-note-toggle:focus-visible {
   color: #064e3b;
 }
 
+body.theme-dark .entity-note-share-private {
+  background: rgba(148, 163, 184, 0.22);
+  color: rgba(226, 232, 240, 0.85);
+}
+
+body.theme-dark .entity-note-share-companions {
+  background: rgba(14, 165, 233, 0.28);
+  color: rgba(224, 242, 254, 0.92);
+}
+
+body.theme-dark .entity-note-share-dm {
+  background: rgba(249, 115, 22, 0.3);
+  color: rgba(254, 215, 170, 0.92);
+}
+
+body.theme-dark .entity-note-share-party {
+  background: rgba(52, 211, 153, 0.25);
+  color: rgba(209, 250, 229, 0.92);
+}
+
 .entity-note-body {
   white-space: pre-wrap;
   line-height: 1.6;
   color: var(--text-primary, #1f2933);
+}
+
+body.theme-dark .entity-note-body {
+  color: rgba(226, 232, 240, 0.9);
 }
 
 .entity-note-mention {
@@ -675,6 +737,11 @@ body.theme-dark .entity-session-note-toggle:focus-visible {
   background: rgba(85, 108, 214, 0.15);
   color: var(--accent-strong, #36488f);
   font-weight: 500;
+}
+
+body.theme-dark .entity-note-mention {
+  background: rgba(99, 102, 241, 0.3);
+  color: #e0e7ff;
 }
 
 .entity-note-mention .entity-info-trigger {
