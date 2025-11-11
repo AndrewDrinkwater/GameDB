@@ -26,6 +26,7 @@ import useUnsavedChangesPrompt from '../../hooks/useUnsavedChangesPrompt.js'
 // hooks
 import useEntityAccess from '../../hooks/useEntityAccess.js'
 import useEntityRelationships from '../../hooks/useEntityRelationships.js'
+import useIsMobile from '../../hooks/useIsMobile.js'
 
 // tabs
 import DossierTab from './tabs/DossierTab.jsx'
@@ -175,6 +176,7 @@ export default function EntityDetailPage() {
   const location = useLocation()
   const { user, token, sessionReady } = useAuth()
   const { selectedCampaign, selectedCampaignId } = useCampaignContext()
+  const isMobile = useIsMobile()
 
   const [entity, setEntity] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -921,8 +923,10 @@ export default function EntityDetailPage() {
   if (error) return <div className="alert error">{error}</div>
   if (!entity || !viewData) return <p>Entity not found</p>
 
+  const pageClassName = `entity-detail-page${isMobile ? ' entity-detail-page--mobile' : ''}`
+
   return (
-    <div className="entity-detail-page">
+    <div className={pageClassName}>
       <DrawerPanel
         isOpen={showRelationshipForm}
         onClose={() => setShowRelationshipForm(false)}
@@ -947,7 +951,7 @@ export default function EntityDetailPage() {
           <EntityHeader
             name={entity.name}
             onBack={handleBack}
-            onExplore={handleExplore}
+            onExplore={isMobile ? undefined : handleExplore}
             canEdit={canEdit}
             isEditing={isEditing}
             onToggleEdit={handleEditToggle}
