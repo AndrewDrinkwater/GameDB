@@ -3,6 +3,7 @@ import { getEntityTypes } from '../../api/entityTypes.js'
 import {
   createEntity,
   getEntity,
+  searchEntities,
   updateEntity,
 } from '../../api/entities.js'
 import { getFields as getEntityTypeFields } from '../../api/entityTypeFields.js'
@@ -93,6 +94,16 @@ const serialiseFieldValueForInput = (value, field) => {
       return value === '' ? '' : String(value)
     case 'date':
       return normaliseDateInputValue(value)
+    case 'reference': {
+      if (typeof value === 'object' && value !== null) {
+        const identifier =
+          value.id ?? value.value ?? value.entity_id ?? value.entityId ?? null
+        if (identifier !== null && identifier !== undefined) {
+          return String(identifier)
+        }
+      }
+      return String(value)
+    }
     default:
       return String(value)
   }
@@ -126,6 +137,8 @@ const coerceFieldValueForSubmit = (value, field) => {
       }
       return value
     }
+    case 'reference':
+      return typeof value === 'string' ? value.trim() : value
     default:
       return value
   }
@@ -207,6 +220,9 @@ export default function EntityForm({
   })
   const [metadataFieldDefs, setMetadataFieldDefs] = useState([])
   const [metadataValues, setMetadataValues] = useState({})
+  const [referenceFieldState, setReferenceFieldState] = useState({})
+  const referenceSearchTimersRef = useRef({})
+  const metadataValuesRef = useRef(metadataValues)
   const [accessSettings, setAccessSettings] = useState({
     readMode: 'global',
     readCampaigns: [],
@@ -259,6 +275,10 @@ export default function EntityForm({
     },
     [generatePair],
   )
+
+  useEffect(() => {
+    metadataValuesRef.current = metadataValues
+  }, [metadataValues])
 
   useEffect(() => {
     let cancelled = false
@@ -431,6 +451,158 @@ export default function EntityForm({
     setMetadataValues((prev) => ({ ...prev, [fieldName]: value }))
   }
 
+  const loadReferenceOptions = useCallback(
+    async (field, searchTerm = '') => {
+      if (!field || field.dataType !== 'reference') return
+      const referenceTypeId = field.referenceTypeId ?? field.reference_type_id ?? null
+      const trimmedSearch = typeof searchTerm === 'string' ? searchTerm.trim() : ''
+
+      if (!referenceTypeId) {
+        setReferenceFieldState((prev) => ({
+          ...prev,
+          [field.name]: {
+            ...(prev[field.name] || {}),
+            query: trimmedSearch,
+            options: [],
+            loading: false,
+            error: '',
+          },
+        }))
+        return
+      }
+
+      if (!worldId) {
+        setReferenceFieldState((prev) => ({
+          ...prev,
+          [field.name]: {
+            ...(prev[field.name] || {}),
+            query: trimmedSearch,
+            options: [],
+            loading: false,
+            error: 'Select a world before searching for entities.',
+          },
+        }))
+        return
+      }
+
+      setReferenceFieldState((prev) => ({
+        ...prev,
+        [field.name]: {
+          ...(prev[field.name] || {}),
+          query: trimmedSearch,
+          loading: true,
+          error: '',
+        },
+      }))
+
+      try {
+        const response = await searchEntities({
+          worldId,
+          query: trimmedSearch,
+          typeIds: [referenceTypeId],
+          limit: 25,
+        })
+        const list = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response)
+            ? response
+            : []
+
+        const options = list
+          .map((entity) => {
+            if (!entity || entity.id === undefined || entity.id === null) return null
+            const label = entity.name || `Entity ${entity.id}`
+            return { value: entity.id, label }
+          })
+          .filter(Boolean)
+
+        setReferenceFieldState((prev) => {
+          const current = prev[field.name] || {}
+          const selectedValue = metadataValuesRef.current[field.name]
+          const selectedOption = options.find(
+            (option) => String(option.value) === String(selectedValue),
+          )
+
+          return {
+            ...prev,
+            [field.name]: {
+              ...current,
+              query: trimmedSearch,
+              options,
+              loading: false,
+              error: '',
+              selectedLabel:
+                selectedOption?.label ||
+                (selectedValue ? current.selectedLabel || 'Selected entity' : ''),
+            },
+          }
+        })
+      } catch (err) {
+        setReferenceFieldState((prev) => ({
+          ...prev,
+          [field.name]: {
+            ...(prev[field.name] || {}),
+            query: trimmedSearch,
+            options: [],
+            loading: false,
+            error: err.message || 'Failed to load entities.',
+          },
+        }))
+      }
+    },
+    [worldId],
+  )
+
+  const handleReferenceSearchChange = (field) => (event) => {
+    const query = event.target.value
+    setReferenceFieldState((prev) => {
+      const current = prev[field.name] || {}
+      return {
+        ...prev,
+        [field.name]: {
+          ...current,
+          query,
+          error: '',
+        },
+      }
+    })
+
+    if (referenceSearchTimersRef.current[field.name]) {
+      clearTimeout(referenceSearchTimersRef.current[field.name])
+    }
+
+    referenceSearchTimersRef.current[field.name] = setTimeout(() => {
+      loadReferenceOptions(field, query)
+      referenceSearchTimersRef.current[field.name] = undefined
+    }, 300)
+  }
+
+  const handleReferenceSearchFocus = (field) => () => {
+    const state = referenceFieldState[field.name]
+    if (!state || (!state.loading && (!Array.isArray(state.options) || state.options.length === 0))) {
+      loadReferenceOptions(field, state?.query ?? '')
+    }
+  }
+
+  const handleReferenceSelectChange = (field) => (event) => {
+    const { value } = event.target
+    setMetadataValues((prev) => ({ ...prev, [field.name]: value }))
+
+    setReferenceFieldState((prev) => {
+      const current = prev[field.name] || {}
+      const options = Array.isArray(current.options) ? current.options : []
+      const selected = options.find((option) => String(option.value) === String(value))
+
+      return {
+        ...prev,
+        [field.name]: {
+          ...current,
+          selectedLabel: value ? selected?.label ?? current.selectedLabel ?? '' : '',
+        },
+      }
+    })
+  }
+
   const handleAccessSettingChange = useCallback((key, value) => {
     setAccessOptionsError('')
     setAccessSettings((prev) => {
@@ -475,6 +647,17 @@ export default function EntityForm({
     setAccessOptions({ campaigns: [], users: [] })
     setAccessOptionsError('')
   }, [worldId])
+
+  useEffect(() => {
+    return () => {
+      Object.values(referenceSearchTimersRef.current).forEach((timer) => {
+        if (timer) {
+          clearTimeout(timer)
+        }
+      })
+      referenceSearchTimersRef.current = {}
+    }
+  }, [])
 
   useEffect(() => {
     if (activeView !== 'access') return
@@ -668,12 +851,14 @@ export default function EntityForm({
     if (isEditMode) {
       setMetadataFieldDefs([])
       setMetadataValues({})
+      setReferenceFieldState({})
       return
     }
 
     if (!selectedEntityTypeId) {
       setMetadataFieldDefs([])
       setMetadataValues({})
+      setReferenceFieldState({})
       return
     }
 
@@ -697,6 +882,18 @@ export default function EntityForm({
             const name = field.name || field.field_name
             if (!name) return null
             const dataType = field.data_type || field.dataType || 'text'
+            const referenceTypeId =
+              field.reference_type_id ??
+              field.referenceTypeId ??
+              field.referenceType?.id ??
+              null
+            const referenceTypeName =
+              field.reference_type_name ??
+              field.referenceTypeName ??
+              field.referenceType?.name ??
+              ''
+            const referenceFilter =
+              field.reference_filter ?? field.referenceFilter ?? field.referenceFilterJson ?? {}
             return {
               id: field.id || name,
               name,
@@ -705,11 +902,29 @@ export default function EntityForm({
               required: Boolean(field.required),
               options: field.options || {},
               defaultValue: field.default_value ?? field.defaultValue ?? null,
+              referenceTypeId,
+              referenceTypeName,
+              referenceFilter,
             }
           })
           .filter(Boolean)
 
         setMetadataFieldDefs(normalised)
+
+        const referenceDefaults = normalised
+          .filter((field) => field.dataType === 'reference')
+          .reduce((acc, field) => {
+            acc[field.name] = {
+              options: [],
+              query: '',
+              loading: false,
+              error: '',
+              selectedLabel: '',
+            }
+            return acc
+          }, {})
+
+        setReferenceFieldState(referenceDefaults)
 
         const defaults = {}
         normalised.forEach((field) => {
@@ -726,6 +941,7 @@ export default function EntityForm({
           setError(err.message || 'Failed to load metadata fields')
           setMetadataFieldDefs([])
           setMetadataValues({})
+          setReferenceFieldState({})
         }
       } finally {
         if (!cancelled) {
@@ -740,6 +956,18 @@ export default function EntityForm({
       cancelled = true
     }
   }, [isEditMode, selectedEntityTypeId])
+
+  useEffect(() => {
+    if (isEditMode) return
+    if (!metadataFieldDefs.length) return
+
+    metadataFieldDefs
+      .filter((field) => field.dataType === 'reference')
+      .forEach((field) => {
+        const existingQuery = referenceFieldState[field.name]?.query ?? ''
+        loadReferenceOptions(field, existingQuery)
+      })
+  }, [isEditMode, metadataFieldDefs, loadReferenceOptions])
 
   const selectedEntityType = useMemo(() => {
     const id = values.entityTypeId || selectedEntityTypeId || ''
@@ -784,6 +1012,75 @@ export default function EntityForm({
               </option>
             ))}
           </select>
+        )
+      }
+      case 'reference': {
+        const state = referenceFieldState[field.name] || {}
+        const query = state.query ?? ''
+        const loadingOptions = Boolean(state.loading)
+        const availableOptions = Array.isArray(state.options) ? [...state.options] : []
+        const currentValue = value
+        const hasSelection = currentValue !== '' && currentValue !== undefined && currentValue !== null
+        if (
+          hasSelection &&
+          !availableOptions.some((option) => String(option.value) === String(currentValue))
+        ) {
+          availableOptions.push({
+            value: currentValue,
+            label: state.selectedLabel || 'Current selection',
+          })
+        }
+        const selectDisabled =
+          saving ||
+          loadingMetadataFields ||
+          !worldId ||
+          (!availableOptions.length && !hasSelection)
+        const noResults =
+          Boolean(worldId) && !loadingOptions && !state.error && availableOptions.length === 0
+        const placeholderName = field.referenceTypeName || 'entities'
+        const placeholderLabel =
+          typeof placeholderName === 'string' && placeholderName.trim()
+            ? placeholderName.trim()
+            : 'entities'
+        return (
+          <div className="reference-field-control">
+            <div className="reference-field-search">
+              <input
+                type="search"
+                value={query}
+                onChange={handleReferenceSearchChange(field)}
+                onFocus={handleReferenceSearchFocus(field)}
+                placeholder={`Search ${placeholderLabel.toLowerCase()}...`}
+                disabled={saving || loadingMetadataFields || !worldId}
+              />
+            </div>
+            <select
+              id={fieldId}
+              value={currentValue}
+              onChange={handleReferenceSelectChange(field)}
+              disabled={selectDisabled}
+              required={isRequired}
+            >
+              <option value="">Select...</option>
+              {availableOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {loadingOptions && <p className="field-hint">Searching...</p>}
+            {state.error && <p className="field-hint warning">{state.error}</p>}
+            {!state.error && !worldId && (
+              <p className="field-hint warning">Select a world to search for entities.</p>
+            )}
+            {!state.error && noResults && (
+              <p className="field-hint warning">
+                {query.trim()
+                  ? 'No matching entities found. Try a different search.'
+                  : `Type to search for ${placeholderLabel.toLowerCase()}.`}
+              </p>
+            )}
+          </div>
         )
       }
       case 'number':
