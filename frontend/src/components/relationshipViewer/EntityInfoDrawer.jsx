@@ -50,6 +50,21 @@ const resolvePrimitive = (value) => {
   return value === '' ? '—' : String(value)
 }
 
+const resolveReferenceLabel = (value) => {
+  if (!value || typeof value !== 'object') return null
+  const label =
+    value.label ??
+    value.name ??
+    value.title ??
+    value.display ??
+    value.displayName ??
+    value.text ??
+    value.value ??
+    value.id
+
+  return label === undefined || label === null ? null : String(label)
+}
+
 const formatFieldValue = (field) => {
   if (!field) return '—'
   const { dataType, value } = field
@@ -77,6 +92,54 @@ const formatFieldValue = (field) => {
         )
       }
       return String(value)
+    case 'reference': {
+      if (Array.isArray(value)) {
+        const labels = value
+          .map((item) => {
+            if (item === null || item === undefined) return null
+            if (typeof item === 'object') {
+              const label = resolveReferenceLabel(item)
+              return label || null
+            }
+            return String(item)
+          })
+          .filter(Boolean)
+        if (labels.length > 0) {
+          return labels.join(', ')
+        }
+        const displayFallback =
+          field.displayValue ||
+          field.display ||
+          field.selectedLabel ||
+          field.referenceName ||
+          field.referenceLabel
+        if (displayFallback) {
+          return String(displayFallback)
+        }
+        return '—'
+      }
+
+      if (typeof value === 'object' && value !== null) {
+        const label = resolveReferenceLabel(value)
+        if (label) return label
+        try {
+          return JSON.stringify(value, null, 2)
+        } catch (err) {
+          console.warn('⚠️ Failed to serialise reference metadata value', err)
+          return String(value)
+        }
+      }
+
+      if (value === '') return '—'
+
+      if (field.displayValue || field.display || field.selectedLabel) {
+        const fallback =
+          field.displayValue || field.display || field.selectedLabel
+        return fallback ? String(fallback) : '—'
+      }
+
+      return String(value)
+    }
     case 'date':
       return formatDateTime(value)
     case 'text':
