@@ -115,8 +115,13 @@ const mapFieldToSchemaField = (field) => {
         field.referenceFilterJson ??
         {}
       const selectedLabel = (() => {
-        const value = field.value || field.selectedLabel
-        if (!value || typeof value !== 'object') return field.selectedLabel || ''
+        if (field.displayValue) return String(field.displayValue)
+        if (field.display) return String(field.display)
+        if (field.selectedLabel) return String(field.selectedLabel)
+
+        const value = field.value
+        if (!value || typeof value !== 'object') return ''
+
         const label =
           value.label ??
           value.name ??
@@ -669,17 +674,28 @@ export default function EntityDetailPage() {
     return entity.fields.reduce((acc, field) => {
       if (!field?.name) return acc
       if (field.dataType !== 'reference') return acc
-      const value = field.value
-      if (!value || typeof value !== 'object') return acc
-      const label =
-        value.label ??
-        value.name ??
-        value.title ??
-        value.display ??
-        value.displayName ??
-        value.text ??
-        value.value ??
-        value.id
+
+      const label = (() => {
+        if (field.displayValue) return field.displayValue
+        if (field.display) return field.display
+        if (field.selectedLabel) return field.selectedLabel
+
+        const value = field.value
+        if (!value || typeof value !== 'object') return null
+
+        return (
+          value.label ??
+          value.name ??
+          value.title ??
+          value.display ??
+          value.displayName ??
+          value.text ??
+          value.value ??
+          value.id ??
+          null
+        )
+      })()
+
       if (label === undefined || label === null) return acc
       acc[field.name] = String(label)
       return acc
