@@ -361,7 +361,7 @@ export const deleteEntityTypeField = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Entity type not found' })
     }
 
-    const canManage = await ensureManageAccess(req.user)
+    const canManage = await ensureManageAccess(req.user, entityType.world_id)
     if (!canManage) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }

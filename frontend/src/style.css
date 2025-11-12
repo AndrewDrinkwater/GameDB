@@ -126,6 +126,8 @@
   display: flex;
   flex-direction: column;
   z-index: 2; /* stay above content only when visible */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sidebar-overlay {
@@ -4650,6 +4652,25 @@ body.theme-dark .condition-actions {
 .entity-form textarea {
   resize: vertical;
   min-height: 120px;
+}
+
+.reference-field-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.reference-field-search {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.reference-field-search input[type='search'] {
+  flex: 1;
+}
+
+.reference-field-control select {
+  min-height: 2.5rem;
 }
 
 .form-two-column {
