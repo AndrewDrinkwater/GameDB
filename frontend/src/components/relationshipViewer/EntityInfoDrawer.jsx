@@ -53,6 +53,7 @@ const resolvePrimitive = (value) => {
 const resolveReferenceLabel = (value) => {
   if (!value || typeof value !== 'object') return null
   const label =
+    value.displayValue ??
     value.label ??
     value.name ??
     value.title ??

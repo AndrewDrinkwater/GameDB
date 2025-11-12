@@ -441,7 +441,7 @@ const applyDisplayValuesToMetadata = async (metadata, fields) => {
   }
 
   const records = await Entity.findAll({
-    attributes: ['id', 'name', 'title'],
+    attributes: ['id', 'name'],
     where: { id: Array.from(referenceIds) },
   })
 
@@ -450,7 +450,7 @@ const applyDisplayValuesToMetadata = async (metadata, fields) => {
   records.forEach((record) => {
     const plain = record?.get ? record.get({ plain: true }) : record
     if (!plain?.id) return
-    const rawLabel = plain.name ?? plain.title ?? null
+    const rawLabel = plain.name ?? null
     const label = rawLabel !== null && rawLabel !== undefined ? String(rawLabel).trim() : ''
     labelMap[String(plain.id)] = label || null
   })

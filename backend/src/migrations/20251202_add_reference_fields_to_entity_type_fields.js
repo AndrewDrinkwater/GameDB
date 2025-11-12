@@ -1,30 +1,46 @@
 export async function up(queryInterface, Sequelize) {
   await queryInterface.sequelize.transaction(async (transaction) => {
+    // Add enum value if missing
     await queryInterface.sequelize.query(
       "ALTER TYPE enum_entity_type_fields_data_type ADD VALUE IF NOT EXISTS 'reference'",
       { transaction }
     )
 
-    await queryInterface.addColumn(
-      'entity_type_fields',
-      'reference_type_id',
-      {
-        type: Sequelize.UUID,
-        allowNull: true,
-        references: { model: 'entity_types', key: 'id' },
-        onDelete: 'SET NULL',
-      },
+    // Add reference_type_id if not exists
+    await queryInterface.sequelize.query(
+      `
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_name = 'entity_type_fields'
+          AND column_name = 'reference_type_id'
+        ) THEN
+          ALTER TABLE "entity_type_fields"
+          ADD COLUMN "reference_type_id" UUID REFERENCES "entity_types" ("id") ON DELETE SET NULL;
+        END IF;
+      END $$;
+      `,
       { transaction }
     )
 
-    await queryInterface.addColumn(
-      'entity_type_fields',
-      'reference_filter',
-      {
-        type: Sequelize.JSONB,
-        allowNull: false,
-        defaultValue: {},
-      },
+    // Add reference_filter if not exists
+    await queryInterface.sequelize.query(
+      `
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_name = 'entity_type_fields'
+          AND column_name = 'reference_filter'
+        ) THEN
+          ALTER TABLE "entity_type_fields"
+          ADD COLUMN "reference_filter" JSONB NOT NULL DEFAULT '{}'::jsonb;
+        END IF;
+      END $$;
+      `,
       { transaction }
     )
   })
