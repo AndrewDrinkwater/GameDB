@@ -25,8 +25,33 @@ export default function EntityInfoPreview({ entityId, entityName = 'entity', cla
     event.preventDefault()
     event.stopPropagation()
     if (entityId === null || entityId === undefined) return
+    const fallbackLabel = typeof entityName === 'string' ? entityName.trim() : ''
+    if (drawerEntityId && fallbackLabel) {
+      setPreviewEntity((prev) => {
+        if (prev && prev.id === drawerEntityId) {
+          if (prev.name || !fallbackLabel) {
+            return prev
+          }
+          return { ...prev, name: fallbackLabel }
+        }
+        return { id: drawerEntityId, name: fallbackLabel }
+      })
+    }
     setOpen(true)
   }
+
+  useEffect(() => {
+    if (!drawerEntityId) return
+    const fallbackLabel = typeof entityName === 'string' ? entityName.trim() : ''
+    if (!fallbackLabel) return
+    setPreviewEntity((prev) => {
+      if (!prev) return prev
+      if (prev.id !== drawerEntityId) return prev
+      if (prev.name === fallbackLabel) return prev
+      if (prev.name && prev.name !== fallbackLabel) return prev
+      return { ...prev, name: fallbackLabel }
+    })
+  }, [drawerEntityId, entityName])
 
   useEffect(() => {
     if (!open || !drawerEntityId) return undefined
@@ -96,6 +121,7 @@ export default function EntityInfoPreview({ entityId, entityName = 'entity', cla
           entity={previewEntity}
           isLoading={loading}
           error={error}
+          fallbackName={entityName}
           onClose={handleClose}
         />
       )}
