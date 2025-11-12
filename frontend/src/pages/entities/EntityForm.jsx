@@ -6,6 +6,8 @@ import {
   updateEntity,
 } from '../../api/entities.js'
 import { getFields as getEntityTypeFields } from '../../api/entityTypeFields.js'
+import AccessSettingsEditor from '../../components/entities/AccessSettingsEditor.jsx'
+import { fetchAccessOptionsForWorld } from '../../utils/entityAccessOptions.js'
 
 const VISIBILITY_OPTIONS = [
   { value: 'hidden', label: 'Hidden' },
@@ -203,6 +205,19 @@ export default function EntityForm({
   })
   const [metadataFieldDefs, setMetadataFieldDefs] = useState([])
   const [metadataValues, setMetadataValues] = useState({})
+  const [showAccessSettings, setShowAccessSettings] = useState(false)
+  const [accessSettings, setAccessSettings] = useState({
+    readMode: 'global',
+    readCampaigns: [],
+    readUsers: [],
+    writeMode: 'global',
+    writeCampaigns: [],
+    writeUsers: [],
+  })
+  const [accessOptions, setAccessOptions] = useState({ campaigns: [], users: [] })
+  const [accessOptionsLoading, setAccessOptionsLoading] = useState(false)
+  const [accessOptionsError, setAccessOptionsError] = useState('')
+  const accessOptionsLoadedRef = useRef(false)
   const [showAdvanced, setShowAdvanced] = useState(() => {
     if (typeof window === 'undefined') return false
     try {
@@ -325,6 +340,18 @@ export default function EntityForm({
       setMetadataFieldDefs([])
       setMetadataValues({})
       setError('')
+      setShowAccessSettings(false)
+      setAccessSettings({
+        readMode: 'global',
+        readCampaigns: [],
+        readUsers: [],
+        writeMode: 'global',
+        writeCampaigns: [],
+        writeUsers: [],
+      })
+      accessOptionsLoadedRef.current = false
+      setAccessOptions({ campaigns: [], users: [] })
+      setAccessOptionsError('')
     }
 
     if (!isEditMode) {
@@ -401,6 +428,89 @@ export default function EntityForm({
     const { value } = event.target
     setMetadataValues((prev) => ({ ...prev, [fieldName]: value }))
   }
+
+  const handleAccessSettingChange = useCallback((key, value) => {
+    setAccessOptionsError('')
+    setAccessSettings((prev) => {
+      const next = { ...prev }
+
+      if (key === 'readMode' || key === 'writeMode') {
+        const mode = typeof value === 'string' ? value.trim().toLowerCase() : 'global'
+        if (key === 'readMode') {
+          next.readMode = ['global', 'selective', 'hidden'].includes(mode)
+            ? mode
+            : 'global'
+          if (next.readMode !== 'selective') {
+            next.readCampaigns = []
+            next.readUsers = []
+          }
+        } else {
+          next.writeMode = ['global', 'selective', 'hidden'].includes(mode)
+            ? mode
+            : 'global'
+          if (next.writeMode !== 'selective') {
+            next.writeCampaigns = []
+            next.writeUsers = []
+          }
+        }
+        return next
+      }
+
+      if (['readCampaigns', 'readUsers', 'writeCampaigns', 'writeUsers'].includes(key)) {
+        next[key] = Array.isArray(value)
+          ? value.map((entry) => String(entry).trim()).filter(Boolean)
+          : []
+        return next
+      }
+
+      next[key] = value
+      return next
+    })
+  }, [])
+
+  const toggleAccessSettings = useCallback(() => {
+    setShowAccessSettings((prev) => !prev)
+  }, [])
+
+  useEffect(() => {
+    accessOptionsLoadedRef.current = false
+    setAccessOptions({ campaigns: [], users: [] })
+    setAccessOptionsError('')
+  }, [worldId])
+
+  useEffect(() => {
+    if (!showAccessSettings) return
+    if (!worldId) return
+    if (accessOptionsLoadedRef.current) return
+
+    let cancelled = false
+    setAccessOptionsLoading(true)
+    setAccessOptionsError('')
+
+    const load = async () => {
+      try {
+        const options = await fetchAccessOptionsForWorld(worldId)
+        if (cancelled) return
+        setAccessOptions(options)
+        accessOptionsLoadedRef.current = true
+      } catch (err) {
+        if (cancelled) return
+        setAccessOptions({ campaigns: [], users: [] })
+        setAccessOptionsError(err.message || 'Failed to load access options')
+        accessOptionsLoadedRef.current = false
+      } finally {
+        if (!cancelled) {
+          setAccessOptionsLoading(false)
+        }
+      }
+    }
+
+    load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [showAccessSettings, worldId])
 
   const handleToggleAdvanced = useCallback(() => {
     setShowAdvanced((prev) => {
@@ -490,7 +600,20 @@ export default function EntityForm({
       if (isEditMode) {
         await updateEntity(entityId, payload)
       } else {
-        await createEntity({ ...payload, world_id: worldId })
+        const accessPayload = {
+          read_access: accessSettings.readMode,
+          write_access: accessSettings.writeMode,
+          read_campaign_ids:
+            accessSettings.readMode === 'selective' ? accessSettings.readCampaigns : [],
+          read_user_ids:
+            accessSettings.readMode === 'selective' ? accessSettings.readUsers : [],
+          write_campaign_ids:
+            accessSettings.writeMode === 'selective' ? accessSettings.writeCampaigns : [],
+          write_user_ids:
+            accessSettings.writeMode === 'selective' ? accessSettings.writeUsers : [],
+        }
+
+        await createEntity({ ...payload, ...accessPayload, world_id: worldId })
       }
       onSaved?.(isEditMode ? 'edit' : 'create')
     } catch (err) {
@@ -769,6 +892,54 @@ export default function EntityForm({
                 </div>
               ))}
             </div>
+          )}
+
+          {!isEditMode && (
+            <div className="access-settings-toggle">
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={toggleAccessSettings}
+                disabled={saving || !worldId}
+              >
+                {showAccessSettings ? 'Hide Access Settings' : 'Manage Access'}
+              </button>
+              {!worldId && (
+                <p className="help-text">Assign a world to configure access controls.</p>
+              )}
+            </div>
+          )}
+
+          {showAccessSettings && (
+            <section className="entity-card entity-access-card drawer-access-card">
+              <h3 className="entity-card-title">Access controls</h3>
+              <p className="entity-access-note help-text">
+                Configure who can view and edit this entity. Users with write access will
+                automatically receive read access.
+              </p>
+
+              {accessOptionsError && (
+                <div className="alert error" role="alert">
+                  {accessOptionsError}
+                </div>
+              )}
+
+              {!worldId ? (
+                <p className="entity-empty-state">
+                  Assign this entity to a world to configure access settings.
+                </p>
+              ) : (
+                <AccessSettingsEditor
+                  canEdit={!saving}
+                  accessSettings={accessSettings}
+                  accessOptions={accessOptions}
+                  accessOptionsLoading={accessOptionsLoading}
+                  accessSaving={saving}
+                  onSettingChange={handleAccessSettingChange}
+                  idPrefix="entity-create-access"
+                />
+              )}
+            </section>
           )}
 
           {isEditMode && (

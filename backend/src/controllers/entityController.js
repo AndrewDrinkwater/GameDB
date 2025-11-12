@@ -359,6 +359,12 @@ export const createEntityResponse = async ({ world, user, body }) => {
     entity_type_id: entityTypeId,
     visibility,
     metadata,
+    read_access: readAccessInput,
+    write_access: writeAccessInput,
+    read_campaign_ids: readCampaignIdsInput,
+    read_user_ids: readUserIdsInput,
+    write_campaign_ids: writeCampaignIdsInput,
+    write_user_ids: writeUserIdsInput,
   } = body ?? {}
 
   if (!name || !entityTypeId) {
@@ -392,6 +398,51 @@ export const createEntityResponse = async ({ world, user, body }) => {
     return { status: 400, body: { success: false, message: 'Invalid visibility value' } }
   }
 
+  let readAccess = 'global'
+  let writeAccess = 'global'
+  let readCampaignIds = []
+  let readUserIds = []
+  let writeCampaignIds = []
+  let writeUserIds = []
+
+  try {
+    if (readAccessInput !== undefined) {
+      readAccess = normaliseAccessValue(readAccessInput, 'read_access')
+    }
+
+    if (writeAccessInput !== undefined) {
+      writeAccess = normaliseAccessValue(writeAccessInput, 'write_access')
+    }
+
+    if (readCampaignIdsInput !== undefined) {
+      readCampaignIds = normaliseUuidArray(readCampaignIdsInput, 'read_campaign_ids')
+    }
+
+    if (readUserIdsInput !== undefined) {
+      readUserIds = normaliseUuidArray(readUserIdsInput, 'read_user_ids')
+    }
+
+    if (writeCampaignIdsInput !== undefined) {
+      writeCampaignIds = normaliseUuidArray(writeCampaignIdsInput, 'write_campaign_ids')
+    }
+
+    if (writeUserIdsInput !== undefined) {
+      writeUserIds = normaliseUuidArray(writeUserIdsInput, 'write_user_ids')
+    }
+  } catch (err) {
+    return { status: 400, body: { success: false, message: err.message } }
+  }
+
+  if (readAccess !== 'selective') {
+    readCampaignIds = []
+    readUserIds = []
+  }
+
+  if (writeAccess !== 'selective') {
+    writeCampaignIds = []
+    writeUserIds = []
+  }
+
   let metadataInput = {}
   if (metadata !== undefined) {
     const normalised = normaliseMetadata(metadata)
@@ -417,6 +468,12 @@ export const createEntityResponse = async ({ world, user, body }) => {
     visibility: resolvedVisibility,
     metadata: metadataToPersist,
     created_by: user.id,
+    read_access: readAccess,
+    write_access: writeAccess,
+    read_campaign_ids: readCampaignIds,
+    read_user_ids: readUserIds,
+    write_campaign_ids: writeCampaignIds,
+    write_user_ids: writeUserIds,
   })
 
   const fullEntity = await Entity.findByPk(entity.id, {
