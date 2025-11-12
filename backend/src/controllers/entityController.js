@@ -295,6 +295,14 @@ const fetchEntityTypeFields = async (entityTypeId) => {
   const records = await EntityTypeField.findAll({
     where: { entity_type_id: entityTypeId },
     order: FIELD_ORDER,
+    include: [
+      {
+        model: EntityType,
+        as: 'referenceType',
+        attributes: ['id', 'name'],
+        required: false,
+      },
+    ],
   })
   return records.map((record) => record.get({ plain: true }))
 }
@@ -306,6 +314,201 @@ const prepareEntityMetadata = async (entityTypeId, metadataSource, fieldsCache) 
   const metadataForValidation = { ...source, ...metadataWithDefaults }
   await validateEntityMetadata(entityTypeId, metadataForValidation, { EntityTypeField }, fields)
   return { metadata: metadataWithDefaults, fields }
+}
+
+const REFERENCE_FALLBACK_LABEL = 'Unknown'
+
+const REFERENCE_ID_KEYS = ['id', 'value', 'entity_id', 'entityId', 'uuid']
+
+const normaliseReferenceId = (value) => {
+  if (value === null || value === undefined) return null
+  const stringified = String(value).trim()
+  return stringified || null
+}
+
+const extractReferenceId = (entry) => {
+  if (entry === null || entry === undefined) return null
+
+  if (Array.isArray(entry)) {
+    for (const item of entry) {
+      const id = extractReferenceId(item)
+      if (id) return id
+    }
+    return null
+  }
+
+  if (typeof entry === 'object') {
+    for (const key of REFERENCE_ID_KEYS) {
+      if (entry[key] !== undefined && entry[key] !== null) {
+        const id = normaliseReferenceId(entry[key])
+        if (id) return id
+      }
+    }
+    return null
+  }
+
+  if (typeof entry === 'string' || typeof entry === 'number' || typeof entry === 'bigint') {
+    return normaliseReferenceId(entry)
+  }
+
+  return null
+}
+
+const collectReferenceIds = (value, accumulator) => {
+  if (value === null || value === undefined) return
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectReferenceIds(entry, accumulator))
+    return
+  }
+
+  const id = extractReferenceId(value)
+  if (id) {
+    accumulator.add(id)
+  }
+}
+
+const resolveEntryLabel = (entry) => {
+  if (!entry || typeof entry !== 'object') return null
+
+  const candidates = [
+    entry.displayValue,
+    entry.display,
+    entry.name,
+    entry.title,
+    entry.label,
+    entry.value,
+  ]
+
+  for (const candidate of candidates) {
+    if (candidate === null || candidate === undefined) continue
+    const label = String(candidate).trim()
+    if (label) return label
+  }
+
+  return null
+}
+
+const applyDisplayValueToEntry = (entry, labelMap, fallback) => {
+  if (entry === null || entry === undefined) return entry
+  if (Array.isArray(entry)) {
+    return entry.map((item) => applyDisplayValueToEntry(item, labelMap, fallback))
+  }
+
+  const id = extractReferenceId(entry)
+  if (!id) return entry
+
+  const labelFromMap = labelMap[id]
+  const existingLabel = resolveEntryLabel(entry)
+  const resolvedLabel =
+    existingLabel ??
+    (labelFromMap !== null && labelFromMap !== undefined && String(labelFromMap).trim()
+      ? String(labelFromMap).trim()
+      : null) ??
+    fallback
+
+  const displayValue = resolvedLabel === null || resolvedLabel === undefined ? fallback : resolvedLabel
+
+  if (typeof entry === 'object') {
+    return { ...entry, id, displayValue }
+  }
+
+  return { id, displayValue }
+}
+
+const applyDisplayValuesToMetadata = async (metadata, fields) => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return metadata
+  }
+
+  const referenceFields = Array.isArray(fields)
+    ? fields.filter((field) => (field?.data_type ?? field?.dataType) === 'reference')
+    : []
+
+  if (!referenceFields.length) {
+    return metadata
+  }
+
+  const referenceIds = new Set()
+
+  referenceFields.forEach((field) => {
+    const fieldName = field?.name
+    if (!fieldName || !(fieldName in metadata)) return
+    collectReferenceIds(metadata[fieldName], referenceIds)
+  })
+
+  if (!referenceIds.size) {
+    return metadata
+  }
+
+  const records = await Entity.findAll({
+    attributes: ['id', 'name'],
+    where: { id: Array.from(referenceIds) },
+  })
+
+  const labelMap = {}
+
+  records.forEach((record) => {
+    const plain = record?.get ? record.get({ plain: true }) : record
+    if (!plain?.id) return
+    const rawLabel = plain.name ?? null
+    const label = rawLabel !== null && rawLabel !== undefined ? String(rawLabel).trim() : ''
+    labelMap[String(plain.id)] = label || null
+  })
+
+  const enriched = { ...metadata }
+
+  referenceFields.forEach((field) => {
+    const fieldName = field?.name
+    if (!fieldName || !(fieldName in metadata)) return
+    enriched[fieldName] = applyDisplayValueToEntry(
+      metadata[fieldName],
+      labelMap,
+      REFERENCE_FALLBACK_LABEL
+    )
+  })
+
+  return enriched
+}
+
+const resolveReferenceDisplayValue = (value) => {
+  if (Array.isArray(value)) {
+    const labels = value
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null
+        const label =
+          item.displayValue ??
+          item.display ??
+          item.name ??
+          item.title ??
+          item.label ??
+          item.value ??
+          item.id ??
+          null
+        if (label === null || label === undefined) return null
+        const trimmed = String(label).trim()
+        return trimmed || null
+      })
+      .filter(Boolean)
+
+    return labels.length ? labels.join(', ') : null
+  }
+
+  if (value && typeof value === 'object') {
+    const label =
+      value.displayValue ??
+      value.display ??
+      value.name ??
+      value.title ??
+      value.label ??
+      value.value ??
+      value.id ??
+      null
+    if (label === null || label === undefined) return null
+    const trimmed = String(label).trim()
+    return trimmed || null
+  }
+
+  return null
 }
 
 const buildEntityPayload = async (entityInstance, fieldsCache) => {
@@ -325,22 +528,40 @@ const buildEntityPayload = async (entityInstance, fieldsCache) => {
     fieldsCache
   )
 
-  plain.metadata = metadata
-  plain.fields = fields.map((field) => ({
-    id: field.id,
-    name: field.name,
-    label: field.label || field.name,
-    dataType: field.data_type,
-    required: field.required,
-    options: field.options || {},
-    defaultValue:
-      field.default_value !== undefined && field.default_value !== null
-        ? coerceValueForField(field.default_value, field, { isDefault: true })
-        : null,
-    sortOrder: field.sort_order,
-    value:
-      metadata[field.name] !== undefined ? metadata[field.name] : null,
-  }))
+  const metadataWithDisplayValues = await applyDisplayValuesToMetadata(metadata, fields)
+
+  plain.metadata = metadataWithDisplayValues
+  plain.fields = fields.map((field) => {
+    const fieldValue =
+      metadataWithDisplayValues[field.name] !== undefined
+        ? metadataWithDisplayValues[field.name]
+        : null
+
+    return {
+      id: field.id,
+      name: field.name,
+      label: field.label || field.name,
+      dataType: field.data_type,
+      required: field.required,
+      options: field.options || {},
+      referenceTypeId:
+        field.reference_type_id ?? field.referenceTypeId ?? field.referenceType?.id ?? null,
+      referenceTypeName:
+        field.reference_type_name ?? field.referenceTypeName ?? field.referenceType?.name ?? '',
+      referenceFilter:
+        field.reference_filter ?? field.referenceFilter ?? field.referenceFilterJson ?? {},
+      defaultValue:
+        field.default_value !== undefined && field.default_value !== null
+          ? coerceValueForField(field.default_value, field, { isDefault: true })
+          : null,
+      sortOrder: field.sort_order,
+      value: fieldValue,
+      displayValue:
+        (field.data_type ?? field.dataType) === 'reference'
+          ? resolveReferenceDisplayValue(fieldValue)
+          : null,
+    }
+  })
 
   return plain
 }

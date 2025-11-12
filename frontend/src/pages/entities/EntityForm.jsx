@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getEntityTypes } from '../../api/entityTypes.js'
-import {
-  createEntity,
-  getEntity,
-  updateEntity,
-} from '../../api/entities.js'
+import { createEntity, getEntity, updateEntity } from '../../api/entities.js'
 import { getFields as getEntityTypeFields } from '../../api/entityTypeFields.js'
 import AccessSettingsEditor from '../../components/entities/AccessSettingsEditor.jsx'
 import { fetchAccessOptionsForWorld } from '../../utils/entityAccessOptions.js'
+import EntitySearchSelect from '../../modules/relationships3/ui/EntitySearchSelect.jsx'
 
 const VISIBILITY_OPTIONS = [
   { value: 'hidden', label: 'Hidden' },
@@ -93,6 +90,16 @@ const serialiseFieldValueForInput = (value, field) => {
       return value === '' ? '' : String(value)
     case 'date':
       return normaliseDateInputValue(value)
+    case 'reference': {
+      if (typeof value === 'object' && value !== null) {
+        const identifier =
+          value.id ?? value.value ?? value.entity_id ?? value.entityId ?? null
+        if (identifier !== null && identifier !== undefined) {
+          return String(identifier)
+        }
+      }
+      return String(value)
+    }
     default:
       return String(value)
   }
@@ -126,6 +133,8 @@ const coerceFieldValueForSubmit = (value, field) => {
       }
       return value
     }
+    case 'reference':
+      return typeof value === 'string' ? value.trim() : value
     default:
       return value
   }
@@ -207,6 +216,7 @@ export default function EntityForm({
   })
   const [metadataFieldDefs, setMetadataFieldDefs] = useState([])
   const [metadataValues, setMetadataValues] = useState({})
+  const [referenceFieldLabels, setReferenceFieldLabels] = useState({})
   const [accessSettings, setAccessSettings] = useState({
     readMode: 'global',
     readCampaigns: [],
@@ -666,14 +676,16 @@ export default function EntityForm({
 
   useEffect(() => {
     if (isEditMode) {
-      setMetadataFieldDefs([])
-      setMetadataValues({})
+        setMetadataFieldDefs([])
+        setMetadataValues({})
+        setReferenceFieldLabels({})
       return
     }
 
     if (!selectedEntityTypeId) {
-      setMetadataFieldDefs([])
-      setMetadataValues({})
+        setMetadataFieldDefs([])
+        setMetadataValues({})
+        setReferenceFieldLabels({})
       return
     }
 
@@ -697,6 +709,18 @@ export default function EntityForm({
             const name = field.name || field.field_name
             if (!name) return null
             const dataType = field.data_type || field.dataType || 'text'
+            const referenceTypeId =
+              field.reference_type_id ??
+              field.referenceTypeId ??
+              field.referenceType?.id ??
+              null
+            const referenceTypeName =
+              field.reference_type_name ??
+              field.referenceTypeName ??
+              field.referenceType?.name ??
+              ''
+            const referenceFilter =
+              field.reference_filter ?? field.referenceFilter ?? field.referenceFilterJson ?? {}
             return {
               id: field.id || name,
               name,
@@ -705,11 +729,16 @@ export default function EntityForm({
               required: Boolean(field.required),
               options: field.options || {},
               defaultValue: field.default_value ?? field.defaultValue ?? null,
+              referenceTypeId,
+              referenceTypeName,
+              referenceFilter,
             }
           })
           .filter(Boolean)
 
         setMetadataFieldDefs(normalised)
+
+        setReferenceFieldLabels({})
 
         const defaults = {}
         normalised.forEach((field) => {
@@ -726,6 +755,7 @@ export default function EntityForm({
           setError(err.message || 'Failed to load metadata fields')
           setMetadataFieldDefs([])
           setMetadataValues({})
+          setReferenceFieldLabels({})
         }
       } finally {
         if (!cancelled) {
@@ -784,6 +814,154 @@ export default function EntityForm({
               </option>
             ))}
           </select>
+        )
+      }
+      case 'reference': {
+        const referenceTypeId = field.referenceTypeId ?? field.reference_type_id ?? null
+        const placeholderName = field.referenceTypeName || 'entities'
+        const placeholderLabel =
+          typeof placeholderName === 'string' && placeholderName.trim()
+            ? placeholderName.trim()
+            : 'entities'
+
+        const staticOptions = Array.isArray(field.options?.choices)
+          ? field.options.choices
+              .map((choice, index) => {
+                if (choice === null || choice === undefined) return null
+                if (typeof choice === 'object') {
+                  const value =
+                    choice.value ??
+                    choice.id ??
+                    choice.key ??
+                    choice.slug ??
+                    `choice-${index}`
+                  if (value === undefined || value === null) return null
+                  const label =
+                    choice.label ??
+                    choice.name ??
+                    choice.title ??
+                    choice.display ??
+                    choice.displayName ??
+                    value
+                  return { value: String(value), label: String(label) }
+                }
+                const text = String(choice)
+                return { value: text, label: text }
+              })
+              .filter(Boolean)
+          : []
+
+        const hasStaticOptions = staticOptions.length > 0
+        const canSearch = Boolean(worldId && referenceTypeId)
+        const controlDisabled =
+          saving ||
+          loadingMetadataFields ||
+          (!hasStaticOptions && !canSearch)
+
+        const knownLabel = referenceFieldLabels[field.name] || ''
+        const staticMatchLabel =
+          !knownLabel && value
+            ? staticOptions.find((option) => String(option.value) === String(value))?.label || ''
+            : ''
+        const controlValue =
+          value && (knownLabel || staticMatchLabel)
+            ? { id: value, name: knownLabel || staticMatchLabel }
+            : value
+
+        const handleReferenceChange = (entity) => {
+          if (!entity) {
+            setMetadataValues((prev) => ({ ...prev, [field.name]: '' }))
+            setReferenceFieldLabels((prev) => {
+              if (!prev[field.name]) return prev
+              const next = { ...prev }
+              delete next[field.name]
+              return next
+            })
+            return
+          }
+
+          const rawId =
+            entity.id ?? entity.value ?? entity.key ?? entity.slug ?? entity.uuid ?? null
+
+          if (rawId === null || rawId === undefined) {
+            setMetadataValues((prev) => ({ ...prev, [field.name]: '' }))
+            return
+          }
+
+          const resolvedId = String(rawId)
+          const entityLabel =
+            entity.name ??
+            entity.label ??
+            entity.title ??
+            entity.display ??
+            entity.displayName ??
+            ''
+
+          setMetadataValues((prev) => ({ ...prev, [field.name]: resolvedId }))
+          setReferenceFieldLabels((prev) => ({
+            ...prev,
+            [field.name]: entityLabel || resolvedId,
+          }))
+        }
+
+        const handleReferenceResolved = (entity) => {
+          if (!entity) {
+            setReferenceFieldLabels((prev) => {
+              if (!prev[field.name]) return prev
+              const next = { ...prev }
+              delete next[field.name]
+              return next
+            })
+            return
+          }
+
+          const rawId =
+            entity.id ?? entity.value ?? entity.key ?? entity.slug ?? entity.uuid ?? null
+
+          if (rawId === null || rawId === undefined) {
+            return
+          }
+
+          const resolvedId = String(rawId)
+          const entityLabel =
+            entity.name ??
+            entity.label ??
+            entity.title ??
+            entity.display ??
+            entity.displayName ??
+            ''
+
+          setReferenceFieldLabels((prev) => {
+            if (prev[field.name] === (entityLabel || resolvedId)) {
+              return prev
+            }
+            return {
+              ...prev,
+              [field.name]: entityLabel || resolvedId,
+            }
+          })
+        }
+
+        return (
+          <div className="reference-field-control">
+            <EntitySearchSelect
+              worldId={worldId}
+              value={controlValue}
+              allowedTypeIds={referenceTypeId ? [referenceTypeId] : []}
+              placeholder={`Search ${placeholderLabel.toLowerCase()}...`}
+              disabled={controlDisabled}
+              staticOptions={staticOptions}
+              onChange={handleReferenceChange}
+              onResolved={handleReferenceResolved}
+              required={isRequired}
+            />
+            {!referenceTypeId && (
+              <p className="field-hint warning">Reference type configuration is missing.</p>
+            )}
+            {referenceTypeId && !worldId && (
+              <p className="field-hint warning">Select a world to search for entities.</p>
+            )}
+          </div>
         )
       }
       case 'number':

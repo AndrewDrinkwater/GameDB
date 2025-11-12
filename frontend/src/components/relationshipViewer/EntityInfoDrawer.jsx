@@ -50,6 +50,22 @@ const resolvePrimitive = (value) => {
   return value === '' ? '—' : String(value)
 }
 
+const resolveReferenceLabel = (value) => {
+  if (!value || typeof value !== 'object') return null
+  const label =
+    value.displayValue ??
+    value.label ??
+    value.name ??
+    value.title ??
+    value.display ??
+    value.displayName ??
+    value.text ??
+    value.value ??
+    value.id
+
+  return label === undefined || label === null ? null : String(label)
+}
+
 const formatFieldValue = (field) => {
   if (!field) return '—'
   const { dataType, value } = field
@@ -77,6 +93,54 @@ const formatFieldValue = (field) => {
         )
       }
       return String(value)
+    case 'reference': {
+      if (Array.isArray(value)) {
+        const labels = value
+          .map((item) => {
+            if (item === null || item === undefined) return null
+            if (typeof item === 'object') {
+              const label = resolveReferenceLabel(item)
+              return label || null
+            }
+            return String(item)
+          })
+          .filter(Boolean)
+        if (labels.length > 0) {
+          return labels.join(', ')
+        }
+        const displayFallback =
+          field.displayValue ||
+          field.display ||
+          field.selectedLabel ||
+          field.referenceName ||
+          field.referenceLabel
+        if (displayFallback) {
+          return String(displayFallback)
+        }
+        return '—'
+      }
+
+      if (typeof value === 'object' && value !== null) {
+        const label = resolveReferenceLabel(value)
+        if (label) return label
+        try {
+          return JSON.stringify(value, null, 2)
+        } catch (err) {
+          console.warn('⚠️ Failed to serialise reference metadata value', err)
+          return String(value)
+        }
+      }
+
+      if (value === '') return '—'
+
+      if (field.displayValue || field.display || field.selectedLabel) {
+        const fallback =
+          field.displayValue || field.display || field.selectedLabel
+        return fallback ? String(fallback) : '—'
+      }
+
+      return String(value)
+    }
     case 'date':
       return formatDateTime(value)
     case 'text':
@@ -118,10 +182,11 @@ export default function EntityInfoDrawer({
   onClose,
   isLoading = false,
   error = '',
+  fallbackName = '',
 }) {
   const navigate = useNavigate()
   const [displayedState, setDisplayedState] = useState(() =>
-    entityId ? { entity, entityId, isLoading, error } : null,
+    entityId ? { entity, entityId, isLoading, error, fallbackName } : null,
   )
   const [animationState, setAnimationState] = useState(entityId ? 'open' : 'closed')
   const pendingStateRef = useRef(null)
@@ -136,12 +201,12 @@ export default function EntityInfoDrawer({
 
   useEffect(() => {
     if (entityId && pendingStateRef.current?.entityId === entityId) {
-      pendingStateRef.current = { entity, entityId, isLoading, error }
+      pendingStateRef.current = { entity, entityId, isLoading, error, fallbackName }
     }
 
     if (entityId) {
       if (!displayedState) {
-        setDisplayedState({ entity, entityId, isLoading, error })
+        setDisplayedState({ entity, entityId, isLoading, error, fallbackName })
         setAnimationState(PREPARING_OPEN_STATE)
         return
       }
@@ -152,11 +217,18 @@ export default function EntityInfoDrawer({
           if (
             prev.entity === entity &&
             prev.isLoading === isLoading &&
-            prev.error === error
+            prev.error === error &&
+            prev.fallbackName === (fallbackName || prev.fallbackName || '')
           ) {
             return prev
           }
-          return { ...prev, entity, isLoading, error }
+          return {
+            ...prev,
+            entity,
+            isLoading,
+            error,
+            fallbackName: fallbackName || prev.fallbackName || '',
+          }
         })
         if (animationState === 'closing' && closeTimerRef.current) {
           clearTimeout(closeTimerRef.current)
@@ -169,7 +241,7 @@ export default function EntityInfoDrawer({
         return
       }
 
-      pendingStateRef.current = { entity, entityId, isLoading, error }
+      pendingStateRef.current = { entity, entityId, isLoading, error, fallbackName }
       if (animationState !== 'closing') {
         setAnimationState('closing')
       }
@@ -197,7 +269,7 @@ export default function EntityInfoDrawer({
         }, ANIMATION_DURATION)
       }
     }
-  }, [entity, entityId, isLoading, error, displayedState, animationState])
+  }, [entity, entityId, isLoading, error, fallbackName, displayedState, animationState])
 
   useEffect(() => {
     if (animationState !== PREPARING_OPEN_STATE) {
@@ -230,6 +302,7 @@ export default function EntityInfoDrawer({
   const visibleEntityId = displayedState?.entityId
   const visibleLoading = displayedState?.isLoading ?? false
   const visibleError = displayedState?.error ?? ''
+  const visibleFallbackName = displayedState?.fallbackName
 
   const metadataEntries = useMemo(
     () => extractMetadataEntries(visibleEntity),
@@ -237,7 +310,9 @@ export default function EntityInfoDrawer({
   )
   const hasMetadata = metadataEntries.length > 0
   const entityName =
-    visibleEntity?.name || (visibleLoading ? 'Loading entity…' : 'Unknown entity')
+    visibleEntity?.name ||
+    visibleFallbackName ||
+    (visibleLoading ? 'Loading entity…' : 'Unknown entity')
   const entityType =
     visibleEntity?.type?.name || visibleEntity?.typeName || 'Entity'
 
@@ -350,4 +425,5 @@ EntityInfoDrawer.propTypes = {
   onClose: PropTypes.func.isRequired,
   isLoading: PropTypes.bool,
   error: PropTypes.string,
+  fallbackName: PropTypes.string,
 }

@@ -1,12 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import ListCollector from '../ListCollector.jsx'
 import { normaliseListCollectorOption } from '../listCollectorUtils.js'
 import { getAuthToken } from '../../utils/authHelpers.js'
+import EntitySearchSelect from '../../modules/relationships3/ui/EntitySearchSelect.jsx'
 
 export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) {
   const key = field.key || field.name || field.field || ''
   const [dynamicOptions, setDynamicOptions] = useState([])
   const [optionsLoaded, setOptionsLoaded] = useState(!field.optionsSource)
+  const [referenceState, setReferenceState] = useState(() => ({
+    selectedLabel: field?.selectedLabel ? String(field.selectedLabel) : '',
+    selectedValue: null,
+  }))
   const isViewMode = mode === 'view'
 
   // 🔐 Wait for token before fetching dynamic options
@@ -311,13 +316,20 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     data?.worldId,
   ])
 
-  if (!key) {
-    console.warn('⚠️ Field without key/name skipped:', field)
-    return null
-  }
+  useEffect(() => {
+    if (!field?.selectedLabel) return
+    setReferenceState((prev) => {
+      if (prev.selectedLabel === String(field.selectedLabel)) return prev
+      return { ...prev, selectedLabel: String(field.selectedLabel) }
+    })
+  }, [field?.selectedLabel])
 
   const label = field.label || key
   const type = (field.type || 'text').toLowerCase()
+  const referenceTypeId =
+    field.referenceTypeId ?? field.reference_type_id ?? field.referenceType?.id ?? null
+  const referenceTypeName =
+    field.referenceTypeName ?? field.reference_type_name ?? field.referenceType?.name ?? ''
   const rawValue = key.includes('.')
     ? key.split('.').reduce((acc, k) => (acc ? acc[k] : undefined), data)
     : data?.[key]
@@ -368,6 +380,167 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
 
   const handleChange = (e) => onChange?.(key, e.target.value)
   const handleCheck = (e) => onChange?.(key, e.target.checked)
+  const readValueByPath = useCallback((source, path) => {
+    if (!path || typeof path !== 'string') return undefined
+    if (!source || typeof source !== 'object') return undefined
+    if (!path.includes('.')) return source?.[path]
+    return path
+      .split('.')
+      .filter((segment) => segment.length > 0)
+      .reduce((acc, segment) => {
+        if (acc === null || acc === undefined) return undefined
+        if (typeof acc !== 'object') return undefined
+        return acc[segment]
+      }, source)
+  }, [])
+
+  const resolveWorldId = useCallback(() => {
+    const candidates = [
+      field.worldId,
+      field.world_id,
+      data?.worldId,
+      data?.world_id,
+    ]
+
+    if (field.world && typeof field.world === 'object') {
+      candidates.push(field.world.id, field.world.world_id)
+    }
+
+    if (data?.world && typeof data.world === 'object') {
+      candidates.push(data.world.id, data.world.world_id)
+    }
+
+    if (data?.metadata && typeof data.metadata === 'object') {
+      candidates.push(data.metadata.worldId, data.metadata.world_id)
+    }
+
+    for (const candidate of candidates) {
+      if (candidate === null || candidate === undefined) continue
+      const str = String(candidate).trim()
+      if (str) return str
+    }
+
+    return ''
+  }, [
+    field.worldId,
+    field.world_id,
+    field.world,
+    data?.worldId,
+    data?.world_id,
+    data?.world,
+    data?.metadata,
+  ])
+
+  const referenceValue =
+    type === 'reference' && normalisedValue !== undefined && normalisedValue !== null
+      ? String(normalisedValue)
+      : ''
+
+  const staticReferenceOptions = useMemo(() => {
+    if (type !== 'reference') return []
+    const choices = field.options?.choices
+    if (!Array.isArray(choices)) return []
+    return choices
+      .map((choice, index) => {
+        if (choice === null || choice === undefined) return null
+        if (typeof choice === 'object') {
+          const value =
+            choice.value ??
+            choice.id ??
+            choice.key ??
+            choice.slug ??
+            `choice-${index}`
+          if (value === undefined || value === null) return null
+          const label =
+            choice.label ??
+            choice.name ??
+            choice.title ??
+            choice.display ??
+            choice.displayName ??
+            value
+          return { value: String(value), label: String(label) }
+        }
+        const text = String(choice)
+        return { value: text, label: text }
+      })
+      .filter(Boolean)
+  }, [type, field.options?.choices])
+
+  useEffect(() => {
+    if (type !== 'reference') return
+    if (referenceValue) return
+    setReferenceState((prev) => {
+      if (!prev.selectedLabel && !prev.selectedValue) return prev
+      return { ...prev, selectedLabel: '', selectedValue: null }
+    })
+  }, [type, referenceValue])
+
+  useEffect(() => {
+    if (type !== 'reference') return
+    if (!referenceValue) return
+
+    const staticMatch = staticReferenceOptions.find(
+      (option) => option.value === referenceValue,
+    )
+
+    const fallbackLabel = (() => {
+      if (typeof field.value === 'object' && field.value !== null) {
+        const candidate =
+          field.value.label ??
+          field.value.name ??
+          field.value.title ??
+          field.value.display ??
+          field.value.displayName ??
+          field.value.text ??
+          field.value.value ??
+          field.value.id ??
+          null
+        if (candidate !== null && candidate !== undefined) {
+          const text = String(candidate).trim()
+          if (text) return text
+        }
+      }
+
+      if (staticMatch?.label) {
+        return String(staticMatch.label)
+      }
+
+      return ''
+    })()
+
+    if (!fallbackLabel) {
+      setReferenceState((prev) => {
+        if (prev.selectedValue === referenceValue) return prev
+        return { ...prev, selectedValue: referenceValue }
+      })
+      return
+    }
+
+    setReferenceState((prev) => {
+      if (
+        prev.selectedValue === referenceValue &&
+        prev.selectedLabel === fallbackLabel
+      ) {
+        return prev
+      }
+      return {
+        ...prev,
+        selectedLabel: fallbackLabel,
+        selectedValue: referenceValue,
+      }
+    })
+  }, [
+    type,
+    referenceValue,
+    field.value,
+    staticReferenceOptions,
+  ])
+
+  if (!key) {
+    console.warn('⚠️ Field without key/name skipped:', field)
+    return null
+  }
+
   const renderHelpText = (showEmptyNotice) => {
     const help = []
     if (field.helpText) {
@@ -387,8 +560,152 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     return help
   }
 
+  if (type === 'reference') {
+    const worldId = resolveWorldId()
+    const placeholderName =
+      typeof referenceTypeName === 'string' && referenceTypeName.trim()
+        ? referenceTypeName.trim()
+        : 'entities'
+    const hasStaticOptions = staticReferenceOptions.length > 0
+    const canSearch = Boolean(referenceTypeId && worldId)
+    const controlDisabled = !canSearch && !hasStaticOptions
+
+    if (isReadOnly) {
+      const displaySource =
+        field.displayKey && readValueByPath(data, field.displayKey)
+          ? readValueByPath(data, field.displayKey)
+          : null
+
+      let displayFallback =
+        displaySource ??
+        referenceState.selectedLabel ??
+        staticReferenceOptions.find((option) => option.value === referenceValue)?.label ??
+        ''
+
+      if (!displayFallback && referenceValue) {
+        displayFallback = referenceValue
+      }
+
+      return (
+        <div className={`form-group ${isReadOnly ? 'readonly' : ''}`}>
+          <label>{label}</label>
+          <input
+            type="text"
+            value={formattedValue(displayFallback)}
+            disabled
+            className="readonly-control"
+          />
+          {renderHelpText(false)}
+        </div>
+      )
+    }
+
+    const handleReferenceChange = (entity) => {
+      if (!entity) {
+        onChange?.(key, '')
+        setReferenceState((prev) => ({
+          ...prev,
+          selectedLabel: '',
+          selectedValue: null,
+        }))
+        return
+      }
+
+      const rawId =
+        entity.id ?? entity.value ?? entity.key ?? entity.slug ?? entity.uuid ?? null
+
+      if (rawId === null || rawId === undefined) {
+        onChange?.(key, '')
+        return
+      }
+
+      const resolvedId = String(rawId)
+      const entityLabel =
+        entity.name ??
+        entity.label ??
+        entity.title ??
+        entity.display ??
+        entity.displayName ??
+        ''
+
+      onChange?.(key, resolvedId)
+      setReferenceState((prev) => ({
+        ...prev,
+        selectedLabel: entityLabel || prev.selectedLabel || resolvedId,
+        selectedValue: resolvedId,
+      }))
+    }
+
+    const handleReferenceResolved = (entity) => {
+      if (!entity) {
+        setReferenceState((prev) => ({
+          ...prev,
+          selectedLabel: '',
+          selectedValue: null,
+        }))
+        return
+      }
+
+      const rawId =
+        entity.id ?? entity.value ?? entity.key ?? entity.slug ?? entity.uuid ?? null
+
+      if (rawId === null || rawId === undefined) {
+        return
+      }
+
+      const resolvedId = String(rawId)
+      const entityLabel =
+        entity.name ??
+        entity.label ??
+        entity.title ??
+        entity.display ??
+        entity.displayName ??
+        ''
+
+      setReferenceState((prev) => {
+        if (prev.selectedValue === resolvedId && prev.selectedLabel === entityLabel) {
+          return prev
+        }
+        return {
+          ...prev,
+          selectedLabel: entityLabel || prev.selectedLabel || resolvedId,
+          selectedValue: resolvedId,
+        }
+      })
+    }
+
+    const controlValue =
+      referenceValue && referenceState.selectedLabel
+        ? { id: referenceValue, name: referenceState.selectedLabel }
+        : referenceValue
+
+    return (
+      <div className="form-group">
+        <label>{label}</label>
+        <EntitySearchSelect
+          worldId={worldId}
+          value={controlValue}
+          allowedTypeIds={referenceTypeId ? [referenceTypeId] : []}
+          disabled={controlDisabled}
+          placeholder={`Search ${placeholderName.toLowerCase()}...`}
+          staticOptions={staticReferenceOptions}
+          onChange={handleReferenceChange}
+          onResolved={handleReferenceResolved}
+          required={Boolean(field.required)}
+        />
+        {!referenceTypeId && (
+          <p className="help-text warning">Reference type configuration is missing.</p>
+        )}
+        {referenceTypeId && !worldId && (
+          <p className="help-text warning">Select a world to search for entities.</p>
+        )}
+        {renderHelpText(false)}
+      </div>
+    )
+  }
+
   // --- SELECT / DROPDOWN ---
-  if (['select', 'dropdown', 'reference'].includes(type)) {
+  if (['select', 'dropdown'].includes(type)) {
     const opts = [...(field.options || []), ...dynamicOptions]
     const selectValue = normalisedValue ?? ''
     const showEmptyNotice = optionsLoaded && field.optionsSource && opts.length === 0
@@ -399,8 +716,12 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
         if (typeof opt === 'object') return String(opt.value) === String(selectValue)
         return String(opt) === String(selectValue)
       })
-      const display = field.displayKey && data?.[field.displayKey]
-        ? formattedValue(data[field.displayKey])
+      const displaySource =
+        field.displayKey && readValueByPath(data, field.displayKey)
+          ? readValueByPath(data, field.displayKey)
+          : null
+      const display = displaySource
+        ? formattedValue(displaySource)
         : formattedValue(
             selected
               ? (typeof selected === 'object' ? selected.label ?? selected.value : selected)
