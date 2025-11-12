@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { updateEntity } from '../api/entities.js'
-import { fetchCampaigns } from '../api/campaigns.js'
-import { fetchCharacters } from '../api/characters.js'
+import { fetchAccessOptionsForWorld } from '../utils/entityAccessOptions.js'
 
 /** --- helpers --- **/
 
@@ -84,44 +83,8 @@ export default function useEntityAccess(entity, token, canEdit) {
     setAccessOptionsError('')
 
     try {
-      const [campaignResponse, characterResponse] = await Promise.all([
-        fetchCampaigns({ world_id: worldId }),
-        fetchCharacters({ world_id: worldId }),
-      ])
-
-      const campaignData = Array.isArray(campaignResponse?.data)
-        ? campaignResponse.data
-        : Array.isArray(campaignResponse)
-          ? campaignResponse
-          : []
-
-      const campaigns = campaignData.map((item) => ({
-        value: String(item.id),
-        label: item.name || 'Untitled campaign',
-      }))
-
-      const characterData = Array.isArray(characterResponse?.data)
-        ? characterResponse.data
-        : Array.isArray(characterResponse)
-          ? characterResponse
-          : []
-
-      const userMap = new Map()
-      characterData.forEach((character) => {
-        const userId = character?.user_id || character?.player?.id
-        if (!userId) return
-        const key = String(userId)
-        if (userMap.has(key)) return
-
-        const player = character?.player || {}
-        const username = player.username?.trim?.() || ''
-        const email = player.email?.trim?.() || ''
-        let label = username || email || `User ${key.slice(0, 8)}`
-        if (username && email && username !== email) label = `${username} (${email})`
-        userMap.set(key, { value: key, label })
-      })
-
-      setAccessOptions({ campaigns, users: Array.from(userMap.values()) })
+      const options = await fetchAccessOptionsForWorld(worldId)
+      setAccessOptions(options)
     } catch (err) {
       console.error('❌ Failed to load access options', err)
       setAccessOptions({ campaigns: [], users: [] })
