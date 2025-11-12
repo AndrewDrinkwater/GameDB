@@ -19,7 +19,6 @@ import {
 } from '../../api/entities.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
-import { useFeatureFlag } from '../../context/FeatureFlagContext.jsx'
 import RelationshipBuilder from '../../modules/relationships3/RelationshipBuilder.jsx'
 import useUnsavedChangesPrompt from '../../hooks/useUnsavedChangesPrompt.js'
 
@@ -99,6 +98,46 @@ const mapFieldToSchemaField = (field) => {
       return { ...base, type: 'text', inputType: 'number' }
     case 'date':
       return { ...base, type: 'text' }
+    case 'reference': {
+      const referenceTypeId =
+        field.referenceTypeId ??
+        field.reference_type_id ??
+        field.referenceType?.id ??
+        null
+      const referenceTypeName =
+        field.referenceTypeName ??
+        field.reference_type_name ??
+        field.referenceType?.name ??
+        ''
+      const referenceFilter =
+        field.referenceFilter ??
+        field.reference_filter ??
+        field.referenceFilterJson ??
+        {}
+      const selectedLabel = (() => {
+        const value = field.value || field.selectedLabel
+        if (!value || typeof value !== 'object') return field.selectedLabel || ''
+        const label =
+          value.label ??
+          value.name ??
+          value.title ??
+          value.display ??
+          value.displayName ??
+          value.text ??
+          value.value
+        return label !== undefined && label !== null ? String(label) : ''
+      })()
+
+      return {
+        ...base,
+        type: 'reference',
+        referenceTypeId,
+        referenceTypeName,
+        referenceFilter,
+        displayKey: `metadataDisplay.${field.name}`,
+        selectedLabel,
+      }
+    }
     default:
       return { ...base, type: 'text' }
   }
@@ -129,6 +168,28 @@ const normaliseMetadataValue = (field) => {
       return value
     case 'date':
       return formatDateTime(value)
+    case 'reference':
+      if (typeof value === 'object' && value !== null) {
+        const label =
+          value.label ??
+          value.name ??
+          value.title ??
+          value.display ??
+          value.displayName ??
+          value.text ??
+          value.value ??
+          value.id
+        if (label === null || label === undefined) {
+          try {
+            return JSON.stringify(value, null, 2)
+          } catch (err) {
+            console.warn('⚠️ Failed to serialise reference metadata field', err)
+            return String(value)
+          }
+        }
+        return String(label)
+      }
+      return value
     case 'text':
       if (typeof value === 'object') {
         try {
@@ -163,12 +224,21 @@ const initialMetadataValue = (field) => {
     return Boolean(value)
   }
 
+  if (field?.dataType === 'reference') {
+    if (typeof value === 'object' && value !== null) {
+      return (
+        value.value ??
+        value.id ??
+        value.key ??
+        value.slug ??
+        value.uuid ??
+        ''
+      )
+    }
+  }
+
   return value
 }
-
-// Helper to choose the correct directional label based on perspective
-const getRelationshipLabel = (rel) =>
-  rel.effectiveFromLabel || rel.typeFromName || rel.typeName
 
 export default function EntityDetailPage() {
   const { id } = useParams()
@@ -200,8 +270,6 @@ export default function EntityDetailPage() {
     isDirty: false,
     isSubmitting: false,
   })
-
-  const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
 
   const campaignMembership = useMemo(() => {
     if (!selectedCampaign || !user?.id) return null
@@ -593,6 +661,31 @@ export default function EntityDetailPage() {
     }, {})
   }, [entity])
 
+  const metadataDisplayValues = useMemo(() => {
+    if (!entity?.fields || entity.fields.length === 0) {
+      return {}
+    }
+
+    return entity.fields.reduce((acc, field) => {
+      if (!field?.name) return acc
+      if (field.dataType !== 'reference') return acc
+      const value = field.value
+      if (!value || typeof value !== 'object') return acc
+      const label =
+        value.label ??
+        value.name ??
+        value.title ??
+        value.display ??
+        value.displayName ??
+        value.text ??
+        value.value ??
+        value.id
+      if (label === undefined || label === null) return acc
+      acc[field.name] = String(label)
+      return acc
+    }, {})
+  }, [entity])
+
   const metadataInitialValues = useMemo(() => {
     if (!entity?.fields || entity.fields.length === 0) {
       return {}
@@ -620,9 +713,11 @@ export default function EntityDetailPage() {
       description: entity.description || '',
       typeName: entity.entityType?.name || entity.entity_type?.name || '—',
       worldName: entity.world?.name || entity.world_name || '—',
+      worldId: entityWorldId,
       createdAt: formatDateTime(createdAtValue),
       updatedAt: formatDateTime(updatedAtValue),
       metadata: metadataViewValues,
+      metadataDisplay: metadataDisplayValues,
       createdBy:
         entity.creator?.username ||
         entity.creator?.email ||
@@ -630,7 +725,14 @@ export default function EntityDetailPage() {
         '—',
       updatedBy: entity.updated_by || '—',
     }
-  }, [entity, metadataViewValues, createdAtValue, updatedAtValue])
+  }, [
+    entity,
+    metadataViewValues,
+    metadataDisplayValues,
+    entityWorldId,
+    createdAtValue,
+    updatedAtValue,
+  ])
 
   const editInitialData = useMemo(() => {
     if (!entity) return null
@@ -641,11 +743,12 @@ export default function EntityDetailPage() {
       visibility: entity.visibility || 'visible',
       entityTypeName: entity.entityType?.name || entity.entity_type?.name || '—',
       worldName: entity.world?.name || entity.world_name || '—',
+      worldId: entityWorldId,
       createdAt: formatDateTime(createdAtValue),
       updatedAt: formatDateTime(updatedAtValue),
       metadata: metadataInitialValues,
     }
-  }, [entity, createdAtValue, updatedAtValue, metadataInitialValues])
+  }, [entity, entityWorldId, createdAtValue, updatedAtValue, metadataInitialValues])
 
   const metadataSectionTitle = 'Information'
 
@@ -891,7 +994,7 @@ export default function EntityDetailPage() {
         return false
       }
     },
-    [entity?.id],
+    [entity?.id, entity?.visibility],
   )
 
   const handleFormStateChange = useCallback((nextState) => {

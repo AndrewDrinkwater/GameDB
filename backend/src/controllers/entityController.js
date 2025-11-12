@@ -295,6 +295,14 @@ const fetchEntityTypeFields = async (entityTypeId) => {
   const records = await EntityTypeField.findAll({
     where: { entity_type_id: entityTypeId },
     order: FIELD_ORDER,
+    include: [
+      {
+        model: EntityType,
+        as: 'referenceType',
+        attributes: ['id', 'name'],
+        required: false,
+      },
+    ],
   })
   return records.map((record) => record.get({ plain: true }))
 }
@@ -333,6 +341,12 @@ const buildEntityPayload = async (entityInstance, fieldsCache) => {
     dataType: field.data_type,
     required: field.required,
     options: field.options || {},
+    referenceTypeId:
+      field.reference_type_id ?? field.referenceTypeId ?? field.referenceType?.id ?? null,
+    referenceTypeName:
+      field.reference_type_name ?? field.referenceTypeName ?? field.referenceType?.name ?? '',
+    referenceFilter:
+      field.reference_filter ?? field.referenceFilter ?? field.referenceFilterJson ?? {},
     defaultValue:
       field.default_value !== undefined && field.default_value !== null
         ? coerceValueForField(field.default_value, field, { isDefault: true })
