@@ -55,6 +55,8 @@ const createDrawerFooterState = (mode = 'create') => ({
   submitLabel: mode === 'edit' ? 'Save Changes' : 'Create Entity',
   submitDisabled: false,
   cancelDisabled: false,
+  accessButtonVisible: false,
+  accessButtonDisabled: false,
 })
 
 const listsMatch = (a = [], b = []) => {
@@ -152,6 +154,7 @@ export default function EntityList() {
   const [entityFormUiState, setEntityFormUiState] = useState(() =>
     createDrawerFooterState('create'),
   )
+  const [entityFormView, setEntityFormView] = useState('details')
   const [filterModalOpen, setFilterModalOpen] = useState(false)
   const [groupMenuState, setGroupMenuState] = useState({
     open: false,
@@ -179,6 +182,12 @@ export default function EntityList() {
     if (!isMobile || !columnMenuOpen) return
     setColumnMenuOpen(false)
   }, [isMobile, columnMenuOpen])
+
+  useEffect(() => {
+    if (entityFormUiState.accessButtonVisible) return
+    if (entityFormView === 'details') return
+    setEntityFormView('details')
+  }, [entityFormUiState.accessButtonVisible, entityFormView])
 
   useEffect(() => {
     if (!groupMenuState.open) return
@@ -937,6 +946,7 @@ export default function EntityList() {
     setEditingEntityId(null)
     setActiveEntityName('')
     setEntityFormUiState(createDrawerFooterState('create'))
+    setEntityFormView('details')
   }
 
   const handleFormSaved = async (mode) => {
@@ -987,6 +997,7 @@ export default function EntityList() {
     setEditingEntityId(null)
     setActiveEntityName('')
     setEntityFormUiState(createDrawerFooterState('create'))
+    setEntityFormView('details')
     setPanelOpen(true)
   }
 
@@ -996,6 +1007,7 @@ export default function EntityList() {
     setEditingEntityId(entity.id)
     setActiveEntityName(name)
     setEntityFormUiState(createDrawerFooterState('edit'))
+    setEntityFormView('details')
     setPanelOpen(true)
   }
 
@@ -1559,6 +1571,18 @@ export default function EntityList() {
             >
               Cancel
             </button>
+            {entityFormUiState.accessButtonVisible && (
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() =>
+                  setEntityFormView((prev) => (prev === 'access' ? 'details' : 'access'))
+                }
+                disabled={entityFormUiState.accessButtonDisabled}
+              >
+                {entityFormView === 'access' ? 'Details' : 'Access'}
+              </button>
+            )}
             <button
               type="submit"
               className="btn submit"
@@ -1579,6 +1603,8 @@ export default function EntityList() {
           onStateChange={handleEntityFormStateChange}
           hideActions
           selectedEntityTypeId={filterActive ? selectedFilter : ''}
+          activeView={entityFormView}
+          onViewChange={setEntityFormView}
         />
       </DrawerPanel>
     </section>
