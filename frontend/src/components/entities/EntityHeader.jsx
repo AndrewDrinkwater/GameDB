@@ -73,7 +73,7 @@ export default function EntityHeader({
               <span className="edit-mode-toggle-track" aria-hidden="true">
                 <span className="edit-mode-toggle-thumb" />
               </span>
-              <span className="edit-mode-toggle-text">Edit mode</span>
+              <span className="edit-mode-toggle-text">Edit</span>
             </button>
           </div>
         ) : null}

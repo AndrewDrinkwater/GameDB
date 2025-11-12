@@ -275,28 +275,29 @@ export default function EntityInfoDrawer({
         role="complementary"
         aria-label="Entity details"
       >
-        <button
-          type="button"
-          className="entity-info-drawer__close"
-          onClick={onClose}
-          aria-label="Close entity details"
-        >
-          ×
-        </button>
-
         <header className="entity-info-drawer__header">
           <div className="entity-info-drawer__header-top">
             <p className="entity-info-drawer__type" title={entityType}>
               {entityType}
             </p>
-            <button
-              type="button"
-              className="entity-info-drawer__link"
-              onClick={handleNavigateToRecord}
-              disabled={!canNavigate}
-            >
-              Go to Record
-            </button>
+            <div className="entity-info-drawer__actions">
+              <button
+                type="button"
+                className="entity-info-drawer__link"
+                onClick={handleNavigateToRecord}
+                disabled={!canNavigate}
+              >
+                Go to Record
+              </button>
+              <button
+                type="button"
+                className="entity-info-drawer__close"
+                onClick={onClose}
+                aria-label="Close entity details"
+              >
+                ×
+              </button>
+            </div>
           </div>
           <h2 className="entity-info-drawer__title" title={entityName}>
             {entityName}

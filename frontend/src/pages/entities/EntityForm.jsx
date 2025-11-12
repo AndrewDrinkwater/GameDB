@@ -6,6 +6,8 @@ import {
   updateEntity,
 } from '../../api/entities.js'
 import { getFields as getEntityTypeFields } from '../../api/entityTypeFields.js'
+import AccessSettingsEditor from '../../components/entities/AccessSettingsEditor.jsx'
+import { fetchAccessOptionsForWorld } from '../../utils/entityAccessOptions.js'
 
 const VISIBILITY_OPTIONS = [
   { value: 'hidden', label: 'Hidden' },
@@ -169,6 +171,8 @@ export default function EntityForm({
   onStateChange,
   hideActions = false,
   selectedEntityTypeId = '',
+  activeView = 'details',
+  onViewChange,
 }) {
   const isEditMode = Boolean(entityId)
   const pairIdRef = useRef(0)
@@ -203,6 +207,18 @@ export default function EntityForm({
   })
   const [metadataFieldDefs, setMetadataFieldDefs] = useState([])
   const [metadataValues, setMetadataValues] = useState({})
+  const [accessSettings, setAccessSettings] = useState({
+    readMode: 'global',
+    readCampaigns: [],
+    readUsers: [],
+    writeMode: 'global',
+    writeCampaigns: [],
+    writeUsers: [],
+  })
+  const [accessOptions, setAccessOptions] = useState({ campaigns: [], users: [] })
+  const [accessOptionsLoading, setAccessOptionsLoading] = useState(false)
+  const [accessOptionsError, setAccessOptionsError] = useState('')
+  const accessOptionsLoadedRef = useRef(false)
   const [showAdvanced, setShowAdvanced] = useState(() => {
     if (typeof window === 'undefined') return false
     try {
@@ -325,6 +341,18 @@ export default function EntityForm({
       setMetadataFieldDefs([])
       setMetadataValues({})
       setError('')
+      onViewChange?.('details')
+      setAccessSettings({
+        readMode: 'global',
+        readCampaigns: [],
+        readUsers: [],
+        writeMode: 'global',
+        writeCampaigns: [],
+        writeUsers: [],
+      })
+      accessOptionsLoadedRef.current = false
+      setAccessOptions({ campaigns: [], users: [] })
+      setAccessOptionsError('')
     }
 
     if (!isEditMode) {
@@ -375,6 +403,7 @@ export default function EntityForm({
     generatePair,
     normaliseMetadataPairs,
     selectedEntityTypeId,
+    onViewChange,
   ])
 
   const handleInputChange = (field) => (event) => {
@@ -401,6 +430,85 @@ export default function EntityForm({
     const { value } = event.target
     setMetadataValues((prev) => ({ ...prev, [fieldName]: value }))
   }
+
+  const handleAccessSettingChange = useCallback((key, value) => {
+    setAccessOptionsError('')
+    setAccessSettings((prev) => {
+      const next = { ...prev }
+
+      if (key === 'readMode' || key === 'writeMode') {
+        const mode = typeof value === 'string' ? value.trim().toLowerCase() : 'global'
+        if (key === 'readMode') {
+          next.readMode = ['global', 'selective', 'hidden'].includes(mode)
+            ? mode
+            : 'global'
+          if (next.readMode !== 'selective') {
+            next.readCampaigns = []
+            next.readUsers = []
+          }
+        } else {
+          next.writeMode = ['global', 'selective', 'hidden'].includes(mode)
+            ? mode
+            : 'global'
+          if (next.writeMode !== 'selective') {
+            next.writeCampaigns = []
+            next.writeUsers = []
+          }
+        }
+        return next
+      }
+
+      if (['readCampaigns', 'readUsers', 'writeCampaigns', 'writeUsers'].includes(key)) {
+        next[key] = Array.isArray(value)
+          ? value.map((entry) => String(entry).trim()).filter(Boolean)
+          : []
+        return next
+      }
+
+      next[key] = value
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    accessOptionsLoadedRef.current = false
+    setAccessOptions({ campaigns: [], users: [] })
+    setAccessOptionsError('')
+  }, [worldId])
+
+  useEffect(() => {
+    if (activeView !== 'access') return
+    if (!worldId) return
+    if (accessOptionsLoadedRef.current) return
+
+    let cancelled = false
+    setAccessOptionsLoading(true)
+    setAccessOptionsError('')
+
+    const load = async () => {
+      try {
+        const options = await fetchAccessOptionsForWorld(worldId)
+        if (cancelled) return
+        setAccessOptions(options)
+        accessOptionsLoadedRef.current = true
+      } catch (err) {
+        if (cancelled) return
+        setAccessOptions({ campaigns: [], users: [] })
+        setAccessOptionsError(err.message || 'Failed to load access options')
+        accessOptionsLoadedRef.current = false
+      } finally {
+        if (!cancelled) {
+          setAccessOptionsLoading(false)
+        }
+      }
+    }
+
+    load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeView, worldId])
 
   const handleToggleAdvanced = useCallback(() => {
     setShowAdvanced((prev) => {
@@ -490,7 +598,20 @@ export default function EntityForm({
       if (isEditMode) {
         await updateEntity(entityId, payload)
       } else {
-        await createEntity({ ...payload, world_id: worldId })
+        const accessPayload = {
+          read_access: accessSettings.readMode,
+          write_access: accessSettings.writeMode,
+          read_campaign_ids:
+            accessSettings.readMode === 'selective' ? accessSettings.readCampaigns : [],
+          read_user_ids:
+            accessSettings.readMode === 'selective' ? accessSettings.readUsers : [],
+          write_campaign_ids:
+            accessSettings.writeMode === 'selective' ? accessSettings.writeCampaigns : [],
+          write_user_ids:
+            accessSettings.writeMode === 'selective' ? accessSettings.writeUsers : [],
+        }
+
+        await createEntity({ ...payload, ...accessPayload, world_id: worldId })
       }
       onSaved?.(isEditMode ? 'edit' : 'create')
     } catch (err) {
@@ -501,6 +622,19 @@ export default function EntityForm({
   }
 
   const isBusy = loadingTypes || loadingEntity || loadingMetadataFields
+  const canUseAccessSettings = !isEditMode
+  const isAccessView = canUseAccessSettings && activeView === 'access'
+
+  useEffect(() => {
+    if (!onViewChange) return
+    if (!canUseAccessSettings && activeView !== 'details') {
+      onViewChange('details')
+      return
+    }
+    if (isAccessView && !worldId) {
+      onViewChange('details')
+    }
+  }, [activeView, canUseAccessSettings, isAccessView, onViewChange, worldId])
 
   useEffect(() => {
     if (!onStateChange) return
@@ -512,8 +646,18 @@ export default function EntityForm({
       submitLabel: saving ? 'Saving...' : isEditMode ? 'Save Changes' : 'Create Entity',
       submitDisabled: saving || isBusy,
       cancelDisabled: saving,
+      accessButtonVisible: canUseAccessSettings,
+      accessButtonDisabled: saving || isBusy || (!worldId && !isAccessView),
     })
-  }, [onStateChange, isEditMode, saving, isBusy])
+  }, [
+    onStateChange,
+    isEditMode,
+    saving,
+    isBusy,
+    canUseAccessSettings,
+    isAccessView,
+    worldId,
+  ])
 
   useEffect(() => {
     if (isEditMode) return
@@ -728,133 +872,171 @@ export default function EntityForm({
         <div className="form-loading">Loading...</div>
       ) : (
         <>
-          <div className="form-group">
-            <label htmlFor="entity-name">Name *</label>
-            <input
-              id="entity-name"
-              type="text"
-              value={values.name}
-              onChange={handleInputChange('name')}
-              placeholder="e.g. Waterdeep"
-              disabled={saving}
-              required
-              data-autofocus
-            />
-          </div>
+        {isAccessView ? (
+          <section className="entity-card entity-access-card drawer-access-card">
+            <h3 className="entity-card-title">Manage access</h3>
+            <p className="entity-access-note help-text">
+              Configure who can view and edit this entity. Users with write access will
+              automatically receive read access.
+            </p>
 
-          <div className="form-group">
-            <label htmlFor="entity-description">Description</label>
-            <textarea
-              id="entity-description"
-              value={values.description}
-              onChange={handleInputChange('description')}
-              placeholder="Optional summary of the entity"
-              rows={4}
-              disabled={saving}
-            />
-          </div>
+            {accessOptionsError && (
+              <div className="alert error" role="alert">
+                {accessOptionsError}
+              </div>
+            )}
 
-          {!isEditMode && renderTypeField()}
-
-          {showMetadataSection && (
-            <div className="metadata-field-section">
-              <h3>Information</h3>
-              {metadataFieldDefs.map((field) => (
-                <div className="form-group" key={field.id}>
-                  <label htmlFor={`metadata-field-${field.id}`}>
-                    {field.label}
-                    {field.required ? ' *' : ''}
-                  </label>
-                  {renderMetadataFieldInput(field)}
-                </div>
-              ))}
+            {!worldId ? (
+              <p className="entity-empty-state">
+                Assign this entity to a world to configure access settings.
+              </p>
+            ) : (
+              <AccessSettingsEditor
+                canEdit={!saving}
+                accessSettings={accessSettings}
+                accessOptions={accessOptions}
+                accessOptionsLoading={accessOptionsLoading}
+                accessSaving={saving}
+                onSettingChange={handleAccessSettingChange}
+                idPrefix="entity-create-access"
+              />
+            )}
+          </section>
+        ) : (
+          <>
+            <div className="form-group">
+              <label htmlFor="entity-name">Name *</label>
+              <input
+                id="entity-name"
+                type="text"
+                value={values.name}
+                onChange={handleInputChange('name')}
+                placeholder="e.g. Waterdeep"
+                disabled={saving}
+                required
+                data-autofocus
+              />
             </div>
-          )}
 
-          {isEditMode && (
-            <div className="form-two-column">{renderTypeField()}</div>
-          )}
+            <div className="form-group">
+              <label htmlFor="entity-description">Description</label>
+              <textarea
+                id="entity-description"
+                value={values.description}
+                onChange={handleInputChange('description')}
+                placeholder="Optional summary of the entity"
+                rows={4}
+                disabled={saving}
+              />
+            </div>
 
-          {isEditMode && (
-            <div className="advanced-options">
-              <button
-                type="button"
-                className="advanced-options-toggle"
-                onClick={handleToggleAdvanced}
-                aria-expanded={showAdvanced}
-              >
-                <span>Advanced options</span>
-                {hasMetadata ? (
-                  <span className="advanced-indicator">Metadata added</span>
-                ) : null}
-                <span className="advanced-chevron" aria-hidden="true">
-                  {showAdvanced ? '▴' : '▾'}
-                </span>
-              </button>
+            {!isEditMode && renderTypeField()}
 
-              {showAdvanced && (
-                <div className="advanced-options-body">
-                  <div className="metadata-editor">
-                    <div className="metadata-header">
-                      <h3>Metadata {hasMetadata ? '' : '(optional)'}</h3>
-                      <button
-                        type="button"
-                        className="btn neutral"
-                        onClick={handleAddPair}
-                        disabled={saving}
-                      >
-                        Add field
-                      </button>
-                    </div>
+            {showMetadataSection && (
+              <div className="metadata-field-section">
+                <h3>Information</h3>
+                {metadataFieldDefs.map((field) => (
+                  <div className="form-group" key={field.id}>
+                    <label htmlFor={`metadata-field-${field.id}`}>
+                      {field.label}
+                      {field.required ? ' *' : ''}
+                    </label>
+                    {renderMetadataFieldInput(field)}
+                  </div>
+                ))}
+              </div>
+            )}
 
-                    <div className="metadata-list">
-                      {metadataPairs.map((pair, index) => (
-                        <div className="metadata-row" key={pair.id}>
-                          <div className="form-group">
-                            <label htmlFor={`metadata-key-${pair.id}`} className="sr-only">
-                              Metadata key {index + 1}
-                            </label>
-                            <input
-                              id={`metadata-key-${pair.id}`}
-                              type="text"
-                              placeholder="Key"
-                              value={pair.key}
-                              onChange={handleMetadataChange(pair.id, 'key')}
-                              disabled={saving}
-                            />
+            {canUseAccessSettings && !worldId && (
+              <p className="help-text">Assign a world to configure access controls.</p>
+            )}
+
+            {isEditMode && (
+              <div className="form-two-column">{renderTypeField()}</div>
+            )}
+
+            {isEditMode && (
+              <div className="advanced-options">
+                <button
+                  type="button"
+                  className="advanced-options-toggle"
+                  onClick={handleToggleAdvanced}
+                  aria-expanded={showAdvanced}
+                >
+                  <span>Advanced options</span>
+                  {hasMetadata ? (
+                    <span className="advanced-indicator">Metadata added</span>
+                  ) : null}
+                  <span className="advanced-chevron" aria-hidden="true">
+                    {showAdvanced ? '▴' : '▾'}
+                  </span>
+                </button>
+
+                {showAdvanced && (
+                  <div className="advanced-options-body">
+                    <div className="metadata-editor">
+                      <div className="metadata-header">
+                        <h3>Metadata {hasMetadata ? '' : '(optional)'}</h3>
+                        <button
+                          type="button"
+                          className="btn neutral"
+                          onClick={handleAddPair}
+                          disabled={saving}
+                        >
+                          Add field
+                        </button>
+                      </div>
+
+                      <div className="metadata-list">
+                        {metadataPairs.map((pair, index) => (
+                          <div className="metadata-row" key={pair.id}>
+                            <div className="form-group">
+                              <label htmlFor={`metadata-key-${pair.id}`} className="sr-only">
+                                Metadata key {index + 1}
+                              </label>
+                              <input
+                                id={`metadata-key-${pair.id}`}
+                                type="text"
+                                placeholder="Key"
+                                value={pair.key}
+                                onChange={handleMetadataChange(pair.id, 'key')}
+                                disabled={saving}
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label htmlFor={`metadata-value-${pair.id}`} className="sr-only">
+                                Metadata value {index + 1}
+                              </label>
+                              <input
+                                id={`metadata-value-${pair.id}`}
+                                type="text"
+                                placeholder="Value"
+                                value={pair.value}
+                                onChange={handleMetadataChange(pair.id, 'value')}
+                                disabled={saving}
+                              />
+                            </div>
+                            <div className="metadata-actions">
+                              <button
+                                type="button"
+                                className="icon-btn"
+                                onClick={() => handleRemovePair(pair.id)}
+                                disabled={saving || metadataPairs.length === 1}
+                                title="Remove field"
+                              >
+                                ×
+                              </button>
+                            </div>
                           </div>
-                          <div className="form-group">
-                            <label htmlFor={`metadata-value-${pair.id}`} className="sr-only">
-                              Metadata value {index + 1}
-                            </label>
-                            <input
-                              id={`metadata-value-${pair.id}`}
-                              type="text"
-                              placeholder="Value"
-                              value={pair.value}
-                              onChange={handleMetadataChange(pair.id, 'value')}
-                              disabled={saving}
-                            />
-                          </div>
-                          <div className="metadata-actions">
-                            <button
-                              type="button"
-                              className="icon-btn"
-                              onClick={() => handleRemovePair(pair.id)}
-                              disabled={saving || metadataPairs.length === 1}
-                              title="Remove field"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            )}
+          </>
+        )}
         </>
       )}
 

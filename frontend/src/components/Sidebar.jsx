@@ -13,7 +13,13 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
 import { getWorldEntityTypeUsage } from '../api/entityTypes.js'
 
-export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
+export default function Sidebar({
+  open,
+  pinned,
+  allowPinning = true,
+  onPinToggle,
+  onClose,
+}) {
   const location = useLocation()
   const { user } = useAuth()
   const { selectedCampaign, selectedCampaignId } = useCampaignContext()
@@ -173,15 +179,17 @@ export default function Sidebar({ open, pinned, onPinToggle, onClose }) {
     <aside className={`sidebar ${open ? 'open' : 'closed'}`}>
       <div className="sidebar-header">
         <span>Navigation</span>
-        <button
-          type="button"
-          className={`pin-btn ${pinned ? 'pinned' : ''}`}
-          title={pinned ? 'Unpin menu' : 'Pin menu'}
-          aria-pressed={pinned}
-          onClick={onPinToggle}
-        >
-          <Pin size={16} className="pin-icon" />
-        </button>
+        {allowPinning && (
+          <button
+            type="button"
+            className={`pin-btn ${pinned ? 'pinned' : ''}`}
+            title={pinned ? 'Unpin menu' : 'Pin menu'}
+            aria-pressed={pinned}
+            onClick={onPinToggle}
+          >
+            <Pin size={16} className="pin-icon" />
+          </button>
+        )}
       </div>
 
       <nav

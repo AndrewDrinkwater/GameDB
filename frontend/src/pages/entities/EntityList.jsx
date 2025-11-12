@@ -25,6 +25,7 @@ import SearchBar from '../../components/SearchBar.jsx'
 import ConditionBuilderModal from '../../components/ConditionBuilderModal.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import useDataExplorer from '../../hooks/useDataExplorer.js'
+import useIsMobile from '../../hooks/useIsMobile.js'
 
 const VISIBILITY_BADGES = {
   visible: 'badge-visible',
@@ -36,6 +37,7 @@ const MANAGER_ROLES = new Set(['system_admin'])
 const FILTER_PARAM = 'entityType'
 
 const DEFAULT_COLUMN_KEYS = ['name', 'type', 'visibility', 'createdAt']
+const MOBILE_COLUMN_KEYS = ['name', 'description']
 
 const DEFAULT_CORE_COLUMN_OPTIONS = [
   { key: 'name', label: 'Name', type: 'core' },
@@ -53,6 +55,8 @@ const createDrawerFooterState = (mode = 'create') => ({
   submitLabel: mode === 'edit' ? 'Save Changes' : 'Create Entity',
   submitDisabled: false,
   cancelDisabled: false,
+  accessButtonVisible: false,
+  accessButtonDisabled: false,
 })
 
 const listsMatch = (a = [], b = []) => {
@@ -122,6 +126,7 @@ export default function EntityList() {
   const { user, token, sessionReady } = useAuth()
   const { selectedCampaign } = useCampaignContext()
   const [searchParams, setSearchParams] = useSearchParams()
+  const isMobile = useIsMobile()
 
   const [entities, setEntities] = useState([])
   const [loadingEntities, setLoadingEntities] = useState(false)
@@ -149,6 +154,7 @@ export default function EntityList() {
   const [entityFormUiState, setEntityFormUiState] = useState(() =>
     createDrawerFooterState('create'),
   )
+  const [entityFormView, setEntityFormView] = useState('details')
   const [filterModalOpen, setFilterModalOpen] = useState(false)
   const [groupMenuState, setGroupMenuState] = useState({
     open: false,
@@ -171,6 +177,17 @@ export default function EntityList() {
   const showToast = useCallback((message, tone = 'info') => {
     setToast({ message, tone })
   }, [])
+
+  useEffect(() => {
+    if (!isMobile || !columnMenuOpen) return
+    setColumnMenuOpen(false)
+  }, [isMobile, columnMenuOpen])
+
+  useEffect(() => {
+    if (entityFormUiState.accessButtonVisible) return
+    if (entityFormView === 'details') return
+    setEntityFormView('details')
+  }, [entityFormUiState.accessButtonVisible, entityFormView])
 
   useEffect(() => {
     if (!groupMenuState.open) return
@@ -549,6 +566,24 @@ export default function EntityList() {
     return [...DEFAULT_COLUMN_KEYS]
   }, [allowedColumnKeys, availableColumnMap])
 
+  const effectiveColumnKeys = useMemo(() => {
+    if (isMobile) {
+      const keys = []
+      if (availableColumnMap.has('name')) keys.push('name')
+      if (availableColumnMap.has('description')) keys.push('description')
+      if (keys.length > 0) return keys
+      return fallbackColumns.filter((key) => availableColumnMap.has(key))
+    }
+    if (selectedFilter) return selectedColumnKeys
+    return DEFAULT_COLUMN_KEYS
+  }, [
+    isMobile,
+    availableColumnMap,
+    fallbackColumns,
+    selectedFilter,
+    selectedColumnKeys,
+  ])
+
   useEffect(() => {
     if (!selectedFilter) return
     setSelectedColumnKeys((prev) => {
@@ -563,13 +598,12 @@ export default function EntityList() {
   }, [selectedColumnKeys])
 
   const visibleColumnDefs = useMemo(() => {
-    const keys = selectedFilter ? selectedColumnKeys : DEFAULT_COLUMN_KEYS
-    const resolved = keys
+    const resolved = effectiveColumnKeys
       .map((key) => availableColumnMap.get(key))
       .filter(Boolean)
     if (resolved.length > 0) return resolved
     return fallbackColumns.map((key) => availableColumnMap.get(key)).filter(Boolean)
-  }, [selectedFilter, selectedColumnKeys, availableColumnMap, fallbackColumns])
+  }, [effectiveColumnKeys, availableColumnMap, fallbackColumns])
 
   const systemBaselineColumns = systemColumnDefault?.columns ?? fallbackColumns
   const userBaselineColumns = userColumnPreference?.columns ?? systemBaselineColumns
@@ -912,6 +946,7 @@ export default function EntityList() {
     setEditingEntityId(null)
     setActiveEntityName('')
     setEntityFormUiState(createDrawerFooterState('create'))
+    setEntityFormView('details')
   }
 
   const handleFormSaved = async (mode) => {
@@ -962,6 +997,7 @@ export default function EntityList() {
     setEditingEntityId(null)
     setActiveEntityName('')
     setEntityFormUiState(createDrawerFooterState('create'))
+    setEntityFormView('details')
     setPanelOpen(true)
   }
 
@@ -971,6 +1007,7 @@ export default function EntityList() {
     setEditingEntityId(entity.id)
     setActiveEntityName(name)
     setEntityFormUiState(createDrawerFooterState('edit'))
+    setEntityFormView('details')
     setPanelOpen(true)
   }
 
@@ -1011,9 +1048,10 @@ export default function EntityList() {
   const hasResults = dataExplorer.groupBy
     ? dataExplorer.groups.some((group) => group.items.length > 0)
     : dataExplorer.data.length > 0
+  const pageClassName = `entities-page${isMobile ? ' entities-page--mobile' : ''}`
 
   return (
-    <section className="entities-page">
+    <section className={pageClassName}>
       <div className="entities-header">
         <div>
           <h1>Entities</h1>
@@ -1062,7 +1100,7 @@ export default function EntityList() {
           >
             <Filter size={16} /> Filters
           </button>
-          {filterActive && (
+          {!isMobile && filterActive && (
             <div className="entities-column-menu-wrapper">
               <button
                 type="button"
@@ -1533,6 +1571,18 @@ export default function EntityList() {
             >
               Cancel
             </button>
+            {entityFormUiState.accessButtonVisible && (
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() =>
+                  setEntityFormView((prev) => (prev === 'access' ? 'details' : 'access'))
+                }
+                disabled={entityFormUiState.accessButtonDisabled}
+              >
+                {entityFormView === 'access' ? 'Details' : 'Access'}
+              </button>
+            )}
             <button
               type="submit"
               className="btn submit"
@@ -1553,6 +1603,8 @@ export default function EntityList() {
           onStateChange={handleEntityFormStateChange}
           hideActions
           selectedEntityTypeId={filterActive ? selectedFilter : ''}
+          activeView={entityFormView}
+          onViewChange={setEntityFormView}
         />
       </DrawerPanel>
     </section>
