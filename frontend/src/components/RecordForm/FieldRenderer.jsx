@@ -1,24 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import ListCollector from '../ListCollector.jsx'
 import { normaliseListCollectorOption } from '../listCollectorUtils.js'
 import { getAuthToken } from '../../utils/authHelpers.js'
-import { searchEntities } from '../../api/entities.js'
-
-const REFERENCE_SEARCH_DEBOUNCE = 300
+import EntitySearchSelect from '../../modules/relationships3/ui/EntitySearchSelect.jsx'
 
 export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) {
   const key = field.key || field.name || field.field || ''
   const [dynamicOptions, setDynamicOptions] = useState([])
   const [optionsLoaded, setOptionsLoaded] = useState(!field.optionsSource)
   const [referenceState, setReferenceState] = useState(() => ({
-    options: [],
-    query: '',
-    loading: false,
-    error: '',
     selectedLabel: field?.selectedLabel ? String(field.selectedLabel) : '',
+    selectedValue: null,
   }))
-  const referenceSearchTimerRef = useRef(null)
-  const referenceInitialisedRef = useRef(false)
   const isViewMode = mode === 'view'
 
   // 🔐 Wait for token before fetching dynamic options
@@ -331,14 +324,6 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     })
   }, [field?.selectedLabel])
 
-  useEffect(() => {
-    return () => {
-      if (referenceSearchTimerRef.current) {
-        clearTimeout(referenceSearchTimerRef.current)
-      }
-    }
-  }, [])
-
   const label = field.label || key
   const type = (field.type || 'text').toLowerCase()
   const referenceTypeId =
@@ -451,133 +436,105 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
       ? String(normalisedValue)
       : ''
 
+  const staticReferenceOptions = useMemo(() => {
+    if (type !== 'reference') return []
+    const choices = field.options?.choices
+    if (!Array.isArray(choices)) return []
+    return choices
+      .map((choice, index) => {
+        if (choice === null || choice === undefined) return null
+        if (typeof choice === 'object') {
+          const value =
+            choice.value ??
+            choice.id ??
+            choice.key ??
+            choice.slug ??
+            `choice-${index}`
+          if (value === undefined || value === null) return null
+          const label =
+            choice.label ??
+            choice.name ??
+            choice.title ??
+            choice.display ??
+            choice.displayName ??
+            value
+          return { value: String(value), label: String(label) }
+        }
+        const text = String(choice)
+        return { value: text, label: text }
+      })
+      .filter(Boolean)
+  }, [type, field.options?.choices])
+
   useEffect(() => {
     if (type !== 'reference') return
     if (referenceValue) return
-    referenceInitialisedRef.current = false
-    setReferenceState((prev) => ({ ...prev, selectedLabel: '' }))
+    setReferenceState((prev) => {
+      if (!prev.selectedLabel && !prev.selectedValue) return prev
+      return { ...prev, selectedLabel: '', selectedValue: null }
+    })
   }, [type, referenceValue])
-
-  const loadReferenceOptions = useCallback(
-    async (searchTerm = '', { ensureCurrent = false } = {}) => {
-      if (type !== 'reference') return
-
-      const trimmedSearch = typeof searchTerm === 'string' ? searchTerm.trim() : ''
-
-      if (!referenceTypeId) {
-        setReferenceState((prev) => ({
-          ...prev,
-          query: trimmedSearch,
-          loading: false,
-          error: 'Reference type is not configured for this field.',
-        }))
-        return
-      }
-
-      const worldId = resolveWorldId()
-
-      if (!worldId) {
-        setReferenceState((prev) => ({
-          ...prev,
-          query: trimmedSearch,
-          loading: false,
-          error: 'Select a world before searching for entities.',
-        }))
-        return
-      }
-
-      setReferenceState((prev) => ({
-        ...prev,
-        query: trimmedSearch,
-        loading: true,
-        error: '',
-      }))
-
-      try {
-        const response = await searchEntities({
-          worldId,
-          query: trimmedSearch,
-          typeIds: referenceTypeId ? [referenceTypeId] : [],
-          limit: 25,
-        })
-
-        const list = Array.isArray(response?.data)
-          ? response.data
-          : Array.isArray(response)
-            ? response
-            : []
-
-        const fetchedOptions = list
-          .map((entity) => {
-            if (!entity || entity.id === undefined || entity.id === null) return null
-            const label =
-              entity.name || entity.title || entity.displayName || `Entity ${entity.id}`
-            return { value: String(entity.id), label: String(label) }
-          })
-          .filter(Boolean)
-
-        setReferenceState((prev) => {
-          const nextOptions = [...fetchedOptions]
-          let selectedLabel = prev.selectedLabel
-
-          if (referenceValue) {
-            const match = nextOptions.find(
-              (option) => String(option.value) === String(referenceValue),
-            )
-
-            if (match) {
-              selectedLabel = match.label
-            } else if (ensureCurrent) {
-              const fallbackLabel =
-                prev.selectedLabel ||
-                (typeof field.value === 'object' && field.value !== null
-                  ? String(
-                      field.value.label ??
-                        field.value.name ??
-                        field.value.title ??
-                        field.value.display ??
-                        field.value.displayName ??
-                        field.value.text ??
-                        field.value.value ??
-                        field.value.id ??
-                        referenceValue,
-                    )
-                  : referenceValue)
-
-              nextOptions.push({ value: referenceValue, label: fallbackLabel })
-              selectedLabel = fallbackLabel
-            }
-          }
-
-          return {
-            ...prev,
-            query: trimmedSearch,
-            options: nextOptions,
-            loading: false,
-            error: '',
-            selectedLabel,
-          }
-        })
-      } catch (err) {
-        setReferenceState((prev) => ({
-          ...prev,
-          query: trimmedSearch,
-          loading: false,
-          error: err.message || 'Failed to load options.',
-        }))
-      }
-    },
-      [type, referenceTypeId, referenceValue, field.value, resolveWorldId],
-    )
 
   useEffect(() => {
     if (type !== 'reference') return
     if (!referenceValue) return
-    if (referenceInitialisedRef.current) return
 
-    referenceInitialisedRef.current = true
-    loadReferenceOptions('', { ensureCurrent: true })
-  }, [type, referenceValue, loadReferenceOptions])
+    const staticMatch = staticReferenceOptions.find(
+      (option) => option.value === referenceValue,
+    )
+
+    const fallbackLabel = (() => {
+      if (typeof field.value === 'object' && field.value !== null) {
+        const candidate =
+          field.value.label ??
+          field.value.name ??
+          field.value.title ??
+          field.value.display ??
+          field.value.displayName ??
+          field.value.text ??
+          field.value.value ??
+          field.value.id ??
+          null
+        if (candidate !== null && candidate !== undefined) {
+          const text = String(candidate).trim()
+          if (text) return text
+        }
+      }
+
+      if (staticMatch?.label) {
+        return String(staticMatch.label)
+      }
+
+      return ''
+    })()
+
+    if (!fallbackLabel) {
+      setReferenceState((prev) => {
+        if (prev.selectedValue === referenceValue) return prev
+        return { ...prev, selectedValue: referenceValue }
+      })
+      return
+    }
+
+    setReferenceState((prev) => {
+      if (
+        prev.selectedValue === referenceValue &&
+        prev.selectedLabel === fallbackLabel
+      ) {
+        return prev
+      }
+      return {
+        ...prev,
+        selectedLabel: fallbackLabel,
+        selectedValue: referenceValue,
+      }
+    })
+  }, [
+    type,
+    referenceValue,
+    field.value,
+    staticReferenceOptions,
+  ])
 
   if (!key) {
     console.warn('⚠️ Field without key/name skipped:', field)
@@ -604,134 +561,14 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
   }
 
   if (type === 'reference') {
-    const staticOptions = Array.isArray(field.options?.choices)
-      ? field.options.choices
-          .map((choice, index) => {
-            if (choice === null || choice === undefined) return null
-            if (typeof choice === 'object') {
-              const value =
-                choice.value ??
-                choice.id ??
-                choice.key ??
-                choice.slug ??
-                `choice-${index}`
-              if (value === undefined || value === null) return null
-              const label =
-                choice.label ??
-                choice.name ??
-                choice.title ??
-                choice.display ??
-                choice.displayName ??
-                value
-              return { value: String(value), label: String(label) }
-            }
-            const text = String(choice)
-            return { value: text, label: text }
-          })
-          .filter(Boolean)
-      : []
-
-    const optionMap = new Map()
-    const combinedOptions = []
-
-    const pushOption = (option) => {
-      if (!option) return
-      const value = option.value
-      if (value === undefined || value === null) return
-      const stringValue = String(value)
-      if (!stringValue || optionMap.has(stringValue)) return
-      optionMap.set(stringValue, true)
-      combinedOptions.push({
-        value: stringValue,
-        label:
-          option.label !== undefined && option.label !== null
-            ? String(option.label)
-            : stringValue,
-      })
-    }
-
-    staticOptions.forEach(pushOption)
-    referenceState.options.forEach(pushOption)
-
-    if (referenceValue && !optionMap.has(referenceValue)) {
-      const fallbackLabel =
-        referenceState.selectedLabel ||
-        (typeof field.value === 'object' && field.value !== null
-          ? String(
-              field.value.label ??
-                field.value.name ??
-                field.value.title ??
-                field.value.display ??
-                field.value.displayName ??
-                field.value.text ??
-                field.value.value ??
-                field.value.id ??
-                referenceValue,
-            )
-          : referenceValue)
-      pushOption({ value: referenceValue, label: fallbackLabel })
-    }
-
     const worldId = resolveWorldId()
     const placeholderName =
       typeof referenceTypeName === 'string' && referenceTypeName.trim()
         ? referenceTypeName.trim()
         : 'entities'
-    const loadingOptions = Boolean(referenceState.loading)
-    const searchDisabled =
-      isReadOnly || !referenceTypeId || !worldId || Boolean(referenceState.error)
-    const hasSelection = Boolean(referenceValue)
-    const selectDisabled =
-      isReadOnly ||
-      !referenceTypeId ||
-      !worldId ||
-      (!hasSelection && combinedOptions.length === 0 && !loadingOptions)
-    const noResults =
-      Boolean(worldId) &&
-      !loadingOptions &&
-      !referenceState.error &&
-      combinedOptions.length === 0 &&
-      referenceState.query.trim().length > 0
-
-    const handleReferenceSearchChange = (event) => {
-      const nextQuery = event.target.value
-      setReferenceState((prev) => ({ ...prev, query: nextQuery }))
-
-      if (referenceSearchTimerRef.current) {
-        clearTimeout(referenceSearchTimerRef.current)
-      }
-
-      referenceSearchTimerRef.current = setTimeout(() => {
-        loadReferenceOptions(nextQuery)
-      }, REFERENCE_SEARCH_DEBOUNCE)
-    }
-
-    const handleReferenceSearchFocus = () => {
-      if (referenceState.options.length > 0 || referenceState.loading || referenceState.error) {
-        return
-      }
-      loadReferenceOptions(referenceState.query, { ensureCurrent: true })
-    }
-
-    const handleReferenceSelectChange = (event) => {
-      const nextValue = event.target.value
-      onChange?.(key, nextValue)
-
-      setReferenceState((prev) => {
-        if (!nextValue) {
-          return { ...prev, selectedLabel: '' }
-        }
-
-        const match = combinedOptions.find(
-          (option) => String(option.value) === String(nextValue),
-        )
-
-        return {
-          ...prev,
-          selectedLabel: match ? match.label : prev.selectedLabel,
-        }
-      })
-    }
+    const hasStaticOptions = staticReferenceOptions.length > 0
+    const canSearch = Boolean(referenceTypeId && worldId)
+    const controlDisabled = !canSearch && !hasStaticOptions
 
     if (isReadOnly) {
       const displaySource =
@@ -739,16 +576,13 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
           ? readValueByPath(data, field.displayKey)
           : null
 
-      let displayFallback = displaySource ?? referenceState.selectedLabel ?? ''
+      let displayFallback =
+        displaySource ??
+        referenceState.selectedLabel ??
+        staticReferenceOptions.find((option) => option.value === referenceValue)?.label ??
+        ''
 
-      if (!displayFallback) {
-        const matched = combinedOptions.find((option) => option.value === referenceValue)
-        if (matched?.label) {
-          displayFallback = matched.label
-        }
-      }
-
-      if (!displayFallback) {
+      if (!displayFallback && referenceValue) {
         displayFallback = referenceValue
       }
 
@@ -766,47 +600,104 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
       )
     }
 
+    const handleReferenceChange = (entity) => {
+      if (!entity) {
+        onChange?.(key, '')
+        setReferenceState((prev) => ({
+          ...prev,
+          selectedLabel: '',
+          selectedValue: null,
+        }))
+        return
+      }
+
+      const rawId =
+        entity.id ?? entity.value ?? entity.key ?? entity.slug ?? entity.uuid ?? null
+
+      if (rawId === null || rawId === undefined) {
+        onChange?.(key, '')
+        return
+      }
+
+      const resolvedId = String(rawId)
+      const entityLabel =
+        entity.name ??
+        entity.label ??
+        entity.title ??
+        entity.display ??
+        entity.displayName ??
+        ''
+
+      onChange?.(key, resolvedId)
+      setReferenceState((prev) => ({
+        ...prev,
+        selectedLabel: entityLabel || prev.selectedLabel || resolvedId,
+        selectedValue: resolvedId,
+      }))
+    }
+
+    const handleReferenceResolved = (entity) => {
+      if (!entity) {
+        setReferenceState((prev) => ({
+          ...prev,
+          selectedLabel: '',
+          selectedValue: null,
+        }))
+        return
+      }
+
+      const rawId =
+        entity.id ?? entity.value ?? entity.key ?? entity.slug ?? entity.uuid ?? null
+
+      if (rawId === null || rawId === undefined) {
+        return
+      }
+
+      const resolvedId = String(rawId)
+      const entityLabel =
+        entity.name ??
+        entity.label ??
+        entity.title ??
+        entity.display ??
+        entity.displayName ??
+        ''
+
+      setReferenceState((prev) => {
+        if (prev.selectedValue === resolvedId && prev.selectedLabel === entityLabel) {
+          return prev
+        }
+        return {
+          ...prev,
+          selectedLabel: entityLabel || prev.selectedLabel || resolvedId,
+          selectedValue: resolvedId,
+        }
+      })
+    }
+
+    const controlValue =
+      referenceValue && referenceState.selectedLabel
+        ? { id: referenceValue, name: referenceState.selectedLabel }
+        : referenceValue
+
     return (
       <div className="form-group">
         <label>{label}</label>
-        <div className="reference-field-control">
-          <div className="reference-field-search">
-            <input
-              type="search"
-              value={referenceState.query}
-              onChange={handleReferenceSearchChange}
-              onFocus={handleReferenceSearchFocus}
-              placeholder={`Search ${placeholderName.toLowerCase()}...`}
-              disabled={searchDisabled}
-            />
-          </div>
-          <select
-            value={referenceValue}
-            onChange={handleReferenceSelectChange}
-            disabled={selectDisabled}
-          >
-            <option value="">Select...</option>
-            {combinedOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        {loadingOptions && <p className="help-text">Searching...</p>}
-        {referenceState.error && <p className="help-text warning">{referenceState.error}</p>}
-        {!referenceState.error && !referenceTypeId && (
+        <EntitySearchSelect
+          worldId={worldId}
+          value={controlValue}
+          allowedTypeIds={referenceTypeId ? [referenceTypeId] : []}
+          disabled={controlDisabled}
+          placeholder={`Search ${placeholderName.toLowerCase()}...`}
+          staticOptions={staticReferenceOptions}
+          onChange={handleReferenceChange}
+          onResolved={handleReferenceResolved}
+          required={Boolean(field.required)}
+        />
+        {!referenceTypeId && (
           <p className="help-text warning">Reference type configuration is missing.</p>
         )}
-        {!referenceState.error && referenceTypeId && !worldId && (
+        {referenceTypeId && !worldId && (
           <p className="help-text warning">Select a world to search for entities.</p>
-        )}
-        {!referenceState.error && noResults && (
-          <p className="help-text warning">
-            {referenceState.query.trim()
-              ? 'No matching entities found. Try a different search.'
-              : `Type to search for ${placeholderName.toLowerCase()}.`}
-          </p>
         )}
         {renderHelpText(false)}
       </div>

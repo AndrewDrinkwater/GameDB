@@ -118,10 +118,11 @@ export default function EntityInfoDrawer({
   onClose,
   isLoading = false,
   error = '',
+  fallbackName = '',
 }) {
   const navigate = useNavigate()
   const [displayedState, setDisplayedState] = useState(() =>
-    entityId ? { entity, entityId, isLoading, error } : null,
+    entityId ? { entity, entityId, isLoading, error, fallbackName } : null,
   )
   const [animationState, setAnimationState] = useState(entityId ? 'open' : 'closed')
   const pendingStateRef = useRef(null)
@@ -136,12 +137,12 @@ export default function EntityInfoDrawer({
 
   useEffect(() => {
     if (entityId && pendingStateRef.current?.entityId === entityId) {
-      pendingStateRef.current = { entity, entityId, isLoading, error }
+      pendingStateRef.current = { entity, entityId, isLoading, error, fallbackName }
     }
 
     if (entityId) {
       if (!displayedState) {
-        setDisplayedState({ entity, entityId, isLoading, error })
+        setDisplayedState({ entity, entityId, isLoading, error, fallbackName })
         setAnimationState(PREPARING_OPEN_STATE)
         return
       }
@@ -152,11 +153,18 @@ export default function EntityInfoDrawer({
           if (
             prev.entity === entity &&
             prev.isLoading === isLoading &&
-            prev.error === error
+            prev.error === error &&
+            prev.fallbackName === (fallbackName || prev.fallbackName || '')
           ) {
             return prev
           }
-          return { ...prev, entity, isLoading, error }
+          return {
+            ...prev,
+            entity,
+            isLoading,
+            error,
+            fallbackName: fallbackName || prev.fallbackName || '',
+          }
         })
         if (animationState === 'closing' && closeTimerRef.current) {
           clearTimeout(closeTimerRef.current)
@@ -169,7 +177,7 @@ export default function EntityInfoDrawer({
         return
       }
 
-      pendingStateRef.current = { entity, entityId, isLoading, error }
+      pendingStateRef.current = { entity, entityId, isLoading, error, fallbackName }
       if (animationState !== 'closing') {
         setAnimationState('closing')
       }
@@ -197,7 +205,7 @@ export default function EntityInfoDrawer({
         }, ANIMATION_DURATION)
       }
     }
-  }, [entity, entityId, isLoading, error, displayedState, animationState])
+  }, [entity, entityId, isLoading, error, fallbackName, displayedState, animationState])
 
   useEffect(() => {
     if (animationState !== PREPARING_OPEN_STATE) {
@@ -230,6 +238,7 @@ export default function EntityInfoDrawer({
   const visibleEntityId = displayedState?.entityId
   const visibleLoading = displayedState?.isLoading ?? false
   const visibleError = displayedState?.error ?? ''
+  const visibleFallbackName = displayedState?.fallbackName
 
   const metadataEntries = useMemo(
     () => extractMetadataEntries(visibleEntity),
@@ -237,7 +246,9 @@ export default function EntityInfoDrawer({
   )
   const hasMetadata = metadataEntries.length > 0
   const entityName =
-    visibleEntity?.name || (visibleLoading ? 'Loading entity…' : 'Unknown entity')
+    visibleEntity?.name ||
+    visibleFallbackName ||
+    (visibleLoading ? 'Loading entity…' : 'Unknown entity')
   const entityType =
     visibleEntity?.type?.name || visibleEntity?.typeName || 'Entity'
 
@@ -350,4 +361,5 @@ EntityInfoDrawer.propTypes = {
   onClose: PropTypes.func.isRequired,
   isLoading: PropTypes.bool,
   error: PropTypes.string,
+  fallbackName: PropTypes.string,
 }
