@@ -20,8 +20,17 @@ export default (sequelize, DataTypes) => {
         allowNull: true,
       },
       data_type: {
-        type: DataTypes.ENUM('string', 'number', 'boolean', 'text', 'date', 'enum'),
+        type: DataTypes.ENUM('string', 'number', 'boolean', 'text', 'date', 'enum', 'reference'),
         allowNull: false,
+      },
+      reference_type_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      reference_filter: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: {},
       },
       options: {
         type: DataTypes.JSONB,
@@ -49,6 +58,13 @@ export default (sequelize, DataTypes) => {
 
   EntityTypeField.associate = (models) => {
     EntityTypeField.belongsTo(models.EntityType, { foreignKey: 'entity_type_id', as: 'entityType' })
+
+    if (models.EntityType) {
+      EntityTypeField.belongsTo(models.EntityType, {
+        foreignKey: 'reference_type_id',
+        as: 'referenceType',
+      })
+    }
   }
 
   return EntityTypeField

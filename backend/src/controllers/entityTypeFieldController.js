@@ -7,7 +7,7 @@ const FIELD_ORDER = [
   ['name', 'ASC'],
 ]
 
-const ALLOWED_TYPES = new Set(['string', 'number', 'boolean', 'text', 'date', 'enum'])
+const ALLOWED_TYPES = new Set(['string', 'number', 'boolean', 'text', 'date', 'enum', 'reference'])
 
 const isSystemAdmin = (user) => user?.role === 'system_admin'
 
@@ -27,17 +27,50 @@ const normaliseOptions = (options) => {
   return options
 }
 
+const normaliseReferenceFilter = (filter) => {
+  if (filter === undefined || filter === null || filter === '') {
+    return {}
+  }
+
+  if (typeof filter === 'string') {
+    try {
+      const parsed = JSON.parse(filter)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error()
+      }
+      return parsed
+    } catch (err) {
+      throw new Error('reference_filter must be a JSON object')
+    }
+  }
+
+  if (typeof filter !== 'object' || Array.isArray(filter)) {
+    throw new Error('reference_filter must be an object')
+  }
+
+  return filter
+}
+
 const validateFieldPayload = (payload) => {
   if (!ALLOWED_TYPES.has(payload.data_type)) {
     throw new Error('Invalid data_type value')
   }
 
   const options = normaliseOptions(payload.options)
+  const referenceFilter = normaliseReferenceFilter(payload.reference_filter)
+  const trimmedReferenceTypeId =
+    typeof payload.reference_type_id === 'string' ? payload.reference_type_id.trim() : payload.reference_type_id
 
   if (payload.data_type === 'enum') {
     const choices = options.choices
     if (!Array.isArray(choices) || choices.length === 0) {
       throw new Error('Enum fields require a non-empty options.choices array')
+    }
+  }
+
+  if (payload.data_type === 'reference') {
+    if (!trimmedReferenceTypeId) {
+      throw new Error('Reference fields require a reference_type_id')
     }
   }
 
@@ -66,7 +99,50 @@ const validateFieldPayload = (payload) => {
     }
   }
 
-  return { ...payload, options }
+  return {
+    ...payload,
+    options,
+    reference_type_id: payload.data_type === 'reference' ? trimmedReferenceTypeId : null,
+    reference_filter: payload.data_type === 'reference' ? referenceFilter : {},
+  }
+}
+
+const ensureValidReferenceTarget = async (fieldPayload, worldId) => {
+  if (fieldPayload.data_type !== 'reference') {
+    return null
+  }
+
+  const referenceTypeId = fieldPayload.reference_type_id
+  if (!referenceTypeId) {
+    throw new Error('Reference fields require a reference_type_id')
+  }
+
+  const referenceType = await EntityType.findByPk(referenceTypeId)
+  if (!referenceType) {
+    throw new Error('Reference entity type not found')
+  }
+
+  if (worldId && referenceType.world_id && referenceType.world_id !== worldId) {
+    throw new Error('Reference entity type must belong to the same world')
+  }
+
+  return referenceType
+}
+
+const mapFieldResponse = (fieldInstance) => {
+  if (!fieldInstance) return null
+
+  const plain = fieldInstance.get({ plain: true })
+  const referenceType = plain.referenceType
+
+  if (referenceType) {
+    plain.reference_type_id = plain.reference_type_id ?? referenceType.id
+    plain.reference_type_name = referenceType.name
+  }
+
+  delete plain.referenceType
+
+  return plain
 }
 
 export const listEntityTypeFields = async (req, res) => {
@@ -86,9 +162,16 @@ export const listEntityTypeFields = async (req, res) => {
     const fields = await EntityTypeField.findAll({
       where: { entity_type_id: id },
       order: FIELD_ORDER,
+      include: [
+        {
+          model: EntityType,
+          as: 'referenceType',
+          attributes: ['id', 'name', 'world_id'],
+        },
+      ],
     })
 
-    return res.json({ success: true, data: fields })
+    return res.json({ success: true, data: fields.map((field) => mapFieldResponse(field)) })
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message })
   }
@@ -97,7 +180,17 @@ export const listEntityTypeFields = async (req, res) => {
 export const createEntityTypeField = async (req, res) => {
   try {
     const { id } = req.params
-    const { name, label, data_type, options, required, default_value, sort_order } = req.body
+    const {
+      name,
+      label,
+      data_type,
+      options,
+      required,
+      default_value,
+      sort_order,
+      reference_type_id,
+      reference_filter,
+    } = req.body
 
     const entityType = await EntityType.findByPk(id)
     if (!entityType) {
@@ -134,14 +227,27 @@ export const createEntityTypeField = async (req, res) => {
         required: Boolean(required),
         default_value,
         sort_order: parsedSortOrder,
+        reference_type_id,
+        reference_filter,
       })
     } catch (validationError) {
       return res.status(400).json({ success: false, message: validationError.message })
     }
 
     try {
+      await ensureValidReferenceTarget(payload, entityType.world_id)
+    } catch (referenceError) {
+      return res.status(400).json({ success: false, message: referenceError.message })
+    }
+
+    try {
       const field = await EntityTypeField.create(payload)
-      return res.status(201).json({ success: true, data: field })
+      await field.reload({
+        include: [
+          { model: EntityType, as: 'referenceType', attributes: ['id', 'name', 'world_id'] },
+        ],
+      })
+      return res.status(201).json({ success: true, data: mapFieldResponse(field) })
     } catch (error) {
       if (error.name === 'SequelizeUniqueConstraintError') {
         return res
@@ -158,7 +264,17 @@ export const createEntityTypeField = async (req, res) => {
 export const updateEntityTypeField = async (req, res) => {
   try {
     const { id } = req.params
-    const { name, label, data_type, options, required, default_value, sort_order } = req.body
+    const {
+      name,
+      label,
+      data_type,
+      options,
+      required,
+      default_value,
+      sort_order,
+      reference_type_id,
+      reference_filter,
+    } = req.body
 
     const field = await EntityTypeField.findByPk(id)
     if (!field) {
@@ -194,6 +310,10 @@ export const updateEntityTypeField = async (req, res) => {
       default_value:
         default_value !== undefined ? default_value : field.default_value,
       sort_order: parsedSortOrder,
+      reference_type_id:
+        reference_type_id !== undefined ? reference_type_id : field.reference_type_id,
+      reference_filter:
+        reference_filter !== undefined ? reference_filter : field.reference_filter,
     }
 
     let validated
@@ -203,9 +323,20 @@ export const updateEntityTypeField = async (req, res) => {
       return res.status(400).json({ success: false, message: validationError.message })
     }
 
-    await field.update(validated)
+    try {
+      await ensureValidReferenceTarget(validated, entityType.world_id)
+    } catch (referenceError) {
+      return res.status(400).json({ success: false, message: referenceError.message })
+    }
 
-    return res.json({ success: true, data: field })
+    await field.update(validated)
+    await field.reload({
+      include: [
+        { model: EntityType, as: 'referenceType', attributes: ['id', 'name', 'world_id'] },
+      ],
+    })
+
+    return res.json({ success: true, data: mapFieldResponse(field) })
   } catch (error) {
     if (error.name === 'SequelizeUniqueConstraintError') {
       return res
