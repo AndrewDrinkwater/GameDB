@@ -943,6 +943,15 @@ export default function EntityDetailPage() {
     return success
   }, [canEdit, formState.isDirty, isAccessDirty, handleAccessSave])
 
+  const proceedPendingAction = useCallback(() => {
+    setPendingAction((action) => {
+      if (action?.type === 'tab' && action.target) {
+        setActiveTab(action.target)
+      }
+      return null
+    })
+  }, [setActiveTab, setPendingAction])
+
   const handleUnsavedSaveAndContinue = useCallback(async () => {
     setUnsavedDialogSaving(true)
     try {
@@ -1074,15 +1083,6 @@ export default function EntityDetailPage() {
       setUnsavedDialogOpen,
     ],
   )
-
-  const proceedPendingAction = useCallback(() => {
-    setPendingAction((action) => {
-      if (action?.type === 'tab' && action.target) {
-        setActiveTab(action.target)
-      }
-      return null
-    })
-  }, [setActiveTab, setPendingAction])
 
   const handleUnsavedContinue = useCallback(() => {
     setUnsavedDialogOpen(false)
