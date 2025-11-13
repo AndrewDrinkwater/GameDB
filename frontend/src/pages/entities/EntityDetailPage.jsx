@@ -1088,9 +1088,13 @@ export default function EntityDetailPage() {
 
       {/* --- MAIN SHELL --- */}
       <div className="entity-detail-shell">
-        <div className="entity-detail-body" role="tabpanel">
+        <div className="entity-detail-body">
           {/* DOSSIER TAB */}
-          {activeTab === 'dossier' && (
+          <div
+            className="entity-tab-panel"
+            role="tabpanel"
+            hidden={activeTab !== 'dossier'}
+          >
             <DossierTab
               isEditing={isEditing}
               canEdit={canEdit}
@@ -1104,7 +1108,7 @@ export default function EntityDetailPage() {
               viewData={viewData}
               renderSchemaSections={renderSchemaSections}
             />
-          )}
+          </div>
 
           {/* NOTES TAB */}
           {activeTab === 'notes' && (
@@ -1171,9 +1175,7 @@ export default function EntityDetailPage() {
               accessSaving={accessSaving}
               accessSaveError={accessSaveError}
               accessSaveSuccess={accessSaveSuccess}
-              isAccessDirty={isAccessDirty}
               handleAccessSettingChange={handleAccessSettingChange}
-              handleAccessSave={handleAccessSave}
             />
           )}
 
