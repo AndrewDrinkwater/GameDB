@@ -307,6 +307,56 @@ const fetchEntityTypeFields = async (entityTypeId) => {
   return records.map((record) => record.get({ plain: true }))
 }
 
+const entityTypeFieldCache = new Map()
+
+const getEntityTypeFieldsCached = async (entityTypeId) => {
+  if (!entityTypeId) return []
+  if (entityTypeFieldCache.has(entityTypeId)) {
+    return entityTypeFieldCache.get(entityTypeId)
+  }
+
+  const fields = await fetchEntityTypeFields(entityTypeId)
+  entityTypeFieldCache.set(entityTypeId, fields)
+  return fields
+}
+
+const mapEntitiesWithDisplayMetadata = async (entities) => {
+  if (!Array.isArray(entities) || entities.length === 0) {
+    return []
+  }
+
+  const labelCache = new Map()
+
+  const mapped = await Promise.all(
+    entities.map(async (entity) => {
+      const plain = entity?.get ? entity.get({ plain: true }) : entity
+      if (!plain?.entity_type_id) {
+        return plain
+      }
+
+      try {
+        const fields = await getEntityTypeFieldsCached(plain.entity_type_id)
+        if (!fields.length) {
+          return plain
+        }
+
+        const metadataWithDisplayValues = await applyDisplayValuesToMetadata(
+          plain.metadata,
+          fields,
+          labelCache,
+        )
+
+        return { ...plain, metadata: metadataWithDisplayValues }
+      } catch (err) {
+        console.warn('⚠️ Failed to enrich entity metadata for display', err)
+        return plain
+      }
+    }),
+  )
+
+  return mapped
+}
+
 const prepareEntityMetadata = async (entityTypeId, metadataSource, fieldsCache) => {
   const fields = fieldsCache ?? (await fetchEntityTypeFields(entityTypeId))
   const source = metadataSource ?? {}
@@ -415,7 +465,7 @@ const applyDisplayValueToEntry = (entry, labelMap, fallback) => {
   return { id, displayValue }
 }
 
-const applyDisplayValuesToMetadata = async (metadata, fields) => {
+const applyDisplayValuesToMetadata = async (metadata, fields, labelCache = new Map()) => {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
     return metadata
   }
@@ -440,19 +490,28 @@ const applyDisplayValuesToMetadata = async (metadata, fields) => {
     return metadata
   }
 
-  const records = await Entity.findAll({
-    attributes: ['id', 'name'],
-    where: { id: Array.from(referenceIds) },
-  })
+  const lookupCache = labelCache instanceof Map ? labelCache : new Map()
+  const missingIds = Array.from(referenceIds).filter((id) => !lookupCache.has(id))
+
+  if (missingIds.length) {
+    const records = await Entity.findAll({
+      attributes: ['id', 'name'],
+      where: { id: missingIds },
+    })
+
+    records.forEach((record) => {
+      const plain = record?.get ? record.get({ plain: true }) : record
+      if (!plain?.id) return
+      const rawLabel = plain.name ?? null
+      const label = rawLabel !== null && rawLabel !== undefined ? String(rawLabel).trim() : ''
+      lookupCache.set(String(plain.id), label || null)
+    })
+  }
 
   const labelMap = {}
-
-  records.forEach((record) => {
-    const plain = record?.get ? record.get({ plain: true }) : record
-    if (!plain?.id) return
-    const rawLabel = plain.name ?? null
-    const label = rawLabel !== null && rawLabel !== undefined ? String(rawLabel).trim() : ''
-    labelMap[String(plain.id)] = label || null
+  referenceIds.forEach((id) => {
+    if (!lookupCache.has(id)) return
+    labelMap[id] = lookupCache.get(id)
   })
 
   const enriched = { ...metadata }
@@ -745,8 +804,13 @@ export const listWorldEntities = async (req, res) => {
     })
 
     const filteredEntities = entities.filter((entity) => canUserReadEntity(entity, readContext))
+    if (!filteredEntities.length) {
+      return res.json({ success: true, data: [] })
+    }
 
-    res.json({ success: true, data: filteredEntities })
+    const payload = await mapEntitiesWithDisplayMetadata(filteredEntities)
+
+    res.json({ success: true, data: payload })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }
@@ -767,7 +831,13 @@ export const listUnassignedEntities = async (req, res) => {
       order: [['created_at', 'DESC']],
     })
 
-    res.json({ success: true, data: entities })
+    if (!entities.length) {
+      return res.json({ success: true, data: [] })
+    }
+
+    const payload = await mapEntitiesWithDisplayMetadata(entities)
+
+    res.json({ success: true, data: payload })
   } catch (error) {
     res.status(500).json({ success: false, message: error.message })
   }
