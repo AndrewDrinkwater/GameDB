@@ -15,22 +15,19 @@ import DrawerPanel from '../../components/DrawerPanel.jsx'
 import EntityHeader from '../../components/entities/EntityHeader.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import UnsavedChangesDialog from '../../components/UnsavedChangesDialog.jsx'
-// NOTE: relationship filters now handled in hook, but keeping import if you still use it elsewhere
-// import EntityRelationshipFilters, {
-//   createDefaultRelationshipFilters,
-// } from '../../components/entities/EntityRelationshipFilters.jsx'
+import { createDefaultRelationshipFilters } from '../../components/entities/EntityRelationshipFilters.jsx'
 import {
   getEntity,
   updateEntity,
   fetchEntityNotes,
   createEntityNote,
 } from '../../api/entities.js'
+import { getEntityRelationships } from '../../api/entityRelationships.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import RelationshipBuilder from '../../modules/relationships3/RelationshipBuilder.jsx'
 // hooks
 import useEntityAccess from '../../hooks/useEntityAccess.js'
-import useEntityRelationships from '../../hooks/useEntityRelationships.js'
 import useIsMobile from '../../hooks/useIsMobile.js'
 
 // tabs
@@ -248,6 +245,35 @@ const initialMetadataValue = (field) => {
   return value
 }
 
+const buildRelationshipFilterKey = (idValue, name, fallbackLabel = '') => {
+  if (idValue !== undefined && idValue !== null) {
+    const trimmed = String(idValue).trim()
+    if (trimmed) return trimmed
+  }
+
+  if (name !== undefined && name !== null) {
+    const trimmed = String(name).trim()
+    if (trimmed) return `name:${trimmed.toLowerCase()}`
+  }
+
+  if (fallbackLabel) {
+    const trimmed = String(fallbackLabel).trim()
+    if (trimmed) {
+      const normalized = trimmed
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+      return `label:${normalized || 'fallback'}`
+    }
+  }
+
+  return ''
+}
+
 export default function EntityDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -281,6 +307,12 @@ export default function EntityDetailPage() {
   const [unsavedDialogOpen, setUnsavedDialogOpen] = useState(false)
   const [pendingAction, setPendingAction] = useState(null)
   const [unsavedDialogSaving, setUnsavedDialogSaving] = useState(false)
+  const [relationships, setRelationships] = useState([])
+  const [relationshipsError, setRelationshipsError] = useState('')
+  const [relationshipsLoading, setRelationshipsLoading] = useState(false)
+  const [relationshipFilters, setRelationshipFilters] = useState(() =>
+    createDefaultRelationshipFilters(),
+  )
 
   const campaignMembership = useMemo(() => {
     if (!selectedCampaign || !user?.id) return null
@@ -917,18 +949,197 @@ export default function EntityDetailPage() {
     [entity],
   )
 
-  // --- relationships hook ---
-  const {
-    relationships,
-    relationshipsLoading,
-    relationshipsError,
-    filteredRelationships,
-    relationshipFilterOptions,
-    filters: relationshipFilters,
-    handleFiltersChange: handleRelationshipFiltersChange,
-    handleFiltersReset: handleRelationshipFiltersReset,
-    reloadRelationships,
-  } = useEntityRelationships(entity, token)
+  const entityIdString = entity?.id ? String(entity.id) : ''
+
+  const loadRelationships = useCallback(async () => {
+    if (!entityIdString || !token) {
+      setRelationships([])
+      setRelationshipsError('')
+      setRelationshipsLoading(false)
+      return
+    }
+
+    setRelationshipsLoading(true)
+    setRelationshipsError('')
+
+    try {
+      const response = await getEntityRelationships(entityIdString)
+      const list = Array.isArray(response)
+        ? response
+        : Array.isArray(response?.data)
+          ? response.data
+          : []
+      setRelationships(list)
+    } catch (err) {
+      console.error('❌ Failed to load relationships', err)
+      setRelationships([])
+      setRelationshipsError(err.message || 'Failed to load relationships')
+    } finally {
+      setRelationshipsLoading(false)
+    }
+  }, [entityIdString, token])
+
+  useEffect(() => {
+    loadRelationships()
+  }, [loadRelationships])
+
+  const normalisedRelationships = useMemo(() => {
+    if (!Array.isArray(relationships)) return []
+
+    const normaliseId = (value) => {
+      if (!value) return ''
+      if (typeof value === 'string' || typeof value === 'number') {
+        return String(value).trim()
+      }
+      if (typeof value === 'object') {
+        return String(value.id || value.entity_id || value.entityId || '').trim()
+      }
+      return ''
+    }
+
+    return relationships.map((r) => {
+      const typeDetails =
+        r.relationshipType ||
+        r.relationship_type ||
+        r.type ||
+        r.relationshipTypeId ||
+        {}
+
+      const sourceLabel =
+        typeDetails?.from_name ||
+        typeDetails?.fromName ||
+        r.source_relationship_label ||
+        r.sourceLabel ||
+        ''
+
+      const targetLabel =
+        typeDetails?.to_name ||
+        typeDetails?.toName ||
+        r.target_relationship_label ||
+        r.targetLabel ||
+        ''
+
+      return {
+        id: r.id,
+        typeId: normaliseId(
+          r.relationship_type_id || r.relationshipTypeId || r.typeId || r.type,
+        ),
+        typeName: r.relationshipType?.name || r.type?.name || '—',
+        fromId: normaliseId(r.from_entity_id || r.fromEntityId || r.from),
+        toId: normaliseId(r.to_entity_id || r.toEntityId || r.to),
+        fromName: r.from_entity?.name || r.from?.name || '—',
+        toName: r.to_entity?.name || r.to?.name || '—',
+        fromEntityTypeName:
+          r.from_entity_type?.name || r.fromEntityTypeName || '',
+        toEntityTypeName: r.to_entity_type?.name || r.toEntityTypeName || '',
+        direction: r.context?.__direction === 'reverse' ? 'reverse' : 'forward',
+        sourceLabel: sourceLabel || '—',
+        targetLabel: targetLabel || '—',
+      }
+    })
+  }, [relationships])
+
+  const sortedRelationships = useMemo(() => {
+    return normalisedRelationships
+      .filter(
+        (r) => r.fromId === entityIdString || r.toId === entityIdString,
+      )
+      .sort((a, b) => {
+        const aRelated = a.fromId === entityIdString ? a.toName : a.fromName
+        const bRelated = b.fromId === entityIdString ? b.toName : b.fromName
+        return aRelated.localeCompare(bRelated, undefined, {
+          sensitivity: 'base',
+        })
+      })
+  }, [normalisedRelationships, entityIdString])
+
+  const relationshipFilterOptions = useMemo(() => {
+    const typeMap = new Map()
+    const relatedTypeMap = new Map()
+
+    sortedRelationships.forEach((r) => {
+      const typeLabel = r.typeName || 'Unknown type'
+      const typeKey = buildRelationshipFilterKey(
+        r.typeId,
+        r.typeName,
+        typeLabel,
+      )
+      if (typeKey && !typeMap.has(typeKey)) typeMap.set(typeKey, typeLabel)
+
+      const isSource = r.fromId === entityIdString
+      const relatedLabel = isSource ? r.toEntityTypeName : r.fromEntityTypeName
+      const relatedKey = buildRelationshipFilterKey(
+        null,
+        relatedLabel,
+        relatedLabel,
+      )
+      if (relatedKey && !relatedTypeMap.has(relatedKey)) {
+        relatedTypeMap.set(relatedKey, relatedLabel)
+      }
+    })
+
+    const relationshipTypes = Array.from(typeMap.entries()).map(
+      ([value, label]) => ({ value, label }),
+    )
+    const relatedEntityTypes = Array.from(relatedTypeMap.entries()).map(
+      ([value, label]) => ({ value, label }),
+    )
+
+    return { relationshipTypes, relatedEntityTypes }
+  }, [sortedRelationships, entityIdString])
+
+  const filteredRelationships = useMemo(() => {
+    const typeFilter = relationshipFilters.relationshipTypes || {
+      mode: 'all',
+      values: [],
+    }
+    const relatedFilter = relationshipFilters.relatedEntityTypes || {
+      mode: 'all',
+      values: [],
+    }
+
+    return sortedRelationships.filter((r) => {
+      const typeKey = buildRelationshipFilterKey(
+        r.typeId,
+        r.typeName,
+        r.typeName,
+      )
+      if (typeFilter.mode !== 'all' && typeFilter.values.length) {
+        const match = typeKey && typeFilter.values.includes(typeKey)
+        if (typeFilter.mode === 'include' && !match) return false
+        if (typeFilter.mode === 'exclude' && match) return false
+      }
+
+      if (relatedFilter.mode !== 'all' && relatedFilter.values.length) {
+        const isSource = r.fromId === entityIdString
+        const relatedLabel = isSource
+          ? r.toEntityTypeName
+          : r.fromEntityTypeName
+        const relatedKey = buildRelationshipFilterKey(
+          null,
+          relatedLabel,
+          relatedLabel,
+        )
+        const match = relatedKey && relatedFilter.values.includes(relatedKey)
+        if (relatedFilter.mode === 'include' && !match) return false
+        if (relatedFilter.mode === 'exclude' && match) return false
+      }
+
+      return true
+    })
+  }, [sortedRelationships, relationshipFilters, entityIdString])
+
+  const handleRelationshipFiltersChange = useCallback((nextFilters) => {
+    if (!nextFilters || typeof nextFilters !== 'object') {
+      setRelationshipFilters(createDefaultRelationshipFilters())
+    } else {
+      setRelationshipFilters(nextFilters)
+    }
+  }, [])
+
+  const handleRelationshipFiltersReset = useCallback(() => {
+    setRelationshipFilters(createDefaultRelationshipFilters())
+  }, [])
 
   const filterButtonDisabled = relationshipsLoading
 
@@ -1178,7 +1389,7 @@ export default function EntityDetailPage() {
             fromEntity={entity}
             onCreated={() => {
               setShowRelationshipForm(false)
-              reloadRelationships()
+              loadRelationships()
             }}
             onCancel={() => setShowRelationshipForm(false)}
           />
@@ -1258,8 +1469,7 @@ export default function EntityDetailPage() {
                 canEdit={canEdit}
                 relationshipsLoading={relationshipsLoading}
                 relationshipsError={relationshipsError}
-                // in the hook we already sort & filter → just pass filtered + raw
-                sortedRelationships={relationships}
+                sortedRelationships={sortedRelationships}
                 filteredRelationships={filteredRelationships}
                 relationshipsEmptyMessage={relationshipsEmptyMessage}
                 relationshipFilters={relationshipFilters}
