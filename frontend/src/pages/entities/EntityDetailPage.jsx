@@ -1194,6 +1194,8 @@ export default function EntityDetailPage() {
     resetAccessSettings()
   }, [editInitialData, resetAccessSettings])
 
+  const hasUnsavedChanges = isEditing && (formState.isDirty || isAccessDirty)
+
   const handleEditToggle = useCallback(() => {
     if (!canEdit) return
     setFormError('')
@@ -1273,8 +1275,6 @@ export default function EntityDetailPage() {
       return next
     })
   }, [])
-
-  const hasUnsavedChanges = isEditing && (formState.isDirty || isAccessDirty)
 
   const handleTabChange = useCallback(
     (nextTab) => {
