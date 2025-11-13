@@ -307,6 +307,8 @@ export default function EntityDetailPage() {
   const [relationshipFilters, setRelationshipFilters] = useState(() =>
     createDefaultRelationshipFilters(),
   )
+  const prevLocationRef = useRef(location)
+  const allowedNavigationRef = useRef(null)
 
   const campaignMembership = useMemo(() => {
     if (!selectedCampaign || !user?.id) return null
@@ -386,6 +388,14 @@ export default function EntityDetailPage() {
     },
     [backUrl],
   )
+
+  const buildLocationPath = useCallback((loc) => {
+    if (!loc) return ''
+    const pathname = loc.pathname || ''
+    const search = loc.search || ''
+    const hash = loc.hash || ''
+    return `${pathname}${search}${hash}`
+  }, [])
 
   const handleExplore = useCallback(() => {
     navigate(`/entities/${id}/relationship-viewer`)
@@ -1357,6 +1367,69 @@ export default function EntityDetailPage() {
     hasUnsavedChanges,
     pendingAction,
     formatNavigationDestination,
+  ])
+
+  useEffect(() => {
+    const previousLocation = prevLocationRef.current
+    const previousPath = buildLocationPath(previousLocation)
+    const currentPath = buildLocationPath(location)
+
+    if (previousPath === currentPath) {
+      prevLocationRef.current = location
+      return
+    }
+
+    if (!hasUnsavedChanges) {
+      prevLocationRef.current = location
+      allowedNavigationRef.current = null
+      return
+    }
+
+    if (
+      allowedNavigationRef.current &&
+      allowedNavigationRef.current === currentPath
+    ) {
+      allowedNavigationRef.current = null
+      prevLocationRef.current = location
+      return
+    }
+
+    if (!previousLocation || pendingAction) {
+      prevLocationRef.current = previousLocation || location
+      return
+    }
+
+    const targetPath = currentPath || '/'
+    const stayPath = previousPath || '/'
+
+    const navigateToTarget = () => {
+      allowedNavigationRef.current = targetPath
+      navigate(targetPath)
+    }
+
+    const navigateToStay = () => {
+      allowedNavigationRef.current = stayPath
+      navigate(stayPath)
+    }
+
+    setPendingAction({
+      type: 'navigation',
+      label: formatNavigationDestination(location),
+      proceed: navigateToTarget,
+      discard: navigateToTarget,
+      stay: navigateToStay,
+    })
+    setUnsavedDialogOpen(true)
+
+    allowedNavigationRef.current = stayPath
+    navigate(stayPath, { replace: true })
+  }, [
+    buildLocationPath,
+    formatNavigationDestination,
+    hasUnsavedChanges,
+    location,
+    navigate,
+    pendingAction,
   ])
 
   if (!sessionReady) return <p>Restoring session...</p>
