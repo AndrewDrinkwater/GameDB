@@ -675,18 +675,26 @@ export default function EntityForm({
     setValues((prev) => ({ ...prev, entityTypeId: selectedEntityTypeId || '' }))
   }, [isEditMode, selectedEntityTypeId])
 
+  const activeCreateEntityTypeId = useMemo(() => {
+    if (isEditMode) return ''
+    if (values.entityTypeId) {
+      return values.entityTypeId
+    }
+    return selectedEntityTypeId || ''
+  }, [isEditMode, selectedEntityTypeId, values.entityTypeId])
+
   useEffect(() => {
     if (isEditMode) {
-        setMetadataFieldDefs([])
-        setMetadataValues({})
-        setReferenceFieldLabels({})
+      setMetadataFieldDefs([])
+      setMetadataValues({})
+      setReferenceFieldLabels({})
       return
     }
 
-    if (!selectedEntityTypeId) {
-        setMetadataFieldDefs([])
-        setMetadataValues({})
-        setReferenceFieldLabels({})
+    if (!activeCreateEntityTypeId) {
+      setMetadataFieldDefs([])
+      setMetadataValues({})
+      setReferenceFieldLabels({})
       return
     }
 
@@ -695,7 +703,7 @@ export default function EntityForm({
     const loadMetadataFields = async () => {
       setLoadingMetadataFields(true)
       try {
-        const response = await getEntityTypeFields(selectedEntityTypeId)
+        const response = await getEntityTypeFields(activeCreateEntityTypeId)
         const list = Array.isArray(response)
           ? response
           : Array.isArray(response?.data)
@@ -770,7 +778,7 @@ export default function EntityForm({
     return () => {
       cancelled = true
     }
-  }, [isEditMode, selectedEntityTypeId])
+  }, [activeCreateEntityTypeId, isEditMode])
 
   const selectedEntityType = useMemo(() => {
     const id = values.entityTypeId || selectedEntityTypeId || ''
