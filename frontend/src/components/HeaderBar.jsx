@@ -83,12 +83,12 @@ export default function HeaderBar({ onMenuToggle }) {
       <div className="header-start">
         {isMobile ? (
           <>
-            {menuButton}
             <h1 className="title">
               <Link to="/" className="title-link">
                 GameDB
               </Link>
             </h1>
+            {menuButton}
             {historyButton}
           </>
         ) : (

@@ -5,6 +5,7 @@ import { getFields as getEntityTypeFields } from '../../api/entityTypeFields.js'
 import AccessSettingsEditor from '../../components/entities/AccessSettingsEditor.jsx'
 import { fetchAccessOptionsForWorld } from '../../utils/entityAccessOptions.js'
 import EntitySearchSelect from '../../modules/relationships3/ui/EntitySearchSelect.jsx'
+import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 
 const VISIBILITY_OPTIONS = [
   { value: 'hidden', label: 'Hidden' },
@@ -867,6 +868,9 @@ export default function EntityForm({
           value && (knownLabel || staticMatchLabel)
             ? { id: value, name: knownLabel || staticMatchLabel }
             : value
+        const resolvedValue = value ? String(value) : ''
+        const referenceDisplayLabel =
+          referenceFieldLabels[field.name] || staticMatchLabel || placeholderLabel
 
         const handleReferenceChange = (entity) => {
           if (!entity) {
@@ -944,17 +948,26 @@ export default function EntityForm({
 
         return (
           <div className="reference-field-control">
-            <EntitySearchSelect
-              worldId={worldId}
-              value={controlValue}
-              allowedTypeIds={referenceTypeId ? [referenceTypeId] : []}
-              placeholder={`Search ${placeholderLabel.toLowerCase()}...`}
-              disabled={controlDisabled}
-              staticOptions={staticOptions}
-              onChange={handleReferenceChange}
-              onResolved={handleReferenceResolved}
-              required={isRequired}
-            />
+            <div className="reference-field-input-row">
+              <EntitySearchSelect
+                worldId={worldId}
+                value={controlValue}
+                allowedTypeIds={referenceTypeId ? [referenceTypeId] : []}
+                placeholder={`Search ${placeholderLabel.toLowerCase()}...`}
+                disabled={controlDisabled}
+                staticOptions={staticOptions}
+                onChange={handleReferenceChange}
+                onResolved={handleReferenceResolved}
+                required={isRequired}
+              />
+              {resolvedValue && (
+                <EntityInfoPreview
+                  entityId={resolvedValue}
+                  entityName={referenceDisplayLabel}
+                  className="reference-field-info-btn"
+                />
+              )}
+            </div>
             {!referenceTypeId && (
               <p className="field-hint warning">Reference type configuration is missing.</p>
             )}
