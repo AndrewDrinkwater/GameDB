@@ -10,9 +10,7 @@ export default function AccessTab({
   accessSaving,
   accessSaveError,
   accessSaveSuccess,
-  isAccessDirty,
   handleAccessSettingChange,
-  handleAccessSave,
 }) {
   return (
     <div className="entity-tab-content">
@@ -20,7 +18,8 @@ export default function AccessTab({
         <h2 className="entity-card-title">Access controls</h2>
         <p className="entity-access-note help-text">
           Configure who can view and edit this entity. Users with write access will
-          automatically receive read access. Save your changes to update the access rules.
+          automatically receive read access. Changes are saved along with the rest of the
+          record.
         </p>
 
         {accessOptionsError && (
@@ -55,14 +54,9 @@ export default function AccessTab({
                   {accessSaveSuccess}
                 </div>
               )}
-              <button
-                type="button"
-                className="btn submit"
-                onClick={handleAccessSave}
-                disabled={!canEdit || accessSaving || !isAccessDirty}
-              >
-                {accessSaving ? 'Saving...' : 'Save access settings'}
-              </button>
+              <p className="help-text">
+                Use the main Save action to apply your access changes.
+              </p>
             </div>
           </>
         )}
