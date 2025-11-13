@@ -7,6 +7,7 @@ import TabNav from '../../components/TabNav.jsx'
 import DrawerPanel from '../../components/DrawerPanel.jsx'
 import EntityHeader from '../../components/entities/EntityHeader.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
+import UnsavedChangesDialog from '../../components/UnsavedChangesDialog.jsx'
 // NOTE: relationship filters now handled in hook, but keeping import if you still use it elsewhere
 // import EntityRelationshipFilters, {
 //   createDefaultRelationshipFilters,
@@ -275,6 +276,9 @@ export default function EntityDetailPage() {
     isDirty: false,
     isSubmitting: false,
   })
+  const [unsavedDialogOpen, setUnsavedDialogOpen] = useState(false)
+  const [pendingAction, setPendingAction] = useState(null)
+  const [unsavedDialogSaving, setUnsavedDialogSaving] = useState(false)
 
   const campaignMembership = useMemo(() => {
     if (!selectedCampaign || !user?.id) return null
@@ -939,6 +943,19 @@ export default function EntityDetailPage() {
     return success
   }, [canEdit, formState.isDirty, isAccessDirty, handleAccessSave])
 
+  const handleUnsavedSaveAndContinue = useCallback(async () => {
+    setUnsavedDialogSaving(true)
+    try {
+      const saved = await handleSaveAll()
+      if (saved) {
+        setUnsavedDialogOpen(false)
+        proceedPendingAction()
+      }
+    } finally {
+      setUnsavedDialogSaving(false)
+    }
+  }, [handleSaveAll, proceedPendingAction, setUnsavedDialogOpen, setUnsavedDialogSaving])
+
   const handleEditToggle = useCallback(async () => {
     if (!canEdit) return
     setFormError('')
@@ -1033,6 +1050,50 @@ export default function EntityDetailPage() {
 
   const hasUnsavedChanges = isEditing && (formState.isDirty || isAccessDirty)
 
+  const handleTabChange = useCallback(
+    (nextTab) => {
+      if (!nextTab || nextTab === activeTab) return
+
+      const isEditingTab = activeTab === 'dossier' || activeTab === 'access'
+
+      if (hasUnsavedChanges && isEditingTab) {
+        const nextLabel = tabItems.find((tab) => tab.id === nextTab)?.label || ''
+        setPendingAction({ type: 'tab', target: nextTab, label: nextLabel })
+        setUnsavedDialogOpen(true)
+        return
+      }
+
+      setActiveTab(nextTab)
+    },
+    [
+      activeTab,
+      hasUnsavedChanges,
+      tabItems,
+      setActiveTab,
+      setPendingAction,
+      setUnsavedDialogOpen,
+    ],
+  )
+
+  const proceedPendingAction = useCallback(() => {
+    setPendingAction((action) => {
+      if (action?.type === 'tab' && action.target) {
+        setActiveTab(action.target)
+      }
+      return null
+    })
+  }, [setActiveTab, setPendingAction])
+
+  const handleUnsavedContinue = useCallback(() => {
+    setUnsavedDialogOpen(false)
+    proceedPendingAction()
+  }, [proceedPendingAction, setUnsavedDialogOpen])
+
+  const handleUnsavedStay = useCallback(() => {
+    setUnsavedDialogOpen(false)
+    setPendingAction(null)
+  }, [setPendingAction, setUnsavedDialogOpen])
+
   useUnsavedChangesPrompt(hasUnsavedChanges, EDIT_MODE_PROMPT_MESSAGE)
 
   if (!sessionReady) return <p>Restoring session...</p>
@@ -1045,150 +1106,165 @@ export default function EntityDetailPage() {
   const pageClassName = `entity-detail-page${isMobile ? ' entity-detail-page--mobile' : ''}`
 
   return (
-    <div className={pageClassName}>
-      <DrawerPanel
-        isOpen={showRelationshipForm}
-        onClose={() => setShowRelationshipForm(false)}
-        title="Add relationship"
-        description="Link this entity to others without leaving the page."
-        size="lg"
-      >
-        <RelationshipBuilder
-          worldId={worldId}
-          fromEntity={entity}
-          onCreated={() => {
-            setShowRelationshipForm(false)
-            reloadRelationships()
-          }}
-          onCancel={() => setShowRelationshipForm(false)}
-        />
-      </DrawerPanel>
-
-      {/* --- ENTITY DETAIL TOP BAR --- */}
-      <div className="entity-detail-topbar">
-        <div className="entity-detail-topbar-inner">
-          <EntityHeader
-            name={entity.name}
-            onBack={handleBack}
-            onExplore={isMobile ? undefined : handleExplore}
-            canEdit={canEdit}
-            isEditing={isEditing}
-            onToggleEdit={handleEditToggle}
-            onSave={handleSaveAll}
-            isSaving={formState.isSubmitting || accessSaving}
-            isSaveDisabled={!formState.isDirty && !isAccessDirty}
+    <>
+      <div className={pageClassName}>
+        <DrawerPanel
+          isOpen={showRelationshipForm}
+          onClose={() => setShowRelationshipForm(false)}
+          title="Add relationship"
+          description="Link this entity to others without leaving the page."
+          size="lg"
+        >
+          <RelationshipBuilder
+            worldId={worldId}
+            fromEntity={entity}
+            onCreated={() => {
+              setShowRelationshipForm(false)
+              reloadRelationships()
+            }}
+            onCancel={() => setShowRelationshipForm(false)}
           />
-          <TabNav
-            tabs={tabItems}
-            activeTab={activeTab}
-            onChange={setActiveTab}
-          />
-        </div>
-      </div>
+        </DrawerPanel>
 
-      {/* --- MAIN SHELL --- */}
-      <div className="entity-detail-shell">
-        <div className="entity-detail-body">
-          {/* DOSSIER TAB */}
-          <div
-            className="entity-tab-panel"
-            role="tabpanel"
-            hidden={activeTab !== 'dossier'}
-          >
-            <DossierTab
-              isEditing={isEditing}
+        {/* --- ENTITY DETAIL TOP BAR --- */}
+        <div className="entity-detail-topbar">
+          <div className="entity-detail-topbar-inner">
+            <EntityHeader
+              name={entity.name}
+              onBack={handleBack}
+              onExplore={isMobile ? undefined : handleExplore}
               canEdit={canEdit}
-              formError={formError}
-              formRef={formRef}
-              editSchema={editSchema}
-              editInitialData={editInitialData}
-              handleUpdate={handleUpdate}
-              handleFormStateChange={handleFormStateChange}
-              dossierSchema={dossierSchema}
-              viewData={viewData}
-              renderSchemaSections={renderSchemaSections}
+              isEditing={isEditing}
+              onToggleEdit={handleEditToggle}
+              onSave={handleSaveAll}
+              isSaving={formState.isSubmitting || accessSaving}
+              isSaveDisabled={!formState.isDirty && !isAccessDirty}
+            />
+            <TabNav
+              tabs={tabItems}
+              activeTab={activeTab}
+              onChange={handleTabChange}
             />
           </div>
+        </div>
 
-          {/* NOTES TAB */}
-          {activeTab === 'notes' && (
-            <NotesTab
-              entity={entity}
-              worldId={entityWorldId}
-              selectedCampaign={selectedCampaign}
-              selectedCampaignId={selectedCampaignId}
-              isCampaignDm={isCampaignDm}
-              isCampaignPlayer={isCampaignPlayer}
-              canCreateNote={canCreateNotes}
-              notes={notesState.items}
-              loading={notesState.loading}
-              error={notesState.error}
-              onReload={handleNotesReload}
-              onCreateNote={handleNoteCreate}
-              creating={notesSaving}
-              campaignMatchesEntityWorld={campaignMatchesEntityWorld}
-            />
-          )}
+        {/* --- MAIN SHELL --- */}
+        <div className="entity-detail-shell">
+          <div className="entity-detail-body">
+            {/* DOSSIER TAB */}
+            <div
+              className="entity-tab-panel"
+              role="tabpanel"
+              hidden={activeTab !== 'dossier'}
+            >
+              <DossierTab
+                isEditing={isEditing}
+                canEdit={canEdit}
+                formError={formError}
+                formRef={formRef}
+                editSchema={editSchema}
+                editInitialData={editInitialData}
+                handleUpdate={handleUpdate}
+                handleFormStateChange={handleFormStateChange}
+                dossierSchema={dossierSchema}
+                viewData={viewData}
+                renderSchemaSections={renderSchemaSections}
+              />
+            </div>
 
-          {/* RELATIONSHIPS TAB */}
-          {activeTab === 'relationships' && (
-            <RelationshipsTab
-              entity={entity}
-              toast={toast}
-              canEdit={canEdit}
-              relationshipsLoading={relationshipsLoading}
-              relationshipsError={relationshipsError}
-              // in the hook we already sort & filter → just pass filtered + raw
-              sortedRelationships={relationships}
-              filteredRelationships={filteredRelationships}
-              relationshipsEmptyMessage={relationshipsEmptyMessage}
-              relationshipFilters={relationshipFilters}
-              relationshipFilterOptions={relationshipFilterOptions}
-              filterButtonDisabled={filterButtonDisabled}
-              handleRelationshipFiltersChange={handleRelationshipFiltersChange}
-              handleRelationshipFiltersReset={handleRelationshipFiltersReset}
-              setShowRelationshipForm={setShowRelationshipForm}
-            />
-          )}
+            {/* NOTES TAB */}
+            {activeTab === 'notes' && (
+              <NotesTab
+                entity={entity}
+                worldId={entityWorldId}
+                selectedCampaign={selectedCampaign}
+                selectedCampaignId={selectedCampaignId}
+                isCampaignDm={isCampaignDm}
+                isCampaignPlayer={isCampaignPlayer}
+                canCreateNote={canCreateNotes}
+                notes={notesState.items}
+                loading={notesState.loading}
+                error={notesState.error}
+                onReload={handleNotesReload}
+                onCreateNote={handleNoteCreate}
+                creating={notesSaving}
+                campaignMatchesEntityWorld={campaignMatchesEntityWorld}
+              />
+            )}
 
-          {/* SECRETS TAB */}
-          {activeTab === 'secrets' && showSecretsTab && (
-            <SecretsTab
-              entity={entity}
-              secrets={secrets}
-              worldId={worldId}
-              canManageSecrets={canManageSecrets}
-              onSecretCreated={handleSecretUpsert}
-              onSecretUpdated={handleSecretUpsert}
-            />
-          )}
+            {/* RELATIONSHIPS TAB */}
+            {activeTab === 'relationships' && (
+              <RelationshipsTab
+                entity={entity}
+                toast={toast}
+                canEdit={canEdit}
+                relationshipsLoading={relationshipsLoading}
+                relationshipsError={relationshipsError}
+                // in the hook we already sort & filter → just pass filtered + raw
+                sortedRelationships={relationships}
+                filteredRelationships={filteredRelationships}
+                relationshipsEmptyMessage={relationshipsEmptyMessage}
+                relationshipFilters={relationshipFilters}
+                relationshipFilterOptions={relationshipFilterOptions}
+                filterButtonDisabled={filterButtonDisabled}
+                handleRelationshipFiltersChange={handleRelationshipFiltersChange}
+                handleRelationshipFiltersReset={handleRelationshipFiltersReset}
+                setShowRelationshipForm={setShowRelationshipForm}
+              />
+            )}
 
-          {/* ACCESS TAB */}
-          {activeTab === 'access' && isEditing && canEdit && (
-            <AccessTab
-              canEdit={canEdit}
-              worldId={worldId}
-              accessSettings={accessSettings}
-              accessOptions={accessOptions}
-              accessOptionsError={accessOptionsError}
-              accessOptionsLoading={accessOptionsLoading}
-              accessSaving={accessSaving}
-              accessSaveError={accessSaveError}
-              accessSaveSuccess={accessSaveSuccess}
-              handleAccessSettingChange={handleAccessSettingChange}
-            />
-          )}
+            {/* SECRETS TAB */}
+            {activeTab === 'secrets' && showSecretsTab && (
+              <SecretsTab
+                entity={entity}
+                secrets={secrets}
+                worldId={worldId}
+                canManageSecrets={canManageSecrets}
+                onSecretCreated={handleSecretUpsert}
+                onSecretUpdated={handleSecretUpsert}
+              />
+            )}
 
-          {/* SYSTEM TAB */}
-          {activeTab === 'system' && (
-            <SystemTab
-              renderSchemaSections={renderSchemaSections}
-              systemSchema={systemSchema}
-              viewData={viewData}
-            />
-          )}
+            {/* ACCESS TAB */}
+            {activeTab === 'access' && isEditing && canEdit && (
+              <AccessTab
+                canEdit={canEdit}
+                worldId={worldId}
+                accessSettings={accessSettings}
+                accessOptions={accessOptions}
+                accessOptionsError={accessOptionsError}
+                accessOptionsLoading={accessOptionsLoading}
+                accessSaving={accessSaving}
+                accessSaveError={accessSaveError}
+                accessSaveSuccess={accessSaveSuccess}
+                handleAccessSettingChange={handleAccessSettingChange}
+              />
+            )}
+
+            {/* SYSTEM TAB */}
+            {activeTab === 'system' && (
+              <SystemTab
+                renderSchemaSections={renderSchemaSections}
+                systemSchema={systemSchema}
+                viewData={viewData}
+              />
+            )}
+          </div>
         </div>
       </div>
-    </div>
+
+      <UnsavedChangesDialog
+        open={unsavedDialogOpen}
+        destinationLabel={
+          pendingAction?.type === 'tab' && pendingAction?.label
+            ? `${pendingAction.label} tab`
+            : ''
+        }
+        saving={unsavedDialogSaving}
+        onSaveAndContinue={handleUnsavedSaveAndContinue}
+        onContinueWithoutSaving={handleUnsavedContinue}
+        onStay={handleUnsavedStay}
+      />
+    </>
   )
 }

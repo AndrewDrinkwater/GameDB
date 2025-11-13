@@ -54,9 +54,6 @@ export default function AccessTab({
                   {accessSaveSuccess}
                 </div>
               )}
-              <p className="help-text">
-                Use the main Save action to apply your access changes.
-              </p>
             </div>
           </>
         )}
