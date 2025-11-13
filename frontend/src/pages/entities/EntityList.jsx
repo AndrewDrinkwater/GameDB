@@ -98,11 +98,79 @@ const sanitiseColumnSelection = (columns, fallbackList, allowedKeys) => {
   return []
 }
 
-const formatMetadataValue = (value) => {
+const extractReferenceLabel = (entry) => {
+  if (!entry || typeof entry !== 'object') return ''
+  const label =
+    entry.displayValue ??
+    entry.display ??
+    entry.label ??
+    entry.displayName ??
+    entry.text ??
+    entry.name ??
+    entry.title ??
+    entry.value ??
+    entry.id ??
+    null
+
+  return label !== null && label !== undefined ? String(label).trim() : ''
+}
+
+const looksLikeReferenceValue = (value) => {
+  if (!value || typeof value !== 'object') return false
+  if (Array.isArray(value)) {
+    return value.some((item) => looksLikeReferenceValue(item))
+  }
+  return (
+    Object.prototype.hasOwnProperty.call(value, 'displayValue') ||
+    Object.prototype.hasOwnProperty.call(value, 'display') ||
+    Object.prototype.hasOwnProperty.call(value, 'label')
+  )
+}
+
+const formatReferenceMetadataValue = (value) => {
+  if (value === null || value === undefined) return ''
+  if (Array.isArray(value)) {
+    const labels = value
+      .map((entry) => formatReferenceMetadataValue(entry))
+      .filter((text) => Boolean(text))
+    return labels.length ? labels.join(', ') : ''
+  }
+  if (typeof value === 'object') {
+    return extractReferenceLabel(value)
+  }
+  return String(value).trim()
+}
+
+const formatMetadataValue = (value, column = null) => {
   if (value === null || value === undefined) return '—'
+
+  const dataType = column?.dataType || column?.data_type || ''
+  const shouldRenderReference = dataType === 'reference' || looksLikeReferenceValue(value)
+  if (shouldRenderReference) {
+    const displayValue = formatReferenceMetadataValue(value)
+    return displayValue || '—'
+  }
+
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
-  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '—'
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : '—'
+  }
+
+  if (dataType === 'number') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? String(parsed) : '—'
+  }
+
   if (value instanceof Date) return value.toLocaleDateString()
+
+  if (dataType === 'date' || (typeof value === 'string' && dataType === 'text')) {
+    const date = new Date(value)
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleDateString()
+    }
+  }
+
   if (Array.isArray(value)) {
     if (value.length === 0) return '—'
     return value
@@ -110,6 +178,7 @@ const formatMetadataValue = (value) => {
       .map((item) => (typeof item === 'string' ? item.trim() : String(item)))
       .join(', ')
   }
+
   if (typeof value === 'object') {
     try {
       return JSON.stringify(value)
@@ -118,6 +187,7 @@ const formatMetadataValue = (value) => {
       return '—'
     }
   }
+
   const text = String(value).trim()
   return text || '—'
 }
@@ -849,7 +919,7 @@ export default function EntityList() {
       }
 
       if (column.key.startsWith('metadata.')) {
-        return formatMetadataValue(value)
+        return formatMetadataValue(value, column)
       }
 
       if (column.key === 'name' || column.key === 'description') {
@@ -934,7 +1004,7 @@ export default function EntityList() {
       default: {
         if (column.key.startsWith('metadata.')) {
           const key = column.key.replace(/^metadata\./, '')
-          return formatMetadataValue(metadata?.[key])
+          return formatMetadataValue(metadata?.[key], column)
         }
         return '—'
       }
