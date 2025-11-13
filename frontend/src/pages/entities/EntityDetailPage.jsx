@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  Link,
-  unstable_useBlocker,
-  useBeforeUnload,
-  useLocation,
-  useNavigate,
-  useParams,
-} from 'react-router-dom'
+import { Link, useBeforeUnload, useLocation, useNavigate, useParams } from 'react-router-dom'
 import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
 import FieldRenderer from '../../components/RecordForm/FieldRenderer.jsx'
 import ListCollector from '../../components/ListCollector.jsx'
@@ -29,6 +22,7 @@ import RelationshipBuilder from '../../modules/relationships3/RelationshipBuilde
 // hooks
 import useEntityAccess from '../../hooks/useEntityAccess.js'
 import useIsMobile from '../../hooks/useIsMobile.js'
+import useNavigationBlocker from '../../hooks/useNavigationBlocker.js'
 
 // tabs
 import DossierTab from './tabs/DossierTab.jsx'
@@ -1333,7 +1327,7 @@ export default function EntityDetailPage() {
     [hasUnsavedChanges],
   )
 
-  const navigationBlocker = unstable_useBlocker(shouldBlockNavigation)
+  const navigationBlocker = useNavigationBlocker(shouldBlockNavigation)
 
   useEffect(() => {
     if (navigationBlocker.state !== 'blocked') return
