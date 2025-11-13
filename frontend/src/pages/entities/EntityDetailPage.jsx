@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import {
+  Link,
+  unstable_useBlocker,
+  useBeforeUnload,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom'
 import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
 import FieldRenderer from '../../components/RecordForm/FieldRenderer.jsx'
 import ListCollector from '../../components/ListCollector.jsx'
@@ -21,8 +28,6 @@ import {
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import RelationshipBuilder from '../../modules/relationships3/RelationshipBuilder.jsx'
-import useUnsavedChangesPrompt from '../../hooks/useUnsavedChangesPrompt.js'
-
 // hooks
 import useEntityAccess from '../../hooks/useEntityAccess.js'
 import useEntityRelationships from '../../hooks/useEntityRelationships.js'
@@ -35,9 +40,6 @@ import AccessTab from './tabs/AccessTab.jsx'
 import SystemTab from './tabs/SystemTab.jsx'
 import SecretsTab from './tabs/SecretsTab.jsx'
 import NotesTab from './tabs/NotesTab.jsx'
-
-const EDIT_MODE_PROMPT_MESSAGE =
-  'You have unsaved changes. Do you want to save them before leaving this page?'
 
 const formatDateTime = (value) => {
   if (!value) return '—'
@@ -345,6 +347,19 @@ export default function EntityDetailPage() {
   const handleBack = useCallback(() => {
     navigate(backUrl)
   }, [navigate, backUrl])
+
+  const formatNavigationDestination = useCallback(
+    (location) => {
+      if (!location) return 'the next page'
+      const pathname = location.pathname || ''
+      const search = location.search || ''
+      const destination = `${pathname}${search}`
+      if (!destination) return 'the next page'
+      if (destination === backUrl) return 'the previous page'
+      return destination
+    },
+    [backUrl],
+  )
 
   const handleExplore = useCallback(() => {
     navigate(`/entities/${id}/relationship-viewer`)
@@ -893,6 +908,7 @@ export default function EntityDetailPage() {
     accessSaveSuccess,
     isAccessDirty,
     handleAccessSettingChange,
+    resetAccessSettings,
     handleAccessSave,
   } = useEntityAccess(entity, token, canEdit)
 
@@ -945,12 +961,10 @@ export default function EntityDetailPage() {
 
   const proceedPendingAction = useCallback(() => {
     setPendingAction((action) => {
-      if (action?.type === 'tab' && action.target) {
-        setActiveTab(action.target)
-      }
+      action?.proceed?.()
       return null
     })
-  }, [setActiveTab, setPendingAction])
+  }, [])
 
   const handleUnsavedSaveAndContinue = useCallback(async () => {
     setUnsavedDialogSaving(true)
@@ -965,45 +979,43 @@ export default function EntityDetailPage() {
     }
   }, [handleSaveAll, proceedPendingAction, setUnsavedDialogOpen, setUnsavedDialogSaving])
 
-  const handleEditToggle = useCallback(async () => {
+  const exitEditMode = useCallback(() => {
+    setIsEditing(false)
+    setActiveTab('dossier')
+  }, [setActiveTab])
+
+  const resetPendingChanges = useCallback(() => {
+    formRef.current?.reset?.(editInitialData || {})
+    resetAccessSettings()
+  }, [editInitialData, resetAccessSettings])
+
+  const handleEditToggle = useCallback(() => {
     if (!canEdit) return
     setFormError('')
 
-    // entering edit mode
     if (!isEditing) {
       setIsEditing(true)
       return
     }
 
-    const hasFormChanges = formState.isDirty
-    const hasAccessChanges = isAccessDirty
-
-    if (hasFormChanges || hasAccessChanges) {
-      const shouldSave = window.confirm(
-        'You have unsaved changes. Would you like to save them before leaving edit mode?',
-      )
-
-      if (shouldSave) {
-        const saved = await handleSaveAll()
-        if (!saved) {
-          return
-        }
-      } else {
-        formRef.current?.reset?.(editInitialData || {})
-        // access hook keeps its own internal default handling
-      }
+    if (hasUnsavedChanges) {
+      setPendingAction({
+        type: 'exit-edit',
+        label: 'view mode',
+        proceed: () => {
+          exitEditMode()
+        },
+        discard: () => {
+          resetPendingChanges()
+          exitEditMode()
+        },
+      })
+      setUnsavedDialogOpen(true)
+      return
     }
 
-    setIsEditing(false)
-    setActiveTab('dossier')
-  }, [
-    canEdit,
-    isEditing,
-    formState.isDirty,
-    isAccessDirty,
-    handleSaveAll,
-    editInitialData,
-  ])
+    exitEditMode()
+  }, [canEdit, exitEditMode, hasUnsavedChanges, isEditing, resetPendingChanges])
 
   const handleUpdate = useCallback(
     async (values) => {
@@ -1062,39 +1074,85 @@ export default function EntityDetailPage() {
   const handleTabChange = useCallback(
     (nextTab) => {
       if (!nextTab || nextTab === activeTab) return
-
-      const isEditingTab = activeTab === 'dossier' || activeTab === 'access'
-
-      if (hasUnsavedChanges && isEditingTab) {
-        const nextLabel = tabItems.find((tab) => tab.id === nextTab)?.label || ''
-        setPendingAction({ type: 'tab', target: nextTab, label: nextLabel })
-        setUnsavedDialogOpen(true)
-        return
-      }
-
       setActiveTab(nextTab)
     },
-    [
-      activeTab,
-      hasUnsavedChanges,
-      tabItems,
-      setActiveTab,
-      setPendingAction,
-      setUnsavedDialogOpen,
-    ],
+    [activeTab, setActiveTab],
   )
 
   const handleUnsavedContinue = useCallback(() => {
     setUnsavedDialogOpen(false)
-    proceedPendingAction()
-  }, [proceedPendingAction, setUnsavedDialogOpen])
+    setPendingAction((action) => {
+      action?.discard?.()
+      return null
+    })
+  }, [])
 
   const handleUnsavedStay = useCallback(() => {
     setUnsavedDialogOpen(false)
-    setPendingAction(null)
-  }, [setPendingAction, setUnsavedDialogOpen])
+    setPendingAction((action) => {
+      action?.stay?.()
+      return null
+    })
+  }, [])
 
-  useUnsavedChangesPrompt(hasUnsavedChanges, EDIT_MODE_PROMPT_MESSAGE)
+  useBeforeUnload(
+    useCallback(
+      (event) => {
+        if (!hasUnsavedChanges) return
+        event.preventDefault()
+        event.returnValue = ''
+      },
+      [hasUnsavedChanges],
+    ),
+    { capture: true },
+  )
+
+  const shouldBlockNavigation = useCallback(
+    ({ currentLocation, nextLocation }) => {
+      if (!hasUnsavedChanges) return false
+      if (!nextLocation) return false
+
+      const isSameDestination =
+        currentLocation.pathname === nextLocation.pathname &&
+        currentLocation.search === nextLocation.search &&
+        currentLocation.hash === nextLocation.hash
+
+      return !isSameDestination
+    },
+    [hasUnsavedChanges],
+  )
+
+  const navigationBlocker = unstable_useBlocker(shouldBlockNavigation)
+
+  useEffect(() => {
+    if (navigationBlocker.state !== 'blocked') return
+    if (!hasUnsavedChanges) {
+      navigationBlocker.reset?.()
+      return
+    }
+
+    if (pendingAction) {
+      if (pendingAction.type === 'navigation') {
+        return
+      }
+      navigationBlocker.reset?.()
+      return
+    }
+
+    setPendingAction({
+      type: 'navigation',
+      label: formatNavigationDestination(navigationBlocker.location),
+      proceed: () => navigationBlocker.proceed?.(),
+      discard: () => navigationBlocker.proceed?.(),
+      stay: () => navigationBlocker.reset?.(),
+    })
+    setUnsavedDialogOpen(true)
+  }, [
+    navigationBlocker,
+    hasUnsavedChanges,
+    pendingAction,
+    formatNavigationDestination,
+  ])
 
   if (!sessionReady) return <p>Restoring session...</p>
   if (!token) return <p>Authenticating...</p>
@@ -1255,11 +1313,7 @@ export default function EntityDetailPage() {
 
       <UnsavedChangesDialog
         open={unsavedDialogOpen}
-        destinationLabel={
-          pendingAction?.type === 'tab' && pendingAction?.label
-            ? `${pendingAction.label} tab`
-            : ''
-        }
+        destinationLabel={pendingAction?.label || ''}
         saving={unsavedDialogSaving}
         onSaveAndContinue={handleUnsavedSaveAndContinue}
         onContinueWithoutSaving={handleUnsavedContinue}
