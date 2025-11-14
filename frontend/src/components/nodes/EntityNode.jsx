@@ -1,5 +1,6 @@
 import { Handle, Position } from 'reactflow'
 import { Info, Target } from 'lucide-react'
+import { buildEntityImageUrl } from '../../utils/entityHelpers.js'
 import './nodeStyles.css'
 
 export default function EntityNode({ data }) {
@@ -9,6 +10,7 @@ export default function EntityNode({ data }) {
   const inheritedStyle = data?.style || {}
   const entityId = data?.entityId || data?.id
   const isExpandedProtected = Boolean(data?.isExpandedProtected)
+  const imageUrl = data?.imageUrl || buildEntityImageUrl(data?.entity)
 
   const handleSetTarget = (event) => {
     event?.preventDefault()
@@ -47,6 +49,11 @@ export default function EntityNode({ data }) {
 
       <div className="entity-node__content">
         <div className="entity-node__row entity-node__row--title">
+          {imageUrl ? (
+            <div className="entity-node__avatar" aria-hidden="true">
+              <img src={imageUrl} alt="" loading="lazy" />
+            </div>
+          ) : null}
           <div className="entity-node__label" title={label}>
             {label}
           </div>
