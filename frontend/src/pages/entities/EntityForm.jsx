@@ -347,6 +347,30 @@ export default function EntityForm({
     replaceImageInputRef.current?.click()
   }, [entityId, imageDeleting, imageUploading, loadingEntity])
 
+  const applyEntityImage = useCallback((entity) => {
+    if (!entity) {
+      setEntityImage(null)
+      return
+    }
+    const imageData = entity.imageData ?? entity.image_data ?? null
+    const imageMimeType = entity.imageMimeType ?? entity.image_mime_type ?? null
+    if (imageData && imageMimeType) {
+      setEntityImage({ imageData, imageMimeType })
+    } else {
+      setEntityImage(null)
+    }
+  }, [])
+
+  const refreshEntityImage = useCallback(async () => {
+    if (!entityId) return null
+    const response = await getEntity(entityId)
+    const data = resolveEntityResponse(response)
+    if (data) {
+      applyEntityImage(data)
+    }
+    return data
+  }, [applyEntityImage, entityId])
+
   const handleUploadImage = useCallback(async () => {
     if (!entityId || !pendingImageFile) return
     setImageUploading(true)
@@ -414,30 +438,6 @@ export default function EntityForm({
       </button>
     </div>
   ) : null
-
-  const applyEntityImage = useCallback((entity) => {
-    if (!entity) {
-      setEntityImage(null)
-      return
-    }
-    const imageData = entity.imageData ?? entity.image_data ?? null
-    const imageMimeType = entity.imageMimeType ?? entity.image_mime_type ?? null
-    if (imageData && imageMimeType) {
-      setEntityImage({ imageData, imageMimeType })
-    } else {
-      setEntityImage(null)
-    }
-  }, [])
-
-  const refreshEntityImage = useCallback(async () => {
-    if (!entityId) return null
-    const response = await getEntity(entityId)
-    const data = resolveEntityResponse(response)
-    if (data) {
-      applyEntityImage(data)
-    }
-    return data
-  }, [applyEntityImage, entityId])
 
   const ensureAtLeastOnePair = useCallback(
     (pairs) => {
