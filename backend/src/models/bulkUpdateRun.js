@@ -28,6 +28,11 @@ export default (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 0,
       },
+      role_used: {
+        type: DataTypes.ENUM('owner', 'dm'),
+        allowNull: false,
+        defaultValue: 'owner',
+      },
       reverted: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
@@ -45,6 +50,10 @@ export default (sequelize, DataTypes) => {
   BulkUpdateRun.associate = (models) => {
     BulkUpdateRun.belongsTo(models.World, { foreignKey: 'world_id', as: 'world' })
     BulkUpdateRun.belongsTo(models.User, { foreignKey: 'user_id', as: 'actor' })
+    BulkUpdateRun.belongsTo(models.Campaign, {
+      foreignKey: 'campaign_context_id',
+      as: 'campaignContext',
+    })
     BulkUpdateRun.hasMany(models.BulkUpdateChange, { foreignKey: 'run_id', as: 'changes' })
   }
 

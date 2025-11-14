@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   fetchCampaigns,
@@ -372,6 +372,34 @@ export default function CampaignsPage({ scope = 'all' }) {
   const title = scope === 'my' ? 'My Campaigns' : 'All Campaigns'
   const closeLabel = scope === 'my' ? 'Back to my campaigns' : 'Back to all campaigns'
 
+  const isDmForSelectedCampaign = useMemo(() => {
+    if (!selectedCampaign || !Array.isArray(selectedCampaign.members)) return false
+    if (!user?.id) return false
+    return selectedCampaign.members.some(
+      (member) => member?.user_id === user.id && member?.role === 'dm',
+    )
+  }, [selectedCampaign, user])
+
+  const campaignAccessLink = selectedCampaign ? `/campaigns/${selectedCampaign.id}/access/bulk` : ''
+  const canUseCampaignAccess = Boolean(selectedCampaign && isDmForSelectedCampaign)
+  const campaignAccessCta =
+    canUseCampaignAccess && campaignAccessLink ? (
+      <div className="campaign-access-cta">
+        <div>
+          <p className="campaign-access-eyebrow">Campaign Tools</p>
+          <h3>Manage entity access for {selectedCampaign.name}</h3>
+          <p className="campaign-access-copy">
+            The Campaign Access Editor keeps changes scoped to this campaign’s members.
+          </p>
+        </div>
+        <div className="campaign-access-actions">
+          <Link to={campaignAccessLink} className="btn outline">
+            Open Access Editor
+          </Link>
+        </div>
+      </div>
+    ) : null
+
   if (!sessionReady) return <p>Restoring session...</p>
   if (!token) return <p>Authenticating...</p>
   if (loading) return <p>Loading campaigns...</p>
@@ -391,6 +419,7 @@ export default function CampaignsPage({ scope = 'all' }) {
   if (viewMode === 'edit' && selectedCampaign && editInitialData)
     return (
       <div className="campaign-editor">
+        {campaignAccessCta}
         <div className="campaign-tabs" role="tablist" aria-label="Campaign editor tabs">
           <button
             type="button"
@@ -442,13 +471,16 @@ export default function CampaignsPage({ scope = 'all' }) {
 
   if (viewMode === 'view' && selectedCampaign)
     return (
-      <RecordView
-        schema={viewSchemaDefinition}
-        data={viewData || {}}
-        onClose={closeDetail}
-        closeLabel={closeLabel}
-        infoMessage="You can view this campaign but only the owner or a system admin can make changes."
-      />
+      <div className="campaign-view-wrapper">
+        {campaignAccessCta}
+        <RecordView
+          schema={viewSchemaDefinition}
+          data={viewData || {}}
+          onClose={closeDetail}
+          closeLabel={closeLabel}
+          infoMessage="You can view this campaign but only the owner or a system admin can make changes."
+        />
+      </div>
     )
 
   return (

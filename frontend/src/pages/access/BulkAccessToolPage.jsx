@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Loader2, ShieldPlus } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import { getWorldEntities } from '../../api/entities.js'
 import { fetchWorlds } from '../../api/worlds.js'
 import { fetchCampaigns } from '../../api/campaigns.js'
@@ -24,9 +25,15 @@ const toSelectOptions = (records, labelKey = 'name') =>
 const getMultiValue = (event) => Array.from(event.target.selectedOptions).map((option) => option.value)
 
 export default function BulkAccessToolPage() {
-  const { worldId } = useParams()
+  const { worldId, campaignId } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const {
+    selectedCampaign,
+    selectedCampaignId,
+    setSelectedCampaignId,
+    loading: campaignContextLoading,
+  } = useCampaignContext()
   const [world, setWorld] = useState(null)
   const [worldError, setWorldError] = useState('')
   const [loadingWorld, setLoadingWorld] = useState(true)
@@ -52,12 +59,63 @@ export default function BulkAccessToolPage() {
     description: '',
   })
 
-  const isOwner = useMemo(() => {
-    if (!world || !user) return false
-    return String(world.created_by) === String(user.id)
-  }, [world, user])
+  const isCampaignScoped = Boolean(campaignId)
+  const normalisedCampaignId = campaignId ? String(campaignId) : ''
+  const selectedCampaignMatchesRoute = useMemo(() => {
+    if (!isCampaignScoped || !normalisedCampaignId) return false
+    if (!selectedCampaignId) return false
+    return String(selectedCampaignId) === normalisedCampaignId
+  }, [isCampaignScoped, normalisedCampaignId, selectedCampaignId])
+  const activeCampaign = isCampaignScoped && selectedCampaignMatchesRoute ? selectedCampaign : null
+  const resolvedWorldId = worldId || activeCampaign?.world?.id || ''
 
   useEffect(() => {
+    if (!isCampaignScoped || !normalisedCampaignId) return
+    if (String(selectedCampaignId || '') === normalisedCampaignId) return
+    setSelectedCampaignId(normalisedCampaignId)
+  }, [isCampaignScoped, normalisedCampaignId, selectedCampaignId, setSelectedCampaignId])
+
+  const isOwner = useMemo(() => {
+    if (isCampaignScoped) return false
+    if (!world || !user) return false
+    return String(world.created_by) === String(user.id)
+  }, [isCampaignScoped, world, user])
+
+  const isCampaignDM = useMemo(() => {
+    if (!isCampaignScoped || !activeCampaign || !user?.id) return false
+    if (!Array.isArray(activeCampaign.members)) return false
+    return activeCampaign.members.some(
+      (member) => member?.user_id === user.id && member?.role === 'dm',
+    )
+  }, [activeCampaign, isCampaignScoped, user])
+
+  const canUseCampaignTool = Boolean(isCampaignScoped && activeCampaign && isCampaignDM)
+  const canUseTool = isOwner || canUseCampaignTool
+
+  useEffect(() => {
+    if (isCampaignScoped) {
+      if (!normalisedCampaignId) {
+        setWorldError('Campaign id is required to use this tool.')
+        setLoadingWorld(false)
+        return
+      }
+
+      if (!activeCampaign) {
+        if (campaignContextLoading) {
+          setLoadingWorld(true)
+          return
+        }
+        setWorldError('Campaign not found or unavailable for your account.')
+        setLoadingWorld(false)
+        return
+      }
+
+      setWorld(activeCampaign.world || null)
+      setWorldError('')
+      setLoadingWorld(false)
+      return
+    }
+
     if (!worldId) {
       setWorldError('A world id is required to use the bulk access tool.')
       setLoadingWorld(false)
@@ -87,42 +145,127 @@ export default function BulkAccessToolPage() {
     }
 
     loadWorld()
-  }, [worldId])
+  }, [activeCampaign, campaignContextLoading, isCampaignScoped, normalisedCampaignId, worldId])
 
   const loadWorldData = useCallback(async () => {
-    if (!worldId || !isOwner) return
+    if (!resolvedWorldId || !canUseTool) return
     setLoadingData(true)
     setDataError('')
     try {
-      const [entityRes, campaignRes, characterRes, userRes] = await Promise.all([
-        getWorldEntities(worldId),
-        fetchCampaigns({ world_id: worldId }),
-        fetchCharacters({ world_id: worldId }),
-        fetchUsers(),
-      ])
+      if (isCampaignScoped && activeCampaign) {
+        const [entityRes, campaignCharacters] = await Promise.all([
+          getWorldEntities(resolvedWorldId),
+          fetchCharacters({ campaign_id: activeCampaign.id }),
+        ])
 
-      const resolvedEntities = normaliseListResponse(entityRes)
-      setEntities(resolvedEntities)
-      setCampaigns(normaliseListResponse(campaignRes))
-      setCharacters(normaliseListResponse(characterRes))
-      setUsers(normaliseListResponse(userRes))
+        setEntities(normaliseListResponse(entityRes))
+        setCampaigns([activeCampaign])
+        setCharacters(normaliseListResponse(campaignCharacters))
+
+        const memberOptions = Array.isArray(activeCampaign.members)
+          ? activeCampaign.members.map((member) => ({
+              id: member.user_id,
+              username: member.user?.username || member.user?.email || member.user_id,
+            }))
+          : []
+        setUsers(memberOptions)
+      } else {
+        const [entityRes, campaignRes, characterRes, userRes] = await Promise.all([
+          getWorldEntities(resolvedWorldId),
+          fetchCampaigns({ world_id: resolvedWorldId }),
+          fetchCharacters({ world_id: resolvedWorldId }),
+          fetchUsers(),
+        ])
+
+        setEntities(normaliseListResponse(entityRes))
+        setCampaigns(normaliseListResponse(campaignRes))
+        setCharacters(normaliseListResponse(characterRes))
+        setUsers(normaliseListResponse(userRes))
+      }
     } catch (error) {
       console.error('Failed to load bulk access data', error)
       setDataError(error.message || 'Unable to load world data')
     } finally {
       setLoadingData(false)
     }
-  }, [isOwner, worldId])
+  }, [activeCampaign, canUseTool, isCampaignScoped, resolvedWorldId])
 
   useEffect(() => {
     loadWorldData()
   }, [loadWorldData])
 
+  const campaignCharacterIdSet = useMemo(() => {
+    if (!isCampaignScoped) return new Set()
+    return new Set((characters || []).map((character) => String(character.id)))
+  }, [characters, isCampaignScoped])
+
+  const accessibleEntities = useMemo(() => {
+    if (!isCampaignScoped) return entities
+    if (!activeCampaign) return []
+    const campaignIdString = String(activeCampaign.id)
+    return entities.filter((entity) => {
+      const readAccess = entity.read_access ?? 'global'
+      if (readAccess === 'global') return true
+      const readCampaignIds = Array.isArray(entity.read_campaign_ids)
+        ? entity.read_campaign_ids.map((id) => String(id))
+        : []
+      if (readCampaignIds.includes(campaignIdString)) return true
+      const readCharacterIds = Array.isArray(entity.read_character_ids)
+        ? entity.read_character_ids.map((id) => String(id))
+        : []
+      return readCharacterIds.some((id) => campaignCharacterIdSet.has(id))
+    })
+  }, [activeCampaign, campaignCharacterIdSet, entities, isCampaignScoped])
+
+  useEffect(() => {
+    const allowedIds = new Set(accessibleEntities.map((entity) => entity.id))
+    setSelectedEntityIds((prev) => {
+      const next = prev.filter((id) => allowedIds.has(id))
+      if (next.length === prev.length) return prev
+      return next
+    })
+  }, [accessibleEntities])
+
   const filteredEntities = useMemo(() => {
-    if (!entityFilter.trim()) return entities
+    if (!entityFilter.trim()) return accessibleEntities
     const query = entityFilter.trim().toLowerCase()
-    return entities.filter((entity) => entity.name?.toLowerCase().includes(query))
-  }, [entities, entityFilter])
+    return accessibleEntities.filter((entity) => entity.name?.toLowerCase().includes(query))
+  }, [accessibleEntities, entityFilter])
+
+  useEffect(() => {
+    if (!isCampaignScoped || !activeCampaign) return
+    const allowedCampaignId = String(activeCampaign.id)
+    const allowedUsers = new Set((users || []).map((userOption) => String(userOption.id)))
+    const allowedCharacters = new Set((characters || []).map((character) => String(character.id)))
+
+    setFormValues((prev) => {
+      const readCampaignIds = allowedCampaignId ? [allowedCampaignId] : []
+      const writeCampaignIds = prev.writeCampaignIds.filter((id) => id === allowedCampaignId)
+      const filterList = (list, allowed) => list.filter((id) => allowed.has(String(id)))
+      const readUserIds = filterList(prev.readUserIds, allowedUsers)
+      const writeUserIds = filterList(prev.writeUserIds, allowedUsers)
+      const readCharacterIds = filterList(prev.readCharacterIds, allowedCharacters)
+
+      if (
+        readCampaignIds.length === prev.readCampaignIds.length &&
+        writeCampaignIds.length === prev.writeCampaignIds.length &&
+        readUserIds.length === prev.readUserIds.length &&
+        writeUserIds.length === prev.writeUserIds.length &&
+        readCharacterIds.length === prev.readCharacterIds.length
+      ) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        readCampaignIds,
+        writeCampaignIds,
+        readUserIds,
+        writeUserIds,
+        readCharacterIds,
+      }
+    })
+  }, [activeCampaign, characters, isCampaignScoped, users])
 
   const selectedCount = selectedEntityIds.length
   const selectionFull = selectedCount >= MAX_ENTITIES
@@ -202,10 +345,14 @@ export default function BulkAccessToolPage() {
     return writeCount > 0
   }, [formValues])
 
-  const canSubmit = isOwner && selectedEntityIds.length > 0 && !submitting
+  const canSubmit = canUseTool && selectedEntityIds.length > 0 && !submitting
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    if (!canUseTool) {
+      setFormError('You do not have permission to apply bulk access updates.')
+      return
+    }
     if (!selectedEntityIds.length) {
       setFormError('Select at least one entity to continue.')
       return
@@ -247,7 +394,12 @@ export default function BulkAccessToolPage() {
     }
   }
 
-  const campaignOptions = useMemo(() => toSelectOptions(campaigns), [campaigns])
+  const campaignOptions = useMemo(() => {
+    if (isCampaignScoped && activeCampaign) {
+      return [{ id: activeCampaign.id, label: activeCampaign.name }]
+    }
+    return toSelectOptions(campaigns)
+  }, [activeCampaign, campaigns, isCampaignScoped])
   const userOptions = useMemo(() => toSelectOptions(users, 'username'), [users])
   const characterOptions = useMemo(() => toSelectOptions(characters), [characters])
 
@@ -274,29 +426,43 @@ export default function BulkAccessToolPage() {
     )
   }
 
-  if (!isOwner) {
+  if (!canUseTool) {
+    const message = isCampaignScoped
+      ? 'Only a DM for this campaign can access this tool.'
+      : 'Only the world owner can access this tool.'
     return (
       <div className="bulk-access-page">
         <div className="bulk-access-alert warning">
-          <AlertTriangle size={16} /> Only the world owner can access this tool.
+          <AlertTriangle size={16} /> {message}
         </div>
       </div>
     )
   }
 
+  const headerEyebrow = isCampaignScoped ? 'Campaign Admin · Access' : 'World Admin · Manual Access'
+  const headerTitle = isCampaignScoped ? activeCampaign?.name : world?.name
+
   return (
     <div className="bulk-access-page">
       <div className="bulk-access-header">
         <div>
-          <p className="bulk-access-eyebrow">World Admin · Manual Access</p>
-          <h1>Bulk Access Editor · {world?.name}</h1>
+          <p className="bulk-access-eyebrow">{headerEyebrow}</p>
+          <h1>Bulk Access Editor · {headerTitle || '—'}</h1>
         </div>
-        <div className="bulk-access-header-actions">
-          <Link to={`/worlds/${worldId}/access/audit`} className="ghost-button">
-            View audit log
-          </Link>
-        </div>
+        {isOwner && (
+          <div className="bulk-access-header-actions">
+            <Link to={`/worlds/${worldId}/access/audit`} className="ghost-button">
+              View audit log
+            </Link>
+          </div>
+        )}
       </div>
+
+      {canUseCampaignTool && activeCampaign && (
+        <div className="bulk-access-context-banner">
+          You are updating access in Campaign: <strong>{activeCampaign.name}</strong>
+        </div>
+      )}
 
       {dataError && (
         <div className="bulk-access-alert warning">
@@ -307,9 +473,11 @@ export default function BulkAccessToolPage() {
       {result && (
         <div className="bulk-access-alert success">
           <CheckCircle2 size={16} /> Applied access updates to {result.count} entities · Run {result.runId}
-          <Link to={`/worlds/${worldId}/access/audit`} className="inline-link">
-            Review run
-          </Link>
+          {isOwner && (
+            <Link to={`/worlds/${worldId}/access/audit`} className="inline-link">
+              Review run
+            </Link>
+          )}
         </div>
       )}
 
@@ -349,7 +517,11 @@ export default function BulkAccessToolPage() {
               </p>
             )}
             {!loadingData && filteredEntities.length === 0 && (
-              <p className="bulk-access-helper">No entities match the current filter.</p>
+              <p className="bulk-access-helper">
+                {isCampaignScoped
+                  ? 'No entities are visible within this campaign context.'
+                  : 'No entities match the current filter.'}
+              </p>
             )}
             {!loadingData &&
               filteredEntities.map((entity) => (
@@ -395,7 +567,13 @@ export default function BulkAccessToolPage() {
             <div className="form-grid">
               <label>
                 Read campaigns
-                <select multiple value={formValues.readCampaignIds} onChange={handleMultiChange('readCampaignIds')} size={5}>
+                <select
+                  multiple
+                  value={formValues.readCampaignIds}
+                  onChange={handleMultiChange('readCampaignIds')}
+                  size={5}
+                  disabled={isCampaignScoped}
+                >
                   {campaignOptions.map((campaign) => (
                     <option key={campaign.id} value={campaign.id}>
                       {campaign.label}

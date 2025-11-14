@@ -97,7 +97,7 @@ if (EntityListPreference.associate)
   EntityListPreference.associate({ EntityType, User })
 if (UploadedFile.associate) UploadedFile.associate({ User, Entity }) // ✅ ensure associations registered
 if (BulkUpdateRun.associate)
-  BulkUpdateRun.associate({ User, World, BulkUpdateChange })
+  BulkUpdateRun.associate({ User, World, Campaign, BulkUpdateChange })
 if (BulkUpdateChange.associate)
   BulkUpdateChange.associate({ BulkUpdateRun, Entity })
 

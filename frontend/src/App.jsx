@@ -54,6 +54,7 @@ const router = createBrowserRouter(
         <Route path="worlds/:id" element={<WorldDetailPage />} />
         <Route path="worlds/:worldId/access/bulk" element={<BulkAccessToolPage />} />
         <Route path="worlds/:worldId/access/audit" element={<BulkAccessAuditPage />} />
+        <Route path="campaigns/:campaignId/access/bulk" element={<BulkAccessToolPage />} />
 
         {/* Campaign routes */}
         <Route path="campaigns">

@@ -6,6 +6,7 @@ import {
   Character,
   Entity,
   User,
+  UserCampaignRole,
   World,
   sequelize,
 } from '../models/index.js'
@@ -14,6 +15,10 @@ import {
   buildEntityAccessUpdate,
   normaliseBulkAccessPayload,
 } from '../utils/bulkAccessValidation.js'
+import {
+  ensureEntitiesVisibleToCampaign,
+  ensurePayloadWithinCampaignScope,
+} from '../utils/campaignBulkAccess.js'
 
 const respondWithError = (res, error, fallbackMessage = 'Unable to process request') => {
   if (error instanceof BulkAccessValidationError) {
@@ -136,6 +141,29 @@ const ensureUsersExist = async (userIds) => {
   }
 }
 
+const loadCampaignScope = async (campaignId) => {
+  const [campaign, members, characters] = await Promise.all([
+    Campaign.findByPk(campaignId, { attributes: ['id', 'name', 'world_id'] }),
+    UserCampaignRole.findAll({
+      where: { campaign_id: campaignId },
+      attributes: ['user_id'],
+    }),
+    Character.findAll({ where: { campaign_id: campaignId }, attributes: ['id'] }),
+  ])
+
+  if (!campaign) {
+    throw new BulkAccessValidationError('Campaign not found', {
+      status: 404,
+      meta: { campaignId },
+    })
+  }
+
+  const memberUserIds = new Set(members.map((member) => String(member.user_id)))
+  const campaignCharacterIds = new Set(characters.map((character) => String(character.id)))
+
+  return { campaign, memberUserIds, campaignCharacterIds }
+}
+
 const validateReferenceIds = async (worldId, payload) => {
   await ensureCampaignsBelongToWorld(payload.readCampaignIds, worldId)
   await ensureCampaignsBelongToWorld(payload.writeCampaignIds, worldId)
@@ -161,7 +189,48 @@ export const applyBulkAccessUpdate = async (req, res) => {
   try {
     const payload = normaliseBulkAccessPayload(req.body || {})
     const { entities, worldId } = await fetchEntitiesForUpdate(payload.entityIds)
-    const world = await ensureWorldOwner(worldId, req.user)
+    const isCampaignDM = req.campaignRole === 'dm'
+
+    let world = null
+    let actorRole = 'owner'
+    let campaignScope = null
+
+    if (isCampaignDM) {
+      if (!req.campaignContextId) {
+        throw new BulkAccessValidationError('Campaign context is required for DM updates', {
+          status: 400,
+        })
+      }
+
+      campaignScope = await loadCampaignScope(req.campaignContextId)
+
+      if (String(campaignScope.campaign.world_id) !== String(worldId)) {
+        throw new BulkAccessValidationError('Campaign and entities must belong to the same world', {
+          status: 400,
+          suggestedFix: 'Choose entities from the active campaign’s world',
+        })
+      }
+
+      ensureEntitiesVisibleToCampaign(entities, {
+        campaignId: campaignScope.campaign.id,
+        campaignCharacterIds: campaignScope.campaignCharacterIds,
+      })
+
+      ensurePayloadWithinCampaignScope(payload, {
+        campaignId: campaignScope.campaign.id,
+        memberUserIds: campaignScope.memberUserIds,
+        campaignCharacterIds: campaignScope.campaignCharacterIds,
+      })
+
+      world = await World.findByPk(worldId, { attributes: ['id', 'name', 'created_by'] })
+      if (!world) {
+        throw new BulkAccessValidationError('World not found', { status: 404 })
+      }
+      actorRole = 'dm'
+    } else {
+      world = await ensureWorldOwner(worldId, req.user)
+    }
+
     await validateReferenceIds(world.id, payload)
 
     const transaction = await sequelize.transaction()
@@ -170,9 +239,10 @@ export const applyBulkAccessUpdate = async (req, res) => {
         {
           world_id: world.id,
           user_id: req.user.id,
-          campaign_context_id: req.campaignContextId || null,
+          campaign_context_id: isCampaignDM ? campaignScope?.campaign.id : null,
           description: payload.description,
           entity_count: entities.length,
+          role_used: actorRole,
         },
         { transaction },
       )
@@ -202,7 +272,12 @@ export const applyBulkAccessUpdate = async (req, res) => {
 
       return res.json({
         success: true,
-        data: { runId: run.id, count: entities.length, worldId: world.id },
+        data: {
+          runId: run.id,
+          count: entities.length,
+          worldId: world.id,
+          campaignContextId: run.campaign_context_id,
+        },
       })
     } catch (err) {
       await transaction.rollback()
@@ -293,7 +368,10 @@ export const listBulkAccessRuns = async (req, res) => {
 
     const runs = await BulkUpdateRun.findAll({
       where: { world_id: rawWorldId },
-      include: [{ model: User, as: 'actor', attributes: ['id', 'username', 'email'] }],
+      include: [
+        { model: User, as: 'actor', attributes: ['id', 'username', 'email'] },
+        { model: Campaign, as: 'campaignContext', attributes: ['id', 'name'] },
+      ],
       attributes: {
         include: [
           [
@@ -320,6 +398,7 @@ export const getBulkAccessRun = async (req, res) => {
     const run = await BulkUpdateRun.findByPk(req.params.id, {
       include: [
         { model: User, as: 'actor', attributes: ['id', 'username', 'email'] },
+        { model: Campaign, as: 'campaignContext', attributes: ['id', 'name'] },
         {
           model: BulkUpdateChange,
           as: 'changes',
