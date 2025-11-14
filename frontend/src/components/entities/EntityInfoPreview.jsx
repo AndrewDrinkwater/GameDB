@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Info } from 'lucide-react'
 import PropTypes from '../../utils/propTypes.js'
 import { getEntity } from '../../api/entities.js'
+import { resolveEntityResponse } from '../../utils/entityHelpers.js'
 import EntityInfoDrawer from '../relationshipViewer/EntityInfoDrawer.jsx'
 
 export default function EntityInfoPreview({ entityId, entityName = 'entity', className = '' }) {
@@ -63,7 +64,7 @@ export default function EntityInfoPreview({ entityId, entityName = 'entity', cla
       try {
         const response = await getEntity(drawerEntityId)
         if (cancelled) return
-        const data = response?.data || response
+        const data = resolveEntityResponse(response)
         if (!data) {
           setPreviewEntity(null)
           setError('Entity not found')

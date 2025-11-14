@@ -22,8 +22,10 @@ const CAMPAIGN_CONTEXT_HEADER = 'X-Campaign-Context-Id'
 async function request(method, url, data, config = {}) {
   const { headers: extraHeaders, ...restConfig } = config || {}
 
+  const isFormData = typeof FormData !== 'undefined' && data instanceof FormData
+
   const headers = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...extraHeaders,
   }
 
@@ -41,10 +43,16 @@ async function request(method, url, data, config = {}) {
     console.warn('⚠️ Unable to include campaign context header', err)
   }
 
+  const body = (() => {
+    if (data === undefined) return undefined
+    if (isFormData) return data
+    return JSON.stringify(data)
+  })()
+
   const response = await fetch(`${API_BASE}${url}`, {
     method,
     headers,
-    body: data !== undefined ? JSON.stringify(data) : undefined,
+    body,
     ...restConfig,
   })
 

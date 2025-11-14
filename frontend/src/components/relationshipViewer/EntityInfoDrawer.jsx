@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PropTypes from '../../utils/propTypes.js'
+import { buildEntityImageUrl } from '../../utils/entityHelpers.js'
 import './EntityInfoDrawer.css'
 
 const ANIMATION_DURATION = 450
@@ -315,6 +316,10 @@ export default function EntityInfoDrawer({
     (visibleLoading ? 'Loading entity…' : 'Unknown entity')
   const entityType =
     visibleEntity?.type?.name || visibleEntity?.typeName || 'Entity'
+  const entityImageUrl = useMemo(
+    () => buildEntityImageUrl(visibleEntity),
+    [visibleEntity],
+  )
 
   if (!isRendered) {
     return null
@@ -378,6 +383,12 @@ export default function EntityInfoDrawer({
             {entityName}
           </h2>
         </header>
+
+        {entityImageUrl && !visibleLoading && !visibleError ? (
+          <div className="entity-info-drawer__image">
+            <img src={entityImageUrl} alt={`Portrait of ${entityName}`} loading="lazy" />
+          </div>
+        ) : null}
 
         {visibleEntity?.summary && !visibleLoading && !visibleError && (
           <p className="entity-info-drawer__summary">{visibleEntity.summary}</p>
