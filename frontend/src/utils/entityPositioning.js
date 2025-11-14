@@ -1,3 +1,4 @@
+import { buildEntityImageUrl } from './entityHelpers.js'
 
 export const DEFAULT_CLUSTER_WIDTH = 220
 export const DEFAULT_CLUSTER_HEIGHT = 160
@@ -700,6 +701,7 @@ function createEntityNodeDefinition(rawNode, { isCenter = false } = {}) {
   const label = sanitizeEntityLabel(rawNode?.name, `Entity ${id}`)
   const typeName = rawNode?.typeName || 'Entity'
   const isExpandedProtected = Boolean(rawNode?.isExpandedProtected)
+  const imageUrl = buildEntityImageUrl(rawNode)
 
   return {
     id,
@@ -714,6 +716,7 @@ function createEntityNodeDefinition(rawNode, { isCenter = false } = {}) {
       entityId: id,
       isCenter,
       isExpandedProtected,
+      imageUrl,
     },
   }
 }
@@ -2102,6 +2105,7 @@ export function createAdHocEntityNode(clusterNode, entity, placedIds = []) {
   const clusterWidth = clusterNode?.width ?? DEFAULT_CLUSTER_WIDTH
   const clusterHeight = clusterNode?.height ?? DEFAULT_CLUSTER_HEIGHT
   const entityId = String(entity.id)
+  const imageUrl = buildEntityImageUrl(entity)
   const normalizedPlaced = Array.isArray(placedIds)
     ? placedIds.map((value) => String(value))
     : []
@@ -2127,6 +2131,7 @@ export function createAdHocEntityNode(clusterNode, entity, placedIds = []) {
       isCenter: false,
       isAdHoc: true,
       entityId,
+      imageUrl,
     },
   }
 }
