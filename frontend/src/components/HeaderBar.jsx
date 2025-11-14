@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { User, Menu, LogOut, Moon, Sun } from 'lucide-react'
+import { User, Menu, LogOut, Moon, Sun, Clock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
 import { useTheme } from '../context/ThemeContext.jsx'
 import { Link } from 'react-router-dom'
+import useIsMobile from '../hooks/useIsMobile.js'
 
 export default function HeaderBar({ onMenuToggle }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -34,6 +35,8 @@ export default function HeaderBar({ onMenuToggle }) {
     setSelectedCampaignId(event.target.value)
   }
 
+  const isMobile = useIsMobile()
+
   const campaignStatus = useMemo(() => {
     if (loading) return 'Loading campaigns…'
     if (error) return 'Unable to load campaigns'
@@ -53,17 +56,52 @@ export default function HeaderBar({ onMenuToggle }) {
     return membership.role || ''
   }
 
+  const menuButton = (
+    <button
+      type="button"
+      className={`menu-btn ${isMobile ? 'menu-btn-icon' : 'menu-btn-text'}`}
+      onClick={onMenuToggle}
+      aria-label={isMobile ? 'Toggle navigation menu' : undefined}
+    >
+      {isMobile ? <Menu size={20} /> : 'Menu'}
+    </button>
+  )
+
+  const historyButton = (
+    <button
+      type="button"
+      className={`history-btn ${isMobile ? 'history-btn-icon' : 'history-btn-text'}`}
+      title="History (coming soon)"
+      aria-label={isMobile ? 'Open history (coming soon)' : undefined}
+    >
+      {isMobile ? <Clock size={20} /> : 'History'}
+    </button>
+  )
+
   return (
     <header className="app-header">
       <div className="header-start">
-        <button className="menu-btn" onClick={onMenuToggle}>
-          <Menu size={20} />
-        </button>
-        <h1 className="title">
-          <Link to="/" className="title-link">
-            GameDB
-          </Link>
-        </h1>
+        {isMobile ? (
+          <>
+            <h1 className="title">
+              <Link to="/" className="title-link">
+                GameDB
+              </Link>
+            </h1>
+            {menuButton}
+            {historyButton}
+          </>
+        ) : (
+          <>
+            <h1 className="title">
+              <Link to="/" className="title-link">
+                GameDB
+              </Link>
+            </h1>
+            {menuButton}
+            {historyButton}
+          </>
+        )}
       </div>
 
       <div className="header-center">

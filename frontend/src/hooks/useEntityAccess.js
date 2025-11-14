@@ -154,6 +154,12 @@ export default function useEntityAccess(entity, token, canEdit) {
     })
   }, [])
 
+  const resetAccessSettings = useCallback(() => {
+    setAccessSettings(accessDefaults)
+    setAccessSaveError('')
+    setAccessSaveSuccess('')
+  }, [accessDefaults])
+
   /** --- save access --- **/
   const handleAccessSave = useCallback(async () => {
     if (!canEdit || !entityId) return false
@@ -202,6 +208,7 @@ export default function useEntityAccess(entity, token, canEdit) {
     accessSaveSuccess,
     isAccessDirty,
     handleAccessSettingChange,
+    resetAccessSettings,
     handleAccessSave,
   }
 }

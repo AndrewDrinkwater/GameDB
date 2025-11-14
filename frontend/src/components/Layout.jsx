@@ -67,6 +67,32 @@ export default function Layout() {
   }, [menuPinned])
 
   useEffect(() => {
+    if (menuPinned || !menuOpen) return undefined
+
+    const handleClickAway = (event) => {
+      const target = event.target
+      const element =
+        target instanceof Element
+          ? target
+          : target && 'parentElement' in target
+            ? target.parentElement
+            : null
+
+      if (element?.closest?.('.sidebar')) {
+        return
+      }
+
+      setMenuOpen(false)
+    }
+
+    document.addEventListener('mousedown', handleClickAway)
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickAway)
+    }
+  }, [menuPinned, menuOpen])
+
+  useEffect(() => {
     if (!pinnedRef.current) {
       setMenuOpen(false)
     }
@@ -83,7 +109,7 @@ export default function Layout() {
           onPinToggle={handlePinToggle}
           onClose={() => setMenuOpen(false)}
         />
-        {isMobile && !menuPinned && menuOpen && (
+        {!menuPinned && menuOpen && (
           <button
             type="button"
             className="sidebar-overlay"
