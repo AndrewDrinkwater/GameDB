@@ -15,6 +15,7 @@ import {
 } from '../../utils/entityPositioning.js'
 import RelationshipToolbar from '../../components/relationshipViewer/RelationshipToolbar.jsx'
 import EntityInfoDrawer from '../../components/relationshipViewer/EntityInfoDrawer.jsx'
+import { resolveEntityResponse } from '../../utils/entityHelpers.js'
 
 const nodeTypes = { cluster: ClusterNode, entity: EntityNode }
 const edgeTypes = {}
@@ -336,7 +337,7 @@ export default function RelationshipViewerPage() {
       try {
         const response = await getEntity(selectedEntityInfoId)
         if (cancelled) return
-        const data = response?.data || response
+        const data = resolveEntityResponse(response)
         setSelectedEntityInfo(data || null)
       } catch (error) {
         if (cancelled) return

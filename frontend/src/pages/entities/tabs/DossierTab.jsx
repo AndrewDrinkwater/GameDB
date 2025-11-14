@@ -13,9 +13,11 @@ export default function DossierTab({
   dossierSchema,
   viewData,
   renderSchemaSections,
+  imageSection,
 }) {
   return (
     <div className="entity-tab-content">
+      {imageSection || null}
       {formError && (
         <section className="entity-card">
           <div className="alert error" role="alert">

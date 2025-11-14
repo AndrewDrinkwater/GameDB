@@ -6,6 +6,7 @@ import AccessSettingsEditor from '../../components/entities/AccessSettingsEditor
 import { fetchAccessOptionsForWorld } from '../../utils/entityAccessOptions.js'
 import EntitySearchSelect from '../../modules/relationships3/ui/EntitySearchSelect.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
+import { resolveEntityResponse } from '../../utils/entityHelpers.js'
 
 const VISIBILITY_OPTIONS = [
   { value: 'hidden', label: 'Hidden' },
@@ -377,7 +378,7 @@ export default function EntityForm({
       setError('')
       try {
         const response = await getEntity(entityId)
-        const data = response?.data || response
+        const data = resolveEntityResponse(response)
         if (!data) {
           throw new Error('Entity not found')
         }

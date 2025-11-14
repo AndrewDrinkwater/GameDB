@@ -7,6 +7,7 @@ import TabNav from '../../components/TabNav.jsx'
 import DrawerPanel from '../../components/DrawerPanel.jsx'
 import EntityHeader from '../../components/entities/EntityHeader.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
+import EntityImageCard from '../../components/entities/EntityImageCard.jsx'
 import UnsavedChangesDialog from '../../components/UnsavedChangesDialog.jsx'
 import { createDefaultRelationshipFilters } from '../../components/entities/EntityRelationshipFilters.jsx'
 import {
@@ -23,6 +24,7 @@ import RelationshipBuilder from '../../modules/relationships3/RelationshipBuilde
 import useEntityAccess from '../../hooks/useEntityAccess.js'
 import useIsMobile from '../../hooks/useIsMobile.js'
 import useNavigationBlocker from '../../hooks/useNavigationBlocker.js'
+import { resolveEntityResponse } from '../../utils/entityHelpers.js'
 
 // tabs
 import DossierTab from './tabs/DossierTab.jsx'
@@ -277,6 +279,12 @@ export default function EntityDetailPage() {
   const isMobile = useIsMobile()
 
   const [entity, setEntity] = useState(null)
+  const handleEntityPayloadUpdate = useCallback((nextEntity) => {
+    const normalized = resolveEntityResponse(nextEntity)
+    if (normalized) {
+      setEntity(normalized)
+    }
+  }, [])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
@@ -682,13 +690,13 @@ export default function EntityDetailPage() {
     setFormError('')
     try {
       const response = await getEntity(id)
-      const data = response?.data || response
+      const data = resolveEntityResponse(response)
       if (!data) {
         setEntity(null)
         setError('Entity not found')
         return
       }
-      setEntity(data)
+      handleEntityPayloadUpdate(data)
     } catch (err) {
       console.error('❌ Failed to load entity', err)
       setError(err.message || 'Failed to load entity')
@@ -696,7 +704,7 @@ export default function EntityDetailPage() {
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }, [id, handleEntityPayloadUpdate])
 
   useEffect(() => {
     if (sessionReady && token) {
@@ -820,6 +828,18 @@ export default function EntityDetailPage() {
       metadata: metadataInitialValues,
     }
   }, [entity, entityWorldId, createdAtValue, updatedAtValue, metadataInitialValues])
+
+  const entityImageSection = useMemo(() => {
+    if (!entity) return null
+    return (
+      <EntityImageCard
+        entity={entity}
+        canEdit={canEdit}
+        isEditing={isEditing}
+        onEntityUpdate={handleEntityPayloadUpdate}
+      />
+    )
+  }, [entity, canEdit, isEditing, handleEntityPayloadUpdate])
 
   const metadataSectionTitle = 'Information'
 
@@ -1252,12 +1272,12 @@ export default function EntityDetailPage() {
         }
 
         const response = await updateEntity(entity.id, payload)
-        const updated = response?.data || response
+        const updated = resolveEntityResponse(response)
         if (!updated) {
           throw new Error('Failed to update entity')
         }
 
-        setEntity(updated)
+        handleEntityPayloadUpdate(updated)
         return { message: 'Entity updated successfully.' }
       } catch (err) {
         console.error('❌ Failed to update entity', err)
@@ -1265,7 +1285,7 @@ export default function EntityDetailPage() {
         return false
       }
     },
-    [entity?.id, entity?.visibility],
+    [entity?.id, entity?.visibility, handleEntityPayloadUpdate],
   )
 
   const handleFormStateChange = useCallback((nextState) => {
@@ -1505,6 +1525,7 @@ export default function EntityDetailPage() {
                 dossierSchema={dossierSchema}
                 viewData={viewData}
                 renderSchemaSections={renderSchemaSections}
+                imageSection={entityImageSection}
               />
             </div>
 
