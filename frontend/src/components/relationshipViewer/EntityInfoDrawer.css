@@ -152,12 +152,13 @@
 }
 
 .entity-info-drawer__image img {
-  width: 100%;
+  width: min(50%, 240px);
   height: auto;
-  max-height: 360px;
+  max-height: 180px;
   object-fit: contain;
   object-position: center;
   display: block;
+  margin: 0 auto;
   background: #0f172a;
 }
 
