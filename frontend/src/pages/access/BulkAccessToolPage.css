@@ -188,6 +188,15 @@
   border: 1px solid #fed7aa;
 }
 
+.bulk-access-context-banner {
+  border-radius: 10px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1e3a8a;
+  padding: 0.85rem 1rem;
+  font-weight: 500;
+}
+
 .primary-button {
   background: linear-gradient(135deg, #4338ca, #7c3aed);
   color: #fff;

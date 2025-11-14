@@ -265,6 +265,10 @@ export default function BulkAccessAuditPage() {
                     <p className="audit-run-meta">
                       {formatDateTime(run.createdAt || run.created_at)} · {run.change_count || run.entity_count || 0} entities
                     </p>
+                    <p className="audit-run-meta">
+                      {run.campaignContext?.name ? `Campaign · ${run.campaignContext.name}` : 'Scope · World'} ·
+                      {run.role_used === 'dm' ? ' DM run' : ' Owner run'}
+                    </p>
                   </div>
                   <span className={`status-pill ${run.reverted ? 'reverted' : 'active'}`}>{runStatus(run)}</span>
                 </button>
@@ -313,6 +317,12 @@ export default function BulkAccessAuditPage() {
                 </p>
                 <p>
                   <strong>Actor:</strong> {selectedRun.actor?.username || 'Unknown user'}
+                </p>
+                <p>
+                  <strong>Actor role:</strong> {selectedRun.role_used === 'dm' ? 'Campaign DM' : 'World owner'}
+                </p>
+                <p>
+                  <strong>Scope:</strong> {selectedRun.campaignContext?.name || 'World-wide'}
                 </p>
                 <p>
                   <strong>Created:</strong> {formatDateTime(selectedRun.createdAt || selectedRun.created_at)}

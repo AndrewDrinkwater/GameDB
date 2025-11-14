@@ -9,6 +9,7 @@ import {
   FileText,
   NotebookPen,
   ShieldCheck,
+  ShieldPlus,
   History,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -70,6 +71,7 @@ export default function Sidebar({
     selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner),
   )
   const canUseBulkAccessTool = Boolean(selectedCampaignId && isSelectedWorldOwner)
+  const canUseCampaignBulkAccess = Boolean(selectedCampaignId && isDMInSelectedCampaign)
   const shouldShowWorldAdminGroup = Boolean(
     selectedCampaignId &&
       (canViewAllEntities ||
@@ -332,14 +334,25 @@ export default function Sidebar({
               className={`nav-heading-icon ${campaignsCollapsed ? 'collapsed' : ''}`}
             />
           </button>
-          <div id="campaigns-nav" className="nav-sub-links">
-            <Link to="/campaigns/my" className={isActive('/campaigns/my') ? 'active' : ''}>
-              My Campaigns
+        <div id="campaigns-nav" className="nav-sub-links">
+          <Link to="/campaigns/my" className={isActive('/campaigns/my') ? 'active' : ''}>
+            My Campaigns
+          </Link>
+          <Link to="/campaigns/all" className={isActive('/campaigns/all') ? 'active' : ''}>
+            All
+          </Link>
+          {canUseCampaignBulkAccess && (
+            <Link
+              to={`/campaigns/${selectedCampaignId}/access/bulk`}
+              className={
+                isActive(`/campaigns/${selectedCampaignId}/access/bulk`) ? 'active' : ''
+              }
+            >
+              <ShieldPlus size={16} className="nav-icon" />
+              <span>Campaign Access Editor</span>
             </Link>
-            <Link to="/campaigns/all" className={isActive('/campaigns/all') ? 'active' : ''}>
-              All
-            </Link>
-          </div>
+          )}
+        </div>
         </div>
 
         {/* --- Entities --- */}
