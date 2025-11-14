@@ -13,6 +13,8 @@ import { fetchAccessOptionsForWorld } from '../../utils/entityAccessOptions.js'
 import EntitySearchSelect from '../../modules/relationships3/ui/EntitySearchSelect.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import { buildEntityImageUrl, resolveEntityResponse } from '../../utils/entityHelpers.js'
+import ImageCropper from '../../components/images/ImageCropper.jsx'
+import { cropImageFile } from '../../utils/imageCrop.js'
 
 const VISIBILITY_OPTIONS = [
   { value: 'hidden', label: 'Hidden' },
@@ -256,6 +258,7 @@ export default function EntityForm({
   const accessOptionsLoadedRef = useRef(false)
   const [entityImage, setEntityImage] = useState(null)
   const [pendingImageFile, setPendingImageFile] = useState(null)
+  const [pendingImageCrop, setPendingImageCrop] = useState(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState('')
   const [imageError, setImageError] = useState('')
   const [imageUploading, setImageUploading] = useState(false)
@@ -288,6 +291,7 @@ export default function EntityForm({
 
   const resetPendingImageSelection = useCallback(() => {
     setPendingImageFile(null)
+    setPendingImageCrop(null)
     setImageError('')
     setImagePreviewUrl((prev) => {
       clearPreviewUrl(prev)
@@ -323,6 +327,7 @@ export default function EntityForm({
       }
       setImageError('')
       setPendingImageFile(file)
+      setPendingImageCrop(null)
       setImagePreviewUrl((prev) => {
         clearPreviewUrl(prev)
         return URL.createObjectURL(file)
@@ -341,7 +346,10 @@ export default function EntityForm({
     setImageUploading(true)
     setImageError('')
     try {
-      await uploadEntityImage(entityId, pendingImageFile)
+      const fileToUpload = pendingImageCrop
+        ? await cropImageFile(pendingImageFile, pendingImageCrop)
+        : pendingImageFile
+      await uploadEntityImage(entityId, fileToUpload)
       await refreshEntityImage()
       resetPendingImageSelection()
     } catch (err) {
@@ -349,7 +357,13 @@ export default function EntityForm({
     } finally {
       setImageUploading(false)
     }
-  }, [entityId, pendingImageFile, refreshEntityImage, resetPendingImageSelection])
+  }, [
+    entityId,
+    pendingImageFile,
+    pendingImageCrop,
+    refreshEntityImage,
+    resetPendingImageSelection,
+  ])
 
   const handleDeleteImage = useCallback(async () => {
     if (!entityId || imageUploading || imageDeleting) return
@@ -1392,9 +1406,11 @@ export default function EntityForm({
                 />
                 {pendingImageFile && imagePreviewUrl ? (
                   <div className="entity-form-upload-preview">
-                    <img
+                    <ImageCropper
                       src={imagePreviewUrl}
-                      alt={values.name ? `${values.name} artwork preview` : 'Entity artwork preview'}
+                      size={220}
+                      zoomLabel="Zoom to crop"
+                      onCropChange={setPendingImageCrop}
                     />
                   </div>
                 ) : null}
