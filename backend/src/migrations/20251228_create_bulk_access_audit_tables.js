@@ -1,3 +1,13 @@
+const BULK_UPDATE_RUN_INDEXES = [
+  { name: 'bulk_update_runs_world_id', column: 'world_id' },
+  { name: 'bulk_update_runs_user_id', column: 'user_id' },
+]
+
+const BULK_UPDATE_CHANGE_INDEXES = [
+  { name: 'bulk_update_changes_run_id', column: 'run_id' },
+  { name: 'bulk_update_changes_entity_id', column: 'entity_id' },
+]
+
 export async function up(queryInterface, Sequelize) {
   await queryInterface.createTable('bulk_update_runs', {
     id: {
@@ -47,8 +57,12 @@ export async function up(queryInterface, Sequelize) {
     },
   })
 
-  await queryInterface.addIndex('bulk_update_runs', ['world_id'])
-  await queryInterface.addIndex('bulk_update_runs', ['user_id'])
+  for (const { name, column } of BULK_UPDATE_RUN_INDEXES) {
+    await queryInterface.sequelize.query(`
+      CREATE INDEX IF NOT EXISTS "${name}"
+      ON "bulk_update_runs" ("${column}")
+    `)
+  }
 
   await queryInterface.createTable('bulk_update_changes', {
     id: {
@@ -113,8 +127,12 @@ export async function up(queryInterface, Sequelize) {
     },
   })
 
-  await queryInterface.addIndex('bulk_update_changes', ['run_id'])
-  await queryInterface.addIndex('bulk_update_changes', ['entity_id'])
+  for (const { name, column } of BULK_UPDATE_CHANGE_INDEXES) {
+    await queryInterface.sequelize.query(`
+      CREATE INDEX IF NOT EXISTS "${name}"
+      ON "bulk_update_changes" ("${column}")
+    `)
+  }
 }
 
 export async function down(queryInterface) {
