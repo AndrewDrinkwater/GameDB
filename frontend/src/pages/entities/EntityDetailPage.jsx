@@ -829,6 +829,14 @@ export default function EntityDetailPage() {
     }
   }, [entity, entityWorldId, createdAtValue, updatedAtValue, metadataInitialValues])
 
+  const entityImageDataUrl = useMemo(() => {
+    if (!entity) return ''
+    const mimeType = entity.imageMimeType || entity.image_mime_type || ''
+    const data = entity.imageData || entity.image_data || ''
+    if (!mimeType || !data) return ''
+    return `data:${mimeType};base64,${data}`
+  }, [entity])
+
   const entityImageSection = useMemo(() => {
     if (!entity) return null
     return (
@@ -1524,6 +1532,7 @@ export default function EntityDetailPage() {
                 handleFormStateChange={handleFormStateChange}
                 dossierSchema={dossierSchema}
                 viewData={viewData}
+                featuredImageSrc={entityImageDataUrl}
                 renderSchemaSections={renderSchemaSections}
                 imageSection={entityImageSection}
               />
