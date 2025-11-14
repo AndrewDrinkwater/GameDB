@@ -596,7 +596,7 @@ const resolveReferenceDisplayValue = (value) => {
   return null
 }
 
-const buildEntityPayload = async (entityInstance, fieldsCache) => {
+export const buildEntityPayload = async (entityInstance, fieldsCache) => {
   const plain = entityInstance.get({ plain: true })
 
   if (plain.creator) {
