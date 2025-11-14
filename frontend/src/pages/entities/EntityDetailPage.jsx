@@ -838,13 +838,14 @@ export default function EntityDetailPage() {
   }, [entity])
 
   const entityImageSection = useMemo(() => {
-    if (!entity) return null
+    if (!entity || !canEdit) return null
     return (
       <EntityImageCard
         entity={entity}
         canEdit={canEdit}
         isEditing={isEditing}
         onEntityUpdate={handleEntityPayloadUpdate}
+        variant={isEditing ? 'compact' : 'card'}
       />
     )
   }, [entity, canEdit, isEditing, handleEntityPayloadUpdate])

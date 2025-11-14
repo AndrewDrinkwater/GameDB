@@ -2538,6 +2538,16 @@ body.theme-dark .campaign-tab.is-active {
   min-width: 0;
 }
 
+.entity-dossier-header-card--editing {
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  box-shadow: none;
+  padding: 1.5rem;
+}
+
+.entity-dossier-header--editing {
+  align-items: flex-start;
+}
+
 .entity-dossier-description {
   display: flex;
   flex-direction: column;
@@ -2571,6 +2581,20 @@ body.theme-dark .campaign-tab.is-active {
   display: block;
 }
 
+.entity-dossier-header-image--manager {
+  width: min(320px, 100%);
+  aspect-ratio: auto;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  overflow: visible;
+}
+
+.entity-dossier-header-image--manager .entity-image-card--compact {
+  max-width: 100%;
+}
+
 @media (max-width: 768px) {
   .entity-dossier-header {
     grid-template-columns: 1fr;
@@ -2579,6 +2603,11 @@ body.theme-dark .campaign-tab.is-active {
   .entity-dossier-header-image {
     width: min(220px, 60vw);
     margin: 0 auto;
+  }
+
+  .entity-dossier-header-image--manager {
+    width: 100%;
+    margin: 0;
   }
 }
 
@@ -2757,6 +2786,57 @@ body.theme-dark .campaign-tab.is-active {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+.entity-image-card--compact {
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  padding: 1rem;
+  background: #f8fafc;
+  box-shadow: none;
+  max-width: 320px;
+  width: 100%;
+  gap: 1rem;
+}
+
+.entity-image-card--compact .entity-card-header {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.entity-image-card--compact .entity-card-header p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.entity-image-card--compact .entity-card-title {
+  font-size: 1rem;
+}
+
+.entity-image-card--compact .entity-card-body {
+  gap: 1rem;
+}
+
+.entity-image-card--compact .entity-image-preview {
+  min-height: 160px;
+}
+
+.entity-image-card--compact .entity-image-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.entity-image-card--compact .entity-image-helper {
+  font-size: 0.8rem;
+}
+
+.entity-image-card--compact .entity-card-actions {
+  width: 100%;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
 .entity-card--form {

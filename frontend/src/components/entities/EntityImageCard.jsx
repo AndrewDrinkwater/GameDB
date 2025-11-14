@@ -21,7 +21,13 @@ const formatFileSize = (bytes) => {
   return `${bytes} bytes`
 }
 
-export default function EntityImageCard({ entity, canEdit, isEditing, onEntityUpdate }) {
+export default function EntityImageCard({
+  entity,
+  canEdit,
+  isEditing,
+  onEntityUpdate,
+  variant = 'card',
+}) {
   const [pendingFile, setPendingFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState('')
   const [error, setError] = useState('')
@@ -34,6 +40,7 @@ export default function EntityImageCard({ entity, canEdit, isEditing, onEntityUp
   const serverImageUrl = useMemo(() => buildEntityImageUrl(entity), [entity])
   const displayUrl = previewUrl || serverImageUrl
   const imageAlt = entity?.name ? `${entity.name} artwork` : 'Entity artwork'
+  const isCompact = variant === 'compact'
 
   const clearPendingFile = useCallback(() => {
     setPendingFile(null)
@@ -152,19 +159,27 @@ export default function EntityImageCard({ entity, canEdit, isEditing, onEntityUp
   }
 
   const helperText = useMemo(() => {
-    const parts = ['PNG or JPG up to 2 MB.']
+    const parts = [
+      'PNG or JPG up to 2 MB.',
+      'Uploads are resized to 256×256 JPG (~70% quality, ~150 KB).',
+    ]
     if (pendingFile) {
       parts.push(`Selected: ${pendingFile.name} (${formatFileSize(pendingFile.size)})`)
     }
     return parts.join(' ')
   }, [pendingFile])
 
+  const ContainerTag = isCompact ? 'div' : 'section'
+  const containerClassName = isCompact
+    ? 'entity-image-card entity-image-card--compact'
+    : 'entity-card entity-image-card'
+
   return (
-    <section className="entity-card entity-image-card">
+    <ContainerTag className={containerClassName}>
       <div className="entity-card-header">
         <div>
           <h3 className="entity-card-title">Image</h3>
-          <p>Displayed on the dossier tab.</p>
+          <p>{isCompact ? 'Shown in the dossier summary.' : 'Displayed on the dossier tab.'}</p>
         </div>
         {canEdit && isEditing ? (
           <div className="entity-card-actions">
@@ -255,6 +270,6 @@ export default function EntityImageCard({ entity, canEdit, isEditing, onEntityUp
           <p className="entity-image-status">Removing image…</p>
         ) : null}
       </div>
-    </section>
+    </ContainerTag>
   )
 }

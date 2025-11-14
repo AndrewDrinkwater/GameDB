@@ -1,4 +1,5 @@
 import fs from 'fs/promises'
+import { Jimp } from 'jimp'
 import { Entity, EntityType, World, sequelize } from '../models/index.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
 import { buildEntityReadContext, canUserWriteEntity } from '../utils/entityAccess.js'
@@ -6,6 +7,9 @@ import { buildEntityPayload } from './entityController.js'
 
 const ACCEPTED_MIME_TYPES = new Set(['image/png', 'image/jpeg'])
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024 // 2MB
+const TARGET_IMAGE_SIZE = 256
+const TARGET_IMAGE_QUALITY = 70
+const OPTIMIZED_MIME_TYPE = Jimp.MIME_JPEG
 
 const ENTITY_INCLUDE = [
   { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
@@ -24,6 +28,13 @@ const cleanupUploadedFile = async (file) => {
       console.warn('⚠️ Failed to remove uploaded image file', error)
     }
   }
+}
+
+const optimiseUploadedImage = async (filePath) => {
+  const image = await Jimp.read(filePath)
+  image.cover(TARGET_IMAGE_SIZE, TARGET_IMAGE_SIZE)
+  image.quality(TARGET_IMAGE_QUALITY)
+  return image.getBufferAsync(OPTIMIZED_MIME_TYPE)
 }
 
 const fetchWritableEntity = async ({ id, user, campaignContextId }) => {
@@ -87,12 +98,12 @@ export const uploadEntityImage = async (req, res) => {
       return res.status(status).json(body)
     }
 
-    const buffer = await fs.readFile(file.path)
-    const base64Data = buffer.toString('base64')
+    const optimisedBuffer = await optimiseUploadedImage(file.path)
+    const base64Data = optimisedBuffer.toString('base64')
 
     await sequelize.transaction(async (transaction) => {
       await entity.update(
-        { image_data: base64Data, image_mime_type: file.mimetype },
+        { image_data: base64Data, image_mime_type: OPTIMIZED_MIME_TYPE },
         { transaction },
       )
     })
