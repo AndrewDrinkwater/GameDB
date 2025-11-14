@@ -52,7 +52,7 @@ export default (sequelize, DataTypes) => {
         defaultValue: 'global',
       },
       write_access: {
-        type: DataTypes.ENUM('global', 'selective', 'hidden'),
+        type: DataTypes.ENUM('global', 'selective', 'hidden', 'owner_only'),
         allowNull: false,
         defaultValue: 'global',
       },
@@ -62,6 +62,11 @@ export default (sequelize, DataTypes) => {
         defaultValue: [],
       },
       read_user_ids: {
+        type: DataTypes.ARRAY(DataTypes.UUID),
+        allowNull: false,
+        defaultValue: [],
+      },
+      read_character_ids: {
         type: DataTypes.ARRAY(DataTypes.UUID),
         allowNull: false,
         defaultValue: [],

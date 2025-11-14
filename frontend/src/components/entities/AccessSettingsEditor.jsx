@@ -1,9 +1,16 @@
 import ListCollector from '../ListCollector.jsx'
 
-const ACCESS_MODE_OPTIONS = [
+const READ_ACCESS_MODE_OPTIONS = [
   { value: 'global', label: 'Global' },
   { value: 'selective', label: 'Selective' },
   { value: 'hidden', label: 'Hidden' },
+]
+
+const WRITE_ACCESS_MODE_OPTIONS = [
+  { value: 'global', label: 'Global' },
+  { value: 'selective', label: 'Selective' },
+  { value: 'hidden', label: 'Hidden' },
+  { value: 'owner_only', label: 'Owner only' },
 ]
 
 const buildFieldId = (prefix, key) => `${prefix}-${key}`
@@ -22,6 +29,7 @@ export default function AccessSettingsEditor({
   const readModeId = buildFieldId(idPrefix, 'read-mode')
   const readCampaignsId = buildFieldId(idPrefix, 'read-campaigns')
   const readUsersId = buildFieldId(idPrefix, 'read-users')
+  const readCharactersId = buildFieldId(idPrefix, 'read-characters')
   const writeModeId = buildFieldId(idPrefix, 'write-mode')
   const writeCampaignsId = buildFieldId(idPrefix, 'write-campaigns')
   const writeUsersId = buildFieldId(idPrefix, 'write-users')
@@ -38,7 +46,7 @@ export default function AccessSettingsEditor({
             onChange={(event) => onSettingChange('readMode', event.target.value)}
             disabled={disabled}
           >
-            {ACCESS_MODE_OPTIONS.map((option) => (
+            {READ_ACCESS_MODE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -53,7 +61,7 @@ export default function AccessSettingsEditor({
               <ListCollector
                 inputId={readCampaignsId}
                 selected={accessSettings.readCampaigns}
-                options={accessOptions.campaigns}
+                options={accessOptions.campaigns || []}
                 onChange={(value) => onSettingChange('readCampaigns', value)}
                 placeholder="Select campaigns..."
                 noOptionsMessage={
@@ -74,7 +82,7 @@ export default function AccessSettingsEditor({
               <ListCollector
                 inputId={readUsersId}
                 selected={accessSettings.readUsers}
-                options={accessOptions.users}
+                options={accessOptions.users || []}
                 onChange={(value) => onSettingChange('readUsers', value)}
                 placeholder="Select users..."
                 noOptionsMessage={
@@ -86,6 +94,27 @@ export default function AccessSettingsEditor({
                 disabled={disabled}
               />
               <p className="help-text">Choose players who have characters in this world.</p>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor={readCharactersId}>Characters</label>
+              <ListCollector
+                inputId={readCharactersId}
+                selected={accessSettings.readCharacters}
+                options={accessOptions.characters || []}
+                onChange={(value) => onSettingChange('readCharacters', value)}
+                placeholder="Select characters..."
+                noOptionsMessage={
+                  accessOptionsLoading
+                    ? 'Loading characters...'
+                    : 'No characters available for this world.'
+                }
+                loading={accessOptionsLoading}
+                disabled={disabled}
+              />
+              <p className="help-text">
+                Grant visibility to specific characters regardless of campaign.
+              </p>
             </div>
           </>
         )}
@@ -101,7 +130,7 @@ export default function AccessSettingsEditor({
             onChange={(event) => onSettingChange('writeMode', event.target.value)}
             disabled={disabled}
           >
-            {ACCESS_MODE_OPTIONS.map((option) => (
+            {WRITE_ACCESS_MODE_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -116,7 +145,7 @@ export default function AccessSettingsEditor({
               <ListCollector
                 inputId={writeCampaignsId}
                 selected={accessSettings.writeCampaigns}
-                options={accessOptions.campaigns}
+                options={accessOptions.campaigns || []}
                 onChange={(value) => onSettingChange('writeCampaigns', value)}
                 placeholder="Select campaigns..."
                 noOptionsMessage={
@@ -137,7 +166,7 @@ export default function AccessSettingsEditor({
               <ListCollector
                 inputId={writeUsersId}
                 selected={accessSettings.writeUsers}
-                options={accessOptions.users}
+                options={accessOptions.users || []}
                 onChange={(value) => onSettingChange('writeUsers', value)}
                 placeholder="Select users..."
                 noOptionsMessage={

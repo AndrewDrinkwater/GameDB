@@ -19,13 +19,13 @@ const normaliseIdList = (value) => {
 
 export const fetchUserWorldCharacterCampaignIds = async (worldId, userId) => {
   if (!worldId || !userId) {
-    return { campaignIds: new Set(), hasAnyCharacter: false }
+    return { campaignIds: new Set(), characterIds: new Set(), hasAnyCharacter: false }
   }
 
   const [characters, campaignRoles] = await Promise.all([
     Character.findAll({
       where: { user_id: userId },
-      attributes: ['campaign_id'],
+      attributes: ['id', 'campaign_id'],
       include: [
         {
           model: Campaign,
@@ -52,6 +52,7 @@ export const fetchUserWorldCharacterCampaignIds = async (worldId, userId) => {
   ])
 
   const campaignIds = new Set()
+  const characterIds = new Set()
 
   const registerCampaignId = (campaignId) => {
     if (campaignId) {
@@ -62,6 +63,9 @@ export const fetchUserWorldCharacterCampaignIds = async (worldId, userId) => {
   characters.forEach((character) => {
     const plain = character.get({ plain: true })
     const campaignId = normaliseId(plain.campaign) ?? plain.campaign_id
+    if (plain.id) {
+      characterIds.add(String(plain.id))
+    }
     registerCampaignId(campaignId)
   })
 
@@ -71,7 +75,11 @@ export const fetchUserWorldCharacterCampaignIds = async (worldId, userId) => {
     registerCampaignId(campaignId)
   })
 
-  return { campaignIds, hasAnyCharacter: campaignIds.size > 0 }
+  return {
+    campaignIds,
+    characterIds,
+    hasAnyCharacter: characterIds.size > 0,
+  }
 }
 
 export const buildEntityReadContext = async ({
@@ -92,13 +100,15 @@ export const buildEntityReadContext = async ({
       isAdmin,
       isOwner,
       campaignIds: new Set(),
+      characterIds: new Set(),
       hasWorldCharacter: false,
       worldAccess: worldAccess ?? null,
       activeCampaignId: normalisedContextId,
     }
   }
 
-  const { campaignIds, hasAnyCharacter } = await fetchUserWorldCharacterCampaignIds(worldId, userId)
+  const { campaignIds, characterIds, hasAnyCharacter } =
+    await fetchUserWorldCharacterCampaignIds(worldId, userId)
   const activeCampaignId =
     normalisedContextId && campaignIds.has(normalisedContextId) ? normalisedContextId : null
 
@@ -107,6 +117,7 @@ export const buildEntityReadContext = async ({
     isAdmin,
     isOwner,
     campaignIds,
+    characterIds,
     hasWorldCharacter: hasAnyCharacter,
     worldAccess: worldAccess ?? null,
     activeCampaignId,
@@ -159,6 +170,10 @@ export const canUserWriteEntity = (entityInput, context) => {
     return hasWorldAccess || hasWorldCharacter
   }
 
+  if (writeAccess === 'owner_only') {
+    return false
+  }
+
   if (writeAccess === 'selective' || writeAccess === 'hidden') {
     return false
   }
@@ -171,6 +186,7 @@ export const canUserReadEntity = (entityInput, context) => {
   const readAccess = entity.read_access ?? 'global'
   const readCampaignIds = normaliseIdList(entity.read_campaign_ids)
   const readUserIds = normaliseIdList(entity.read_user_ids)
+  const readCharacterIds = normaliseIdList(entity.read_character_ids)
 
   const userId = context?.userId ?? null
   const isAdmin = Boolean(context?.isAdmin)
@@ -178,6 +194,7 @@ export const canUserReadEntity = (entityInput, context) => {
   const worldAccess = context?.worldAccess ?? null
   const hasWorldAccess = Boolean(worldAccess?.hasAccess)
   const campaignIds = context?.campaignIds ?? new Set()
+  const characterIds = context?.characterIds ?? new Set()
   const hasWorldCharacter = Boolean(context?.hasWorldCharacter)
   const activeCampaignId = context?.activeCampaignId ? String(context.activeCampaignId) : null
 
@@ -209,6 +226,13 @@ export const canUserReadEntity = (entityInput, context) => {
       return true
     }
 
+    if (characterIds.size > 0 && readCharacterIds.length > 0) {
+      const hasCharacterMatch = readCharacterIds.some((id) => characterIds.has(String(id)))
+      if (hasCharacterMatch) {
+        return true
+      }
+    }
+
     if (campaignIds.size > 0 && readCampaignIds.length > 0) {
       const candidateCampaignId =
         activeCampaignId && campaignIds.has(activeCampaignId) ? activeCampaignId : null
@@ -233,6 +257,7 @@ export const buildReadableEntitiesWhereClause = (context) => {
 
   const clauses = []
   const userId = context.userId ?? null
+  const characterIds = context.characterIds ?? new Set()
 
   if (userId) {
     clauses.push({ created_by: userId })
@@ -258,6 +283,15 @@ export const buildReadableEntitiesWhereClause = (context) => {
       ],
     })
     clauses.push({ write_campaign_ids: { [Op.contains]: [activeCampaignId] } })
+  }
+
+  if (characterIds.size > 0) {
+    clauses.push({
+      [Op.and]: [
+        { read_access: 'selective' },
+        { read_character_ids: { [Op.overlap]: Array.from(characterIds).map((id) => String(id)) } },
+      ],
+    })
   }
 
   if (userId) {
