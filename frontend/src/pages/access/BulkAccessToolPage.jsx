@@ -86,6 +86,23 @@ export default function BulkAccessToolPage() {
     setSelectedCampaignId(normalisedCampaignId)
   }, [isCampaignScoped, normalisedCampaignId, selectedCampaignId, setSelectedCampaignId])
 
+  const isOwner = useMemo(() => {
+    if (isCampaignScoped) return false
+    if (!world || !user) return false
+    return String(world.created_by) === String(user.id)
+  }, [isCampaignScoped, world, user])
+
+  const isCampaignDM = useMemo(() => {
+    if (!isCampaignScoped || !activeCampaign || !user?.id) return false
+    if (!Array.isArray(activeCampaign.members)) return false
+    return activeCampaign.members.some(
+      (member) => member?.user_id === user.id && member?.role === 'dm',
+    )
+  }, [activeCampaign, isCampaignScoped, user])
+
+  const canUseCampaignTool = Boolean(isCampaignScoped && activeCampaign && isCampaignDM)
+  const canUseTool = isOwner || canUseCampaignTool
+
   useEffect(() => {
     if (!resolvedWorldId || !canUseTool) {
       setCollections([])
@@ -124,23 +141,6 @@ export default function BulkAccessToolPage() {
       cancelled = true
     }
   }, [resolvedWorldId, canUseTool])
-
-  const isOwner = useMemo(() => {
-    if (isCampaignScoped) return false
-    if (!world || !user) return false
-    return String(world.created_by) === String(user.id)
-  }, [isCampaignScoped, world, user])
-
-  const isCampaignDM = useMemo(() => {
-    if (!isCampaignScoped || !activeCampaign || !user?.id) return false
-    if (!Array.isArray(activeCampaign.members)) return false
-    return activeCampaign.members.some(
-      (member) => member?.user_id === user.id && member?.role === 'dm',
-    )
-  }, [activeCampaign, isCampaignScoped, user])
-
-  const canUseCampaignTool = Boolean(isCampaignScoped && activeCampaign && isCampaignDM)
-  const canUseTool = isOwner || canUseCampaignTool
 
   useEffect(() => {
     if (isCampaignScoped) {
