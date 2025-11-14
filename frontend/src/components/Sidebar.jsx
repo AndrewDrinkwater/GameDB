@@ -71,16 +71,6 @@ export default function Sidebar({
     selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner),
   )
   const canUseBulkAccessTool = Boolean(selectedCampaignId && isSelectedWorldOwner)
-  const canUseCampaignBulkAccess = Boolean(selectedCampaignId && isDMInSelectedCampaign)
-  const shouldShowWorldAdminGroup = Boolean(
-    selectedCampaignId &&
-      (canViewAllEntities ||
-        canViewEntityTypes ||
-        canViewBulkEntityUpload ||
-        canViewRelationshipTypes ||
-        canUseBulkAccessTool),
-  )
-
   const isPlayerInSelectedCampaign = useMemo(() => {
     if (!selectedCampaign || !Array.isArray(selectedCampaign.members)) return false
     if (!user?.id) return false
@@ -98,6 +88,16 @@ export default function Sidebar({
       (member) => member?.user_id === user.id && member?.role === 'dm',
     )
   }, [selectedCampaign, user])
+
+  const canUseCampaignBulkAccess = Boolean(selectedCampaignId && isDMInSelectedCampaign)
+  const shouldShowWorldAdminGroup = Boolean(
+    selectedCampaignId &&
+      (canViewAllEntities ||
+        canViewEntityTypes ||
+        canViewBulkEntityUpload ||
+        canViewRelationshipTypes ||
+        canUseBulkAccessTool),
+  )
 
   const canAccessCampaignNotes = useMemo(() => {
     if (!selectedCampaignId) return false
