@@ -21,6 +21,8 @@ import UserCampaignRoleModel from './userCampaignRole.js'
 import EntityRelationshipTypeEntityTypeModel from './entityRelationshipTypeEntityType.js'
 import EntityListPreferenceModel from './entityListPreference.js'
 import UploadedFileModel from './uploadedFile.js' // ✅ new model import
+import BulkUpdateRunModel from './bulkUpdateRun.js'
+import BulkUpdateChangeModel from './bulkUpdateChange.js'
 
 // Create Sequelize instance
 export const sequelize = new Sequelize(process.env.DATABASE_URL, {
@@ -47,6 +49,8 @@ export const EntityRelationshipTypeEntityType =
   EntityRelationshipTypeEntityTypeModel(sequelize, DataTypes)
 export const EntityListPreference = EntityListPreferenceModel(sequelize, DataTypes)
 export const UploadedFile = UploadedFileModel(sequelize, DataTypes) // ✅ new model init
+export const BulkUpdateRun = BulkUpdateRunModel(sequelize, DataTypes)
+export const BulkUpdateChange = BulkUpdateChangeModel(sequelize, DataTypes)
 
 // --- Associations ---
 if (User.associate)
@@ -92,6 +96,10 @@ if (UserCampaignRole.associate) UserCampaignRole.associate({ User, Campaign })
 if (EntityListPreference.associate)
   EntityListPreference.associate({ EntityType, User })
 if (UploadedFile.associate) UploadedFile.associate({ User, Entity }) // ✅ ensure associations registered
+if (BulkUpdateRun.associate)
+  BulkUpdateRun.associate({ User, World, BulkUpdateChange })
+if (BulkUpdateChange.associate)
+  BulkUpdateChange.associate({ BulkUpdateRun, Entity })
 
 // --- Init DB ---
 export async function initDB() {
@@ -121,4 +129,6 @@ export default {
   UserCampaignRole,
   EntityListPreference,
   UploadedFile, // ✅ export for use in routes
+  BulkUpdateRun,
+  BulkUpdateChange,
 }
