@@ -1,18 +1,15 @@
-import { useCallback } from 'react'
-import { unstable_usePrompt, useBeforeUnload } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { useBlocker, useBeforeUnload } from 'react-router-dom'
+import UnsavedChangesDialog from '../components/UnsavedChangesDialog.jsx'
 
-export const UNSAVED_CHANGES_MESSAGE =
-  'You have unsaved changes. Select Cancel to stay here and save, or OK to leave without saving.'
+export default function useUnsavedChangesPrompt(shouldBlock, bypassRef) {
+  const [showDialog, setShowDialog] = useState(false)
+  const [activeBlocker, setActiveBlocker] = useState(null)
 
-export default function useUnsavedChangesPrompt(
-  isDirty,
-  message = UNSAVED_CHANGES_MESSAGE,
-  bypassRef,
-) {
   const shouldBlockNavigation = useCallback(
     ({ currentLocation, nextLocation }) => {
-      if (!isDirty) return false
-      if (bypassRef?.current) return false
+      if (!shouldBlock || bypassRef?.current) return false
+      if (!nextLocation) return false
 
       const isSameDestination =
         currentLocation.pathname === nextLocation.pathname &&
@@ -21,24 +18,61 @@ export default function useUnsavedChangesPrompt(
 
       return !isSameDestination
     },
-    [isDirty, bypassRef],
+    [shouldBlock, bypassRef],
   )
 
-  unstable_usePrompt({
-    when: shouldBlockNavigation,
-    message,
-  })
+  const blocker = useBlocker(shouldBlockNavigation)
+
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      setActiveBlocker(blocker)
+      setShowDialog(true)
+    } else if (blocker.state === 'idle') {
+      setActiveBlocker(null)
+      setShowDialog(false)
+    }
+  }, [blocker])
+
+  useEffect(() => {
+    if (!shouldBlock) {
+      setShowDialog(false)
+      setActiveBlocker(null)
+    }
+  }, [shouldBlock])
 
   useBeforeUnload(
     useCallback(
       (event) => {
-        if (!isDirty || bypassRef?.current) return
-
+        if (!shouldBlock || bypassRef?.current) return
         event.preventDefault()
         event.returnValue = ''
       },
-      [isDirty, bypassRef],
+      [shouldBlock, bypassRef],
     ),
     { capture: true },
   )
+
+  const handleClose = useCallback(() => {
+    setShowDialog(false)
+    activeBlocker?.reset?.()
+    setActiveBlocker(null)
+  }, [activeBlocker])
+
+  const dialog = showDialog ? (
+    <UnsavedChangesDialog
+      open={true}
+      onClose={handleClose}
+      onAction={(action) => {
+        if (action === 'discard') {
+          setShowDialog(false)
+          activeBlocker?.proceed?.()
+          setActiveBlocker(null)
+        } else if (action === 'save') {
+          setShowDialog(false)
+        }
+      }}
+    />
+  ) : null
+
+  return dialog
 }

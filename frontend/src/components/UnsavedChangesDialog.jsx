@@ -6,16 +6,26 @@ export default function UnsavedChangesDialog({
   title = 'Unsaved changes',
   description = 'You have unsaved changes on this record.',
   destinationLabel = '',
+  saveLabel = 'Save and continue',
+  discardLabel = 'Discard changes',
+  cancelLabel = 'Stay here',
   saving = false,
-  onSaveAndContinue,
-  onContinueWithoutSaving,
-  onStay,
+  onClose = () => {},
+  onAction = () => {},
 }) {
   if (!open) return null
 
   const destinationText = destinationLabel
     ? ` before continuing to ${destinationLabel}`
     : ''
+
+  const handleSave = () => {
+    onAction('save')
+  }
+
+  const handleDiscard = () => {
+    onAction('discard')
+  }
 
   return (
     <div className="unsaved-dialog-backdrop" role="dialog" aria-modal="true">
@@ -29,7 +39,8 @@ export default function UnsavedChangesDialog({
             type="button"
             className="icon-btn"
             aria-label="Close dialog"
-            onClick={onStay}
+            onClick={onClose}
+            disabled={saving}
           >
             <X size={18} />
           </button>
@@ -47,26 +58,26 @@ export default function UnsavedChangesDialog({
           <button
             type="button"
             className="btn submit"
-            onClick={onSaveAndContinue}
+            onClick={handleSave}
             disabled={saving}
           >
-            {saving ? 'Saving…' : 'Save and continue'}
+            {saving ? 'Saving…' : saveLabel}
           </button>
           <button
             type="button"
             className="btn ghost"
-            onClick={onContinueWithoutSaving}
+            onClick={handleDiscard}
             disabled={saving}
           >
-            Continue without saving
+            {discardLabel}
           </button>
           <button
             type="button"
             className="btn cancel"
-            onClick={onStay}
+            onClick={onClose}
             disabled={saving}
           >
-            Stay here
+            {cancelLabel}
           </button>
         </div>
       </div>

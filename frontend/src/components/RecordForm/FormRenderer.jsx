@@ -8,9 +8,8 @@ import {
   useState,
 } from 'react'
 import FieldRenderer from './FieldRenderer'
-import useUnsavedChangesPrompt, {
-  UNSAVED_CHANGES_MESSAGE,
-} from '../../hooks/useUnsavedChangesPrompt'
+import UnsavedChangesDialog from '../UnsavedChangesDialog.jsx'
+import useUnsavedChangesPrompt from '../../hooks/useUnsavedChangesPrompt'
 
 /**
  * Backwards-compatible form renderer.
@@ -40,6 +39,7 @@ function FormRenderer(
   const [statusMessage, setStatusMessage] = useState('')
   const [statusType, setStatusType] = useState('success')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
 
   useEffect(() => {
     const nextData = initialData ? { ...initialData } : {}
@@ -135,7 +135,7 @@ function FormRenderer(
   }, [isDirty, isSubmitting, onStateChange])
 
   const shouldPrompt = enableUnsavedPrompt && isDirty
-  useUnsavedChangesPrompt(shouldPrompt, undefined, bypassRef)
+  const unsavedPrompt = useUnsavedChangesPrompt(shouldPrompt, bypassRef)
 
   const handleActionSubmit = useCallback(async () => {
     if (!onSubmit) return true
@@ -191,15 +191,37 @@ function FormRenderer(
   const handleCancelClick = () => {
     if (!onCancel) return
 
-    if (
-      !isDirty ||
-      window.confirm(UNSAVED_CHANGES_MESSAGE)
-    ) {
+    if (!isDirty) {
       setInitialSignature(currentSignature)
       bypassRef.current = true
       onCancel()
+      return
     }
+
+    setShowUnsavedDialog(true)
   }
+
+  const handleCancelDialogAction = useCallback(
+    async (action) => {
+      if (!onCancel) return
+
+      if (action === 'save') {
+        const result = await handleActionSubmit()
+        if (result === false) {
+          setShowUnsavedDialog(true)
+          return
+        }
+      } else if (action === 'discard') {
+        setInitialSignature(currentSignature)
+      } else {
+        return
+      }
+
+      bypassRef.current = true
+      onCancel()
+    },
+    [currentSignature, handleActionSubmit, onCancel],
+  )
 
   const handleDeleteClick = async () => {
     if (!onDelete) return
@@ -239,76 +261,91 @@ function FormRenderer(
   )
 
   return (
-    <form className="record-form" onSubmit={handleSubmit}>
-      <h2 className="form-title">{schema?.title || 'Record'}</h2>
+    <>
+      <form className="record-form" onSubmit={handleSubmit}>
+        <h2 className="form-title">{schema?.title || 'Record'}</h2>
 
-      {sections.map((section, i) => (
-        <div className="form-section" key={i}>
-          {section.title ? <h3>{section.title}</h3> : null}
-          <div className={`form-grid cols-${section.columns || 1}`}>
-            {(section.fields || []).map((field, idx) => {
-                if (!field || typeof field !== 'object') {
-                    console.warn('⚠️ Skipping invalid field in schema:', field)
-                return null
-                }
-                return (
-                    <FieldRenderer
-                        key={`${field.key || field.name || field.field || 'field'}-${idx}`}
-                        field={field}
-                        data={formData}
-                        onChange={handleChange}
-                        mode="edit"
-                    />
-                )
-            })}
+        {sections.map((section, i) => (
+          <div className="form-section" key={i}>
+            {section.title ? <h3>{section.title}</h3> : null}
+            <div className={`form-grid cols-${section.columns || 1}`}>
+              {(section.fields || []).map((field, idx) => {
+                  if (!field || typeof field !== 'object') {
+                      console.warn('⚠️ Skipping invalid field in schema:', field)
+                  return null
+                  }
+                  return (
+                      <FieldRenderer
+                          key={`${field.key || field.name || field.field || 'field'}-${idx}`}
+                          field={field}
+                          data={formData}
+                          onChange={handleChange}
+                          mode="edit"
+                      />
+                  )
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
 
-      {statusMessage ? (
-        <div
-          className={`form-feedback ${statusType}`}
-          role={statusType === 'error' ? 'alert' : 'status'}
-        >
-          {statusMessage}
-        </div>
-      ) : null}
+        {statusMessage ? (
+          <div
+            className={`form-feedback ${statusType}`}
+            role={statusType === 'error' ? 'alert' : 'status'}
+          >
+            {statusMessage}
+          </div>
+        ) : null}
 
-      {!hideActions ? (
-        <div className="form-actions sticky-actions" role="toolbar">
-          <div className="left-actions">
-            {onDelete ? (
+        {!hideActions ? (
+          <div className="form-actions sticky-actions" role="toolbar">
+            <div className="left-actions">
+              {onDelete ? (
+                <button
+                  type="button"
+                  className="btn delete"
+                  onClick={handleDeleteClick}
+                  disabled={isSubmitting}
+                >
+                  {schema?.deleteLabel || 'Delete'}
+                </button>
+              ) : null}
+            </div>
+
+            <div className="right-actions">
               <button
                 type="button"
-                className="btn delete"
-                onClick={handleDeleteClick}
+                className="btn cancel"
+                onClick={handleCancelClick}
                 disabled={isSubmitting}
               >
-                {schema?.deleteLabel || 'Delete'}
+                {schema?.cancelLabel || 'Cancel'}
               </button>
-            ) : null}
+              <button
+                type="submit"
+                className="btn submit"
+                disabled={isSubmitting}
+              >
+                {schema?.saveLabel || 'Save'}
+              </button>
+            </div>
           </div>
+        ) : null}
+      </form>
 
-          <div className="right-actions">
-            <button
-              type="button"
-              className="btn cancel"
-              onClick={handleCancelClick}
-              disabled={isSubmitting}
-            >
-              {schema?.cancelLabel || 'Cancel'}
-            </button>
-            <button
-              type="submit"
-              className="btn submit"
-              disabled={isSubmitting}
-            >
-              {schema?.saveLabel || 'Save'}
-            </button>
-          </div>
-        </div>
-      ) : null}
-    </form>
+      {showUnsavedDialog && (
+        <UnsavedChangesDialog
+          open={true}
+          onClose={() => setShowUnsavedDialog(false)}
+          onAction={async (action) => {
+            setShowUnsavedDialog(false)
+            await handleCancelDialogAction(action)
+          }}
+        />
+      )}
+
+      {unsavedPrompt}
+    </>
   )
 }
 

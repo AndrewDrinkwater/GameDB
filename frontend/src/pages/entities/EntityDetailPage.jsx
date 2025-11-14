@@ -298,6 +298,8 @@ export default function EntityDetailPage() {
     isDirty: false,
     isSubmitting: false,
   })
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
+  const [onDialogConfirm, setOnDialogConfirm] = useState(() => () => {})
   const [unsavedDialogOpen, setUnsavedDialogOpen] = useState(false)
   const [pendingAction, setPendingAction] = useState(null)
   const [unsavedDialogSaving, setUnsavedDialogSaving] = useState(false)
@@ -1204,7 +1206,9 @@ export default function EntityDetailPage() {
     resetAccessSettings()
   }, [editInitialData, resetAccessSettings])
 
-  const hasUnsavedChanges = isEditing && (formState.isDirty || isAccessDirty)
+  const hasFormChanges = Boolean(formState.isDirty)
+  const hasAccessChanges = Boolean(isAccessDirty)
+  const hasUnsavedChanges = isEditing && (hasFormChanges || hasAccessChanges)
 
   const handleEditToggle = useCallback(() => {
     if (!canEdit) return
@@ -1215,24 +1219,33 @@ export default function EntityDetailPage() {
       return
     }
 
-    if (hasUnsavedChanges) {
-      setPendingAction({
-        type: 'exit-edit',
-        label: 'view mode',
-        proceed: () => {
-          exitEditMode()
-        },
-        discard: () => {
+    if (hasFormChanges || hasAccessChanges) {
+      setShowUnsavedDialog(true)
+      setOnDialogConfirm(() => async (action) => {
+        if (action === 'save') {
+          const saved = await handleSaveAll()
+          if (!saved) {
+            setShowUnsavedDialog(true)
+            return
+          }
+        } else if (action === 'discard') {
           resetPendingChanges()
-          exitEditMode()
-        },
+        }
+        exitEditMode()
       })
-      setUnsavedDialogOpen(true)
       return
     }
 
     exitEditMode()
-  }, [canEdit, exitEditMode, hasUnsavedChanges, isEditing, resetPendingChanges])
+  }, [
+    canEdit,
+    exitEditMode,
+    handleSaveAll,
+    hasAccessChanges,
+    hasFormChanges,
+    isEditing,
+    resetPendingChanges,
+  ])
 
   const handleUpdate = useCallback(
     async (values) => {
@@ -1474,7 +1487,7 @@ export default function EntityDetailPage() {
               onToggleEdit={handleEditToggle}
               onSave={handleSaveAll}
               isSaving={formState.isSubmitting || accessSaving}
-              isSaveDisabled={!formState.isDirty && !isAccessDirty}
+              isSaveDisabled={!hasFormChanges && !hasAccessChanges}
             />
             <TabNav
               tabs={tabItems}
@@ -1588,13 +1601,30 @@ export default function EntityDetailPage() {
         </div>
       </div>
 
+      {showUnsavedDialog && (
+        <UnsavedChangesDialog
+          open={true}
+          onClose={() => setShowUnsavedDialog(false)}
+          onAction={async (action) => {
+            setShowUnsavedDialog(false)
+            await onDialogConfirm(action)
+          }}
+        />
+      )}
+
       <UnsavedChangesDialog
         open={unsavedDialogOpen}
         destinationLabel={pendingAction?.label || ''}
         saving={unsavedDialogSaving}
-        onSaveAndContinue={handleUnsavedSaveAndContinue}
-        onContinueWithoutSaving={handleUnsavedContinue}
-        onStay={handleUnsavedStay}
+        discardLabel="Continue without saving"
+        onClose={handleUnsavedStay}
+        onAction={async (action) => {
+          if (action === 'save') {
+            await handleUnsavedSaveAndContinue()
+          } else if (action === 'discard') {
+            handleUnsavedContinue()
+          }
+        }}
       />
     </>
   )
