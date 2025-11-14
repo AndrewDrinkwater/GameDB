@@ -1,0 +1,258 @@
+.bulk-access-page {
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.bulk-access-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.bulk-access-eyebrow {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  margin-bottom: 0.35rem;
+}
+
+.bulk-access-header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.bulk-access-header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.bulk-access-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+.bulk-access-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 1.5rem;
+  box-shadow: 0 12px 30px -20px rgba(15, 23, 42, 0.35);
+}
+
+.bulk-access-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.bulk-access-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.bulk-access-entity-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.entity-filter input {
+  width: 100%;
+  border: 1px solid #cbd5f5;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.entity-selector-list {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.5rem;
+  max-height: 420px;
+  overflow-y: auto;
+  background: #f8fafc;
+}
+
+.entity-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.entity-row + .entity-row {
+  margin-top: 0.15rem;
+}
+
+.entity-row:hover {
+  background: rgba(79, 70, 229, 0.08);
+}
+
+.entity-row input {
+  margin: 0;
+}
+
+.entity-name {
+  font-weight: 600;
+  flex: 1;
+}
+
+.entity-type {
+  font-size: 0.8rem;
+  color: #475569;
+  background: #e0e7ff;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+}
+
+.bulk-access-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.bulk-access-form select,
+.bulk-access-form textarea {
+  width: 100%;
+  border: 1px solid #cbd5f5;
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.95rem;
+}
+
+.bulk-access-form textarea {
+  resize: vertical;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.bulk-access-summary {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.bulk-access-helper {
+  font-size: 0.9rem;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.bulk-access-helper.warning {
+  color: #d97706;
+}
+
+.bulk-access-alert {
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.bulk-access-alert.success {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.bulk-access-alert.error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.bulk-access-alert.warning {
+  background: #fff7ed;
+  color: #b45309;
+  border: 1px solid #fed7aa;
+}
+
+.primary-button {
+  background: linear-gradient(135deg, #4338ca, #7c3aed);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 0.85rem 1.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ghost-button {
+  border: 1px solid #cbd5f5;
+  background: transparent;
+  color: #334155;
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+}
+
+.ghost-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.inline-link {
+  margin-left: 0.35rem;
+  color: #4c1d95;
+  font-weight: 600;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  color: #4c1d95;
+  cursor: pointer;
+  padding: 0;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 640px) {
+  .bulk-access-card {
+    padding: 1.25rem;
+  }
+  .bulk-access-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

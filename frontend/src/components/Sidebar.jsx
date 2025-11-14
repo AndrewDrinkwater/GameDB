@@ -8,6 +8,8 @@ import {
   Link2,
   FileText,
   NotebookPen,
+  ShieldCheck,
+  History,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
@@ -67,12 +69,14 @@ export default function Sidebar({
   const canViewRelationshipTypes = Boolean(
     selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner),
   )
+  const canUseBulkAccessTool = Boolean(selectedCampaignId && isSelectedWorldOwner)
   const shouldShowWorldAdminGroup = Boolean(
     selectedCampaignId &&
       (canViewAllEntities ||
         canViewEntityTypes ||
         canViewBulkEntityUpload ||
-        canViewRelationshipTypes),
+        canViewRelationshipTypes ||
+        canUseBulkAccessTool),
   )
 
   const isPlayerInSelectedCampaign = useMemo(() => {
@@ -278,6 +282,36 @@ export default function Sidebar({
                   <Link2 size={16} className="nav-icon" />
                   <span>Relationship Types</span>
                 </Link>
+              )}
+
+              {canUseBulkAccessTool && campaignWorldId && (
+                <Link
+                  to={`/worlds/${campaignWorldId}/access/bulk`}
+                  className={`nav-entity-link ${
+                    isActive(`/worlds/${campaignWorldId}/access/bulk`) ? 'active' : ''
+                  }`}
+                >
+                  <ShieldCheck size={16} className="nav-icon" />
+                  <span>Bulk Access Editor</span>
+                </Link>
+              )}
+
+              {canUseBulkAccessTool && campaignWorldId && (
+                <Link
+                  to={`/worlds/${campaignWorldId}/access/audit`}
+                  className={`nav-entity-link ${
+                    isActive(`/worlds/${campaignWorldId}/access/audit`) ? 'active' : ''
+                  }`}
+                >
+                  <History size={16} className="nav-icon" />
+                  <span>Access Audit Log</span>
+                </Link>
+              )}
+
+              {canUseBulkAccessTool && !campaignWorldId && (
+                <span className="nav-helper">
+                  Select a campaign world to use the bulk access tools
+                </span>
               )}
             </div>
           </div>
