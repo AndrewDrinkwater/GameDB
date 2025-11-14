@@ -6,6 +6,8 @@ import {
   resolveEntityResponse,
   withEntityImageFields,
 } from '../../utils/entityHelpers.js'
+import ImageCropper from '../images/ImageCropper.jsx'
+import { cropImageFile } from '../../utils/imageCrop.js'
 
 const ACCEPTED_FILE_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg'])
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024
@@ -34,6 +36,7 @@ export default function EntityImageCard({
   const [uploading, setUploading] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const fileInputRef = useRef(null)
+  const [cropState, setCropState] = useState(null)
 
   const hasEntity = Boolean(entity?.id)
   const hasStoredImage = Boolean(entity?.imageData && entity?.imageMimeType)
@@ -50,6 +53,7 @@ export default function EntityImageCard({
       }
       return ''
     })
+    setCropState(null)
     setError('')
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
@@ -95,6 +99,7 @@ export default function EntityImageCard({
 
     setError('')
     setPendingFile(file)
+    setCropState(null)
     setPreviewUrl((prev) => {
       if (prev) {
         URL.revokeObjectURL(prev)
@@ -117,7 +122,10 @@ export default function EntityImageCard({
     setUploading(true)
     setError('')
     try {
-      const response = await uploadEntityImage(entity.id, pendingFile)
+      const fileToUpload = cropState
+        ? await cropImageFile(pendingFile, cropState)
+        : pendingFile
+      const response = await uploadEntityImage(entity.id, fileToUpload)
       const updated = resolveEntityResponse(response)
       if (!updated) {
         throw new Error('Failed to upload image')
@@ -174,6 +182,16 @@ export default function EntityImageCard({
     ? 'entity-image-card entity-image-card--compact'
     : 'entity-card entity-image-card'
 
+  const handleCropChange = useCallback((nextCrop) => {
+    setCropState(nextCrop)
+  }, [])
+
+  useEffect(() => {
+    if (!pendingFile) {
+      setCropState(null)
+    }
+  }, [pendingFile])
+
   return (
     <ContainerTag className={containerClassName}>
       <div className="entity-card-header">
@@ -211,8 +229,14 @@ export default function EntityImageCard({
         ) : null}
       </div>
       <div className="entity-card-body">
-        <div className={`entity-image-preview ${displayUrl ? 'has-image' : ''}`.trim()}>
-          {displayUrl ? (
+        <div
+          className={`entity-image-preview ${
+            displayUrl && !pendingFile ? 'has-image' : ''
+          }`.trim()}
+        >
+          {pendingFile && previewUrl ? (
+            <ImageCropper src={previewUrl} size={220} onCropChange={handleCropChange} />
+          ) : displayUrl ? (
             <img src={displayUrl} alt={imageAlt} loading="lazy" />
           ) : (
             <div className="entity-image-placeholder">
