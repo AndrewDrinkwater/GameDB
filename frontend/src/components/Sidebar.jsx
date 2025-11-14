@@ -144,7 +144,7 @@ export default function Sidebar({
     return () => {
       cancelled = true
     }
-  }, [campaignWorldId])
+  }, [campaignWorldId, selectedCampaignId])
 
   const isActive = useCallback(
     (path) => {
