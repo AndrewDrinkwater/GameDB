@@ -28,7 +28,8 @@ import {
 const VISIBILITY_VALUES = new Set(['hidden', 'visible', 'partial'])
 const PUBLIC_VISIBILITY = ['visible', 'partial']
 
-const ACCESS_VALUES = new Set(['global', 'selective', 'hidden'])
+const READ_ACCESS_VALUES = new Set(['global', 'selective', 'hidden'])
+const WRITE_ACCESS_VALUES = new Set(['global', 'selective', 'hidden', 'owner_only'])
 const MAX_IMAGE_MIME_TYPE_LENGTH = 50
 
 const normaliseImageDataInput = (value) => {
@@ -70,9 +71,12 @@ const normaliseAccessValue = (value, fieldName) => {
   }
 
   const trimmed = value.trim().toLowerCase()
+  const allowedValues = fieldName === 'write_access' ? WRITE_ACCESS_VALUES : READ_ACCESS_VALUES
 
-  if (!ACCESS_VALUES.has(trimmed)) {
-    throw new Error(`${fieldName} must be one of: ${Array.from(ACCESS_VALUES).join(', ')}`)
+  if (!allowedValues.has(trimmed)) {
+    throw new Error(
+      `${fieldName} must be one of: ${Array.from(allowedValues).join(', ')}`,
+    )
   }
 
   return trimmed
@@ -669,6 +673,7 @@ export const createEntityResponse = async ({ world, user, body }) => {
     write_access: writeAccessInput,
     read_campaign_ids: readCampaignIdsInput,
     read_user_ids: readUserIdsInput,
+    read_character_ids: readCharacterIdsInput,
     write_campaign_ids: writeCampaignIdsInput,
     write_user_ids: writeUserIdsInput,
     image_data: imageDataInput,
@@ -710,6 +715,7 @@ export const createEntityResponse = async ({ world, user, body }) => {
   let writeAccess = 'global'
   let readCampaignIds = []
   let readUserIds = []
+  let readCharacterIds = []
   let writeCampaignIds = []
   let writeUserIds = []
   let imageData
@@ -732,6 +738,10 @@ export const createEntityResponse = async ({ world, user, body }) => {
       readUserIds = normaliseUuidArray(readUserIdsInput, 'read_user_ids')
     }
 
+    if (readCharacterIdsInput !== undefined) {
+      readCharacterIds = normaliseUuidArray(readCharacterIdsInput, 'read_character_ids')
+    }
+
     if (writeCampaignIdsInput !== undefined) {
       writeCampaignIds = normaliseUuidArray(writeCampaignIdsInput, 'write_campaign_ids')
     }
@@ -746,14 +756,15 @@ export const createEntityResponse = async ({ world, user, body }) => {
     return { status: 400, body: { success: false, message: err.message } }
   }
 
-  if (readAccess !== 'selective') {
-    readCampaignIds = []
-    readUserIds = []
-  }
+    if (readAccess !== 'selective') {
+      readCampaignIds = []
+      readUserIds = []
+      readCharacterIds = []
+    }
 
-  if (writeAccess !== 'selective') {
-    writeCampaignIds = []
-    writeUserIds = []
+    if (writeAccess !== 'selective') {
+      writeCampaignIds = []
+      writeUserIds = []
   }
 
   let metadataInput = {}
@@ -785,6 +796,7 @@ export const createEntityResponse = async ({ world, user, body }) => {
     write_access: writeAccess,
     read_campaign_ids: readCampaignIds,
     read_user_ids: readUserIds,
+    read_character_ids: readCharacterIds,
     write_campaign_ids: writeCampaignIds,
     write_user_ids: writeUserIds,
     image_data: imageData ?? null,
@@ -1066,6 +1078,7 @@ export const updateEntity = async (req, res) => {
       write_access: writeAccessInput,
       read_campaign_ids: readCampaignIdsInput,
       read_user_ids: readUserIdsInput,
+      read_character_ids: readCharacterIdsInput,
       write_campaign_ids: writeCampaignIdsInput,
       write_user_ids: writeUserIdsInput,
       image_data: imageDataInput,
@@ -1105,6 +1118,7 @@ export const updateEntity = async (req, res) => {
     let writeAccess
     let readCampaignIds
     let readUserIds
+    let readCharacterIds
     let writeCampaignIds
     let writeUserIds
     let imageData
@@ -1115,6 +1129,7 @@ export const updateEntity = async (req, res) => {
       writeAccess = normaliseAccessValue(writeAccessInput, 'write_access')
       readCampaignIds = normaliseUuidArray(readCampaignIdsInput, 'read_campaign_ids')
       readUserIds = normaliseUuidArray(readUserIdsInput, 'read_user_ids')
+      readCharacterIds = normaliseUuidArray(readCharacterIdsInput, 'read_character_ids')
       writeCampaignIds = normaliseUuidArray(writeCampaignIdsInput, 'write_campaign_ids')
       writeUserIds = normaliseUuidArray(writeUserIdsInput, 'write_user_ids')
       imageData = normaliseImageDataInput(imageDataInput)
@@ -1148,6 +1163,7 @@ export const updateEntity = async (req, res) => {
       if (readAccess !== 'selective') {
         readCampaignIds = []
         readUserIds = []
+        readCharacterIds = []
       }
     }
 
@@ -1165,6 +1181,10 @@ export const updateEntity = async (req, res) => {
 
     if (readUserIds !== undefined) {
       updates.read_user_ids = readUserIds
+    }
+
+    if (readCharacterIds !== undefined) {
+      updates.read_character_ids = readCharacterIds
     }
 
     if (writeCampaignIds !== undefined) {

@@ -25,6 +25,11 @@ const VISIBILITY_OPTIONS = [
 const ACCEPTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg'])
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024
 
+const READ_ACCESS_MODE_SET = new Set(['global', 'selective', 'hidden'])
+const WRITE_ACCESS_MODE_SET = new Set(['global', 'selective', 'hidden', 'owner_only'])
+
+const createEmptyAccessOptions = () => ({ campaigns: [], users: [], characters: [] })
+
 const formatFileSize = (bytes) => {
   if (!Number.isFinite(bytes)) return ''
   if (bytes >= 1024 * 1024) {
@@ -248,11 +253,12 @@ export default function EntityForm({
     readMode: 'global',
     readCampaigns: [],
     readUsers: [],
+    readCharacters: [],
     writeMode: 'global',
     writeCampaigns: [],
     writeUsers: [],
   })
-  const [accessOptions, setAccessOptions] = useState({ campaigns: [], users: [] })
+  const [accessOptions, setAccessOptions] = useState(() => createEmptyAccessOptions())
   const [accessOptionsLoading, setAccessOptionsLoading] = useState(false)
   const [accessOptionsError, setAccessOptionsError] = useState('')
   const accessOptionsLoadedRef = useRef(false)
@@ -544,12 +550,13 @@ export default function EntityForm({
         readMode: 'global',
         readCampaigns: [],
         readUsers: [],
+        readCharacters: [],
         writeMode: 'global',
         writeCampaigns: [],
         writeUsers: [],
       })
       accessOptionsLoadedRef.current = false
-      setAccessOptions({ campaigns: [], users: [] })
+      setAccessOptions(createEmptyAccessOptions())
       setAccessOptionsError('')
       setEntityImage(null)
       resetPendingImageSelection()
@@ -648,19 +655,16 @@ export default function EntityForm({
       const next = { ...prev }
 
       if (key === 'readMode' || key === 'writeMode') {
-        const mode = typeof value === 'string' ? value.trim().toLowerCase() : 'global'
+        const rawMode = typeof value === 'string' ? value.trim().toLowerCase() : 'global'
         if (key === 'readMode') {
-          next.readMode = ['global', 'selective', 'hidden'].includes(mode)
-            ? mode
-            : 'global'
+          next.readMode = READ_ACCESS_MODE_SET.has(rawMode) ? rawMode : 'global'
           if (next.readMode !== 'selective') {
             next.readCampaigns = []
             next.readUsers = []
+            next.readCharacters = []
           }
         } else {
-          next.writeMode = ['global', 'selective', 'hidden'].includes(mode)
-            ? mode
-            : 'global'
+          next.writeMode = WRITE_ACCESS_MODE_SET.has(rawMode) ? rawMode : 'global'
           if (next.writeMode !== 'selective') {
             next.writeCampaigns = []
             next.writeUsers = []
@@ -669,7 +673,15 @@ export default function EntityForm({
         return next
       }
 
-      if (['readCampaigns', 'readUsers', 'writeCampaigns', 'writeUsers'].includes(key)) {
+      if (
+        [
+          'readCampaigns',
+          'readUsers',
+          'readCharacters',
+          'writeCampaigns',
+          'writeUsers',
+        ].includes(key)
+      ) {
         next[key] = Array.isArray(value)
           ? value.map((entry) => String(entry).trim()).filter(Boolean)
           : []
@@ -683,7 +695,7 @@ export default function EntityForm({
 
   useEffect(() => {
     accessOptionsLoadedRef.current = false
-    setAccessOptions({ campaigns: [], users: [] })
+    setAccessOptions(createEmptyAccessOptions())
     setAccessOptionsError('')
   }, [worldId])
 
@@ -700,11 +712,15 @@ export default function EntityForm({
       try {
         const options = await fetchAccessOptionsForWorld(worldId)
         if (cancelled) return
-        setAccessOptions(options)
+        setAccessOptions({
+          campaigns: options.campaigns ?? [],
+          users: options.users ?? [],
+          characters: options.characters ?? [],
+        })
         accessOptionsLoadedRef.current = true
       } catch (err) {
         if (cancelled) return
-        setAccessOptions({ campaigns: [], users: [] })
+        setAccessOptions(createEmptyAccessOptions())
         setAccessOptionsError(err.message || 'Failed to load access options')
         accessOptionsLoadedRef.current = false
       } finally {
@@ -816,6 +832,8 @@ export default function EntityForm({
             accessSettings.readMode === 'selective' ? accessSettings.readCampaigns : [],
           read_user_ids:
             accessSettings.readMode === 'selective' ? accessSettings.readUsers : [],
+          read_character_ids:
+            accessSettings.readMode === 'selective' ? accessSettings.readCharacters : [],
           write_campaign_ids:
             accessSettings.writeMode === 'selective' ? accessSettings.writeCampaigns : [],
           write_user_ids:
