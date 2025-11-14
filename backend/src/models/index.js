@@ -23,6 +23,7 @@ import EntityListPreferenceModel from './entityListPreference.js'
 import UploadedFileModel from './uploadedFile.js' // ✅ new model import
 import BulkUpdateRunModel from './bulkUpdateRun.js'
 import BulkUpdateChangeModel from './bulkUpdateChange.js'
+import EntityCollectionModel from './entityCollection.js'
 
 // Create Sequelize instance
 export const sequelize = new Sequelize(process.env.DATABASE_URL, {
@@ -51,6 +52,7 @@ export const EntityListPreference = EntityListPreferenceModel(sequelize, DataTyp
 export const UploadedFile = UploadedFileModel(sequelize, DataTypes) // ✅ new model init
 export const BulkUpdateRun = BulkUpdateRunModel(sequelize, DataTypes)
 export const BulkUpdateChange = BulkUpdateChangeModel(sequelize, DataTypes)
+export const EntityCollection = EntityCollectionModel(sequelize, DataTypes)
 
 // --- Associations ---
 if (User.associate)
@@ -100,6 +102,7 @@ if (BulkUpdateRun.associate)
   BulkUpdateRun.associate({ User, World, Campaign, BulkUpdateChange })
 if (BulkUpdateChange.associate)
   BulkUpdateChange.associate({ BulkUpdateRun, Entity })
+if (EntityCollection.associate) EntityCollection.associate({ World, User })
 
 // --- Init DB ---
 export async function initDB() {
@@ -131,4 +134,5 @@ export default {
   UploadedFile, // ✅ export for use in routes
   BulkUpdateRun,
   BulkUpdateChange,
+  EntityCollection,
 }

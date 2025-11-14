@@ -8,7 +8,11 @@ import { fetchWorlds } from '../../api/worlds.js'
 import { fetchCampaigns } from '../../api/campaigns.js'
 import { fetchCharacters } from '../../api/characters.js'
 import { fetchUsers } from '../../api/users.js'
-import { applyBulkAccessUpdate } from '../../api/access.js'
+import {
+  applyBulkAccessUpdate,
+  fetchCollections,
+  resolveCollectionEntities,
+} from '../../api/access.js'
 import './BulkAccessToolPage.css'
 
 const MAX_ENTITIES = 1000
@@ -58,6 +62,13 @@ export default function BulkAccessToolPage() {
     writeUserIds: [],
     description: '',
   })
+  const [selectionMode, setSelectionMode] = useState('manual')
+  const [collections, setCollections] = useState([])
+  const [collectionsLoading, setCollectionsLoading] = useState(false)
+  const [collectionsError, setCollectionsError] = useState('')
+  const [selectedCollectionId, setSelectedCollectionId] = useState('')
+  const [collectionPreview, setCollectionPreview] = useState(null)
+  const [resolvingCollection, setResolvingCollection] = useState(false)
 
   const isCampaignScoped = Boolean(campaignId)
   const normalisedCampaignId = campaignId ? String(campaignId) : ''
@@ -74,6 +85,45 @@ export default function BulkAccessToolPage() {
     if (String(selectedCampaignId || '') === normalisedCampaignId) return
     setSelectedCampaignId(normalisedCampaignId)
   }, [isCampaignScoped, normalisedCampaignId, selectedCampaignId, setSelectedCampaignId])
+
+  useEffect(() => {
+    if (!resolvedWorldId || !canUseTool) {
+      setCollections([])
+      setCollectionsError('')
+      setSelectedCollectionId('')
+      setCollectionPreview(null)
+      return
+    }
+
+    let cancelled = false
+    const loadCollectionsList = async () => {
+      setCollectionsLoading(true)
+      setCollectionsError('')
+
+      try {
+        const response = await fetchCollections(resolvedWorldId)
+        const list = normaliseListResponse(response)
+        if (!cancelled) {
+          setCollections(list)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Failed to load collections', err)
+          setCollections([])
+          setCollectionsError(err.message || 'Failed to load collections')
+        }
+      } finally {
+        if (!cancelled) {
+          setCollectionsLoading(false)
+        }
+      }
+    }
+
+    loadCollectionsList()
+    return () => {
+      cancelled = true
+    }
+  }, [resolvedWorldId, canUseTool])
 
   const isOwner = useMemo(() => {
     if (isCampaignScoped) return false
@@ -302,6 +352,58 @@ export default function BulkAccessToolPage() {
   const handleClearSelection = () => {
     setSelectedEntityIds([])
     setFormError('')
+    if (selectionMode === 'collection') {
+      setSelectedCollectionId('')
+      setCollectionPreview(null)
+    }
+  }
+
+  const handleSelectionModeChange = (event) => {
+    const nextMode = event.target.value
+    setSelectionMode(nextMode)
+    setFormError('')
+    if (nextMode === 'manual') {
+      setSelectedCollectionId('')
+      setCollectionPreview(null)
+    } else {
+      setSelectedEntityIds([])
+    }
+  }
+
+  const handleCollectionSelect = async (event) => {
+    const collectionId = event.target.value
+    setSelectedCollectionId(collectionId)
+    setCollectionPreview(null)
+    setFormError('')
+
+    if (!collectionId) {
+      setSelectedEntityIds([])
+      return
+    }
+
+    setResolvingCollection(true)
+    try {
+      const response = await resolveCollectionEntities(collectionId)
+      const data = response?.data || response
+      const ids = Array.isArray(data?.entityIds) ? data.entityIds : []
+      setSelectedEntityIds(ids)
+      setCollectionPreview({
+        entityIds: ids,
+        entityCount: data?.entityCount ?? ids.length,
+        totalCount: data?.totalCount ?? ids.length,
+        truncated: Boolean(data?.truncated),
+      })
+      if (data?.truncated) {
+        setFormError(`Only the first ${MAX_ENTITIES} entities were loaded from this collection.`)
+      }
+    } catch (err) {
+      console.error('Failed to resolve collection entities', err)
+      setFormError(err.message || 'Failed to load collection entities')
+      setSelectedEntityIds([])
+      setCollectionPreview(null)
+    } finally {
+      setResolvingCollection(false)
+    }
   }
 
   const handleInputChange = (event) => {
@@ -402,6 +504,17 @@ export default function BulkAccessToolPage() {
   }, [activeCampaign, campaigns, isCampaignScoped])
   const userOptions = useMemo(() => toSelectOptions(users, 'username'), [users])
   const characterOptions = useMemo(() => toSelectOptions(characters), [characters])
+  const entityLookup = useMemo(() => {
+    const map = new Map()
+    entities.forEach((entity) => {
+      map.set(entity.id, entity)
+    })
+    return map
+  }, [entities])
+  const collectionPreviewNames = useMemo(() => {
+    if (!collectionPreview || !Array.isArray(collectionPreview.entityIds)) return []
+    return collectionPreview.entityIds.slice(0, 10).map((id) => entityLookup.get(id)?.name || id)
+  }, [collectionPreview, entityLookup])
 
   if (loadingWorld) {
     return (
@@ -494,7 +607,12 @@ export default function BulkAccessToolPage() {
               <ShieldPlus size={18} /> Choose entities ({selectedCount}/{MAX_ENTITIES})
             </h2>
             <div className="bulk-access-entity-actions">
-              <button type="button" className="ghost-button" onClick={handleSelectAllFiltered} disabled={selectionFull}>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={handleSelectAllFiltered}
+                disabled={selectionFull || selectionMode !== 'manual'}
+              >
                 Select filtered
               </button>
               <button type="button" className="ghost-button" onClick={handleClearSelection}>
@@ -502,40 +620,132 @@ export default function BulkAccessToolPage() {
               </button>
             </div>
           </header>
-          <div className="entity-filter">
-            <input
-              type="text"
-              placeholder="Filter entities by name"
-              value={entityFilter}
-              onChange={(event) => setEntityFilter(event.target.value)}
-            />
+          <div className="bulk-access-selection-mode">
+            <label>
+              <input
+                type="radio"
+                value="manual"
+                checked={selectionMode === 'manual'}
+                onChange={handleSelectionModeChange}
+              />
+              Select manually
+            </label>
+            <label>
+              <input
+                type="radio"
+                value="collection"
+                checked={selectionMode === 'collection'}
+                onChange={handleSelectionModeChange}
+              />
+              Use collection
+            </label>
           </div>
-          <div className="entity-selector-list">
-            {loadingData && (
-              <p className="bulk-access-helper">
-                <Loader2 className="spin" size={16} /> Loading entities…
-              </p>
-            )}
-            {!loadingData && filteredEntities.length === 0 && (
-              <p className="bulk-access-helper">
-                {isCampaignScoped
-                  ? 'No entities are visible within this campaign context.'
-                  : 'No entities match the current filter.'}
-              </p>
-            )}
-            {!loadingData &&
-              filteredEntities.map((entity) => (
-                <label key={entity.id} className="entity-row">
-                  <input
-                    type="checkbox"
-                    checked={selectedEntityIds.includes(entity.id)}
-                    onChange={() => handleEntityToggle(entity.id)}
-                  />
-                  <span className="entity-name">{entity.name}</span>
-                  {entity.entityType?.name && <span className="entity-type">{entity.entityType.name}</span>}
-                </label>
-              ))}
-          </div>
+
+          {selectionMode === 'collection' ? (
+            <div className="bulk-access-collection-panel">
+              {collectionsLoading && (
+                <p className="bulk-access-helper">
+                  <Loader2 className="spin" size={16} /> Loading collections…
+                </p>
+              )}
+              {!collectionsLoading && collectionsError && (
+                <p className="bulk-access-helper warning">{collectionsError}</p>
+              )}
+              {!collectionsLoading && !collectionsError && collections.length === 0 && (
+                <p className="bulk-access-helper">
+                  No collections available.
+                  {isOwner && !isCampaignScoped && worldId && (
+                    <>
+                      {' '}
+                      <Link to={`/worlds/${worldId}/collections`} className="inline-link">
+                        Create one in the collections manager
+                      </Link>
+                      .
+                    </>
+                  )}
+                </p>
+              )}
+              {collections.length > 0 && (
+                <select value={selectedCollectionId} onChange={handleCollectionSelect}>
+                  <option value="">Select a collection</option>
+                  {collections.map((collection) => (
+                    <option key={collection.id} value={collection.id}>
+                      {collection.name} · {collection.entityCount ?? collection.entity_ids?.length ?? 0} entities
+                    </option>
+                  ))}
+                </select>
+              )}
+              {resolvingCollection && (
+                <p className="bulk-access-helper">
+                  <Loader2 className="spin" size={16} /> Resolving collection…
+                </p>
+              )}
+              {collectionPreview && (
+                <div className="bulk-access-collection-preview">
+                  <p>
+                    <strong>{collectionPreview.entityCount}</strong> entities selected from this collection.
+                  </p>
+                  {collectionPreview.truncated && (
+                    <p className="bulk-access-helper warning">
+                      Only the first {MAX_ENTITIES} entities can be updated at a time.
+                    </p>
+                  )}
+                  {collectionPreviewNames.length > 0 && (
+                    <ul>
+                      {collectionPreviewNames.map((name, index) => (
+                        <li key={`${name}-${index}`}>{name}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+              {selectionMode === 'collection' && isOwner && !isCampaignScoped && worldId && (
+                <Link to={`/worlds/${worldId}/collections`} className="inline-link">
+                  Manage collections
+                </Link>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="entity-filter">
+                <input
+                  type="text"
+                  placeholder="Filter entities by name"
+                  value={entityFilter}
+                  onChange={(event) => setEntityFilter(event.target.value)}
+                />
+              </div>
+              <div className="entity-selector-list">
+                {loadingData && (
+                  <p className="bulk-access-helper">
+                    <Loader2 className="spin" size={16} /> Loading entities…
+                  </p>
+                )}
+                {!loadingData && filteredEntities.length === 0 && (
+                  <p className="bulk-access-helper">
+                    {isCampaignScoped
+                      ? 'No entities are visible within this campaign context.'
+                      : 'No entities match the current filter.'}
+                  </p>
+                )}
+                {!loadingData &&
+                  filteredEntities.map((entity) => (
+                    <label key={entity.id} className="entity-row">
+                      <input
+                        type="checkbox"
+                        checked={selectedEntityIds.includes(entity.id)}
+                        onChange={() => handleEntityToggle(entity.id)}
+                        disabled={selectionFull && !selectedEntityIds.includes(entity.id)}
+                      />
+                      <span className="entity-name">{entity.name}</span>
+                      {entity.entityType?.name && (
+                        <span className="entity-type">{entity.entityType.name}</span>
+                      )}
+                    </label>
+                  ))}
+              </div>
+            </>
+          )}
         </section>
 
         <section className="bulk-access-card">

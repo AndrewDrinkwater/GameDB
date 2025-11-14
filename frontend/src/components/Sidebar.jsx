@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   ShieldPlus,
   History,
+  Layers,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
@@ -295,6 +296,18 @@ export default function Sidebar({
                 >
                   <ShieldCheck size={16} className="nav-icon" />
                   <span>Bulk Access Editor</span>
+                </Link>
+              )}
+
+              {canUseBulkAccessTool && campaignWorldId && (
+                <Link
+                  to={`/worlds/${campaignWorldId}/collections`}
+                  className={`nav-entity-link ${
+                    isActive(`/worlds/${campaignWorldId}/collections`) ? 'active' : ''
+                  }`}
+                >
+                  <Layers size={16} className="nav-icon" />
+                  <span>Collections</span>
                 </Link>
               )}
 

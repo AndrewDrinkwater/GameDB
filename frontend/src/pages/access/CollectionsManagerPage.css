@@ -1,0 +1,269 @@
+.collections-page {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.collections-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.collections-eyebrow {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.collections-helper {
+  color: #64748b;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.collections-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.collections-alert.error {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.collections-alert.warning {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.collections-alert.success {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.collections-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.collections-card {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  padding: 20px;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+
+.collections-card header {
+  margin-bottom: 16px;
+}
+
+.collections-table-wrapper {
+  overflow-x: auto;
+}
+
+.collections-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.collections-table th,
+.collections-table td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.collections-table tr.active {
+  background: #eff6ff;
+}
+
+.collection-name {
+  font-weight: 600;
+  display: block;
+}
+
+.collection-description {
+  display: block;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.shared-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 0.8rem;
+}
+
+.shared-chip.private {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.collections-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  font-style: italic;
+}
+
+.collections-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.collections-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.collections-form input[type='text'],
+.collections-form textarea {
+  border: 1px solid #cbd5f5;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 1rem;
+}
+
+.checkbox-label {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+}
+
+.collections-entity-picker {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 260px;
+}
+
+.collections-entity-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.collections-entity-toolbar input {
+  flex: 1;
+  border: 1px solid #cbd5f5;
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.collections-entity-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.collections-entity-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.collections-entity-list li label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.collections-entity-list li label:hover {
+  background: #f8fafc;
+}
+
+.entity-name {
+  font-weight: 500;
+}
+
+.entity-type {
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.collections-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.collections-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.collections-page .primary-button,
+.collections-page .ghost-button,
+.collections-page .link-button {
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  padding: 8px 14px;
+  font-weight: 600;
+}
+
+.collections-page .primary-button {
+  background: #2563eb;
+  color: #fff;
+}
+
+.collections-page .primary-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.collections-page .ghost-button,
+.collections-page .link-button {
+  background: transparent;
+  color: #2563eb;
+}
+
+.collections-page .link-button {
+  padding: 0;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
