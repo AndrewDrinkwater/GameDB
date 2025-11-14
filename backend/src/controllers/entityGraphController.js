@@ -14,6 +14,8 @@ function mapEntityNode(entity) {
   return {
     id: raw.id,
     name: raw.name,
+    image_data: raw.image_data ?? null,
+    image_mime_type: raw.image_mime_type ?? null,
     type: raw.entityType
       ? { id: raw.entityType.id, name: raw.entityType.name }
       : null,
@@ -35,6 +37,8 @@ export async function getEntityGraph(req, res) {
         'read_access',
         'read_campaign_ids',
         'read_user_ids',
+        'image_data',
+        'image_mime_type',
       ],
       include: [
         {
@@ -101,6 +105,8 @@ export async function getEntityGraph(req, res) {
           'read_access',
           'read_campaign_ids',
           'read_user_ids',
+          'image_data',
+          'image_mime_type',
         ],
         include: [
           {
@@ -121,6 +127,8 @@ export async function getEntityGraph(req, res) {
           'read_access',
           'read_campaign_ids',
           'read_user_ids',
+          'image_data',
+          'image_mime_type',
         ],
         include: [
           {

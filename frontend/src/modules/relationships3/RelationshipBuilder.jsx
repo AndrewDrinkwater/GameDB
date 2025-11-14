@@ -1,6 +1,7 @@
 // src/modules/relationships3/RelationshipBuilder.jsx
 import React, { useEffect, useMemo, useState } from 'react'
 import { getWorldEntities, getEntity } from '../../api/entities.js'
+import { resolveEntityResponse } from '../../utils/entityHelpers.js'
 import { getRelationshipTypes } from '../../api/entityRelationshipTypes.js'
 import { createRelationship } from '../../api/entityRelationships.js'
 import EntitySearchSelect from './ui/EntitySearchSelect.jsx'
@@ -315,7 +316,7 @@ export default function RelationshipBuilder({
               setEntities((prev) => [...prev, newEntity])
               try {
                 const res = await getEntity(newEntity.id)
-                const fullEntity = res?.data || res
+                const fullEntity = resolveEntityResponse(res) || newEntity
                 setEntity2(fullEntity)
               } catch {
                 setEntity2(newEntity)

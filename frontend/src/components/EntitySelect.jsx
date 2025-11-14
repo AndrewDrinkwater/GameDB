@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PropTypes from '../utils/propTypes.js'
 import { getEntity, searchEntities } from '../api/entities.js'
+import { resolveEntityResponse } from '../utils/entityHelpers.js'
 
 const DEFAULT_LIMIT = 20
 const DEBOUNCE_DELAY = 250
@@ -25,6 +26,8 @@ const normaliseEntityPayload = (payload) => {
     name: payload.name || 'Untitled entity',
     typeId: type?.id ?? payload.entity_type_id ?? null,
     typeName: type?.name ?? payload.entity_type_name ?? '',
+    imageData: payload.imageData ?? payload.image_data ?? null,
+    imageMimeType: payload.imageMimeType ?? payload.image_mime_type ?? null,
   }
 }
 
@@ -133,7 +136,8 @@ const EntitySelect = ({
     getEntity(stringValue)
       .then((response) => {
         if (cancelled || fetchId !== currentFetchRef.current) return
-        const entity = normaliseEntityPayload(response?.data ?? response)
+        const resolved = resolveEntityResponse(response)
+        const entity = normaliseEntityPayload(resolved)
         if (entity) {
           setSelected(entity)
           setInputValue(entity.name)

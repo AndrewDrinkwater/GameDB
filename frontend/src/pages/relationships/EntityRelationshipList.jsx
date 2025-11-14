@@ -12,6 +12,7 @@ import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import DrawerPanel from '../../components/DrawerPanel.jsx'
 import { useFeatureFlag } from '../../context/FeatureFlagContext.jsx'
 import RelationshipBuilder from '../../modules/relationships3/RelationshipBuilder.jsx'
+import { resolveEntityResponse } from '../../utils/entityHelpers.js'
 
 const MANAGER_ROLES = new Set(['system_admin'])
 
@@ -90,7 +91,7 @@ export default function EntityRelationshipList() {
       missing.map(async (id) => {
         try {
           const response = await getEntity(id)
-          const data = response?.data || response
+          const data = resolveEntityResponse(response)
           return { id, data }
         } catch (err) {
           console.error('❌ Failed to resolve entity', err)

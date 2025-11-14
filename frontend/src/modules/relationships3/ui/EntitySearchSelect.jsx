@@ -1,6 +1,7 @@
 // src/modules/relationships3/ui/EntitySearchSelect.jsx
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { searchEntities, getEntity } from '../../../api/entities.js'
+import { resolveEntityResponse } from '../../../utils/entityHelpers.js'
 import './EntitySearchSelect.css'
 
 export default function EntitySearchSelect({
@@ -129,7 +130,7 @@ export default function EntitySearchSelect({
       try {
         const res = await getEntity(stringValue)
         if (cancelled) return
-        const data = res?.data || res
+        const data = resolveEntityResponse(res)
         if (data?.id) {
           setSelectedEntity(data)
           setQuery(getDisplayName(data))

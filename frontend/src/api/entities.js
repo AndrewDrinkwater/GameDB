@@ -43,6 +43,27 @@ export const updateEntity = (id, data) => api.patch(`/entities/${id}`, data)
 
 export const deleteEntity = (id) => api.delete(`/entities/${id}`)
 
+export const uploadEntityImage = (entityId, file) => {
+  if (!entityId) {
+    return Promise.reject(new Error('entityId is required'))
+  }
+  if (!file) {
+    return Promise.reject(new Error('file is required'))
+  }
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  return api.post(`/entities/${entityId}/image`, formData)
+}
+
+export const deleteEntityImage = (entityId) => {
+  if (!entityId) {
+    return Promise.reject(new Error('entityId is required'))
+  }
+  return api.delete(`/entities/${entityId}/image`)
+}
+
 export const fetchEntitySecrets = (id) => api.get(`/entities/${id}/secrets`)
 
 export const createEntitySecret = (id, data) => api.post(`/entities/${id}/secrets`, data)

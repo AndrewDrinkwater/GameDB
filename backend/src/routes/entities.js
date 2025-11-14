@@ -26,6 +26,7 @@ import {
   listEntityMentionNotes,
 } from '../controllers/entityNoteController.js'
 import { listEntityMentionSessionNotes } from '../controllers/sessionNoteController.js'
+import { uploadEntityImage, deleteEntityImage } from '../controllers/entityImageController.js'
 
 const router = Router()
 
@@ -481,5 +482,7 @@ router.get('/:id/mentions/entity-notes', listEntityMentionNotes)
 router.get('/:id/mentions/session-notes', listEntityMentionSessionNotes)
 router.get('/:id/notes', getEntityNotes)
 router.post('/:id/notes', createEntityNote)
+router.post('/:id/image', authenticate, upload.single('file'), uploadEntityImage)
+router.delete('/:id/image', authenticate, deleteEntityImage)
 
 export default router
