@@ -28,6 +28,14 @@ export default (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      image_data: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      image_mime_type: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+      },
       metadata: {
         type: DataTypes.JSONB,
         allowNull: false,

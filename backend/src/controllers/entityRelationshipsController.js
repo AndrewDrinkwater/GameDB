@@ -32,6 +32,8 @@ const mapEntitySummary = (entityInstance) => {
     name: plain.name,
     world_id: plain.world_id,
     entity_type_id: plain.entity_type_id,
+    image_data: plain.image_data ?? null,
+    image_mime_type: plain.image_mime_type ?? null,
     entityType: plain.entityType
       ? { id: plain.entityType.id, name: plain.entityType.name }
       : null,

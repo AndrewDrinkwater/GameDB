@@ -29,6 +29,32 @@ const VISIBILITY_VALUES = new Set(['hidden', 'visible', 'partial'])
 const PUBLIC_VISIBILITY = ['visible', 'partial']
 
 const ACCESS_VALUES = new Set(['global', 'selective', 'hidden'])
+const MAX_IMAGE_MIME_TYPE_LENGTH = 50
+
+const normaliseImageDataInput = (value) => {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  if (typeof value !== 'string') {
+    throw new Error('image_data must be a string')
+  }
+  return value
+}
+
+const normaliseImageMimeTypeInput = (value) => {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  if (typeof value !== 'string') {
+    throw new Error('image_mime_type must be a string')
+  }
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return null
+  }
+  if (trimmed.length > MAX_IMAGE_MIME_TYPE_LENGTH) {
+    throw new Error(`image_mime_type must be at most ${MAX_IMAGE_MIME_TYPE_LENGTH} characters`)
+  }
+  return trimmed
+}
 
 const isEntityCreator = (entity, user) => entity?.created_by === user?.id
 
@@ -645,6 +671,8 @@ export const createEntityResponse = async ({ world, user, body }) => {
     read_user_ids: readUserIdsInput,
     write_campaign_ids: writeCampaignIdsInput,
     write_user_ids: writeUserIdsInput,
+    image_data: imageDataInput,
+    image_mime_type: imageMimeTypeInput,
   } = body ?? {}
 
   if (!name || !entityTypeId) {
@@ -684,6 +712,8 @@ export const createEntityResponse = async ({ world, user, body }) => {
   let readUserIds = []
   let writeCampaignIds = []
   let writeUserIds = []
+  let imageData
+  let imageMimeType
 
   try {
     if (readAccessInput !== undefined) {
@@ -709,6 +739,9 @@ export const createEntityResponse = async ({ world, user, body }) => {
     if (writeUserIdsInput !== undefined) {
       writeUserIds = normaliseUuidArray(writeUserIdsInput, 'write_user_ids')
     }
+
+    imageData = normaliseImageDataInput(imageDataInput)
+    imageMimeType = normaliseImageMimeTypeInput(imageMimeTypeInput)
   } catch (err) {
     return { status: 400, body: { success: false, message: err.message } }
   }
@@ -754,6 +787,8 @@ export const createEntityResponse = async ({ world, user, body }) => {
     read_user_ids: readUserIds,
     write_campaign_ids: writeCampaignIds,
     write_user_ids: writeUserIds,
+    image_data: imageData ?? null,
+    image_mime_type: imageMimeType ?? null,
   })
 
   const fullEntity = await Entity.findByPk(entity.id, {
@@ -955,6 +990,8 @@ export const searchEntities = async (req, res) => {
         name: plain.name,
         typeId: type.id ?? plain.entity_type_id ?? null,
         typeName: type.name ?? plain.entity_type_name ?? null,
+        image_data: plain.image_data ?? null,
+        image_mime_type: plain.image_mime_type ?? null,
       }
     })
 
@@ -1031,6 +1068,8 @@ export const updateEntity = async (req, res) => {
       read_user_ids: readUserIdsInput,
       write_campaign_ids: writeCampaignIdsInput,
       write_user_ids: writeUserIdsInput,
+      image_data: imageDataInput,
+      image_mime_type: imageMimeTypeInput,
     } = req.body
     const { user } = req
 
@@ -1068,6 +1107,8 @@ export const updateEntity = async (req, res) => {
     let readUserIds
     let writeCampaignIds
     let writeUserIds
+    let imageData
+    let imageMimeType
 
     try {
       readAccess = normaliseAccessValue(readAccessInput, 'read_access')
@@ -1076,6 +1117,8 @@ export const updateEntity = async (req, res) => {
       readUserIds = normaliseUuidArray(readUserIdsInput, 'read_user_ids')
       writeCampaignIds = normaliseUuidArray(writeCampaignIdsInput, 'write_campaign_ids')
       writeUserIds = normaliseUuidArray(writeUserIdsInput, 'write_user_ids')
+      imageData = normaliseImageDataInput(imageDataInput)
+      imageMimeType = normaliseImageMimeTypeInput(imageMimeTypeInput)
     } catch (err) {
       return res.status(400).json({ success: false, message: err.message })
     }
@@ -1130,6 +1173,17 @@ export const updateEntity = async (req, res) => {
 
     if (writeUserIds !== undefined) {
       updates.write_user_ids = writeUserIds
+    }
+
+    if (imageData !== undefined) {
+      updates.image_data = imageData
+      if (imageData === null && imageMimeType === undefined) {
+        updates.image_mime_type = null
+      }
+    }
+
+    if (imageMimeType !== undefined) {
+      updates.image_mime_type = imageMimeType
     }
 
     const existingMetadata = entity.metadata ?? {}
