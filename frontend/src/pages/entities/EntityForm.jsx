@@ -1,18 +1,38 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getEntityTypes } from '../../api/entityTypes.js'
-import { createEntity, getEntity, updateEntity } from '../../api/entities.js'
+import {
+  createEntity,
+  deleteEntityImage,
+  getEntity,
+  updateEntity,
+  uploadEntityImage,
+} from '../../api/entities.js'
 import { getFields as getEntityTypeFields } from '../../api/entityTypeFields.js'
 import AccessSettingsEditor from '../../components/entities/AccessSettingsEditor.jsx'
 import { fetchAccessOptionsForWorld } from '../../utils/entityAccessOptions.js'
 import EntitySearchSelect from '../../modules/relationships3/ui/EntitySearchSelect.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
-import { resolveEntityResponse } from '../../utils/entityHelpers.js'
+import { buildEntityImageUrl, resolveEntityResponse } from '../../utils/entityHelpers.js'
 
 const VISIBILITY_OPTIONS = [
   { value: 'hidden', label: 'Hidden' },
   { value: 'partial', label: 'Partial' },
   { value: 'visible', label: 'Visible' },
 ]
+
+const ACCEPTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg'])
+const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024
+
+const formatFileSize = (bytes) => {
+  if (!Number.isFinite(bytes)) return ''
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+  if (bytes >= 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`
+  }
+  return `${bytes} bytes`
+}
 
 const buildEnumOptions = (field) => {
   const choices = field?.options?.choices
@@ -187,6 +207,9 @@ export default function EntityForm({
 }) {
   const isEditMode = Boolean(entityId)
   const pairIdRef = useRef(0)
+  const lastLoadedEntityIdRef = useRef(null)
+  const replaceImageInputRef = useRef(null)
+  const uploadImageInputRef = useRef(null)
 
   const generatePair = useCallback(
     (key = '', value = '') => {
@@ -231,6 +254,12 @@ export default function EntityForm({
   const [accessOptionsLoading, setAccessOptionsLoading] = useState(false)
   const [accessOptionsError, setAccessOptionsError] = useState('')
   const accessOptionsLoadedRef = useRef(false)
+  const [entityImage, setEntityImage] = useState(null)
+  const [pendingImageFile, setPendingImageFile] = useState(null)
+  const [imagePreviewUrl, setImagePreviewUrl] = useState('')
+  const [imageError, setImageError] = useState('')
+  const [imageUploading, setImageUploading] = useState(false)
+  const [imageDeleting, setImageDeleting] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(() => {
     if (typeof window === 'undefined') return false
     try {
@@ -246,6 +275,149 @@ export default function EntityForm({
     () => metadataPairs.some((pair) => pair.key.trim() !== '' || pair.value.trim() !== ''),
     [metadataPairs],
   )
+
+  const clearPreviewUrl = useCallback((url) => {
+    if (url && typeof URL !== 'undefined') {
+      try {
+        URL.revokeObjectURL(url)
+      } catch (err) {
+        console.warn('Unable to revoke preview URL', err)
+      }
+    }
+  }, [])
+
+  const resetPendingImageSelection = useCallback(() => {
+    setPendingImageFile(null)
+    setImageError('')
+    setImagePreviewUrl((prev) => {
+      clearPreviewUrl(prev)
+      return ''
+    })
+    if (replaceImageInputRef.current) {
+      replaceImageInputRef.current.value = ''
+    }
+    if (uploadImageInputRef.current) {
+      uploadImageInputRef.current.value = ''
+    }
+  }, [clearPreviewUrl])
+
+  useEffect(() => {
+    return () => {
+      clearPreviewUrl(imagePreviewUrl)
+    }
+  }, [clearPreviewUrl, imagePreviewUrl])
+
+  const handleImageFileChange = useCallback(
+    (event) => {
+      const file = event.target.files?.[0]
+      if (!file) return
+      if (!ACCEPTED_IMAGE_TYPES.has(file.type)) {
+        setImageError('Only PNG or JPG images are allowed.')
+        event.target.value = ''
+        return
+      }
+      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+        setImageError('Image must be smaller than 2 MB.')
+        event.target.value = ''
+        return
+      }
+      setImageError('')
+      setPendingImageFile(file)
+      setImagePreviewUrl((prev) => {
+        clearPreviewUrl(prev)
+        return URL.createObjectURL(file)
+      })
+    },
+    [clearPreviewUrl],
+  )
+
+  const handleReplaceImageClick = useCallback(() => {
+    if (!entityId || imageUploading || imageDeleting || loadingEntity) return
+    replaceImageInputRef.current?.click()
+  }, [entityId, imageDeleting, imageUploading, loadingEntity])
+
+  const handleUploadImage = useCallback(async () => {
+    if (!entityId || !pendingImageFile) return
+    setImageUploading(true)
+    setImageError('')
+    try {
+      await uploadEntityImage(entityId, pendingImageFile)
+      await refreshEntityImage()
+      resetPendingImageSelection()
+    } catch (err) {
+      setImageError(err.message || 'Failed to upload image')
+    } finally {
+      setImageUploading(false)
+    }
+  }, [entityId, pendingImageFile, refreshEntityImage, resetPendingImageSelection])
+
+  const handleDeleteImage = useCallback(async () => {
+    if (!entityId || imageUploading || imageDeleting) return
+    setImageError('')
+    setImageDeleting(true)
+    try {
+      await deleteEntityImage(entityId)
+      await refreshEntityImage()
+      resetPendingImageSelection()
+    } catch (err) {
+      setImageError(err.message || 'Failed to remove image')
+    } finally {
+      setImageDeleting(false)
+    }
+  }, [entityId, imageDeleting, imageUploading, refreshEntityImage, resetPendingImageSelection])
+
+  const imageHelperText = useMemo(() => {
+    const base = 'PNG or JPG up to 2 MB.'
+    if (pendingImageFile) {
+      return `${base} Selected: ${pendingImageFile.name} (${formatFileSize(pendingImageFile.size)})`
+    }
+    return base
+  }, [pendingImageFile])
+
+  const pendingImageActions = pendingImageFile ? (
+    <div className="entity-image-actions">
+      <button
+        type="button"
+        className="btn submit"
+        onClick={handleUploadImage}
+        disabled={imageUploading}
+      >
+        {imageUploading ? 'Uploading…' : 'Save Image'}
+      </button>
+      <button
+        type="button"
+        className="btn secondary"
+        onClick={resetPendingImageSelection}
+        disabled={imageUploading}
+      >
+        Cancel
+      </button>
+    </div>
+  ) : null
+
+  const applyEntityImage = useCallback((entity) => {
+    if (!entity) {
+      setEntityImage(null)
+      return
+    }
+    const imageData = entity.imageData ?? entity.image_data ?? null
+    const imageMimeType = entity.imageMimeType ?? entity.image_mime_type ?? null
+    if (imageData && imageMimeType) {
+      setEntityImage({ imageData, imageMimeType })
+    } else {
+      setEntityImage(null)
+    }
+  }, [])
+
+  const refreshEntityImage = useCallback(async () => {
+    if (!entityId) return null
+    const response = await getEntity(entityId)
+    const data = resolveEntityResponse(response)
+    if (data) {
+      applyEntityImage(data)
+    }
+    return data
+  }, [applyEntityImage, entityId])
 
   const ensureAtLeastOnePair = useCallback(
     (pairs) => {
@@ -365,17 +537,21 @@ export default function EntityForm({
       accessOptionsLoadedRef.current = false
       setAccessOptions({ campaigns: [], users: [] })
       setAccessOptionsError('')
+      setEntityImage(null)
+      resetPendingImageSelection()
     }
 
     if (!isEditMode) {
       resetForm()
       setLoadingEntity(false)
+      lastLoadedEntityIdRef.current = null
       return () => {}
     }
 
     const loadEntity = async () => {
       setLoadingEntity(true)
       setError('')
+      setImageError('')
       try {
         const response = await getEntity(entityId)
         const data = resolveEntityResponse(response)
@@ -392,6 +568,8 @@ export default function EntityForm({
             visibility: data.visibility || 'visible',
           })
           setMetadataPairs(ensureAtLeastOnePair(metadataList))
+          applyEntityImage(data)
+          resetPendingImageSelection()
         }
       } catch (err) {
         if (!cancelled) {
@@ -404,6 +582,11 @@ export default function EntityForm({
       }
     }
 
+    if (lastLoadedEntityIdRef.current !== entityId) {
+      setEntityImage(null)
+      resetPendingImageSelection()
+      lastLoadedEntityIdRef.current = entityId
+    }
     loadEntity()
     return () => {
       cancelled = true
@@ -416,6 +599,8 @@ export default function EntityForm({
     normaliseMetadataPairs,
     selectedEntityTypeId,
     onViewChange,
+    applyEntityImage,
+    resetPendingImageSelection,
   ])
 
   const handleInputChange = (field) => (event) => {
@@ -1066,6 +1251,38 @@ export default function EntityForm({
     </div>
   )
 
+  const displayImageUrl = imagePreviewUrl || buildEntityImageUrl(entityImage)
+  const imageAltText = values.name ? `${values.name} artwork` : 'Entity artwork'
+  const renderBasicFields = () => (
+    <>
+      <div className="form-group">
+        <label htmlFor="entity-name">Name *</label>
+        <input
+          id="entity-name"
+          type="text"
+          value={values.name}
+          onChange={handleInputChange('name')}
+          placeholder="e.g. Waterdeep"
+          disabled={saving}
+          required
+          data-autofocus
+        />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="entity-description">Description</label>
+        <textarea
+          id="entity-description"
+          value={values.description}
+          onChange={handleInputChange('description')}
+          placeholder="Optional summary of the entity"
+          rows={4}
+          disabled={saving}
+        />
+      </div>
+    </>
+  )
+
   return (
     <form id={formId} className="entity-form" onSubmit={handleSubmit}>
       {isBusy ? (
@@ -1104,33 +1321,96 @@ export default function EntityForm({
           </section>
         ) : (
           <>
-            <div className="form-group">
-              <label htmlFor="entity-name">Name *</label>
-              <input
-                id="entity-name"
-                type="text"
-                value={values.name}
-                onChange={handleInputChange('name')}
-                placeholder="e.g. Waterdeep"
-                disabled={saving}
-                required
-                data-autofocus
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="entity-description">Description</label>
-              <textarea
-                id="entity-description"
-                value={values.description}
-                onChange={handleInputChange('description')}
-                placeholder="Optional summary of the entity"
-                rows={4}
-                disabled={saving}
-              />
-            </div>
+            {isEditMode && entityImage ? (
+              <div className="entity-form-image-wrapper">
+                <div className="entity-form-image-panel" aria-live="polite">
+                  <div className={`entity-image-preview ${displayImageUrl ? 'has-image' : ''}`.trim()}>
+                    {displayImageUrl ? (
+                      <img src={displayImageUrl} alt={imageAltText} loading="lazy" />
+                    ) : (
+                      <div className="entity-image-placeholder">
+                        <p>No image</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="entity-form-image-panel-actions">
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      onClick={handleReplaceImageClick}
+                      disabled={!entityId || imageUploading || imageDeleting || loadingEntity}
+                    >
+                      {imageUploading ? 'Uploading…' : 'Replace Image'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      onClick={handleDeleteImage}
+                      disabled={!entityId || imageDeleting || imageUploading}
+                    >
+                      {imageDeleting ? 'Removing…' : 'Remove Image'}
+                    </button>
+                  </div>
+                  {pendingImageActions}
+                  <input
+                    type="file"
+                    ref={replaceImageInputRef}
+                    accept="image/png,image/jpeg"
+                    onChange={handleImageFileChange}
+                    hidden
+                    disabled={!entityId || imageUploading || imageDeleting}
+                  />
+                  <p className="entity-image-helper">{imageHelperText}</p>
+                  {imageError ? (
+                    <p className="entity-image-status entity-image-status--error">{imageError}</p>
+                  ) : null}
+                  {!imageError && imageUploading ? (
+                    <p className="entity-image-status">Uploading image…</p>
+                  ) : null}
+                  {!imageError && imageDeleting ? (
+                    <p className="entity-image-status">Removing image…</p>
+                  ) : null}
+                </div>
+                <div className="entity-form-image-fields">{renderBasicFields()}</div>
+              </div>
+            ) : (
+              renderBasicFields()
+            )}
 
             {!isEditMode && renderTypeField()}
+
+            {isEditMode && !entityImage ? (
+              <div className="form-group entity-form-upload-section">
+                <label htmlFor="entity-image-upload">Upload image</label>
+                <input
+                  id="entity-image-upload"
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  ref={uploadImageInputRef}
+                  onChange={handleImageFileChange}
+                  disabled={!entityId || imageUploading || imageDeleting}
+                />
+                {pendingImageFile && imagePreviewUrl ? (
+                  <div className="entity-form-upload-preview">
+                    <img
+                      src={imagePreviewUrl}
+                      alt={values.name ? `${values.name} artwork preview` : 'Entity artwork preview'}
+                    />
+                  </div>
+                ) : null}
+                {pendingImageActions}
+                <p className="entity-image-helper">{imageHelperText}</p>
+                {imageError ? (
+                  <p className="entity-image-status entity-image-status--error">{imageError}</p>
+                ) : null}
+                {!imageError && imageUploading ? (
+                  <p className="entity-image-status">Uploading image…</p>
+                ) : null}
+                {!imageError && imageDeleting ? (
+                  <p className="entity-image-status">Removing image…</p>
+                ) : null}
+              </div>
+            ) : null}
 
             {showMetadataSection && (
               <div className="metadata-field-section">
