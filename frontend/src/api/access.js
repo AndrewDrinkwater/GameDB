@@ -1,6 +1,7 @@
 import api from './client.js'
 
-export const applyBulkAccessUpdate = (payload) => api.post('/access/bulk/apply', payload)
+export const applyBulkAccessUpdate = (payload, config) =>
+  api.post('/access/bulk/apply', payload, config)
 
 export const fetchBulkAccessRuns = ({ worldId }) => {
   if (!worldId) {

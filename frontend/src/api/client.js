@@ -20,7 +20,11 @@ const CAMPAIGN_CONTEXT_STORAGE_KEY = 'gamedb_campaign_context'
 const CAMPAIGN_CONTEXT_HEADER = 'X-Campaign-Context-Id'
 
 async function request(method, url, data, config = {}) {
-  const { headers: extraHeaders, ...restConfig } = config || {}
+  const {
+    headers: extraHeaders,
+    includeCampaignContext = true,
+    ...restConfig
+  } = config || {}
 
   const isFormData = typeof FormData !== 'undefined' && data instanceof FormData
 
@@ -34,13 +38,15 @@ async function request(method, url, data, config = {}) {
     headers.Authorization = `Bearer ${token}`
   }
 
-  try {
-    const storedContextId = localStorage.getItem(CAMPAIGN_CONTEXT_STORAGE_KEY)
-    if (storedContextId) {
-      headers[CAMPAIGN_CONTEXT_HEADER] = storedContextId
+  if (includeCampaignContext) {
+    try {
+      const storedContextId = localStorage.getItem(CAMPAIGN_CONTEXT_STORAGE_KEY)
+      if (storedContextId) {
+        headers[CAMPAIGN_CONTEXT_HEADER] = storedContextId
+      }
+    } catch (err) {
+      console.warn('⚠️ Unable to include campaign context header', err)
     }
-  } catch (err) {
-    console.warn('⚠️ Unable to include campaign context header', err)
   }
 
   const body = (() => {

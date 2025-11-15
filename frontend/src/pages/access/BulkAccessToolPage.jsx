@@ -485,7 +485,9 @@ export default function BulkAccessToolPage() {
     setResult(null)
 
     try {
-      const response = await applyBulkAccessUpdate(payload)
+      const response = await applyBulkAccessUpdate(payload, {
+        includeCampaignContext: Boolean(isCampaignScoped && activeCampaign),
+      })
       const data = response?.data || response
       setResult({ runId: data.runId, count: data.count })
     } catch (error) {
