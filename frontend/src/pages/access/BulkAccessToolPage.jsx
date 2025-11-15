@@ -17,6 +17,115 @@ import './BulkAccessToolPage.css'
 
 const MAX_ENTITIES = 1000
 
+const ENTITY_SEARCH_SCOPE = {
+  NAME: 'name',
+  NAME_DESCRIPTION: 'nameDescription',
+  ALL_DATA: 'allData',
+  ALL_DATA_RELATIONSHIPS: 'allDataRelationships',
+}
+
+const ENTITY_SEARCH_SCOPE_OPTIONS = [
+  {
+    value: ENTITY_SEARCH_SCOPE.NAME,
+    label: 'Name only',
+    description: 'Matches entity names only.',
+  },
+  {
+    value: ENTITY_SEARCH_SCOPE.NAME_DESCRIPTION,
+    label: 'Name & description',
+    description: 'Matches entity names and their descriptions.',
+  },
+  {
+    value: ENTITY_SEARCH_SCOPE.ALL_DATA,
+    label: 'All data',
+    description: 'Matches names, descriptions, and visible data fields.',
+  },
+  {
+    value: ENTITY_SEARCH_SCOPE.ALL_DATA_RELATIONSHIPS,
+    label: 'All data & relationships',
+    description: 'Matches every field plus reference values, ideal for relationship lookups.',
+  },
+]
+
+const ENTITY_SEARCH_PLACEHOLDERS = {
+  [ENTITY_SEARCH_SCOPE.NAME]: 'Filter entities by name',
+  [ENTITY_SEARCH_SCOPE.NAME_DESCRIPTION]: 'Search names or descriptions',
+  [ENTITY_SEARCH_SCOPE.ALL_DATA]: 'Search names, descriptions, and data fields',
+  [ENTITY_SEARCH_SCOPE.ALL_DATA_RELATIONSHIPS]: 'Search across data and related entities',
+}
+
+const addTermToCollection = (collection, value) => {
+  if (value === null || value === undefined) return
+  if (typeof value === 'number' && !Number.isFinite(value)) return
+  const resolvedValue = value instanceof Date ? value.toISOString() : String(value)
+  const trimmed = resolvedValue.trim().toLowerCase()
+  if (!trimmed) return
+  collection.add(trimmed)
+}
+
+const collectMetadataStrings = (value, includeObjects, collection) => {
+  if (value === null || value === undefined) return
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    addTermToCollection(collection, value)
+    return
+  }
+
+  if (value instanceof Date) {
+    addTermToCollection(collection, value)
+    return
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectMetadataStrings(entry, includeObjects, collection))
+    return
+  }
+
+  if (includeObjects && typeof value === 'object') {
+    Object.values(value).forEach((entry) => collectMetadataStrings(entry, includeObjects, collection))
+  }
+}
+
+const buildEntitySearchTerms = (entity, scope) => {
+  if (!entity) return []
+  const resolvedScope =
+    scope && ENTITY_SEARCH_SCOPE_OPTIONS.some((option) => option.value === scope)
+      ? scope
+      : ENTITY_SEARCH_SCOPE.NAME
+  const terms = new Set()
+
+  addTermToCollection(terms, entity.name)
+
+  if (resolvedScope !== ENTITY_SEARCH_SCOPE.NAME) {
+    addTermToCollection(terms, entity.description)
+  }
+
+  if (resolvedScope === ENTITY_SEARCH_SCOPE.ALL_DATA || resolvedScope === ENTITY_SEARCH_SCOPE.ALL_DATA_RELATIONSHIPS) {
+    addTermToCollection(terms, entity.entityType?.name)
+    if (entity.metadata && typeof entity.metadata === 'object') {
+      collectMetadataStrings(
+        entity.metadata,
+        resolvedScope === ENTITY_SEARCH_SCOPE.ALL_DATA_RELATIONSHIPS,
+        terms,
+      )
+    }
+  }
+
+  return Array.from(terms)
+}
+
+const parseDateFilterValue = (value, boundary = 'start') => {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  if (boundary === 'end') {
+    date.setHours(23, 59, 59, 999)
+  } else {
+    date.setHours(0, 0, 0, 0)
+  }
+  return date.getTime()
+}
+
 const TokenSelector = ({
   label,
   count,
@@ -104,6 +213,9 @@ export default function BulkAccessToolPage() {
   const [loadingData, setLoadingData] = useState(false)
   const [dataError, setDataError] = useState('')
   const [entityFilter, setEntityFilter] = useState('')
+  const [entitySearchScope, setEntitySearchScope] = useState(ENTITY_SEARCH_SCOPE.NAME)
+  const [createdAfter, setCreatedAfter] = useState('')
+  const [createdBefore, setCreatedBefore] = useState('')
   const [selectedEntityIds, setSelectedEntityIds] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
@@ -334,10 +446,56 @@ export default function BulkAccessToolPage() {
   }, [accessibleEntities])
 
   const filteredEntities = useMemo(() => {
-    if (!entityFilter.trim()) return accessibleEntities
-    const query = entityFilter.trim().toLowerCase()
-    return accessibleEntities.filter((entity) => entity.name?.toLowerCase().includes(query))
-  }, [accessibleEntities, entityFilter])
+    const trimmedQuery = entityFilter.trim().toLowerCase()
+    const afterTimestamp = parseDateFilterValue(createdAfter, 'start')
+    const beforeTimestamp = parseDateFilterValue(createdBefore, 'end')
+
+    return accessibleEntities.filter((entity) => {
+      const createdAtValue = entity.createdAt ?? entity.created_at ?? null
+      if (afterTimestamp !== null || beforeTimestamp !== null) {
+        if (!createdAtValue) {
+          return false
+        }
+        const createdTime = new Date(createdAtValue).getTime()
+        if (Number.isNaN(createdTime)) {
+          return false
+        }
+        if (afterTimestamp !== null && createdTime < afterTimestamp) {
+          return false
+        }
+        if (beforeTimestamp !== null && createdTime > beforeTimestamp) {
+          return false
+        }
+      }
+
+      if (!trimmedQuery) {
+        return true
+      }
+
+      const terms = buildEntitySearchTerms(entity, entitySearchScope)
+      if (!terms.length) return false
+      return terms.some((term) => term.includes(trimmedQuery))
+    })
+  }, [accessibleEntities, entityFilter, entitySearchScope, createdAfter, createdBefore])
+
+  const selectedSearchScope = useMemo(
+    () => ENTITY_SEARCH_SCOPE_OPTIONS.find((option) => option.value === entitySearchScope),
+    [entitySearchScope],
+  )
+
+  const entityFilterPlaceholder =
+    ENTITY_SEARCH_PLACEHOLDERS[entitySearchScope] || ENTITY_SEARCH_PLACEHOLDERS[ENTITY_SEARCH_SCOPE.NAME]
+
+  const handleSearchScopeChange = (event) => {
+    const value = event.target.value
+    const isValidScope = ENTITY_SEARCH_SCOPE_OPTIONS.some((option) => option.value === value)
+    setEntitySearchScope(isValidScope ? value : ENTITY_SEARCH_SCOPE.NAME)
+  }
+
+  const clearCreatedDateFilters = () => {
+    setCreatedAfter('')
+    setCreatedBefore('')
+  }
 
   useEffect(() => {
     if (!isCampaignScoped || !activeCampaign) return
@@ -839,12 +997,64 @@ export default function BulkAccessToolPage() {
               ) : (
                 <>
                   <div className="entity-filter">
-                    <input
-                      type="text"
-                      placeholder="Filter entities by name"
-                      value={entityFilter}
-                      onChange={(event) => setEntityFilter(event.target.value)}
-                    />
+                    <div className="entity-filter__row">
+                      <div className="entity-filter__input">
+                        <label htmlFor="bulk-access-entity-search">Search</label>
+                        <input
+                          id="bulk-access-entity-search"
+                          type="text"
+                          placeholder={entityFilterPlaceholder}
+                          value={entityFilter}
+                          onChange={(event) => setEntityFilter(event.target.value)}
+                        />
+                      </div>
+                      <div className="entity-filter__scope">
+                        <label htmlFor="bulk-access-entity-scope">Search scope</label>
+                        <select
+                          id="bulk-access-entity-scope"
+                          value={entitySearchScope}
+                          onChange={handleSearchScopeChange}
+                        >
+                          {ENTITY_SEARCH_SCOPE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="entity-filter__row entity-filter__dates">
+                      <div className="entity-filter__date-field">
+                        <label htmlFor="bulk-access-created-after">Created after</label>
+                        <input
+                          id="bulk-access-created-after"
+                          type="date"
+                          value={createdAfter}
+                          onChange={(event) => setCreatedAfter(event.target.value)}
+                        />
+                      </div>
+                      <div className="entity-filter__date-field">
+                        <label htmlFor="bulk-access-created-before">Created before</label>
+                        <input
+                          id="bulk-access-created-before"
+                          type="date"
+                          value={createdBefore}
+                          onChange={(event) => setCreatedBefore(event.target.value)}
+                        />
+                      </div>
+                      {(createdAfter || createdBefore) && (
+                        <button
+                          type="button"
+                          className="ghost-button entity-filter__clear-dates"
+                          onClick={clearCreatedDateFilters}
+                        >
+                          Clear dates
+                        </button>
+                      )}
+                    </div>
+                    {selectedSearchScope?.description && (
+                      <p className="bulk-access-helper">{selectedSearchScope.description}</p>
+                    )}
                   </div>
                   <div className="entity-selector-list">
                     {loadingData && (
