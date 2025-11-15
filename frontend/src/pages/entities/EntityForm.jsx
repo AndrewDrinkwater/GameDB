@@ -30,6 +30,31 @@ const WRITE_ACCESS_MODE_SET = new Set(['global', 'selective', 'hidden', 'owner_o
 
 const createEmptyAccessOptions = () => ({ campaigns: [], users: [], characters: [] })
 
+const createDefaultAccessSettings = (campaignId = '') => {
+  const campaignValue = String(campaignId || '').trim()
+  if (!campaignValue) {
+    return {
+      readMode: 'global',
+      readCampaigns: [],
+      readUsers: [],
+      readCharacters: [],
+      writeMode: 'global',
+      writeCampaigns: [],
+      writeUsers: [],
+    }
+  }
+
+  return {
+    readMode: 'selective',
+    readCampaigns: [campaignValue],
+    readUsers: [],
+    readCharacters: [],
+    writeMode: 'selective',
+    writeCampaigns: [campaignValue],
+    writeUsers: [],
+  }
+}
+
 const formatFileSize = (bytes) => {
   if (!Number.isFinite(bytes)) return ''
   if (bytes >= 1024 * 1024) {
@@ -211,12 +236,14 @@ export default function EntityForm({
   selectedEntityTypeId = '',
   activeView = 'details',
   onViewChange,
+  defaultCampaignId = '',
 }) {
   const isEditMode = Boolean(entityId)
   const pairIdRef = useRef(0)
   const lastLoadedEntityIdRef = useRef(null)
   const replaceImageInputRef = useRef(null)
   const uploadImageInputRef = useRef(null)
+  const lastDefaultCampaignIdRef = useRef(String(defaultCampaignId ?? ''))
 
   const generatePair = useCallback(
     (key = '', value = '') => {
@@ -249,15 +276,9 @@ export default function EntityForm({
   const [metadataFieldDefs, setMetadataFieldDefs] = useState([])
   const [metadataValues, setMetadataValues] = useState({})
   const [referenceFieldLabels, setReferenceFieldLabels] = useState({})
-  const [accessSettings, setAccessSettings] = useState({
-    readMode: 'global',
-    readCampaigns: [],
-    readUsers: [],
-    readCharacters: [],
-    writeMode: 'global',
-    writeCampaigns: [],
-    writeUsers: [],
-  })
+  const [accessSettings, setAccessSettings] = useState(() =>
+    createDefaultAccessSettings(defaultCampaignId),
+  )
   const [accessOptions, setAccessOptions] = useState(() => createEmptyAccessOptions())
   const [accessOptionsLoading, setAccessOptionsLoading] = useState(false)
   const [accessOptionsError, setAccessOptionsError] = useState('')
@@ -546,15 +567,8 @@ export default function EntityForm({
       setMetadataValues({})
       setError('')
       onViewChange?.('details')
-      setAccessSettings({
-        readMode: 'global',
-        readCampaigns: [],
-        readUsers: [],
-        readCharacters: [],
-        writeMode: 'global',
-        writeCampaigns: [],
-        writeUsers: [],
-      })
+      const defaultAccess = createDefaultAccessSettings(lastDefaultCampaignIdRef.current)
+      setAccessSettings(defaultAccess)
       accessOptionsLoadedRef.current = false
       setAccessOptions(createEmptyAccessOptions())
       setAccessOptionsError('')
@@ -698,6 +712,16 @@ export default function EntityForm({
     setAccessOptions(createEmptyAccessOptions())
     setAccessOptionsError('')
   }, [worldId])
+
+  useEffect(() => {
+    if (isEditMode) return
+    const normalisedCampaignId = String(defaultCampaignId ?? '')
+    if (normalisedCampaignId === lastDefaultCampaignIdRef.current) return
+
+    const nextAccess = createDefaultAccessSettings(normalisedCampaignId)
+    lastDefaultCampaignIdRef.current = normalisedCampaignId
+    setAccessSettings(nextAccess)
+  }, [defaultCampaignId, isEditMode])
 
   useEffect(() => {
     if (activeView !== 'access') return
