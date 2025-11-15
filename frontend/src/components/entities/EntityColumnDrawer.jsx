@@ -19,7 +19,6 @@ export default function EntityColumnDrawer({
   isSystemAdmin,
   isUserDirty,
   isSystemDirty,
-  draftMatchesSystem,
   hasSystemDefault,
   COLUMN_SCOPE_USER,
   COLUMN_SCOPE_SYSTEM,

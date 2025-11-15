@@ -9,7 +9,7 @@ import EntityHeader from '../../components/entities/EntityHeader.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import EntityImageCard from '../../components/entities/EntityImageCard.jsx'
 import UnsavedChangesDialog from '../../components/UnsavedChangesDialog.jsx'
-import { createDefaultRelationshipFilters } from '../../components/entities/EntityRelationshipFilters.jsx'
+import { createDefaultRelationshipFilters } from '../../components/entities/entityRelationshipFilterUtils.js'
 import {
   getEntity,
   updateEntity,

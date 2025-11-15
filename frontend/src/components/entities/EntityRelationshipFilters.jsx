@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  RELATIONSHIP_FILTER_MODES,
+  createDefaultRelationshipFilters,
+} from './entityRelationshipFilterUtils.js'
 
-export const RELATIONSHIP_FILTER_MODES = ['all', 'include', 'exclude']
-
-export const createDefaultRelationshipFilters = () => ({
-  relationshipTypes: { mode: 'all', values: [] },
-  relatedEntityTypes: { mode: 'all', values: [] },
-})
-
-export const isRelationshipFilterActive = (filters) => {
+const isRelationshipFilterActive = (filters) => {
   if (!filters) return false
   const groups = [filters.relationshipTypes, filters.relatedEntityTypes]
   return groups.some((group) => {

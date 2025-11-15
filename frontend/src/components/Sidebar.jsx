@@ -26,7 +26,13 @@ export default function Sidebar({
 }) {
   const location = useLocation()
   const { user } = useAuth()
-  const { selectedCampaign, selectedCampaignId } = useCampaignContext()
+  const {
+    selectedCampaign,
+    selectedCampaignId,
+    activeWorld,
+    activeWorldId,
+    contextKey,
+  } = useCampaignContext()
   const [campaignsCollapsed, setCampaignsCollapsed] = useState(false)
   const [charactersCollapsed, setCharactersCollapsed] = useState(false)
   const [worldAdminCollapsed, setWorldAdminCollapsed] = useState(false)
@@ -36,13 +42,19 @@ export default function Sidebar({
   const [loadingEntityTypes, setLoadingEntityTypes] = useState(false)
   const [entityTypeError, setEntityTypeError] = useState('')
 
+  useEffect(() => {
+    setEntityTypes([])
+    setEntityTypeError('')
+  }, [contextKey])
+
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search])
   const activeEntityType = searchParams.get('entityType') ?? ''
   const isEntitiesSection =
     location.pathname === '/entities' || location.pathname.startsWith('/entities/')
 
-  const campaignWorldId = selectedCampaign?.world?.id ?? ''
+  const campaignWorldId = activeWorldId || ''
   const isSystemAdmin = user?.role === 'system_admin'
+  const hasWorldContext = Boolean(activeWorldId)
 
   const membershipRole = useMemo(() => {
     if (!selectedCampaign || !user) return ''
@@ -51,27 +63,26 @@ export default function Sidebar({
   }, [selectedCampaign, user])
 
   const isSelectedWorldOwner = useMemo(() => {
-    if (!selectedCampaign || !user) return false
+    if (!activeWorld || !user?.id) return false
     const worldOwnerId =
-      selectedCampaign.world?.created_by ??
-      selectedCampaign.world?.creator?.id ??
-      selectedCampaign.world?.owner_id ??
-      selectedCampaign.world?.owner?.id ??
+      activeWorld.created_by ??
+      activeWorld.creator?.id ??
+      activeWorld.owner_id ??
+      activeWorld.owner?.id ??
       ''
-    return worldOwnerId === user.id
-  }, [selectedCampaign, user])
+    if (!worldOwnerId) return false
+    return String(worldOwnerId) === String(user.id)
+  }, [activeWorld, user?.id])
 
   const canViewAllEntities = Boolean(
-    selectedCampaignId && (membershipRole === 'dm' || isSelectedWorldOwner),
+    hasWorldContext && (isSystemAdmin || membershipRole === 'dm' || isSelectedWorldOwner),
   )
-  const canViewEntityTypes = Boolean(selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner))
-  const canViewBulkEntityUpload = Boolean(
-    selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner),
-  )
+  const canViewEntityTypes = Boolean(hasWorldContext && (isSystemAdmin || isSelectedWorldOwner))
+  const canViewBulkEntityUpload = Boolean(hasWorldContext && (isSystemAdmin || isSelectedWorldOwner))
   const canViewRelationshipTypes = Boolean(
-    selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner),
+    hasWorldContext && (isSystemAdmin || isSelectedWorldOwner),
   )
-  const canUseBulkAccessTool = Boolean(selectedCampaignId && isSelectedWorldOwner)
+  const canUseBulkAccessTool = Boolean(hasWorldContext && isSelectedWorldOwner)
   const isPlayerInSelectedCampaign = useMemo(() => {
     if (!selectedCampaign || !Array.isArray(selectedCampaign.members)) return false
     if (!user?.id) return false
@@ -92,7 +103,7 @@ export default function Sidebar({
 
   const canUseCampaignBulkAccess = Boolean(selectedCampaignId && isDMInSelectedCampaign)
   const shouldShowWorldAdminGroup = Boolean(
-    selectedCampaignId &&
+    hasWorldContext &&
       (canViewAllEntities ||
         canViewEntityTypes ||
         canViewBulkEntityUpload ||
@@ -145,7 +156,7 @@ export default function Sidebar({
     return () => {
       cancelled = true
     }
-  }, [campaignWorldId, selectedCampaignId])
+  }, [campaignWorldId, contextKey])
 
   const isActive = useCallback(
     (path) => {
@@ -159,12 +170,12 @@ export default function Sidebar({
 
   const handleEntitiesClick = useCallback(
     (event) => {
-      if (!selectedCampaignId) {
+      if (!hasWorldContext) {
         event.preventDefault()
-        alert('Please select a campaign before viewing entities.')
+        alert('Please select a campaign or world context before viewing entities.')
       }
     },
-    [selectedCampaignId],
+    [hasWorldContext],
   )
 
   const handleNavContainerClick = useCallback(
@@ -323,9 +334,9 @@ export default function Sidebar({
                 </Link>
               )}
 
-              {canUseBulkAccessTool && !campaignWorldId && (
+              {isSelectedWorldOwner && !hasWorldContext && (
                 <span className="nav-helper">
-                  Select a campaign world to use the bulk access tools
+                  Select a world you own to use the bulk access tools
                 </span>
               )}
             </div>
@@ -390,9 +401,9 @@ export default function Sidebar({
             )}
             {!loadingEntityTypes && !entityTypeError && entityTypes.length === 0 && (
               <span className="nav-helper">
-                {selectedCampaign
+                {hasWorldContext
                   ? 'No entities in this world yet'
-                  : 'Select a campaign to see entity types'}
+                  : 'Select a campaign or world context to see entity types'}
               </span>
             )}
             {entityTypes.map((type) => (

@@ -195,7 +195,14 @@ const formatMetadataValue = (value, column = null) => {
 
 export default function EntityList() {
   const { user, token, sessionReady } = useAuth()
-  const { selectedCampaign, selectedCampaignId } = useCampaignContext()
+  const {
+    selectedCampaign,
+    selectedCampaignId,
+    activeWorld,
+    activeWorldId,
+    selectedContextType,
+    contextKey,
+  } = useCampaignContext()
   const [searchParams, setSearchParams] = useSearchParams()
   const isMobile = useIsMobile()
 
@@ -238,12 +245,13 @@ export default function EntityList() {
 
   const currentSearch = searchParams.toString()
 
-  const worldId = selectedCampaign?.world?.id ?? ''
+  const worldId = activeWorldId || ''
+  const hasWorldContext = Boolean(worldId)
   const selectedFilter = searchParams.get(FILTER_PARAM) ?? ''
   const filterActive = Boolean(selectedFilter)
 
   const entityFormIdRef = useRef(`entity-form-${Math.random().toString(36).slice(2)}`)
-  const previousWorldIdRef = useRef(worldId)
+  const previousWorldIdRef = useRef(`${worldId}:${contextKey}`)
 
   const showToast = useCallback((message, tone = 'info') => {
     setToast({ message, tone })
@@ -296,21 +304,38 @@ export default function EntityList() {
   }, [selectedCampaign, user])
 
   const isWorldOwner = useMemo(() => {
-    if (!selectedCampaign || !user) return false
-    const ownerId = selectedCampaign.world?.created_by
-    return ownerId ? ownerId === user.id : false
-  }, [selectedCampaign, user])
+    if (!activeWorld || !user?.id) return false
+    const ownerId =
+      activeWorld.created_by ||
+      activeWorld.creator?.id ||
+      activeWorld.owner_id ||
+      activeWorld.owner?.id ||
+      ''
+    return ownerId ? String(ownerId) === String(user.id) : false
+  }, [activeWorld, user?.id])
 
   const canManage = useMemo(() => {
     if (!user) return false
     if (MANAGER_ROLES.has(user.role)) return true
-    if (!selectedCampaign) return false
-    if (membershipRole === 'dm') return true
-    if (isWorldOwner) return true
+    if (!worldId) return false
+    if (selectedContextType === 'world') {
+      return isWorldOwner
+    }
+    if (selectedCampaign) {
+      if (membershipRole === 'dm') return true
+      if (isWorldOwner) return true
+    }
     return false
-  }, [selectedCampaign, user, membershipRole, isWorldOwner])
+  }, [
+    user,
+    worldId,
+    selectedContextType,
+    selectedCampaign,
+    membershipRole,
+    isWorldOwner,
+  ])
 
-  const entityCreationScope = selectedCampaign?.world?.entity_creation_scope ?? ''
+  const entityCreationScope = activeWorld?.entity_creation_scope ?? ''
 
   const canPlayerCreateEntities = useMemo(() => {
     if (!selectedCampaignId || !selectedCampaign || !user) return false
@@ -387,7 +412,7 @@ export default function EntityList() {
         setLoadingEntities(false)
       }
     },
-    [token, worldId, isSystemAdmin],
+    [token, worldId, isSystemAdmin, contextKey],
   )
 
   useEffect(() => {
@@ -407,14 +432,16 @@ export default function EntityList() {
     }
 
     loadEntities(worldId)
-  }, [worldId, token, viewingUnassigned, loadEntities])
+  }, [worldId, token, viewingUnassigned, loadEntities, contextKey])
 
   useEffect(() => {
     if (viewingUnassigned) {
+      previousWorldIdRef.current = `${worldId}:${contextKey}`
       return
     }
 
-    if (previousWorldIdRef.current !== worldId) {
+    const nextKey = `${worldId}:${contextKey}`
+    if (previousWorldIdRef.current !== nextKey) {
       if (panelOpen) {
         setPanelOpen(false)
         setEditingEntityId(null)
@@ -423,9 +450,9 @@ export default function EntityList() {
       setEntityFormUiState(createDrawerFooterState('create'))
       setEntitiesError('')
       setToast(null)
-      previousWorldIdRef.current = worldId
+      previousWorldIdRef.current = nextKey
     }
-  }, [worldId, panelOpen, viewingUnassigned])
+  }, [worldId, contextKey, panelOpen, viewingUnassigned])
 
   useEffect(() => {
     if (!isSystemAdmin && viewingUnassigned) {
@@ -1130,6 +1157,11 @@ export default function EntityList() {
     ? dataExplorer.groups.some((group) => group.items.length > 0)
     : dataExplorer.data.length > 0
   const pageClassName = `entities-page${isMobile ? ' entities-page--mobile' : ''}`
+  const entitySubtitle = selectedCampaign
+    ? `${selectedCampaign.name}${activeWorld?.name ? ` · ${activeWorld.name}` : ''}`
+    : hasWorldContext
+      ? `World · ${activeWorld?.name || 'Untitled world'}`
+      : ''
 
   return (
     <section className={pageClassName}>
@@ -1140,14 +1172,11 @@ export default function EntityList() {
             <p className="entities-subtitle">
               Showing entities without a world assignment.
             </p>
-          ) : selectedCampaign ? (
-            <p className="entities-subtitle">
-              {selectedCampaign.name}
-              {selectedCampaign.world?.name ? ` · ${selectedCampaign.world.name}` : ''}
-            </p>
+          ) : hasWorldContext ? (
+            <p className="entities-subtitle">{entitySubtitle}</p>
           ) : (
             <p className="entities-subtitle">
-              Select a campaign from the header to choose a world context.
+              Select a campaign or world you own to choose a world context.
             </p>
           )}
           {/* Filter chip removed for streamlined type-specific lists */}
