@@ -1023,6 +1023,13 @@ export const listWorldEntities = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
+    const viewAsCharacterId =
+      typeof req.query?.viewAsCharacterId === 'string'
+        ? req.query.viewAsCharacterId.trim()
+        : typeof req.query?.characterId === 'string'
+          ? req.query.characterId.trim()
+          : ''
+
     const where = { world_id: world.id }
 
     if (!access.isOwner && !access.isAdmin) {
@@ -1037,6 +1044,7 @@ export const listWorldEntities = async (req, res) => {
       user,
       worldAccess: access,
       campaignContextId: req.campaignContextId,
+      characterContextId: viewAsCharacterId,
     })
 
     const entities = await Entity.findAll({

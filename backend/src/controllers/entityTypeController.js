@@ -281,11 +281,19 @@ export const listWorldEntityTypesWithEntities = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
+    const viewAsCharacterId =
+      typeof req.query?.viewAsCharacterId === 'string'
+        ? req.query.viewAsCharacterId.trim()
+        : typeof req.query?.characterId === 'string'
+          ? req.query.characterId.trim()
+          : ''
+
     const readContext = await buildEntityReadContext({
       worldId: world.id,
       user,
       worldAccess: access,
       campaignContextId: req.campaignContextId,
+      characterContextId: viewAsCharacterId,
     })
 
     const where = { world_id: world.id }

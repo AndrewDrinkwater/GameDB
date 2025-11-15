@@ -201,6 +201,7 @@ export default function EntityList() {
     activeWorld,
     activeWorldId,
     selectedContextType,
+    viewAsCharacterId,
     contextKey,
   } = useCampaignContext()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -354,7 +355,7 @@ export default function EntityList() {
         return []
       }
 
-      const { useUnassigned = false } = options
+      const { useUnassigned = false, viewAsCharacterId: viewAsId = '' } = options
 
       if (useUnassigned) {
         if (!isSystemAdmin) {
@@ -395,7 +396,9 @@ export default function EntityList() {
       setEntitiesError('')
 
       try {
-        const response = await getWorldEntities(worldToFetch)
+        const response = await getWorldEntities(worldToFetch, {
+          viewAsCharacterId: viewAsId,
+        })
         const list = Array.isArray(response)
           ? response
           : Array.isArray(response?.data)
@@ -431,8 +434,8 @@ export default function EntityList() {
       return
     }
 
-    loadEntities(worldId)
-  }, [worldId, token, viewingUnassigned, loadEntities, contextKey])
+    loadEntities(worldId, { viewAsCharacterId })
+  }, [worldId, token, viewingUnassigned, loadEntities, contextKey, viewAsCharacterId])
 
   useEffect(() => {
     if (viewingUnassigned) {
@@ -1062,7 +1065,7 @@ export default function EntityList() {
     if (viewingUnassigned) {
       await loadEntities(null, { useUnassigned: true })
     } else if (worldId) {
-      await loadEntities(worldId)
+      await loadEntities(worldId, { viewAsCharacterId })
     }
     showToast(mode === 'create' ? 'Entity created' : 'Entity updated', 'success')
   }
@@ -1081,7 +1084,7 @@ export default function EntityList() {
       if (viewingUnassigned) {
         await loadEntities(null, { useUnassigned: true })
       } else if (worldId) {
-        await loadEntities(worldId)
+        await loadEntities(worldId, { viewAsCharacterId })
       }
     } catch (err) {
       console.error('❌ Failed to delete entity', err)
@@ -1097,7 +1100,7 @@ export default function EntityList() {
       return
     }
     if (!worldId) return
-    loadEntities(worldId)
+    loadEntities(worldId, { viewAsCharacterId })
   }
 
   const openCreate = () => {

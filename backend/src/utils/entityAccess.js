@@ -82,11 +82,80 @@ export const fetchUserWorldCharacterCampaignIds = async (worldId, userId) => {
   }
 }
 
+const normaliseCharacterContextId = (value) => {
+  if (!value) return null
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed || null
+  }
+  if (typeof value === 'object') {
+    return normaliseCharacterContextId(value.id ?? value.character_id)
+  }
+  const stringValue = String(value).trim()
+  return stringValue || null
+}
+
+const resolveCharacterViewContext = async ({
+  worldId,
+  characterContextId,
+  userId,
+  isAdmin,
+  isOwner,
+}) => {
+  const normalisedId = normaliseCharacterContextId(characterContextId)
+  if (!normalisedId || !worldId || !userId) {
+    return null
+  }
+
+  const character = await Character.findByPk(normalisedId, {
+    attributes: ['id', 'campaign_id', 'user_id'],
+    include: [
+      {
+        model: Campaign,
+        as: 'campaign',
+        attributes: ['id', 'world_id'],
+      },
+    ],
+  })
+
+  if (!character) {
+    return null
+  }
+
+  const plain = character.get({ plain: true })
+  const campaign = plain.campaign || {}
+  const campaignWorldId = normaliseId(campaign.world_id ?? campaign.world)
+  if (!campaignWorldId || String(campaignWorldId) !== String(worldId)) {
+    return null
+  }
+
+  let canView = Boolean(isAdmin || isOwner)
+
+  if (!canView) {
+    const dmMembership = await UserCampaignRole.findOne({
+      where: { user_id: userId, campaign_id: plain.campaign_id, role: 'dm' },
+      attributes: ['id'],
+    })
+    canView = Boolean(dmMembership)
+  }
+
+  if (!canView) {
+    return null
+  }
+
+  return {
+    characterId: String(plain.id),
+    campaignId: plain.campaign_id ? String(plain.campaign_id) : null,
+    userId: plain.user_id ? String(plain.user_id) : null,
+  }
+}
+
 export const buildEntityReadContext = async ({
   worldId,
   user,
   worldAccess,
   campaignContextId,
+  characterContextId,
 }) => {
   const userId = user?.id ?? null
   const isAdmin = Boolean(worldAccess?.isAdmin || user?.role === 'system_admin')
@@ -94,23 +163,27 @@ export const buildEntityReadContext = async ({
   const providedContextId = normaliseId(campaignContextId)
   const normalisedContextId = providedContextId ? String(providedContextId) : null
 
-  if (!userId || isAdmin || isOwner) {
-    return {
-      userId,
-      isAdmin,
-      isOwner,
-      campaignIds: new Set(),
-      characterIds: new Set(),
-      hasWorldCharacter: false,
-      worldAccess: worldAccess ?? null,
-      activeCampaignId: normalisedContextId,
-    }
+  let campaignIds = new Set()
+  let characterIds = new Set()
+  let hasAnyCharacter = false
+  let activeCampaignId = normalisedContextId
+
+  if (userId && !isAdmin && !isOwner) {
+    const context = await fetchUserWorldCharacterCampaignIds(worldId, userId)
+    campaignIds = context.campaignIds
+    characterIds = context.characterIds
+    hasAnyCharacter = context.hasAnyCharacter
+    activeCampaignId =
+      normalisedContextId && campaignIds.has(normalisedContextId) ? normalisedContextId : null
   }
 
-  const { campaignIds, characterIds, hasAnyCharacter } =
-    await fetchUserWorldCharacterCampaignIds(worldId, userId)
-  const activeCampaignId =
-    normalisedContextId && campaignIds.has(normalisedContextId) ? normalisedContextId : null
+  const viewAs = await resolveCharacterViewContext({
+    worldId,
+    characterContextId,
+    userId,
+    isAdmin,
+    isOwner,
+  })
 
   return {
     userId,
@@ -118,9 +191,10 @@ export const buildEntityReadContext = async ({
     isOwner,
     campaignIds,
     characterIds,
-    hasWorldCharacter: hasAnyCharacter,
+    hasWorldCharacter: viewAs ? Boolean(viewAs.characterId) : hasAnyCharacter,
     worldAccess: worldAccess ?? null,
     activeCampaignId,
+    viewAs,
   }
 }
 
@@ -183,20 +257,34 @@ export const canUserWriteEntity = (entityInput, context) => {
 
 export const canUserReadEntity = (entityInput, context) => {
   const entity = toPlainEntity(entityInput)
+  if (!entity) return false
+
   const readAccess = entity.read_access ?? 'global'
   const readCampaignIds = normaliseIdList(entity.read_campaign_ids)
   const readUserIds = normaliseIdList(entity.read_user_ids)
   const readCharacterIds = normaliseIdList(entity.read_character_ids)
 
-  const userId = context?.userId ?? null
-  const isAdmin = Boolean(context?.isAdmin)
-  const isOwner = Boolean(context?.isOwner)
+  const viewAs = context?.viewAs ?? null
+  const isViewAs = Boolean(viewAs)
+  const userId = isViewAs ? viewAs?.userId ?? null : context?.userId ?? null
+  const isAdmin = isViewAs ? false : Boolean(context?.isAdmin)
+  const isOwner = isViewAs ? false : Boolean(context?.isOwner)
   const worldAccess = context?.worldAccess ?? null
-  const hasWorldAccess = Boolean(worldAccess?.hasAccess)
-  const campaignIds = context?.campaignIds ?? new Set()
-  const characterIds = context?.characterIds ?? new Set()
-  const hasWorldCharacter = Boolean(context?.hasWorldCharacter)
-  const activeCampaignId = context?.activeCampaignId ? String(context.activeCampaignId) : null
+  const hasWorldAccess = isViewAs ? false : Boolean(worldAccess?.hasAccess)
+  const campaignIds = isViewAs
+    ? new Set(viewAs?.campaignId ? [String(viewAs.campaignId)] : [])
+    : context?.campaignIds ?? new Set()
+  const characterIds = isViewAs
+    ? new Set(viewAs?.characterId ? [String(viewAs.characterId)] : [])
+    : context?.characterIds ?? new Set()
+  const hasWorldCharacter = isViewAs
+    ? Boolean(viewAs?.characterId)
+    : Boolean(context?.hasWorldCharacter)
+  const activeCampaignId = isViewAs
+    ? viewAs?.campaignId ?? null
+    : context?.activeCampaignId
+      ? String(context.activeCampaignId)
+      : null
 
   const createdBy = entity.created_by ?? entity.createdBy ?? entity.createdById ?? null
   const isCreator = Boolean(userId && createdBy && String(createdBy) === String(userId))
@@ -205,11 +293,11 @@ export const canUserReadEntity = (entityInput, context) => {
     return true
   }
 
-  if (canUserWriteEntity(entity, context)) {
+  if (!isViewAs && canUserWriteEntity(entity, context)) {
     return true
   }
 
-  if (!userId) {
+  if (!userId && characterIds.size === 0) {
     return false
   }
 
@@ -222,7 +310,7 @@ export const canUserReadEntity = (entityInput, context) => {
   }
 
   if (readAccess === 'selective') {
-    if (readUserIds.some((id) => String(id) === String(userId))) {
+    if (userId && readUserIds.some((id) => String(id) === String(userId))) {
       return true
     }
 
@@ -251,19 +339,31 @@ export const canUserReadEntity = (entityInput, context) => {
 }
 
 export const buildReadableEntitiesWhereClause = (context) => {
-  if (!context || context.isAdmin || context.isOwner) {
+  const viewAs = context?.viewAs ?? null
+  const isViewAs = Boolean(viewAs)
+  const isAdmin = isViewAs ? false : Boolean(context?.isAdmin)
+  const isOwner = isViewAs ? false : Boolean(context?.isOwner)
+
+  if (!context || isAdmin || isOwner) {
     return null
   }
 
   const clauses = []
-  const userId = context.userId ?? null
-  const characterIds = context.characterIds ?? new Set()
+  const userId = isViewAs ? viewAs?.userId ?? null : context.userId ?? null
+  const characterIds = isViewAs
+    ? new Set(viewAs?.characterId ? [String(viewAs.characterId)] : [])
+    : context.characterIds ?? new Set()
 
   if (userId) {
     clauses.push({ created_by: userId })
   }
 
-  if (context.hasWorldCharacter || context.worldAccess?.hasAccess) {
+  const hasWorldCharacter = isViewAs
+    ? Boolean(viewAs?.characterId)
+    : Boolean(context.hasWorldCharacter)
+  const hasWorldAccess = isViewAs ? false : Boolean(context.worldAccess?.hasAccess)
+
+  if (hasWorldCharacter || hasWorldAccess) {
     clauses.push({
       [Op.or]: [
         { read_access: 'global' },
@@ -273,7 +373,11 @@ export const buildReadableEntitiesWhereClause = (context) => {
     })
   }
 
-  const activeCampaignId = context.activeCampaignId ? String(context.activeCampaignId) : null
+  const activeCampaignId = isViewAs
+    ? viewAs?.campaignId ?? null
+    : context.activeCampaignId
+      ? String(context.activeCampaignId)
+      : null
 
   if (activeCampaignId) {
     clauses.push({
