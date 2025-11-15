@@ -8,6 +8,31 @@ const CampaignContext = createContext(null)
 const STORAGE_KEY = 'gamedb_campaign_context'
 const ELIGIBLE_ROLES = new Set(['dm', 'player'])
 
+const persistContextSelection = (campaignId, worldId) => {
+  if (typeof window === 'undefined') return
+
+  const campaignValue = campaignId ? String(campaignId) : ''
+  const worldValue = campaignValue ? '' : worldId ? String(worldId) : ''
+
+  try {
+    if (campaignValue) {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ type: 'campaign', id: campaignValue }),
+      )
+    } else if (worldValue) {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ type: 'world', id: worldValue }),
+      )
+    } else {
+      localStorage.removeItem(STORAGE_KEY)
+    }
+  } catch (err) {
+    console.warn('⚠️ Unable to persist campaign context', err)
+  }
+}
+
 const parseStoredContext = (raw) => {
   if (!raw || typeof raw !== 'string') return { type: '', id: '' }
 
@@ -20,7 +45,7 @@ const parseStoredContext = (raw) => {
         return { type, id }
       }
     }
-  } catch (err) {
+  } catch {
     // Legacy values were stored as plain campaign ids
     if (raw.trim()) {
       return { type: 'campaign', id: raw.trim() }
@@ -94,18 +119,7 @@ export function CampaignProvider({ children }) {
   // Persist the selected campaign id for the current session
   useEffect(() => {
     if (!sessionReady) return
-
-    try {
-      if (selectedCampaignId) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ type: 'campaign', id: selectedCampaignId }))
-      } else if (selectedWorldId) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ type: 'world', id: selectedWorldId }))
-      } else {
-        localStorage.removeItem(STORAGE_KEY)
-      }
-    } catch (err) {
-      console.warn('⚠️ Unable to persist campaign context', err)
-    }
+    persistContextSelection(selectedCampaignId, selectedWorldId)
   }, [selectedCampaignId, selectedWorldId, sessionReady])
 
   const loadCampaigns = useCallback(async () => {
@@ -210,6 +224,9 @@ export function CampaignProvider({ children }) {
     setSelectedCampaignIdState(nextValue)
     if (nextValue) {
       setSelectedWorldIdState('')
+      persistContextSelection(nextValue, '')
+    } else {
+      persistContextSelection('', '')
     }
   }, [])
 
@@ -218,6 +235,9 @@ export function CampaignProvider({ children }) {
     setSelectedWorldIdState(nextValue)
     if (nextValue) {
       setSelectedCampaignIdState('')
+      persistContextSelection('', nextValue)
+    } else {
+      persistContextSelection('', '')
     }
   }, [])
 
