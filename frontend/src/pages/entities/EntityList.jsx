@@ -1675,6 +1675,7 @@ export default function EntityList() {
           selectedEntityTypeId={filterActive ? selectedFilter : ''}
           activeView={entityFormView}
           onViewChange={setEntityFormView}
+          defaultCampaignId={selectedCampaign?.id || ''}
         />
       </DrawerPanel>
     </section>
