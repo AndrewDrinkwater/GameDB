@@ -154,9 +154,22 @@ export const listEntityTypeFields = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Entity type not found' })
     }
 
-    const canManage = await ensureManageAccess(req.user, entityType.world_id)
-    if (!canManage) {
-      return res.status(403).json({ success: false, message: 'Forbidden' })
+    const worldId = entityType.world_id
+
+    if (!worldId) {
+      if (!isSystemAdmin(req.user)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' })
+      }
+    } else {
+      const access = await checkWorldAccess(worldId, req.user)
+
+      if (!access.world) {
+        return res.status(404).json({ success: false, message: 'World not found' })
+      }
+
+      if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+        return res.status(403).json({ success: false, message: 'Forbidden' })
+      }
     }
 
     const fields = await EntityTypeField.findAll({
