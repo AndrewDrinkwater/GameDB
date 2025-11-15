@@ -14,6 +14,7 @@ import {
   resolveCollectionEntities,
 } from '../../api/access.js'
 import './BulkAccessToolPage.css'
+import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 
 const MAX_ENTITIES = 1000
 
@@ -53,6 +54,8 @@ const ENTITY_SEARCH_PLACEHOLDERS = {
   [ENTITY_SEARCH_SCOPE.ALL_DATA]: 'Search names, descriptions, and data fields',
   [ENTITY_SEARCH_SCOPE.ALL_DATA_RELATIONSHIPS]: 'Search across data and related entities',
 }
+
+const MAX_ENTITY_SUMMARY_LENGTH = 140
 
 const addTermToCollection = (collection, value) => {
   if (value === null || value === undefined) return
@@ -124,6 +127,41 @@ const parseDateFilterValue = (value, boundary = 'start') => {
     date.setHours(0, 0, 0, 0)
   }
   return date.getTime()
+}
+
+const formatEntityDateMeta = (value) => {
+  if (!value) return ''
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+const getEntityMetaText = (entity) => {
+  if (!entity) return ''
+  const updated = formatEntityDateMeta(entity.updatedAt || entity.updated_at)
+  if (updated) return `Updated ${updated}`
+  const created = formatEntityDateMeta(entity.createdAt || entity.created_at)
+  if (created) return `Created ${created}`
+  return ''
+}
+
+const getEntitySummaryText = (entity) => {
+  if (!entity) return ''
+  const source =
+    entity.summary ||
+    entity.summary_text ||
+    entity.description ||
+    entity.system_prompt ||
+    entity.notes ||
+    ''
+  const normalised = typeof source === 'string' ? source.replace(/\s+/g, ' ').trim() : ''
+  if (!normalised) return ''
+  if (normalised.length <= MAX_ENTITY_SUMMARY_LENGTH) return normalised
+  return `${normalised.slice(0, MAX_ENTITY_SUMMARY_LENGTH - 1).trim()}…`
 }
 
 const TokenSelector = ({
@@ -997,7 +1035,7 @@ export default function BulkAccessToolPage() {
               ) : (
                 <>
                   <div className="entity-filter">
-                    <div className="entity-filter__row">
+                    <div className="entity-filter__row entity-filter__row--search">
                       <div className="entity-filter__input">
                         <label htmlFor="bulk-access-entity-search">Search</label>
                         <input
@@ -1070,20 +1108,39 @@ export default function BulkAccessToolPage() {
                       </p>
                     )}
                     {!loadingData &&
-                      filteredEntities.map((entity) => (
-                        <label key={entity.id} className="entity-row">
-                          <input
-                            type="checkbox"
-                            checked={selectedEntityIds.includes(entity.id)}
-                            onChange={() => handleEntityToggle(entity.id)}
-                            disabled={selectionFull && !selectedEntityIds.includes(entity.id)}
-                          />
-                          <span className="entity-name">{entity.name}</span>
-                          {entity.entityType?.name && (
-                            <span className="entity-type">{entity.entityType.name}</span>
-                          )}
-                        </label>
-                      ))}
+                      filteredEntities.map((entity) => {
+                        const entityMetaText = getEntityMetaText(entity)
+                        const entitySummary = getEntitySummaryText(entity)
+                        return (
+                          <label key={entity.id} className="entity-row">
+                            <input
+                              type="checkbox"
+                              checked={selectedEntityIds.includes(entity.id)}
+                              onChange={() => handleEntityToggle(entity.id)}
+                              disabled={selectionFull && !selectedEntityIds.includes(entity.id)}
+                            />
+                            <div className="entity-row__main">
+                              <span className="entity-name">{entity.name}</span>
+                              <div className="entity-row__meta">
+                                {entity.entityType?.name && (
+                                  <span className="entity-type">{entity.entityType.name}</span>
+                                )}
+                                {entityMetaText && (
+                                  <span className="entity-row__meta-text">{entityMetaText}</span>
+                                )}
+                              </div>
+                              {entitySummary && (
+                                <p className="entity-row__summary">{entitySummary}</p>
+                              )}
+                            </div>
+                            <EntityInfoPreview
+                              entityId={entity.id}
+                              entityName={entity.name}
+                              className="entity-row__preview"
+                            />
+                          </label>
+                        )
+                      })}
                   </div>
                 </>
               )}
