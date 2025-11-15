@@ -17,6 +17,51 @@ import './BulkAccessToolPage.css'
 
 const MAX_ENTITIES = 1000
 
+const TokenSelector = ({
+  label,
+  count,
+  options = [],
+  selectedValues = [],
+  onToggle,
+  disabled,
+}) => {
+  const handleToggle = (optionId) => {
+    if (disabled) return
+    onToggle(String(optionId))
+  }
+
+  return (
+    <div className="token-selector">
+      <div className="token-selector__label-row">
+        <span>{label}</span>
+        <span className="token-selector__count">({count})</span>
+      </div>
+      <div className="token-selector__chips" role="listbox" aria-multiselectable>
+        {options.length === 0 ? (
+          <p className="token-selector__empty">No options available.</p>
+        ) : (
+          options.map((option) => {
+            const value = String(option.id)
+            const isSelected = selectedValues.includes(value)
+            return (
+              <button
+                type="button"
+                key={value}
+                className={`token-selector__chip ${isSelected ? 'selected' : ''}`}
+                onClick={() => handleToggle(value)}
+                aria-pressed={isSelected}
+                disabled={disabled}
+              >
+                {option.label}
+              </button>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
+
 const normaliseListResponse = (response) => {
   if (Array.isArray(response?.data)) return response.data
   if (Array.isArray(response)) return response
@@ -24,9 +69,20 @@ const normaliseListResponse = (response) => {
 }
 
 const toSelectOptions = (records, labelKey = 'name') =>
-  records.map((record) => ({ id: record.id, label: record[labelKey] || record.name || record.email || record.id }))
+  records.map((record) => ({
+    id: String(record.id ?? record.value ?? record),
+    label: record[labelKey] || record.name || record.email || record.id,
+  }))
 
-const getMultiValue = (event) => Array.from(event.target.selectedOptions).map((option) => option.value)
+const formatCountList = (items) => {
+  const filtered = items
+    .filter((item) => item.count > 0)
+    .map((item) => `${item.count} ${item.label}${item.count === 1 ? '' : 's'}`)
+  if (filtered.length === 0) return ''
+  if (filtered.length === 1) return filtered[0]
+  if (filtered.length === 2) return `${filtered[0]} and ${filtered[1]}`
+  return `${filtered.slice(0, -1).join(', ')}, and ${filtered[filtered.length - 1]}`
+}
 
 export default function BulkAccessToolPage() {
   const { worldId, campaignId } = useParams()
@@ -53,8 +109,6 @@ export default function BulkAccessToolPage() {
   const [formError, setFormError] = useState('')
   const [result, setResult] = useState(null)
   const [formValues, setFormValues] = useState({
-    readAccess: 'global',
-    writeAccess: 'owner_only',
     readCampaignIds: [],
     readUserIds: [],
     readCharacterIds: [],
@@ -62,6 +116,9 @@ export default function BulkAccessToolPage() {
     writeUserIds: [],
     description: '',
   })
+  const [readMode, setReadMode] = useState('unchanged')
+  const [writeMode, setWriteMode] = useState('unchanged')
+  const [entityPanelCollapsed, setEntityPanelCollapsed] = useState(false)
   const [selectionMode, setSelectionMode] = useState('manual')
   const [collections, setCollections] = useState([])
   const [collectionsLoading, setCollectionsLoading] = useState(false)
@@ -214,7 +271,7 @@ export default function BulkAccessToolPage() {
 
         const memberOptions = Array.isArray(activeCampaign.members)
           ? activeCampaign.members.map((member) => ({
-              id: member.user_id,
+              id: String(member.user_id),
               username: member.user?.username || member.user?.email || member.user_id,
             }))
           : []
@@ -285,13 +342,14 @@ export default function BulkAccessToolPage() {
   useEffect(() => {
     if (!isCampaignScoped || !activeCampaign) return
     const allowedCampaignId = String(activeCampaign.id)
+    const allowedCampaigns = new Set([allowedCampaignId])
     const allowedUsers = new Set((users || []).map((userOption) => String(userOption.id)))
     const allowedCharacters = new Set((characters || []).map((character) => String(character.id)))
 
     setFormValues((prev) => {
-      const readCampaignIds = allowedCampaignId ? [allowedCampaignId] : []
-      const writeCampaignIds = prev.writeCampaignIds.filter((id) => id === allowedCampaignId)
       const filterList = (list, allowed) => list.filter((id) => allowed.has(String(id)))
+      const readCampaignIds = filterList(prev.readCampaignIds, allowedCampaigns)
+      const writeCampaignIds = filterList(prev.writeCampaignIds, allowedCampaigns)
       const readUserIds = filterList(prev.readUserIds, allowedUsers)
       const writeUserIds = filterList(prev.writeUserIds, allowedUsers)
       const readCharacterIds = filterList(prev.readCharacterIds, allowedCharacters)
@@ -319,6 +377,13 @@ export default function BulkAccessToolPage() {
 
   const selectedCount = selectedEntityIds.length
   const selectionFull = selectedCount >= MAX_ENTITIES
+  const canCollapseEntities = selectedCount > 0
+
+  useEffect(() => {
+    if (selectedCount === 0) {
+      setEntityPanelCollapsed(false)
+    }
+  }, [selectedCount])
 
   const handleEntityToggle = (entityId) => {
     setFormError('')
@@ -406,48 +471,85 @@ export default function BulkAccessToolPage() {
     }
   }
 
-  const handleInputChange = (event) => {
-    const { name, value } = event.target
-    setFormValues((prev) => ({ ...prev, [name]: value }))
+  const handleDescriptionChange = (event) => {
+    const { value } = event.target
+    setFormValues((prev) => ({ ...prev, description: value }))
   }
 
-  const handleMultiChange = (name) => (event) => {
-    const value = getMultiValue(event)
-    setFormValues((prev) => ({ ...prev, [name]: value }))
+  const handleAccessModeChange = (section) => (event) => {
+    const nextValue = event.target.value
+    if (section === 'read') {
+      setReadMode(nextValue)
+      if (nextValue === 'unchanged') {
+        setFormValues((prev) => ({
+          ...prev,
+          readCampaignIds: [],
+          readUserIds: [],
+          readCharacterIds: [],
+        }))
+      }
+    } else {
+      setWriteMode(nextValue)
+      if (nextValue === 'unchanged') {
+        setFormValues((prev) => ({
+          ...prev,
+          writeCampaignIds: [],
+          writeUserIds: [],
+        }))
+      }
+    }
   }
 
-  const handleWriteCampaignChange = (event) => {
-    const value = getMultiValue(event)
+  const toggleTokenValue = (key) => (optionId) => {
+    const value = String(optionId)
     setFormValues((prev) => {
-      const readCampaignSet = new Set(prev.readCampaignIds)
-      value.forEach((id) => readCampaignSet.add(id))
-      return { ...prev, writeCampaignIds: value, readCampaignIds: Array.from(readCampaignSet) }
+      const current = prev[key] || []
+      const exists = current.includes(value)
+      const next = exists ? current.filter((id) => id !== value) : [...current, value]
+      return { ...prev, [key]: next }
     })
   }
 
-  const handleWriteUserChange = (event) => {
-    const value = getMultiValue(event)
-    setFormValues((prev) => {
-      const readUserSet = new Set(prev.readUserIds)
-      value.forEach((id) => readUserSet.add(id))
-      return { ...prev, writeUserIds: value, readUserIds: Array.from(readUserSet) }
-    })
-  }
+  const readActivated = readMode === 'activated'
+  const writeActivated = writeMode === 'activated'
 
   const hasReadTargets = useMemo(() => {
+    if (!readActivated) return false
     const readCount =
       formValues.readCampaignIds.length +
       formValues.readUserIds.length +
       formValues.readCharacterIds.length
     return readCount > 0
-  }, [formValues])
+  }, [formValues, readActivated])
 
   const hasWriteTargets = useMemo(() => {
+    if (!writeActivated) return false
     const writeCount = formValues.writeCampaignIds.length + formValues.writeUserIds.length
     return writeCount > 0
-  }, [formValues])
+  }, [formValues, writeActivated])
 
-  const canSubmit = canUseTool && selectedEntityIds.length > 0 && !submitting
+  const hasActiveSection = readActivated || writeActivated
+  const readSummaryText = useMemo(() => {
+    if (!readActivated) return ''
+    const summary = formatCountList([
+      { label: 'campaign', count: formValues.readCampaignIds.length },
+      { label: 'user', count: formValues.readUserIds.length },
+      { label: 'character', count: formValues.readCharacterIds.length },
+    ])
+    if (!summary) return ''
+    return `You will add read access for ${summary}.`
+  }, [formValues, readActivated])
+
+  const writeSummaryText = useMemo(() => {
+    if (!writeActivated) return ''
+    const summary = formatCountList([
+      { label: 'campaign', count: formValues.writeCampaignIds.length },
+      { label: 'user', count: formValues.writeUserIds.length },
+    ])
+    if (!summary) return ''
+    return `You will add write access for ${summary}.`
+  }, [formValues, writeActivated])
+  const canSubmit = canUseTool && selectedEntityIds.length > 0 && hasActiveSection && !submitting
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -459,24 +561,28 @@ export default function BulkAccessToolPage() {
       setFormError('Select at least one entity to continue.')
       return
     }
-    if (formValues.readAccess === 'selective' && !hasReadTargets) {
-      setFormError('Selective read access requires at least one audience.')
+    if (!hasActiveSection) {
+      setFormError('Select at least one access type to update.')
       return
     }
-    if (formValues.writeAccess === 'selective' && !hasWriteTargets) {
-      setFormError('Provide a campaign or user for selective write access.')
+    if (readActivated && !hasReadTargets) {
+      setFormError('Add at least one read campaign, character, or user.')
+      return
+    }
+    if (writeActivated && !hasWriteTargets) {
+      setFormError('Add at least one campaign or user to grant write access.')
       return
     }
 
     const payload = {
       entityIds: selectedEntityIds,
-      readAccess: formValues.readAccess,
-      writeAccess: formValues.writeAccess,
-      readCampaignIds: formValues.readCampaignIds,
-      readUserIds: formValues.readUserIds,
-      readCharacterIds: formValues.readCharacterIds,
-      writeCampaignIds: formValues.writeCampaignIds,
-      writeUserIds: formValues.writeUserIds,
+      readAccess: readActivated ? 'selective' : 'unchanged',
+      writeAccess: writeActivated ? 'selective' : 'unchanged',
+      readCampaignIds: readActivated ? formValues.readCampaignIds : [],
+      readUserIds: readActivated ? formValues.readUserIds : [],
+      readCharacterIds: readActivated ? formValues.readCharacterIds : [],
+      writeCampaignIds: writeActivated ? formValues.writeCampaignIds : [],
+      writeUserIds: writeActivated ? formValues.writeUserIds : [],
       description: formValues.description,
     }
 
@@ -500,7 +606,7 @@ export default function BulkAccessToolPage() {
 
   const campaignOptions = useMemo(() => {
     if (isCampaignScoped && activeCampaign) {
-      return [{ id: activeCampaign.id, label: activeCampaign.name }]
+      return [{ id: String(activeCampaign.id), label: activeCampaign.name }]
     }
     return toSelectOptions(campaigns)
   }, [activeCampaign, campaigns, isCampaignScoped])
@@ -573,6 +679,10 @@ export default function BulkAccessToolPage() {
         )}
       </div>
 
+      <p className="bulk-access-helper bulk-access-topline">
+        This tool adds access to selected entities. It does not remove current access.
+      </p>
+
       {canUseCampaignTool && activeCampaign && (
         <div className="bulk-access-context-banner">
           You are updating access in Campaign: <strong>{activeCampaign.name}</strong>
@@ -609,276 +719,300 @@ export default function BulkAccessToolPage() {
               <ShieldPlus size={18} /> Choose entities ({selectedCount}/{MAX_ENTITIES})
             </h2>
             <div className="bulk-access-entity-actions">
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={handleSelectAllFiltered}
-                disabled={selectionFull || selectionMode !== 'manual'}
-              >
-                Select filtered
-              </button>
+              {!entityPanelCollapsed && (
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={handleSelectAllFiltered}
+                  disabled={selectionFull || selectionMode !== 'manual'}
+                >
+                  Select filtered
+                </button>
+              )}
               <button type="button" className="ghost-button" onClick={handleClearSelection}>
                 Clear selection
               </button>
+              {canCollapseEntities && (
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => setEntityPanelCollapsed((prev) => !prev)}
+                >
+                  {entityPanelCollapsed ? 'Expand' : 'Collapse'}
+                </button>
+              )}
             </div>
           </header>
-          <div className="bulk-access-selection-mode">
-            <label>
-              <input
-                type="radio"
-                value="manual"
-                checked={selectionMode === 'manual'}
-                onChange={handleSelectionModeChange}
-              />
-              Select manually
-            </label>
-            <label>
-              <input
-                type="radio"
-                value="collection"
-                checked={selectionMode === 'collection'}
-                onChange={handleSelectionModeChange}
-              />
-              Use collection
-            </label>
-          </div>
-
-          {selectionMode === 'collection' ? (
-            <div className="bulk-access-collection-panel">
-              {collectionsLoading && (
-                <p className="bulk-access-helper">
-                  <Loader2 className="spin" size={16} /> Loading collections…
-                </p>
-              )}
-              {!collectionsLoading && collectionsError && (
-                <p className="bulk-access-helper warning">{collectionsError}</p>
-              )}
-              {!collectionsLoading && !collectionsError && collections.length === 0 && (
-                <p className="bulk-access-helper">
-                  No collections available.
-                  {isOwner && !isCampaignScoped && worldId && (
-                    <>
-                      {' '}
-                      <Link to={`/worlds/${worldId}/collections`} className="inline-link">
-                        Create one in the collections manager
-                      </Link>
-                      .
-                    </>
-                  )}
-                </p>
-              )}
-              {collections.length > 0 && (
-                <select value={selectedCollectionId} onChange={handleCollectionSelect}>
-                  <option value="">Select a collection</option>
-                  {collections.map((collection) => (
-                    <option key={collection.id} value={collection.id}>
-                      {collection.name} · {collection.entityCount ?? collection.entity_ids?.length ?? 0} entities
-                    </option>
-                  ))}
-                </select>
-              )}
-              {resolvingCollection && (
-                <p className="bulk-access-helper">
-                  <Loader2 className="spin" size={16} /> Resolving collection…
-                </p>
-              )}
-              {collectionPreview && (
-                <div className="bulk-access-collection-preview">
-                  <p>
-                    <strong>{collectionPreview.entityCount}</strong> entities selected from this collection.
-                  </p>
-                  {collectionPreview.truncated && (
-                    <p className="bulk-access-helper warning">
-                      Only the first {MAX_ENTITIES} entities can be updated at a time.
-                    </p>
-                  )}
-                  {collectionPreviewNames.length > 0 && (
-                    <ul>
-                      {collectionPreviewNames.map((name, index) => (
-                        <li key={`${name}-${index}`}>{name}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-              {selectionMode === 'collection' && isOwner && !isCampaignScoped && worldId && (
-                <Link to={`/worlds/${worldId}/collections`} className="inline-link">
-                  Manage collections
-                </Link>
-              )}
+          {entityPanelCollapsed ? (
+            <div className="bulk-access-entity-collapsed-summary">
+              <p>
+                <strong>{selectedCount}</strong> {selectedCount === 1 ? 'entity' : 'entities'} selected.
+              </p>
             </div>
           ) : (
             <>
-              <div className="entity-filter">
-                <input
-                  type="text"
-                  placeholder="Filter entities by name"
-                  value={entityFilter}
-                  onChange={(event) => setEntityFilter(event.target.value)}
-                />
+              <div className="bulk-access-selection-mode">
+                <label>
+                  <input
+                    type="radio"
+                    value="manual"
+                    checked={selectionMode === 'manual'}
+                    onChange={handleSelectionModeChange}
+                  />
+                  Select manually
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    value="collection"
+                    checked={selectionMode === 'collection'}
+                    onChange={handleSelectionModeChange}
+                  />
+                  Use collection
+                </label>
               </div>
-              <div className="entity-selector-list">
-                {loadingData && (
-                  <p className="bulk-access-helper">
-                    <Loader2 className="spin" size={16} /> Loading entities…
-                  </p>
-                )}
-                {!loadingData && filteredEntities.length === 0 && (
-                  <p className="bulk-access-helper">
-                    {isCampaignScoped
-                      ? 'No entities are visible within this campaign context.'
-                      : 'No entities match the current filter.'}
-                  </p>
-                )}
-                {!loadingData &&
-                  filteredEntities.map((entity) => (
-                    <label key={entity.id} className="entity-row">
-                      <input
-                        type="checkbox"
-                        checked={selectedEntityIds.includes(entity.id)}
-                        onChange={() => handleEntityToggle(entity.id)}
-                        disabled={selectionFull && !selectedEntityIds.includes(entity.id)}
-                      />
-                      <span className="entity-name">{entity.name}</span>
-                      {entity.entityType?.name && (
-                        <span className="entity-type">{entity.entityType.name}</span>
+
+              {selectionMode === 'collection' ? (
+                <div className="bulk-access-collection-panel">
+                  {collectionsLoading && (
+                    <p className="bulk-access-helper">
+                      <Loader2 className="spin" size={16} /> Loading collections…
+                    </p>
+                  )}
+                  {!collectionsLoading && collectionsError && (
+                    <p className="bulk-access-helper warning">{collectionsError}</p>
+                  )}
+                  {!collectionsLoading && !collectionsError && collections.length === 0 && (
+                    <p className="bulk-access-helper">
+                      No collections available.
+                      {isOwner && !isCampaignScoped && worldId && (
+                        <>
+                          {' '}
+                          <Link to={`/worlds/${worldId}/collections`} className="inline-link">
+                            Create one in the collections manager
+                          </Link>
+                          .
+                        </>
                       )}
-                    </label>
-                  ))}
-              </div>
+                    </p>
+                  )}
+                  {collections.length > 0 && (
+                    <select value={selectedCollectionId} onChange={handleCollectionSelect}>
+                      <option value="">Select a collection</option>
+                      {collections.map((collection) => (
+                        <option key={collection.id} value={collection.id}>
+                          {collection.name} · {collection.entityCount ?? collection.entity_ids?.length ?? 0} entities
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {resolvingCollection && (
+                    <p className="bulk-access-helper">
+                      <Loader2 className="spin" size={16} /> Resolving collection…
+                    </p>
+                  )}
+                  {collectionPreview && (
+                    <div className="bulk-access-collection-preview">
+                      <p>
+                        <strong>{collectionPreview.entityCount}</strong> entities selected from this collection.
+                      </p>
+                      {collectionPreview.truncated && (
+                        <p className="bulk-access-helper warning">
+                          Only the first {MAX_ENTITIES} entities can be updated at a time.
+                        </p>
+                      )}
+                      {collectionPreviewNames.length > 0 && (
+                        <ul>
+                          {collectionPreviewNames.map((name, index) => (
+                            <li key={`${name}-${index}`}>{name}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                  {selectionMode === 'collection' && isOwner && !isCampaignScoped && worldId && (
+                    <Link to={`/worlds/${worldId}/collections`} className="inline-link">
+                      Manage collections
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="entity-filter">
+                    <input
+                      type="text"
+                      placeholder="Filter entities by name"
+                      value={entityFilter}
+                      onChange={(event) => setEntityFilter(event.target.value)}
+                    />
+                  </div>
+                  <div className="entity-selector-list">
+                    {loadingData && (
+                      <p className="bulk-access-helper">
+                        <Loader2 className="spin" size={16} /> Loading entities…
+                      </p>
+                    )}
+                    {!loadingData && filteredEntities.length === 0 && (
+                      <p className="bulk-access-helper">
+                        {isCampaignScoped
+                          ? 'No entities are visible within this campaign context.'
+                          : 'No entities match the current filter.'}
+                      </p>
+                    )}
+                    {!loadingData &&
+                      filteredEntities.map((entity) => (
+                        <label key={entity.id} className="entity-row">
+                          <input
+                            type="checkbox"
+                            checked={selectedEntityIds.includes(entity.id)}
+                            onChange={() => handleEntityToggle(entity.id)}
+                            disabled={selectionFull && !selectedEntityIds.includes(entity.id)}
+                          />
+                          <span className="entity-name">{entity.name}</span>
+                          {entity.entityType?.name && (
+                            <span className="entity-type">{entity.entityType.name}</span>
+                          )}
+                        </label>
+                      ))}
+                  </div>
+                </>
+              )}
             </>
           )}
         </section>
 
-        <section className="bulk-access-card">
+        <section className="bulk-access-card bulk-access-card--form">
           <header>
             <h2>Access configuration</h2>
           </header>
           <form className="bulk-access-form" onSubmit={handleSubmit}>
-            <div className="form-grid">
-              <label>
-                Read access mode
-                <select name="readAccess" value={formValues.readAccess} onChange={handleInputChange}>
-                  <option value="global">Global</option>
-                  <option value="selective">Selective</option>
-                  <option value="hidden">Hidden</option>
-                </select>
-              </label>
-
-              <label>
-                Write access mode
-                <select name="writeAccess" value={formValues.writeAccess} onChange={handleInputChange}>
-                  <option value="owner_only">Owner only</option>
-                  <option value="selective">Selective</option>
-                  <option value="hidden">Hidden</option>
-                  <option value="global">Global</option>
-                </select>
-              </label>
+            <div className="access-section">
+              <div className="access-section__header">
+                <div>
+                  <p className="access-section__eyebrow">Step 1</p>
+                  <h3>Read access</h3>
+                </div>
+                <label className="access-mode-select">
+                  <span>Mode</span>
+                  <select value={readMode} onChange={handleAccessModeChange('read')}>
+                    <option value="unchanged">Unchanged</option>
+                    <option value="activated">Activated</option>
+                  </select>
+                </label>
+              </div>
+              <p className="bulk-access-helper access-helper-text">
+                This adds new access. It does not remove current access.
+              </p>
+              {readActivated && (
+                <div className="access-section__content">
+                  <div className="access-section__grid">
+                    <TokenSelector
+                      label="Read campaigns"
+                      count={formValues.readCampaignIds.length}
+                      options={campaignOptions}
+                      selectedValues={formValues.readCampaignIds}
+                      onToggle={toggleTokenValue('readCampaignIds')}
+                    />
+                    <TokenSelector
+                      label="Read users"
+                      count={formValues.readUserIds.length}
+                      options={userOptions}
+                      selectedValues={formValues.readUserIds}
+                      onToggle={toggleTokenValue('readUserIds')}
+                    />
+                  </div>
+                  <TokenSelector
+                    label="Read characters"
+                    count={formValues.readCharacterIds.length}
+                    options={characterOptions}
+                    selectedValues={formValues.readCharacterIds}
+                    onToggle={toggleTokenValue('readCharacterIds')}
+                  />
+                </div>
+              )}
             </div>
 
-            <div className="form-grid">
-              <label>
-                Read campaigns
-                <select
-                  multiple
-                  value={formValues.readCampaignIds}
-                  onChange={handleMultiChange('readCampaignIds')}
-                  size={5}
-                  disabled={isCampaignScoped}
-                >
-                  {campaignOptions.map((campaign) => (
-                    <option key={campaign.id} value={campaign.id}>
-                      {campaign.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Read users
-                <select multiple value={formValues.readUserIds} onChange={handleMultiChange('readUserIds')} size={5}>
-                  {userOptions.map((userOption) => (
-                    <option key={userOption.id} value={userOption.id}>
-                      {userOption.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div className="access-section">
+              <div className="access-section__header">
+                <div>
+                  <p className="access-section__eyebrow">Step 2</p>
+                  <h3>Write access</h3>
+                </div>
+                <label className="access-mode-select">
+                  <span>Mode</span>
+                  <select value={writeMode} onChange={handleAccessModeChange('write')}>
+                    <option value="unchanged">Unchanged</option>
+                    <option value="activated">Activated</option>
+                  </select>
+                </label>
+              </div>
+              <p className="bulk-access-helper access-helper-text">
+                This adds new access. It does not remove current access.
+              </p>
+              {writeActivated && (
+                <div className="access-section__content">
+                  <div className="access-section__grid">
+                    <TokenSelector
+                      label="Write campaigns"
+                      count={formValues.writeCampaignIds.length}
+                      options={campaignOptions}
+                      selectedValues={formValues.writeCampaignIds}
+                      onToggle={toggleTokenValue('writeCampaignIds')}
+                    />
+                    <TokenSelector
+                      label="Write users"
+                      count={formValues.writeUserIds.length}
+                      options={userOptions}
+                      selectedValues={formValues.writeUserIds}
+                      onToggle={toggleTokenValue('writeUserIds')}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
-            <label>
-              Read characters
-              <select
-                multiple
-                value={formValues.readCharacterIds}
-                onChange={handleMultiChange('readCharacterIds')}
-                size={4}
-              >
-                {characterOptions.map((character) => (
-                  <option key={character.id} value={character.id}>
-                    {character.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="form-grid">
-              <label>
-                Write campaigns
-                <select multiple value={formValues.writeCampaignIds} onChange={handleWriteCampaignChange} size={5}>
-                  {campaignOptions.map((campaign) => (
-                    <option key={campaign.id} value={campaign.id}>
-                      {campaign.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Write users
-                <select multiple value={formValues.writeUserIds} onChange={handleWriteUserChange} size={5}>
-                  {userOptions.map((userOption) => (
-                    <option key={userOption.id} value={userOption.id}>
-                      {userOption.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <label>
+            <label className="bulk-access-description">
               Description (optional)
               <textarea
                 name="description"
                 value={formValues.description}
-                onChange={handleInputChange}
-                rows={3}
+                onChange={handleDescriptionChange}
+                rows={1}
                 placeholder="Explain why this access change was applied"
               />
             </label>
 
             <div className="bulk-access-summary">
-              <p>
-                <strong>Summary:</strong> {selectedCount} entities will be set to <strong>{formValues.readAccess}</strong> read and{' '}
-                <strong>{formValues.writeAccess}</strong> write access.
-              </p>
-              {formValues.writeAccess === 'selective' && !hasWriteTargets && (
-                <p className="bulk-access-helper warning">Add at least one campaign or user for selective write access.</p>
+              {readSummaryText && <p>{readSummaryText}</p>}
+              {writeSummaryText && <p>{writeSummaryText}</p>}
+              {!readSummaryText && !writeSummaryText && (
+                <p className="bulk-access-helper">No access changes selected yet.</p>
               )}
-              {formValues.readAccess === 'selective' && !hasReadTargets && (
+              {!hasActiveSection && (
+                <p className="bulk-access-helper warning">Select at least one access type to update.</p>
+              )}
+              {readActivated && !hasReadTargets && (
                 <p className="bulk-access-helper warning">Add at least one read audience.</p>
+              )}
+              {writeActivated && !hasWriteTargets && (
+                <p className="bulk-access-helper warning">Add at least one write audience.</p>
               )}
             </div>
 
-            <button type="submit" className="primary-button" disabled={!canSubmit || submitting}>
-              {submitting ? (
-                <>
-                  <Loader2 className="spin" size={16} /> Applying…
-                </>
-              ) : (
-                'Confirm and Apply'
-              )}
-            </button>
+            <div className="bulk-access-footer">
+              <div className="bulk-access-footer__selection-info">
+                <strong>{selectedCount}</strong> {selectedCount === 1 ? 'entity' : 'entities'} selected
+              </div>
+              <button type="submit" className="primary-button" disabled={!canSubmit || submitting}>
+                {submitting ? (
+                  <>
+                    <Loader2 className="spin" size={16} /> Applying…
+                  </>
+                ) : (
+                  'Confirm and Apply'
+                )}
+              </button>
+            </div>
           </form>
         </section>
       </div>

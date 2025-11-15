@@ -1,5 +1,5 @@
-const READ_ACCESS_VALUES = new Set(['global', 'selective', 'hidden'])
-const WRITE_ACCESS_VALUES = new Set(['global', 'selective', 'hidden', 'owner_only'])
+const READ_ACCESS_VALUES = new Set(['global', 'selective', 'hidden', 'unchanged'])
+const WRITE_ACCESS_VALUES = new Set(['global', 'selective', 'hidden', 'owner_only', 'unchanged'])
 export const MAX_BULK_ENTITY_IDS = 1000
 
 export class BulkAccessValidationError extends Error {
@@ -79,7 +79,11 @@ export const normaliseBulkAccessPayload = (input = {}) => {
   const readAccess = normaliseAccessMode(input.readAccess ?? input.read_access, 'readAccess')
   const writeAccess = normaliseAccessMode(input.writeAccess ?? input.write_access, 'writeAccess')
 
-  if (readAccess === 'hidden' && writeAccess === 'selective') {
+  if (readAccess === 'unchanged' && writeAccess === 'unchanged') {
+    throw new BulkAccessValidationError('Select at least one access type to update.')
+  }
+
+  if (readAccess !== 'unchanged' && readAccess === 'hidden' && writeAccess === 'selective') {
     throw new BulkAccessValidationError(
       'Hidden read access cannot be paired with selective write access',
       { suggestedFix: 'Choose owner_only or hidden write access' },
@@ -104,12 +108,18 @@ export const normaliseBulkAccessPayload = (input = {}) => {
       'Selective write access requires at least one campaign or user',
     )
   }
+  if (writeAccess === 'unchanged' && writeTargetCount > 0) {
+    throw new BulkAccessValidationError('Write access set to unchanged cannot include targets')
+  }
 
   const readTargetCount = mergedReadCampaignIds.length + mergedReadUserIds.length + readCharacterIds.length
   if (readAccess === 'selective' && readTargetCount === 0) {
     throw new BulkAccessValidationError(
       'Selective read access requires at least one campaign, user, or character',
     )
+  }
+  if (readAccess === 'unchanged' && readTargetCount > 0) {
+    throw new BulkAccessValidationError('Read access set to unchanged cannot include targets')
   }
 
   return {
@@ -163,13 +173,20 @@ export const buildEntityAccessUpdate = (entityInput, payload) => {
   const writeCampaignIds = buildSortedList(entity.write_campaign_ids, payload.writeCampaignIds)
   const writeUserIds = buildSortedList(entity.write_user_ids, payload.writeUserIds)
 
-  return {
-    read_access: payload.readAccess,
-    write_access: payload.writeAccess,
+  const updates = {
     read_campaign_ids: readCampaignIds,
     read_user_ids: readUserIds,
     read_character_ids: readCharacterIds,
     write_campaign_ids: writeCampaignIds,
     write_user_ids: writeUserIds,
   }
+
+  if (payload.readAccess && payload.readAccess !== 'unchanged') {
+    updates.read_access = payload.readAccess
+  }
+  if (payload.writeAccess && payload.writeAccess !== 'unchanged') {
+    updates.write_access = payload.writeAccess
+  }
+
+  return updates
 }
