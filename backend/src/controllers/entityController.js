@@ -133,44 +133,147 @@ const normaliseId = (value) => {
   return stringValue || null
 }
 
-const resolveCampaignScopedDefaults = async ({ campaignContextId, world, user }) => {
+const ENTITY_CREATION_SCOPES = new Set(['owner_dm', 'all_players'])
+const DEFAULT_ENTITY_CREATION_SCOPE = 'owner_dm'
+
+const normaliseEntityCreationScope = (value) => {
+  if (typeof value !== 'string') return DEFAULT_ENTITY_CREATION_SCOPE
+  const trimmed = value.trim().toLowerCase()
+  if (ENTITY_CREATION_SCOPES.has(trimmed)) {
+    return trimmed
+  }
+  return DEFAULT_ENTITY_CREATION_SCOPE
+}
+
+const resolveCampaignMembership = async ({ worldId, campaignContextId, userId }) => {
+  const resolvedWorldId = normaliseId(worldId)
   const resolvedCampaignId = normaliseId(campaignContextId)
-  if (!resolvedCampaignId || !world?.id) {
+
+  if (!resolvedWorldId || !resolvedCampaignId) {
     return null
   }
 
   const campaign = await Campaign.findOne({
-    where: { id: resolvedCampaignId, world_id: world.id },
-    attributes: ['id', 'world_id'],
+    where: { id: resolvedCampaignId, world_id: resolvedWorldId },
+    attributes: ['id'],
   })
 
   if (!campaign) {
     return null
   }
 
+  if (!userId) {
+    return { campaignId: String(campaign.id), membershipRole: null }
+  }
+
+  const membership = await UserCampaignRole.findOne({
+    where: { user_id: userId, campaign_id: campaign.id },
+    attributes: ['role'],
+  })
+
+  return {
+    campaignId: String(campaign.id),
+    membershipRole: membership?.role ?? null,
+  }
+}
+
+const userHasDmRoleInWorld = async ({ worldId, userId }) => {
+  const resolvedWorldId = normaliseId(worldId)
+  const resolvedUserId = normaliseId(userId)
+
+  if (!resolvedWorldId || !resolvedUserId) {
+    return false
+  }
+
+  const membership = await UserCampaignRole.findOne({
+    where: { user_id: resolvedUserId, role: 'dm' },
+    attributes: ['id'],
+    include: [
+      {
+        model: Campaign,
+        as: 'campaign',
+        required: true,
+        attributes: ['id', 'world_id'],
+        where: { world_id: resolvedWorldId },
+      },
+    ],
+  })
+
+  return Boolean(membership)
+}
+
+export const resolveEntityCreationAccess = async ({ world, user, campaignContextId }) => {
+  const resolvedWorldId = normaliseId(world?.id)
   const userId = normaliseId(user?.id)
+  const scope = normaliseEntityCreationScope(world?.entity_creation_scope)
+
+  const baseResult = {
+    allowed: false,
+    defaultCampaignId: null,
+    enforceCampaignScope: false,
+    reason: 'You do not have permission to create entities in this world.',
+  }
+
+  if (!resolvedWorldId) {
+    return { ...baseResult, reason: 'World context is required to create entities.' }
+  }
+
+  if (!userId) {
+    return { ...baseResult, reason: 'Authentication required.' }
+  }
+
   const isSystemAdmin = user?.role === 'system_admin'
-  const worldOwnerId = world?.created_by ?? world?.createdBy ?? null
-  const isWorldOwner = Boolean(
-    worldOwnerId && userId && String(worldOwnerId) === String(userId),
-  )
+  const worldOwnerId = normaliseId(world?.created_by ?? world?.createdBy)
+  const isWorldOwner = Boolean(worldOwnerId && worldOwnerId === userId)
 
-  if (!isSystemAdmin && !isWorldOwner) {
-    if (!userId) {
-      return null
-    }
+  const campaignMembership = await resolveCampaignMembership({
+    worldId: resolvedWorldId,
+    campaignContextId,
+    userId,
+  })
 
-    const membership = await UserCampaignRole.findOne({
-      where: { campaign_id: campaign.id, user_id: userId, role: 'dm' },
-      attributes: ['role'],
-    })
-
-    if (!membership) {
-      return null
+  if (isSystemAdmin || isWorldOwner) {
+    return {
+      allowed: true,
+      defaultCampaignId: campaignMembership?.campaignId ?? null,
+      enforceCampaignScope: false,
     }
   }
 
-  return { campaignId: String(campaign.id) }
+  const isWorldDm = await userHasDmRoleInWorld({ worldId: resolvedWorldId, userId })
+  if (isWorldDm) {
+    const defaultCampaignId =
+      campaignMembership?.membershipRole === 'dm' ? campaignMembership.campaignId : null
+    return {
+      allowed: true,
+      defaultCampaignId,
+      enforceCampaignScope: false,
+    }
+  }
+
+  if (scope !== 'all_players') {
+    return baseResult
+  }
+
+  if (!campaignMembership?.campaignId) {
+    return {
+      ...baseResult,
+      reason: 'Select a campaign before creating entities as a player.',
+    }
+  }
+
+  if (!campaignMembership.membershipRole || campaignMembership.membershipRole === 'observer') {
+    return {
+      ...baseResult,
+      reason: 'Only active campaign members can create entities in this world.',
+    }
+  }
+
+  return {
+    allowed: true,
+    defaultCampaignId: campaignMembership.campaignId,
+    enforceCampaignScope: true,
+  }
 }
 
 const normaliseSecretAudienceIds = (value, fieldName) => {
@@ -724,6 +827,7 @@ export const createEntityResponse = async ({
   user,
   body,
   campaignContextId,
+  creationAccess,
 }) => {
   const {
     name,
@@ -773,16 +877,27 @@ export const createEntityResponse = async ({
     return { status: 400, body: { success: false, message: 'Invalid visibility value' } }
   }
 
-  const campaignScopedDefaults = await resolveCampaignScopedDefaults({
-    campaignContextId,
-    world,
-    user,
-  })
+  const creationAccessResult =
+    creationAccess ??
+    (await resolveEntityCreationAccess({ world, user, campaignContextId }))
 
-  const defaultAccessMode = campaignScopedDefaults ? 'selective' : 'global'
-  const defaultCampaignTargets = campaignScopedDefaults
-    ? [campaignScopedDefaults.campaignId]
-    : []
+  if (!creationAccessResult.allowed) {
+    return {
+      status: 403,
+      body: {
+        success: false,
+        message: creationAccessResult.reason || 'You cannot create entities here.',
+      },
+    }
+  }
+
+  const defaultCampaignId = creationAccessResult.defaultCampaignId ?? null
+  const enforceCampaignScope = Boolean(
+    creationAccessResult.enforceCampaignScope && defaultCampaignId,
+  )
+
+  const defaultAccessMode = defaultCampaignId ? 'selective' : 'global'
+  const defaultCampaignTargets = defaultCampaignId ? [defaultCampaignId] : []
 
   let readAccess = defaultAccessMode
   let writeAccess = defaultAccessMode
@@ -829,15 +944,25 @@ export const createEntityResponse = async ({
     return { status: 400, body: { success: false, message: err.message } }
   }
 
-    if (readAccess !== 'selective') {
-      readCampaignIds = []
-      readUserIds = []
-      readCharacterIds = []
-    }
+  if (readAccess !== 'selective') {
+    readCampaignIds = []
+    readUserIds = []
+    readCharacterIds = []
+  }
 
-    if (writeAccess !== 'selective') {
-      writeCampaignIds = []
-      writeUserIds = []
+  if (writeAccess !== 'selective') {
+    writeCampaignIds = []
+    writeUserIds = []
+  }
+
+  if (enforceCampaignScope && defaultCampaignId) {
+    readAccess = 'selective'
+    writeAccess = 'selective'
+    readCampaignIds = [defaultCampaignId]
+    writeCampaignIds = [defaultCampaignId]
+    readUserIds = []
+    readCharacterIds = []
+    writeUserIds = []
   }
 
   let metadataInput = {}

@@ -25,7 +25,7 @@ export const checkWorldAccess = async (worldId, user) => {
 
   try {
     const world = await World.findByPk(normalisedWorldId, {
-      attributes: ['id', 'created_by', 'name'],
+      attributes: ['id', 'created_by', 'name', 'entity_creation_scope'],
     })
 
     if (!world) {

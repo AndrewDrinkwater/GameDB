@@ -7,7 +7,12 @@
       "fields": [
         { "name": "name", "label": "Name", "type": "text" },
         { "name": "system", "label": "System", "type": "text" },
-        { "name": "statusLabel", "label": "Status", "type": "text" }
+        { "name": "statusLabel", "label": "Status", "type": "text" },
+        {
+          "name": "entityCreationScopeLabel",
+          "label": "Entity Creation",
+          "type": "text"
+        }
       ]
     },
     {

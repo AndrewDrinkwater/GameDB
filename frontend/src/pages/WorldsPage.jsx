@@ -5,6 +5,10 @@ import { fetchWorlds, createWorld } from '../api/worlds'
 import ListViewer from '../components/ListViewer'
 import FormRenderer from '../components/RecordForm/FormRenderer'
 import newSchema from '../components/RecordForm/formSchemas/world.new.json'
+import {
+  ENTITY_CREATION_SCOPES,
+  getEntityCreationScopeLabel,
+} from '../utils/worldCreationScopes.js'
 
 export default function WorldsPage() {
   const navigate = useNavigate()
@@ -39,6 +43,11 @@ export default function WorldsPage() {
     { key: 'name', label: 'Name' },
     { key: 'system', label: 'System' },
     { key: 'status', label: 'Status' },
+    {
+      key: 'entity_creation_scope',
+      label: 'Entity Creation',
+      render: (row) => getEntityCreationScopeLabel(row.entity_creation_scope),
+    },
     { key: 'description', label: 'Description' },
     { key: 'createdAt', label: 'Created' },
   ]
@@ -72,7 +81,7 @@ export default function WorldsPage() {
     return (
       <FormRenderer
         schema={newSchema}
-        initialData={{}}
+        initialData={{ entity_creation_scope: ENTITY_CREATION_SCOPES.OWNER_DMS }}
         onSubmit={handleCreate}
         onCancel={handleCancel}
         showUpdateAction={false}

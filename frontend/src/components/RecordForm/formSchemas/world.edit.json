@@ -19,6 +19,22 @@
       ]
     },
     {
+      "title": "Entity Creation",
+      "columns": 1,
+      "fields": [
+        {
+          "key": "entity_creation_scope",
+          "label": "Who can create entities?",
+          "type": "select",
+          "options": [
+            { "value": "owner_dm", "label": "World Owner & DMs" },
+            { "value": "all_players", "label": "All Players (campaign scoped)" }
+          ],
+          "helpText": "When set to All Players, campaign members can only create entities scoped to their campaign."
+        }
+      ]
+    },
+    {
       "title": "Description",
       "columns": 1,
       "fields": [
