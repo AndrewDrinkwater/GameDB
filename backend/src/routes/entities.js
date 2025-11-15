@@ -431,6 +431,7 @@ router.post('/import/:entityTypeId', upload.single('file'), async (req, res) => 
         const result = await createEntityResponse({
           world,
           user: req.user,
+          campaignContextId: req.campaignContextId,
           body: {
             name,
             description,

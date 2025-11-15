@@ -7,6 +7,7 @@ import {
   EntityType,
   EntityTypeField,
   User,
+  UserCampaignRole,
   World,
   sequelize,
 } from '../models/index.js'
@@ -114,6 +115,62 @@ const toUniqueStringList = (values) => {
     result.push(str)
   })
   return result
+}
+
+const normaliseId = (value) => {
+  if (value === undefined || value === null) return null
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed || null
+  }
+  if (typeof value === 'object') {
+    const candidate = value.id ?? value.campaign_id ?? null
+    if (candidate !== null && candidate !== undefined) {
+      return normaliseId(candidate)
+    }
+  }
+  const stringValue = String(value).trim()
+  return stringValue || null
+}
+
+const resolveCampaignScopedDefaults = async ({ campaignContextId, world, user }) => {
+  const resolvedCampaignId = normaliseId(campaignContextId)
+  if (!resolvedCampaignId || !world?.id) {
+    return null
+  }
+
+  const campaign = await Campaign.findOne({
+    where: { id: resolvedCampaignId, world_id: world.id },
+    attributes: ['id', 'world_id'],
+  })
+
+  if (!campaign) {
+    return null
+  }
+
+  const userId = normaliseId(user?.id)
+  const isSystemAdmin = user?.role === 'system_admin'
+  const worldOwnerId = world?.created_by ?? world?.createdBy ?? null
+  const isWorldOwner = Boolean(
+    worldOwnerId && userId && String(worldOwnerId) === String(userId),
+  )
+
+  if (!isSystemAdmin && !isWorldOwner) {
+    if (!userId) {
+      return null
+    }
+
+    const membership = await UserCampaignRole.findOne({
+      where: { campaign_id: campaign.id, user_id: userId, role: 'dm' },
+      attributes: ['role'],
+    })
+
+    if (!membership) {
+      return null
+    }
+  }
+
+  return { campaignId: String(campaign.id) }
 }
 
 const normaliseSecretAudienceIds = (value, fieldName) => {
@@ -662,7 +719,12 @@ const normaliseMetadata = (metadata) => {
   return metadata
 }
 
-export const createEntityResponse = async ({ world, user, body }) => {
+export const createEntityResponse = async ({
+  world,
+  user,
+  body,
+  campaignContextId,
+}) => {
   const {
     name,
     description,
@@ -711,12 +773,23 @@ export const createEntityResponse = async ({ world, user, body }) => {
     return { status: 400, body: { success: false, message: 'Invalid visibility value' } }
   }
 
-  let readAccess = 'global'
-  let writeAccess = 'global'
-  let readCampaignIds = []
+  const campaignScopedDefaults = await resolveCampaignScopedDefaults({
+    campaignContextId,
+    world,
+    user,
+  })
+
+  const defaultAccessMode = campaignScopedDefaults ? 'selective' : 'global'
+  const defaultCampaignTargets = campaignScopedDefaults
+    ? [campaignScopedDefaults.campaignId]
+    : []
+
+  let readAccess = defaultAccessMode
+  let writeAccess = defaultAccessMode
+  let readCampaignIds = [...defaultCampaignTargets]
   let readUserIds = []
   let readCharacterIds = []
-  let writeCampaignIds = []
+  let writeCampaignIds = [...defaultCampaignTargets]
   let writeUserIds = []
   let imageData
   let imageMimeType
@@ -1029,7 +1102,12 @@ export const createWorldEntity = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    const result = await createEntityResponse({ world, user, body: req.body })
+    const result = await createEntityResponse({
+      world,
+      user,
+      body: req.body,
+      campaignContextId: req.campaignContextId,
+    })
 
     return res.status(result.status).json(result.body)
   } catch (error) {
@@ -1058,7 +1136,12 @@ export const createEntity = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    const result = await createEntityResponse({ world, user, body: req.body })
+    const result = await createEntityResponse({
+      world,
+      user,
+      body: req.body,
+      campaignContextId: req.campaignContextId,
+    })
 
     return res.status(result.status).json(result.body)
   } catch (error) {
