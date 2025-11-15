@@ -32,7 +32,7 @@ const parseStoredContext = (raw) => {
       }
       return null
     }
-  } catch (err) {
+  } catch {
     const trimmed = raw.trim()
     if (trimmed) {
       return { type: 'campaign', id: trimmed }
