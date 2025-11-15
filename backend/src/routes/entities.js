@@ -16,6 +16,7 @@ import {
   updateEntitySecret,
   updateEntity,
   listUnassignedEntities,
+  resolveEntityCreationAccess,
 } from '../controllers/entityController.js'
 import { getEntityGraph } from '../controllers/entityGraphController.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
@@ -388,6 +389,18 @@ router.post('/import/:entityTypeId', upload.single('file'), async (req, res) => 
       order: [['sort_order', 'ASC']],
     })
 
+    const creationAccess = await resolveEntityCreationAccess({
+      world,
+      user: req.user,
+      campaignContextId: req.campaignContextId,
+    })
+
+    if (!creationAccess.allowed) {
+      return res
+        .status(403)
+        .json({ success: false, message: creationAccess.reason || 'Forbidden' })
+    }
+
     const workbook = XLSX.readFile(filePath)
     const sheetName = workbook.SheetNames[0]
     const sheet = workbook.Sheets[sheetName]
@@ -432,6 +445,7 @@ router.post('/import/:entityTypeId', upload.single('file'), async (req, res) => 
           world,
           user: req.user,
           campaignContextId: req.campaignContextId,
+          creationAccess,
           body: {
             name,
             description,

@@ -26,6 +26,7 @@ import ConditionBuilderModal from '../../components/ConditionBuilderModal.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import useDataExplorer from '../../hooks/useDataExplorer.js'
 import useIsMobile from '../../hooks/useIsMobile.js'
+import { ENTITY_CREATION_SCOPES } from '../../utils/worldCreationScopes.js'
 
 const VISIBILITY_BADGES = {
   visible: 'badge-visible',
@@ -194,7 +195,7 @@ const formatMetadataValue = (value, column = null) => {
 
 export default function EntityList() {
   const { user, token, sessionReady } = useAuth()
-  const { selectedCampaign } = useCampaignContext()
+  const { selectedCampaign, selectedCampaignId } = useCampaignContext()
   const [searchParams, setSearchParams] = useSearchParams()
   const isMobile = useIsMobile()
 
@@ -308,6 +309,16 @@ export default function EntityList() {
     if (isWorldOwner) return true
     return false
   }, [selectedCampaign, user, membershipRole, isWorldOwner])
+
+  const entityCreationScope = selectedCampaign?.world?.entity_creation_scope ?? ''
+
+  const canPlayerCreateEntities = useMemo(() => {
+    if (!selectedCampaignId || !selectedCampaign || !user) return false
+    if (entityCreationScope !== ENTITY_CREATION_SCOPES.ALL_PLAYERS) return false
+    return membershipRole === 'player'
+  }, [selectedCampaignId, selectedCampaign, user, entityCreationScope, membershipRole])
+
+  const canCreateEntities = canManage || canPlayerCreateEntities
 
   const isSystemAdmin = user?.role === 'system_admin'
 
@@ -1063,7 +1074,7 @@ export default function EntityList() {
   }
 
   const openCreate = () => {
-    if (!canManage || !worldId || viewingUnassigned) return
+    if (!canCreateEntities || !worldId || viewingUnassigned) return
     setEditingEntityId(null)
     setActiveEntityName('')
     setEntityFormUiState(createDrawerFooterState('create'))
@@ -1392,7 +1403,7 @@ export default function EntityList() {
             type="button"
             className="btn submit"
             onClick={openCreate}
-            disabled={!canManage || !worldId || loadingEntities || viewingUnassigned}
+            disabled={!canCreateEntities || !worldId || loadingEntities || viewingUnassigned}
           >
             <Plus size={18} /> Add Entity
           </button>
@@ -1583,7 +1594,7 @@ export default function EntityList() {
                 View all entities
               </button>
             </>
-          ) : canManage ? (
+          ) : canCreateEntities ? (
             <>
               <p className="empty-title">No entities yet.</p>
               <p>

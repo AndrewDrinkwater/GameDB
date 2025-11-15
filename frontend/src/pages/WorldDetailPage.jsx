@@ -6,6 +6,7 @@ import FormRenderer from '../components/RecordForm/FormRenderer'
 import RecordView from '../components/RecordForm/RecordView'
 import editSchema from '../components/RecordForm/formSchemas/world.edit.json'
 import viewSchema from '../components/RecordForm/formSchemas/world.view.json'
+import { getEntityCreationScopeLabel } from '../utils/worldCreationScopes.js'
 
 export default function WorldDetailPage() {
   const { id } = useParams()
@@ -41,6 +42,7 @@ export default function WorldDetailPage() {
         description: data?.description,
         system: data?.system,
         status: data?.status,
+        entity_creation_scope: data?.entity_creation_scope,
       }
       const res = await updateWorld(id, payload)
       if (res.success) {
@@ -106,6 +108,10 @@ export default function WorldDetailPage() {
         ? status.charAt(0).toUpperCase() + status.slice(1)
         : '—'
 
+    const entityCreationScopeLabel = getEntityCreationScopeLabel(
+      world.entity_creation_scope,
+    )
+
     const ownerName =
       world.creator?.username ||
       world.creator?.name ||
@@ -116,6 +122,7 @@ export default function WorldDetailPage() {
       name: world.name || '—',
       system: world.system || '—',
       statusLabel,
+      entityCreationScopeLabel,
       description: world.description || '—',
       ownerName,
       createdAt: formatDate(world.createdAt),

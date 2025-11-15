@@ -21,7 +21,7 @@ const router = express.Router()
 
 const baseIncludes = [
   { model: User, as: 'owner', attributes: ['id', 'username'] },
-  { model: World, as: 'world', attributes: ['id', 'name', 'created_by'] },
+  { model: World, as: 'world', attributes: ['id', 'name', 'created_by', 'entity_creation_scope'] },
   {
     model: UserCampaignRole,
     as: 'members',

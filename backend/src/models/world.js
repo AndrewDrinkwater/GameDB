@@ -26,6 +26,12 @@ export default (sequelize, DataTypes) => {
         defaultValue: 'active',
         allowNull: false,
       },
+      entity_creation_scope: {
+        type: DataTypes.ENUM('owner_dm', 'all_players'),
+        allowNull: false,
+        defaultValue: 'owner_dm',
+        comment: 'Controls who can create entities inside this world',
+      },
       created_by: {
         type: DataTypes.UUID,
         allowNull: false,

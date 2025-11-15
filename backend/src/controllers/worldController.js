@@ -1,5 +1,16 @@
 import { World, User, Campaign, Character } from '../models/index.js'
 
+const ENTITY_CREATION_SCOPES = new Set(['owner_dm', 'all_players'])
+
+const normaliseEntityCreationScope = (raw) => {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  const value = String(raw).trim().toLowerCase()
+  if (!ENTITY_CREATION_SCOPES.has(value)) {
+    return null
+  }
+  return value
+}
+
 // Get all worlds (admins see all, others only their own)
 export const getWorlds = async (req, res) => {
   try {
@@ -60,7 +71,7 @@ const normaliseStatus = (raw) => {
 
 export const createWorld = async (req, res) => {
   try {
-    const { name, description, system, status } = req.body
+    const { name, description, system, status, entity_creation_scope: rawScope } = req.body
     if (!name) {
       return res.status(400).json({ success: false, message: 'Name is required' })
     }
@@ -70,11 +81,17 @@ export const createWorld = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid status value' })
     }
 
+    const normalisedScope = normaliseEntityCreationScope(rawScope)
+    if (normalisedScope === null) {
+      return res.status(400).json({ success: false, message: 'Invalid entity creation scope' })
+    }
+
     const world = await World.create({
       name,
       description,
       system,
       ...(normalisedStatus ? { status: normalisedStatus } : {}),
+      ...(normalisedScope ? { entity_creation_scope: normalisedScope } : {}),
       created_by: req.user.id,
     })
 
@@ -117,10 +134,15 @@ export const updateWorld = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorised to edit this world' })
     }
 
-    const { name, description, system, status } = req.body
+    const { name, description, system, status, entity_creation_scope: rawScope } = req.body
     const normalisedStatus = normaliseStatus(status)
     if (normalisedStatus === null) {
       return res.status(400).json({ success: false, message: 'Invalid status value' })
+    }
+
+    const normalisedScope = normaliseEntityCreationScope(rawScope)
+    if (normalisedScope === null) {
+      return res.status(400).json({ success: false, message: 'Invalid entity creation scope' })
     }
 
     const updates = {}
@@ -128,6 +150,7 @@ export const updateWorld = async (req, res) => {
     if (description !== undefined) updates.description = description
     if (system !== undefined) updates.system = system
     if (normalisedStatus !== undefined) updates.status = normalisedStatus
+    if (normalisedScope !== undefined) updates.entity_creation_scope = normalisedScope
 
     await world.update(updates)
 
