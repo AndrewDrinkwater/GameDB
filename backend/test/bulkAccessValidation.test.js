@@ -37,6 +37,38 @@ test('normaliseBulkAccessPayload enforces write target requirement', () => {
   }, /Selective write access requires at least one campaign or user/)
 })
 
+test('normaliseBulkAccessPayload requires an activated section', () => {
+  assert.throws(() => {
+    normaliseBulkAccessPayload({
+      entityIds: ['entity-1'],
+      readAccess: 'unchanged',
+      writeAccess: 'unchanged',
+    })
+  }, /Select at least one access type/)
+})
+
+test('normaliseBulkAccessPayload rejects targets for unchanged sections', () => {
+  assert.throws(() => {
+    normaliseBulkAccessPayload({
+      entityIds: ['entity-1'],
+      readAccess: 'unchanged',
+      writeAccess: 'selective',
+      readCampaignIds: ['campaign-1'],
+      writeCampaignIds: ['campaign-1'],
+    })
+  }, /Read access set to unchanged/)
+
+  assert.throws(() => {
+    normaliseBulkAccessPayload({
+      entityIds: ['entity-1'],
+      readAccess: 'selective',
+      writeAccess: 'unchanged',
+      readCampaignIds: ['campaign-1'],
+      writeCampaignIds: ['campaign-1'],
+    })
+  }, /Write access set to unchanged/)
+})
+
 test('normaliseBulkAccessPayload rejects hidden read + selective write', () => {
   assert.throws(() => {
     normaliseBulkAccessPayload({
@@ -89,4 +121,30 @@ test('buildEntityAccessUpdate merges lists and overwrites access modes', () => {
   assert.deepEqual(updates.read_character_ids, ['character-1'])
   assert.deepEqual(updates.write_campaign_ids, ['campaign-writer'])
   assert.deepEqual(updates.write_user_ids, ['user-writer'])
+})
+
+test('buildEntityAccessUpdate preserves access modes when unchanged', () => {
+  const entity = {
+    read_access: 'global',
+    write_access: 'owner_only',
+    read_campaign_ids: [],
+    read_user_ids: [],
+    read_character_ids: [],
+    write_campaign_ids: [],
+    write_user_ids: [],
+  }
+
+  const payload = {
+    readAccess: 'unchanged',
+    writeAccess: 'unchanged',
+    readCampaignIds: [],
+    readUserIds: [],
+    readCharacterIds: [],
+    writeCampaignIds: [],
+    writeUserIds: [],
+  }
+
+  const updates = buildEntityAccessUpdate(entity, payload)
+  assert.equal(updates.read_access, undefined)
+  assert.equal(updates.write_access, undefined)
 })
