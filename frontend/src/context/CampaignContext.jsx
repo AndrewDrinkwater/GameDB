@@ -85,6 +85,7 @@ export function CampaignProvider({ children }) {
   const [worldLoading, setWorldLoading] = useState(false)
   const [worldError, setWorldError] = useState('')
   const [selectedWorldId, setSelectedWorldIdState] = useState('')
+  const [viewAsCharacterId, setViewAsCharacterIdState] = useState('')
 
   // Restore persisted selection once the auth session is ready
   useEffect(() => {
@@ -224,6 +225,7 @@ export function CampaignProvider({ children }) {
     setSelectedCampaignIdState(nextValue)
     if (nextValue) {
       setSelectedWorldIdState('')
+      setViewAsCharacterIdState('')
       persistContextSelection(nextValue, '')
     } else {
       persistContextSelection('', '')
@@ -235,10 +237,20 @@ export function CampaignProvider({ children }) {
     setSelectedWorldIdState(nextValue)
     if (nextValue) {
       setSelectedCampaignIdState('')
+      setViewAsCharacterIdState('')
       persistContextSelection('', nextValue)
     } else {
       persistContextSelection('', '')
     }
+  }, [])
+
+  useEffect(() => {
+    setViewAsCharacterIdState('')
+  }, [selectedCampaignId])
+
+  const setViewAsCharacterId = useCallback((value) => {
+    const nextValue = value === undefined || value === null ? '' : String(value)
+    setViewAsCharacterIdState(nextValue)
   }, [])
 
   const selectedCampaign = useMemo(() => {
@@ -276,8 +288,10 @@ export function CampaignProvider({ children }) {
 
   const contextKey = useMemo(() => {
     const contextId = selectedCampaignId || selectedWorldId || ''
-    return `${selectedContextType || 'none'}:${contextId || 'none'}:${activeWorldId || 'none'}`
-  }, [selectedCampaignId, selectedWorldId, selectedContextType, activeWorldId])
+    return `${
+      selectedContextType || 'none'
+    }:${contextId || 'none'}:${activeWorldId || 'none'}:${viewAsCharacterId || 'none'}`
+  }, [selectedCampaignId, selectedWorldId, selectedContextType, activeWorldId, viewAsCharacterId])
 
   const contextValue = useMemo(
     () => ({
@@ -291,6 +305,8 @@ export function CampaignProvider({ children }) {
       selectedWorld,
       selectedWorldId,
       setSelectedWorldId,
+      viewAsCharacterId,
+      setViewAsCharacterId,
       selectedContextType,
       activeWorld,
       activeWorldId,
@@ -311,6 +327,8 @@ export function CampaignProvider({ children }) {
       selectedWorld,
       selectedWorldId,
       setSelectedWorldId,
+      viewAsCharacterId,
+      setViewAsCharacterId,
       selectedContextType,
       activeWorld,
       activeWorldId,

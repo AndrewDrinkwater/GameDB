@@ -1,6 +1,28 @@
 import api from './client.js'
 
-export const getWorldEntities = (worldId) => api.get(`/worlds/${worldId}/entities`)
+const buildCharacterContextQuery = (params = {}) => {
+  const searchParams = new URLSearchParams()
+  const rawCharacterId =
+    params.viewAsCharacterId ?? params.characterId ?? params.character_id ?? params.viewAs
+  if (rawCharacterId !== undefined && rawCharacterId !== null) {
+    const trimmed = String(rawCharacterId).trim()
+    if (trimmed) {
+      searchParams.set('viewAsCharacterId', trimmed)
+    }
+  }
+
+  return searchParams.toString()
+}
+
+export const getWorldEntities = (worldId, params = {}) => {
+  if (!worldId) {
+    return Promise.reject(new Error('worldId is required to load entities'))
+  }
+
+  const queryString = buildCharacterContextQuery(params)
+  const suffix = queryString ? `?${queryString}` : ''
+  return api.get(`/worlds/${worldId}/entities${suffix}`)
+}
 export const getUnassignedEntities = () => api.get('/entities/unassigned')
 
 export const getEntity = (id) => api.get(`/entities/${id}`)

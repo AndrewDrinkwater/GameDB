@@ -31,6 +31,7 @@ export default function Sidebar({
     selectedCampaignId,
     activeWorld,
     activeWorldId,
+    viewAsCharacterId,
     contextKey,
   } = useCampaignContext()
   const [campaignsCollapsed, setCampaignsCollapsed] = useState(false)
@@ -133,7 +134,9 @@ export default function Sidebar({
       setEntityTypeError('')
 
       try {
-        const response = await getWorldEntityTypeUsage(campaignWorldId)
+        const response = await getWorldEntityTypeUsage(campaignWorldId, {
+          viewAsCharacterId,
+        })
         const list = Array.isArray(response?.data)
           ? response.data
           : Array.isArray(response)
@@ -156,7 +159,7 @@ export default function Sidebar({
     return () => {
       cancelled = true
     }
-  }, [campaignWorldId, contextKey])
+  }, [campaignWorldId, contextKey, viewAsCharacterId])
 
   const isActive = useCallback(
     (path) => {
