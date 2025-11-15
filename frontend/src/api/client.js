@@ -19,6 +19,34 @@ const API_BASE = normalizeApiBase(apiBase) || 'http://localhost:3000/api'
 const CAMPAIGN_CONTEXT_STORAGE_KEY = 'gamedb_campaign_context'
 const CAMPAIGN_CONTEXT_HEADER = 'X-Campaign-Context-Id'
 
+const parseStoredContext = (raw) => {
+  if (!raw || typeof raw !== 'string') return null
+
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object') {
+      const type = parsed.type === 'world' ? 'world' : 'campaign'
+      const id = parsed.id ? String(parsed.id) : ''
+      if (id) {
+        return { type, id }
+      }
+      return null
+    }
+  } catch (err) {
+    const trimmed = raw.trim()
+    if (trimmed) {
+      return { type: 'campaign', id: trimmed }
+    }
+  }
+
+  const trimmed = raw.trim()
+  if (trimmed) {
+    return { type: 'campaign', id: trimmed }
+  }
+
+  return null
+}
+
 async function request(method, url, data, config = {}) {
   const {
     headers: extraHeaders,
@@ -42,7 +70,10 @@ async function request(method, url, data, config = {}) {
     try {
       const storedContextId = localStorage.getItem(CAMPAIGN_CONTEXT_STORAGE_KEY)
       if (storedContextId) {
-        headers[CAMPAIGN_CONTEXT_HEADER] = storedContextId
+        const context = parseStoredContext(storedContextId)
+        if (context?.type === 'campaign' && context.id) {
+          headers[CAMPAIGN_CONTEXT_HEADER] = context.id
+        }
       }
     } catch (err) {
       console.warn('⚠️ Unable to include campaign context header', err)

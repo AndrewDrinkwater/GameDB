@@ -18,6 +18,12 @@ export default function HeaderBar({ onMenuToggle }) {
     selectedCampaign,
     loading,
     error,
+    worlds,
+    selectedWorld,
+    selectedWorldId,
+    setSelectedWorldId,
+    worldLoading,
+    worldError,
   } = useCampaignContext()
 
   // Close dropdown when clicking outside
@@ -35,6 +41,10 @@ export default function HeaderBar({ onMenuToggle }) {
     setSelectedCampaignId(event.target.value)
   }
 
+  const handleWorldChange = (event) => {
+    setSelectedWorldId(event.target.value)
+  }
+
   const isMobile = useIsMobile()
 
   const campaignStatus = useMemo(() => {
@@ -44,6 +54,45 @@ export default function HeaderBar({ onMenuToggle }) {
     if (!selectedCampaign) return 'Select a campaign'
     return `${selectedCampaign.name}${selectedCampaign.world?.name ? ` · ${selectedCampaign.world.name}` : ''}`
   }, [campaigns, error, loading, selectedCampaign])
+
+  const worldStatus = useMemo(() => {
+    if (selectedCampaign?.world) {
+      return selectedCampaign.world.name
+        ? `Campaign world · ${selectedCampaign.world.name}`
+        : 'Campaign world selected'
+    }
+
+    if (worldLoading) return 'Loading worlds…'
+    if (worldError) return 'Unable to load worlds'
+    if (!worlds.length) return 'No accessible worlds'
+    if (!selectedWorld) return 'Select a world'
+    return selectedWorld.name ? `World · ${selectedWorld.name}` : 'Selected world'
+  }, [selectedCampaign, selectedWorld, worldLoading, worldError, worlds.length])
+
+  const worldOptions = useMemo(() => {
+    const seen = new Set()
+    const options = []
+
+    worlds.forEach((world) => {
+      if (!world?.id) return
+      const id = String(world.id)
+      if (seen.has(id)) return
+      options.push({ id, name: world.name || `World #${id}` })
+      seen.add(id)
+    })
+
+    if (selectedCampaign?.world?.id) {
+      const campaignWorldId = String(selectedCampaign.world.id)
+      if (!seen.has(campaignWorldId)) {
+        options.unshift({
+          id: campaignWorldId,
+          name: selectedCampaign.world.name || 'Campaign world',
+        })
+      }
+    }
+
+    return options
+  }, [worlds, selectedCampaign])
 
   const getRoleLabel = (campaign) => {
     if (!user) return ''
@@ -137,6 +186,34 @@ export default function HeaderBar({ onMenuToggle }) {
                 </option>
               )
             })}
+          </select>
+        </div>
+        <div className="campaign-selector" title={worldStatus}>
+          <label htmlFor="world-context-select">World</label>
+          <select
+            id="world-context-select"
+            value={selectedWorldId}
+            onChange={handleWorldChange}
+            disabled={worldLoading}
+          >
+            <option value="">
+              {selectedCampaign?.world
+                ? selectedCampaign.world.name
+                  ? `Using ${selectedCampaign.world.name}`
+                  : 'Using campaign world'
+                : worldLoading
+                  ? 'Loading worlds…'
+                  : worldError
+                    ? 'Unable to load worlds'
+                    : worlds.length
+                      ? 'Select a world'
+                      : 'No worlds available'}
+            </option>
+            {worldOptions.map((world) => (
+              <option key={world.id} value={world.id}>
+                {world.name}
+              </option>
+            ))}
           </select>
         </div>
       </div>
