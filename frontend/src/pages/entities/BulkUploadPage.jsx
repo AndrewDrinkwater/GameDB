@@ -20,8 +20,8 @@ import './BulkUploadPage.css'
 
 export default function BulkUploadPage() {
   const { token } = useAuth()
-  const { selectedCampaign } = useCampaignContext()
-  const worldId = selectedCampaign?.world?.id ?? ''
+  const { activeWorldId, contextKey } = useCampaignContext()
+  const worldId = activeWorldId || ''
 
   const [file, setFile] = useState(null)
   const [uploading, setUploading] = useState(false)
@@ -41,20 +41,24 @@ export default function BulkUploadPage() {
 
   useEffect(() => {
     const loadEntityTypes = async () => {
-      if (!selectedCampaign?.world?.id) return
+      if (!worldId) {
+        setEntityTypes([])
+        return
+      }
       setLoadingTypes(true)
       try {
-        const res = await getWorldEntityTypeUsage(selectedCampaign.world.id)
+        const res = await getWorldEntityTypeUsage(worldId)
         const data = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
         setEntityTypes(data)
       } catch (err) {
         console.warn('⚠️ Failed to load entity types', err)
+        setEntityTypes([])
       } finally {
         setLoadingTypes(false)
       }
     }
     loadEntityTypes()
-  }, [selectedCampaign])
+  }, [worldId, contextKey])
 
   const fetchFiles = async () => {
     try {
@@ -159,7 +163,7 @@ export default function BulkUploadPage() {
   const handlePreview = async () => {
     if (!selectedType) return setError('Select an Entity Type first.')
     if (!selectedUpload) return setError('Select an uploaded file to preview.')
-    if (!worldId) return setError('No world selected for the current campaign.')
+    if (!worldId) return setError('Select a world context before previewing.')
 
     setPreviewing(true)
     setIsPopoutOpen(true)
@@ -193,7 +197,7 @@ export default function BulkUploadPage() {
   const handleImport = async () => {
     if (!selectedType) return setError('Select an Entity Type first.')
     if (!selectedUpload) return setError('Select an uploaded file to import.')
-    if (!worldId) return setError('No world selected for the current campaign.')
+    if (!worldId) return setError('Select a world context before importing.')
 
     setImporting(true)
     setMessage('')

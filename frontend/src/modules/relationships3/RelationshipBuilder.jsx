@@ -1,6 +1,6 @@
 // src/modules/relationships3/RelationshipBuilder.jsx
 import React, { useEffect, useMemo, useState } from 'react'
-import { getWorldEntities, getEntity } from '../../api/entities.js'
+import { getEntity } from '../../api/entities.js'
 import { resolveEntityResponse } from '../../utils/entityHelpers.js'
 import { getRelationshipTypes } from '../../api/entityRelationshipTypes.js'
 import { createRelationship } from '../../api/entityRelationships.js'
@@ -14,7 +14,6 @@ export default function RelationshipBuilder({
   onCancel,
   existingRelationships = [],
 }) {
-  const [entities, setEntities] = useState([])
   const [relationshipTypes, setRelationshipTypes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -29,12 +28,10 @@ export default function RelationshipBuilder({
   useEffect(() => {
     if (!worldId) return
     setLoading(true)
-    Promise.all([getWorldEntities(worldId), getRelationshipTypes({ worldId })])
-      .then(([entsRes, typesRes]) => {
-        const ents = Array.isArray(entsRes?.data) ? entsRes.data : entsRes
+    getRelationshipTypes({ worldId })
+      .then((typesRes) => {
         const types =
           Array.isArray(typesRes?.data) ? typesRes.data : typesRes?.data || []
-        setEntities(ents || [])
         setRelationshipTypes(types || [])
       })
       .catch((err) => setError(err.message || 'Failed to load data'))
@@ -313,7 +310,6 @@ export default function RelationshipBuilder({
           <InlineEntityCreator
             worldId={worldId}
             onCreated={async (newEntity) => {
-              setEntities((prev) => [...prev, newEntity])
               try {
                 const res = await getEntity(newEntity.id)
                 const fullEntity = resolveEntityResponse(res) || newEntity

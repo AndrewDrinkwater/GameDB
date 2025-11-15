@@ -11,7 +11,7 @@ const MANAGER_ROLES = new Set(['system_admin'])
 export default function EntityTypeList() {
   const navigate = useNavigate()
   const { user, token, sessionReady } = useAuth()
-  const { selectedCampaign } = useCampaignContext()
+  const { selectedCampaign, activeWorld, activeWorldId, contextKey } = useCampaignContext()
   const [entityTypes, setEntityTypes] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -21,33 +21,32 @@ export default function EntityTypeList() {
   const [deletingId, setDeletingId] = useState('')
   const [formError, setFormError] = useState('')
   const [toast, setToast] = useState(null)
-  const previousWorldIdRef = useRef(selectedCampaign?.world?.id ?? '')
 
-  const worldId = selectedCampaign?.world?.id ?? ''
+  const worldId = activeWorldId || selectedCampaign?.world?.id || ''
+  const previousWorldIdRef = useRef(`${worldId}:${contextKey}`)
   const hasWorldContext = Boolean(worldId)
 
   const worldOptions = useMemo(() => {
-    if (!selectedCampaign?.world?.id) return []
-    const world = selectedCampaign.world
+    if (!worldId) return []
     return [
       {
-        id: world.id,
-        name: world.name || 'Untitled world',
+        id: worldId,
+        name: activeWorld?.name || selectedCampaign?.world?.name || 'Untitled world',
       },
     ]
-  }, [selectedCampaign])
+  }, [worldId, activeWorld?.name, selectedCampaign?.world?.name])
 
   const selectedWorldOwnerId = useMemo(() => {
-    if (!selectedCampaign?.world) return ''
-    const world = selectedCampaign.world
+    const worldSource = selectedCampaign?.world || activeWorld
+    if (!worldSource) return ''
     return (
-      world.created_by ||
-      world.creator?.id ||
-      world.owner_id ||
-      world.owner?.id ||
+      worldSource.created_by ||
+      worldSource.creator?.id ||
+      worldSource.owner_id ||
+      worldSource.owner?.id ||
       ''
     )
-  }, [selectedCampaign])
+  }, [selectedCampaign, activeWorld])
 
   const isWorldOwner = Boolean(user?.id && selectedWorldOwnerId === user.id)
 
@@ -58,11 +57,16 @@ export default function EntityTypeList() {
   }, [user, isWorldOwner])
 
   const selectedCampaignLabel = useMemo(() => {
-    if (!selectedCampaign) return ''
-    const campaignName = selectedCampaign.name || 'Selected campaign'
-    const worldName = selectedCampaign.world?.name
-    return worldName ? `${campaignName} · ${worldName}` : campaignName
-  }, [selectedCampaign])
+    if (selectedCampaign) {
+      const campaignName = selectedCampaign.name || 'Selected campaign'
+      const worldName = selectedCampaign.world?.name || activeWorld?.name
+      return worldName ? `${campaignName} · ${worldName}` : campaignName
+    }
+    if (activeWorld) {
+      return activeWorld.name || 'Selected world'
+    }
+    return ''
+  }, [selectedCampaign, activeWorld])
 
   const showToast = useCallback((message, tone = 'info') => {
     setToast({ message, tone })
@@ -114,10 +118,11 @@ export default function EntityTypeList() {
     }
 
     loadEntityTypes()
-  }, [sessionReady, token, worldId, loadEntityTypes])
+  }, [sessionReady, token, worldId, loadEntityTypes, contextKey])
 
   useEffect(() => {
-    if (previousWorldIdRef.current === worldId) return
+    const nextKey = `${worldId}:${contextKey}`
+    if (previousWorldIdRef.current === nextKey) return
 
     setPanelOpen(false)
     setEditingType(null)
@@ -128,8 +133,8 @@ export default function EntityTypeList() {
     setSaving(false)
     setDeletingId('')
 
-    previousWorldIdRef.current = worldId
-  }, [worldId])
+    previousWorldIdRef.current = nextKey
+  }, [worldId, contextKey])
 
   const openCreate = () => {
     if (!canManage || !hasWorldContext) return
@@ -233,9 +238,9 @@ export default function EntityTypeList() {
               <p className="entity-types-subtitle">{createdCount} types defined</p>
             </>
           ) : (
-            <p className="entity-types-subtitle">
-              Select a campaign from the header to choose a world context.
-            </p>
+              <p className="entity-types-subtitle">
+                Select a campaign or world you own to choose a world context.
+              </p>
           )}
         </div>
 
@@ -270,7 +275,7 @@ export default function EntityTypeList() {
 
       <div className="entity-types-table-wrapper">
         {!hasWorldContext ? (
-          <div className="empty-state">Select a campaign to view entity types.</div>
+        <div className="empty-state">Select a campaign or world you own to view entity types.</div>
         ) : loading ? (
           <div className="empty-state">Loading entity types...</div>
         ) : entityTypes.length === 0 ? (
@@ -344,7 +349,7 @@ export default function EntityTypeList() {
       <div className="entity-type-cards">
         {!hasWorldContext ? (
           <div className="card-placeholder">
-            Select a campaign to view entity types.
+            Select a campaign or world you own to view entity types.
           </div>
         ) : loading ? (
           <div className="card-placeholder">Loading entity types...</div>
