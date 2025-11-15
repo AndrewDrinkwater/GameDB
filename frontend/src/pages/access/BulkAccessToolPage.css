@@ -126,6 +126,71 @@
   margin: 0;
 }
 
+.entity-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.entity-filter__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.entity-filter__input,
+.entity-filter__scope,
+.entity-filter__date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.entity-filter__input {
+  flex: 1 1 240px;
+}
+
+.entity-filter__scope {
+  flex: 0 0 220px;
+  min-width: 200px;
+}
+
+.entity-filter__dates {
+  align-items: flex-end;
+}
+
+.entity-filter__date-field {
+  flex: 1 1 160px;
+}
+
+.entity-filter label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.entity-filter input,
+.entity-filter select {
+  border: 1px solid #cbd5f5;
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.95rem;
+  width: 100%;
+}
+
+.entity-filter__clear-dates {
+  align-self: flex-end;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .entity-filter__scope,
+  .entity-filter__date-field {
+    flex: 1 1 100%;
+  }
+}
+
 .entity-name {
   font-weight: 600;
   flex: 1;
