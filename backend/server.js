@@ -88,7 +88,15 @@ const PORT = process.env.PORT || 3000
 async function start() {
   try {
     await initDB()
-    await sequelize.sync({ alter: true })
+
+    // Using `alter: true` triggers `ALTER TABLE ... USING` queries against the enum
+    // columns defined in our models. Postgres happily accepts those statements, but
+    // CockroachDB (the database that backs the local environment in these kata
+    // containers) does not support that syntax which caused the server to crash
+    // before it could start listening for requests. We only need Sequelize to
+    // ensure the schema exists in development—the migrations handle structural
+    // changes—so a plain `sync()` call is sufficient and compatible everywhere.
+    await sequelize.sync()
     console.log('✅ Database connected & synced')
 
     app.listen(PORT, () => {
