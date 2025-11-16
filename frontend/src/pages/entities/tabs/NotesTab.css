@@ -306,7 +306,7 @@ body.theme-dark .entity-notes-filter-count {
   max-height: 260px;
   overflow: hidden;
   width: min(320px, calc(100vw - 2rem));
-  z-index: 60;
+  z-index: 1200;
 }
 
 .entity-notes-mention-message {
