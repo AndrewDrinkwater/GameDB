@@ -9,7 +9,6 @@ export default function EntityNode({ data }) {
   const typeName = data?.typeName || 'Entity'
   const inheritedStyle = data?.style || {}
   const entityId = data?.entityId || data?.id
-  const isExpandedProtected = Boolean(data?.isExpandedProtected)
   const imageUrl = data?.imageUrl || buildEntityImageUrl(data?.entity)
 
   const handleSetTarget = (event) => {

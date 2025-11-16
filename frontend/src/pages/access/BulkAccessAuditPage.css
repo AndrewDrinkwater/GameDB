@@ -1,0 +1,153 @@
+.bulk-audit-page {
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.bulk-audit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+.audit-run-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.audit-run-row {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: #f8fafc;
+  cursor: pointer;
+  text-align: left;
+}
+
+.audit-run-row.active {
+  border-color: #a5b4fc;
+  background: #eef2ff;
+}
+
+.audit-run-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.audit-run-meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.status-pill {
+  border-radius: 999px;
+  padding: 0.2rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.status-pill.active {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.status-pill.reverted {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.audit-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.audit-detail-meta {
+  background: #f1f5f9;
+  border-radius: 10px;
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  line-height: 1.5;
+}
+
+.audit-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.audit-change-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1rem;
+  background: #fff;
+}
+
+.audit-change-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.75rem;
+}
+
+.audit-change-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.audit-change-subtitle {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.audit-change-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.audit-diff-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.audit-diff-label {
+  font-weight: 500;
+  color: #475569;
+}
+
+.audit-diff-values {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.audit-diff-values .old {
+  color: #b91c1c;
+}
+
+.audit-diff-values .new {
+  color: #15803d;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .audit-diff-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

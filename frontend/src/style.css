@@ -1979,6 +1979,49 @@ th {
   gap: 1.5rem;
 }
 
+.campaign-access-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: 1rem;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+}
+
+.campaign-access-eyebrow {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #1d4ed8;
+  margin: 0 0 0.25rem 0;
+}
+
+.campaign-access-cta h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  color: #1e3a8a;
+}
+
+.campaign-access-copy {
+  margin: 0.25rem 0 0;
+  color: #1e3a8a;
+}
+
+.campaign-access-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.campaign-view-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
 .campaign-tabs {
   display: inline-flex;
   align-items: flex-end;

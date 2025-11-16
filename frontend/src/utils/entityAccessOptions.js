@@ -14,7 +14,7 @@ export const normaliseAccessOptionsResponse = (response) => {
 
 export async function fetchAccessOptionsForWorld(worldId) {
   if (!worldId) {
-    return { campaigns: [], users: [] }
+    return { campaigns: [], users: [], characters: [] }
   }
 
   const [campaignResponse, characterResponse] = await Promise.all([
@@ -30,6 +30,7 @@ export async function fetchAccessOptionsForWorld(worldId) {
 
   const characterData = normaliseAccessOptionsResponse(characterResponse)
   const userMap = new Map()
+  const characterMap = new Map()
 
   characterData.forEach((character) => {
     const userId = character?.user_id || character?.player?.id
@@ -48,8 +49,20 @@ export async function fetchAccessOptionsForWorld(worldId) {
     }
 
     userMap.set(key, { value: key, label })
+
+    const characterId = character?.id || character?.character_id
+    if (!characterId) return
+
+    const characterName = normaliseOptionLabel(character.name) || 'Unnamed character'
+    const campaignName = normaliseOptionLabel(
+      character?.campaign?.name || character?.campaign_name || '',
+    )
+    const characterLabel = campaignName
+      ? `${characterName} — ${campaignName}`
+      : characterName
+    characterMap.set(String(characterId), { value: String(characterId), label: characterLabel })
   })
 
-  return { campaigns, users: Array.from(userMap.values()) }
+  return { campaigns, users: Array.from(userMap.values()), characters: Array.from(characterMap.values()) }
 }
 

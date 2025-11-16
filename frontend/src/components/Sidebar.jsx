@@ -8,6 +8,10 @@ import {
   Link2,
   FileText,
   NotebookPen,
+  ShieldCheck,
+  ShieldPlus,
+  History,
+  Layers,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
@@ -22,7 +26,14 @@ export default function Sidebar({
 }) {
   const location = useLocation()
   const { user } = useAuth()
-  const { selectedCampaign, selectedCampaignId } = useCampaignContext()
+  const {
+    selectedCampaign,
+    selectedCampaignId,
+    activeWorld,
+    activeWorldId,
+    viewAsCharacterId,
+    contextKey,
+  } = useCampaignContext()
   const [campaignsCollapsed, setCampaignsCollapsed] = useState(false)
   const [charactersCollapsed, setCharactersCollapsed] = useState(false)
   const [worldAdminCollapsed, setWorldAdminCollapsed] = useState(false)
@@ -32,13 +43,19 @@ export default function Sidebar({
   const [loadingEntityTypes, setLoadingEntityTypes] = useState(false)
   const [entityTypeError, setEntityTypeError] = useState('')
 
+  useEffect(() => {
+    setEntityTypes([])
+    setEntityTypeError('')
+  }, [contextKey])
+
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search])
   const activeEntityType = searchParams.get('entityType') ?? ''
   const isEntitiesSection =
     location.pathname === '/entities' || location.pathname.startsWith('/entities/')
 
-  const campaignWorldId = selectedCampaign?.world?.id ?? ''
+  const campaignWorldId = activeWorldId || ''
   const isSystemAdmin = user?.role === 'system_admin'
+  const hasWorldContext = Boolean(activeWorldId)
 
   const membershipRole = useMemo(() => {
     if (!selectedCampaign || !user) return ''
@@ -47,34 +64,26 @@ export default function Sidebar({
   }, [selectedCampaign, user])
 
   const isSelectedWorldOwner = useMemo(() => {
-    if (!selectedCampaign || !user) return false
+    if (!activeWorld || !user?.id) return false
     const worldOwnerId =
-      selectedCampaign.world?.created_by ??
-      selectedCampaign.world?.creator?.id ??
-      selectedCampaign.world?.owner_id ??
-      selectedCampaign.world?.owner?.id ??
+      activeWorld.created_by ??
+      activeWorld.creator?.id ??
+      activeWorld.owner_id ??
+      activeWorld.owner?.id ??
       ''
-    return worldOwnerId === user.id
-  }, [selectedCampaign, user])
+    if (!worldOwnerId) return false
+    return String(worldOwnerId) === String(user.id)
+  }, [activeWorld, user?.id])
 
   const canViewAllEntities = Boolean(
-    selectedCampaignId && (membershipRole === 'dm' || isSelectedWorldOwner),
+    hasWorldContext && (isSystemAdmin || membershipRole === 'dm' || isSelectedWorldOwner),
   )
-  const canViewEntityTypes = Boolean(selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner))
-  const canViewBulkEntityUpload = Boolean(
-    selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner),
-  )
+  const canViewEntityTypes = Boolean(hasWorldContext && (isSystemAdmin || isSelectedWorldOwner))
+  const canViewBulkEntityUpload = Boolean(hasWorldContext && (isSystemAdmin || isSelectedWorldOwner))
   const canViewRelationshipTypes = Boolean(
-    selectedCampaignId && (isSystemAdmin || isSelectedWorldOwner),
+    hasWorldContext && (isSystemAdmin || isSelectedWorldOwner),
   )
-  const shouldShowWorldAdminGroup = Boolean(
-    selectedCampaignId &&
-      (canViewAllEntities ||
-        canViewEntityTypes ||
-        canViewBulkEntityUpload ||
-        canViewRelationshipTypes),
-  )
-
+  const canUseBulkAccessTool = Boolean(hasWorldContext && isSelectedWorldOwner)
   const isPlayerInSelectedCampaign = useMemo(() => {
     if (!selectedCampaign || !Array.isArray(selectedCampaign.members)) return false
     if (!user?.id) return false
@@ -92,6 +101,16 @@ export default function Sidebar({
       (member) => member?.user_id === user.id && member?.role === 'dm',
     )
   }, [selectedCampaign, user])
+
+  const canUseCampaignBulkAccess = Boolean(selectedCampaignId && isDMInSelectedCampaign)
+  const shouldShowWorldAdminGroup = Boolean(
+    hasWorldContext &&
+      (canViewAllEntities ||
+        canViewEntityTypes ||
+        canViewBulkEntityUpload ||
+        canViewRelationshipTypes ||
+        canUseBulkAccessTool),
+  )
 
   const canAccessCampaignNotes = useMemo(() => {
     if (!selectedCampaignId) return false
@@ -115,7 +134,9 @@ export default function Sidebar({
       setEntityTypeError('')
 
       try {
-        const response = await getWorldEntityTypeUsage(campaignWorldId)
+        const response = await getWorldEntityTypeUsage(campaignWorldId, {
+          viewAsCharacterId,
+        })
         const list = Array.isArray(response?.data)
           ? response.data
           : Array.isArray(response)
@@ -138,7 +159,7 @@ export default function Sidebar({
     return () => {
       cancelled = true
     }
-  }, [campaignWorldId])
+  }, [campaignWorldId, contextKey, viewAsCharacterId])
 
   const isActive = useCallback(
     (path) => {
@@ -152,12 +173,12 @@ export default function Sidebar({
 
   const handleEntitiesClick = useCallback(
     (event) => {
-      if (!selectedCampaignId) {
+      if (!hasWorldContext) {
         event.preventDefault()
-        alert('Please select a campaign before viewing entities.')
+        alert('Please select a campaign or world context before viewing entities.')
       }
     },
-    [selectedCampaignId],
+    [hasWorldContext],
   )
 
   const handleNavContainerClick = useCallback(
@@ -279,6 +300,48 @@ export default function Sidebar({
                   <span>Relationship Types</span>
                 </Link>
               )}
+
+              {canUseBulkAccessTool && campaignWorldId && (
+                <Link
+                  to={`/worlds/${campaignWorldId}/access/bulk`}
+                  className={`nav-entity-link ${
+                    isActive(`/worlds/${campaignWorldId}/access/bulk`) ? 'active' : ''
+                  }`}
+                >
+                  <ShieldCheck size={16} className="nav-icon" />
+                  <span>Bulk Access Editor</span>
+                </Link>
+              )}
+
+              {canUseBulkAccessTool && campaignWorldId && (
+                <Link
+                  to={`/worlds/${campaignWorldId}/collections`}
+                  className={`nav-entity-link ${
+                    isActive(`/worlds/${campaignWorldId}/collections`) ? 'active' : ''
+                  }`}
+                >
+                  <Layers size={16} className="nav-icon" />
+                  <span>Collections</span>
+                </Link>
+              )}
+
+              {canUseBulkAccessTool && campaignWorldId && (
+                <Link
+                  to={`/worlds/${campaignWorldId}/access/audit`}
+                  className={`nav-entity-link ${
+                    isActive(`/worlds/${campaignWorldId}/access/audit`) ? 'active' : ''
+                  }`}
+                >
+                  <History size={16} className="nav-icon" />
+                  <span>Access Audit Log</span>
+                </Link>
+              )}
+
+              {isSelectedWorldOwner && !hasWorldContext && (
+                <span className="nav-helper">
+                  Select a world you own to use the bulk access tools
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -298,14 +361,25 @@ export default function Sidebar({
               className={`nav-heading-icon ${campaignsCollapsed ? 'collapsed' : ''}`}
             />
           </button>
-          <div id="campaigns-nav" className="nav-sub-links">
-            <Link to="/campaigns/my" className={isActive('/campaigns/my') ? 'active' : ''}>
-              My Campaigns
+        <div id="campaigns-nav" className="nav-sub-links">
+          <Link to="/campaigns/my" className={isActive('/campaigns/my') ? 'active' : ''}>
+            My Campaigns
+          </Link>
+          <Link to="/campaigns/all" className={isActive('/campaigns/all') ? 'active' : ''}>
+            All
+          </Link>
+          {canUseCampaignBulkAccess && (
+            <Link
+              to={`/campaigns/${selectedCampaignId}/access/bulk`}
+              className={
+                isActive(`/campaigns/${selectedCampaignId}/access/bulk`) ? 'active' : ''
+              }
+            >
+              <ShieldPlus size={16} className="nav-icon" />
+              <span>Campaign Access Editor</span>
             </Link>
-            <Link to="/campaigns/all" className={isActive('/campaigns/all') ? 'active' : ''}>
-              All
-            </Link>
-          </div>
+          )}
+        </div>
         </div>
 
         {/* --- Entities --- */}
@@ -330,9 +404,9 @@ export default function Sidebar({
             )}
             {!loadingEntityTypes && !entityTypeError && entityTypes.length === 0 && (
               <span className="nav-helper">
-                {selectedCampaign
+                {hasWorldContext
                   ? 'No entities in this world yet'
-                  : 'Select a campaign to see entity types'}
+                  : 'Select a campaign or world context to see entity types'}
               </span>
             )}
             {entityTypes.map((type) => (

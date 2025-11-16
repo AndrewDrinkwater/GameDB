@@ -12,15 +12,31 @@ import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import DrawerPanel from '../../components/DrawerPanel.jsx'
 import { useFeatureFlag } from '../../context/FeatureFlagContext.jsx'
 import RelationshipBuilder from '../../modules/relationships3/RelationshipBuilder.jsx'
+import RelationshipDrawerV2 from './RelationshipDrawerV2.jsx'
 import { resolveEntityResponse } from '../../utils/entityHelpers.js'
 
 const MANAGER_ROLES = new Set(['system_admin'])
+const createRelationshipFormUiState = (mode = 'create') => ({
+  mode,
+  submitLabel: mode === 'edit' ? 'Save Changes' : 'Create Relationship',
+  submitDisabled: false,
+  cancelDisabled: false,
+  saving: false,
+  isBusy: false,
+})
 
 export default function EntityRelationshipList() {
   const { user, token, sessionReady } = useAuth()
-  const { selectedCampaign } = useCampaignContext()
+  const {
+    selectedCampaign,
+    activeWorld,
+    activeWorldId,
+    selectedContextType,
+    contextKey,
+  } = useCampaignContext()
   const relBuilderV2Enabled = useFeatureFlag('rel_builder_v2')
   const [showForm, setShowForm] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false)
   const [relationships, setRelationships] = useState([])
   const [relationshipTypes, setRelationshipTypes] = useState([])
   const [entityLookup, setEntityLookup] = useState({})
@@ -33,15 +49,22 @@ export default function EntityRelationshipList() {
   const [editingRelationshipId, setEditingRelationshipId] = useState(null)
   const [deletingId, setDeletingId] = useState('')
   const [toast, setToast] = useState(null)
+  const [relationshipFormUiState, setRelationshipFormUiState] = useState(() =>
+    createRelationshipFormUiState('create'),
+  )
 
   const [typeFilter, setTypeFilter] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
 
-  const worldId = selectedCampaign?.world?.id ?? ''
-  const previousWorldIdRef = useRef(worldId)
+  const worldId = activeWorldId || ''
+  const hasWorldContext = Boolean(worldId)
+  const previousWorldIdRef = useRef(`${worldId}:${contextKey}`)
   const relationshipFormIdRef = useRef(
     `relationship-form-${Math.random().toString(36).slice(2)}`,
   )
+  const resetRelationshipFormUiState = (mode = 'create') => {
+    setRelationshipFormUiState(createRelationshipFormUiState(mode))
+  }
 
   const showToast = useCallback((message, tone = 'info') => {
     setToast({ message, tone })
@@ -60,18 +83,30 @@ export default function EntityRelationshipList() {
   }, [selectedCampaign, user])
 
   const isWorldOwner = useMemo(() => {
-    if (!selectedCampaign || !user) return false
-    const ownerId = selectedCampaign.world?.created_by
-    return ownerId ? ownerId === user.id : false
-  }, [selectedCampaign, user])
+    const worldSource = selectedCampaign?.world || activeWorld
+    if (!worldSource || !user?.id) return false
+    const ownerId =
+      worldSource.created_by ||
+      worldSource.creator?.id ||
+      worldSource.owner_id ||
+      worldSource.owner?.id ||
+      ''
+    return ownerId ? String(ownerId) === String(user.id) : false
+  }, [selectedCampaign, activeWorld, user?.id])
 
   const canManage = useMemo(() => {
-    if (!selectedCampaign || !user) return false
+    if (!user) return false
+    if (!worldId) return false
     if (MANAGER_ROLES.has(user.role)) return true
-    if (membershipRole === 'dm') return true
-    if (isWorldOwner) return true
+    if (selectedContextType === 'world') {
+      return isWorldOwner
+    }
+    if (selectedCampaign) {
+      if (membershipRole === 'dm') return true
+      if (isWorldOwner) return true
+    }
     return false
-  }, [selectedCampaign, user, membershipRole, isWorldOwner])
+  }, [user, worldId, selectedContextType, selectedCampaign, membershipRole, isWorldOwner])
 
   const ensureEntities = useCallback(async (entityIds) => {
     const unique = Array.from(
@@ -146,7 +181,7 @@ export default function EntityRelationshipList() {
       return
     }
     loadRelationshipTypes(worldId)
-  }, [loadRelationshipTypes, worldId])
+  }, [loadRelationshipTypes, worldId, contextKey])
 
   const loadRelationships = useCallback(
     async (targetWorldId) => {
@@ -196,7 +231,7 @@ export default function EntityRelationshipList() {
         setLoadingRelationships(false)
       }
     },
-    [worldId, token, ensureEntities],
+    [worldId, token, ensureEntities, contextKey],
   )
 
   useEffect(() => {
@@ -207,23 +242,27 @@ export default function EntityRelationshipList() {
       return
     }
     loadRelationships(worldId)
-  }, [worldId, token, loadRelationships])
+  }, [worldId, token, loadRelationships, contextKey])
 
   useEffect(() => {
-    if (previousWorldIdRef.current !== worldId) {
+    const nextKey = `${worldId}:${contextKey}`
+    if (previousWorldIdRef.current !== nextKey) {
       if (showForm) {
         setShowForm(false)
-        setEditingRelationshipId(null)
       }
+      if (panelOpen) {
+        setPanelOpen(false)
+      }
+      setEditingRelationshipId(null)
       setToast(null)
       setTypeFilter('')
       setSearchTerm('')
       setListError('')
       entityLookupRef.current = {}
       setEntityLookup({})
-      previousWorldIdRef.current = worldId
+      previousWorldIdRef.current = nextKey
     }
-  }, [worldId, showForm])
+  }, [worldId, contextKey, showForm, panelOpen])
 
 
   const relationshipTypeMap = useMemo(() => {
@@ -334,6 +373,12 @@ export default function EntityRelationshipList() {
     [relationships, relationshipTypeMap],
   )
 
+  const relationshipsSubtitle = selectedCampaign
+    ? `${selectedCampaign.name}${activeWorld?.name ? ` · ${activeWorld.name}` : ''}`
+    : hasWorldContext
+      ? `World · ${activeWorld?.name || 'Untitled world'}`
+      : ''
+
   const getEntityLabel = useCallback(
     (id, fallbackName = '', fallbackType = '') => {
       if (!id) return '—'
@@ -383,23 +428,29 @@ export default function EntityRelationshipList() {
 
   const openCreate = () => {
     if (!canManage || !worldId) return
+    if (relBuilderV2Enabled) {
+      setShowForm(true)
+      return
+    }
     setEditingRelationshipId(null)
-    setShowForm(true)
+    resetRelationshipFormUiState('create')
+    setPanelOpen(true)
   }
 
   const openEdit = (relationship) => {
     if (!canManage || !relationship?.id) return
     setEditingRelationshipId(relationship.id)
+    resetRelationshipFormUiState('edit')
     setPanelOpen(true)
   }
 
   const closePanel = () => {
     setPanelOpen(false)
     setEditingRelationshipId(null)
+    resetRelationshipFormUiState('create')
   }
 
-  const handleRelationshipFormStateChange = (nextState) => {
-    if (!nextState) return
+  const handleRelationshipFormStateChange = (nextState = {}) => {
     setRelationshipFormUiState((prev) => ({
       ...prev,
       ...nextState,
@@ -468,14 +519,11 @@ export default function EntityRelationshipList() {
       <div className="entities-header">
         <div>
           <h1>Entity Relationships</h1>
-          {selectedCampaign ? (
-            <p className="entities-subtitle">
-              {selectedCampaign.name}
-              {selectedCampaign.world?.name ? ` · ${selectedCampaign.world.name}` : ''}
-            </p>
+          {hasWorldContext ? (
+            <p className="entities-subtitle">{relationshipsSubtitle}</p>
           ) : (
             <p className="entities-subtitle">
-              Select a campaign from the header to choose a world context.
+              Select a campaign or world you own to choose a world context.
             </p>
           )}
         </div>
@@ -514,7 +562,7 @@ export default function EntityRelationshipList() {
         </div>
       </div>
 
-      {selectedCampaign && !canManage && (
+      {selectedCampaign && hasWorldContext && !canManage && (
         <div className="alert info" role="status">
           You can view existing relationships, but only the world owner, a campaign DM, or a
           system administrator can create or edit them.
@@ -536,7 +584,9 @@ export default function EntityRelationshipList() {
       {loadingRelationships ? (
         <div className="empty-state">Loading relationships...</div>
       ) : !worldId ? (
-        <div className="empty-state">Select a campaign to view its relationships.</div>
+        <div className="empty-state">
+          Select a campaign or world you own to view its relationships.
+        </div>
       ) : hasRelationships ? (
         <div className="entities-table-wrapper">
           <table className="entities-table relationships-table">
@@ -634,23 +684,63 @@ export default function EntityRelationshipList() {
         </div>
       )}
 
-      <DrawerPanel
-  isOpen={showForm}
-  onClose={() => setShowForm(false)}
-  title="Add Relationship"
-  description="Link two entities in this world."
-  size="lg"
->
-  <RelationshipBuilder
-    worldId={worldId}
-    existingRelationships={relationships || []}
-    onCreated={() => {
-      setShowForm(false)
-      loadRelationships()
-    }}
-    onCancel={() => setShowForm(false)}
-  />
-</DrawerPanel>
+        {relBuilderV2Enabled && (
+          <DrawerPanel
+            isOpen={showForm}
+            onClose={() => setShowForm(false)}
+            title="Add Relationship"
+            description="Link two entities in this world."
+            size="lg"
+          >
+            <RelationshipBuilder
+              worldId={worldId}
+              existingRelationships={relationships || []}
+              onCreated={() => {
+                setShowForm(false)
+                loadRelationships(worldId)
+                showToast('Relationship created', 'success')
+              }}
+              onCancel={() => setShowForm(false)}
+            />
+          </DrawerPanel>
+        )}
+
+        <DrawerPanel
+          isOpen={panelOpen}
+          onClose={closePanel}
+          title={relationshipDrawerTitle}
+          size="lg"
+          footerActions={
+            <>
+              <button
+                type="button"
+                className="btn cancel"
+                onClick={closePanel}
+                disabled={relationshipFormUiState.cancelDisabled}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn submit"
+                form={relationshipFormIdRef.current}
+                disabled={relationshipFormUiState.submitDisabled}
+              >
+                {relationshipFormUiState.submitLabel}
+              </button>
+            </>
+          }
+        >
+          <RelationshipDrawerV2
+            worldId={worldId}
+            relationshipId={editingRelationshipId}
+            onCancel={closePanel}
+            onSaved={handleFormSaved}
+            onStateChange={handleRelationshipFormStateChange}
+            formId={relationshipFormIdRef.current}
+            hideActions
+          />
+        </DrawerPanel>
 
     </section>
   )

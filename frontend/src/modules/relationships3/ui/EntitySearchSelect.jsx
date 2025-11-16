@@ -4,6 +4,8 @@ import { searchEntities, getEntity } from '../../../api/entities.js'
 import { resolveEntityResponse } from '../../../utils/entityHelpers.js'
 import './EntitySearchSelect.css'
 
+const EMPTY_STATIC_OPTIONS = Object.freeze([])
+
 export default function EntitySearchSelect({
   worldId,
   label,
@@ -12,7 +14,7 @@ export default function EntitySearchSelect({
   allowedTypeIds = [],
   disabled = false,
   placeholder = 'Search entities…',
-  staticOptions = [],
+  staticOptions,
   minSearchLength = 2,
   onResolved,
   required = false,
@@ -31,9 +33,13 @@ export default function EntitySearchSelect({
     [JSON.stringify(allowedTypeIds)],
   )
 
+  const safeStaticOptions = Array.isArray(staticOptions)
+    ? staticOptions
+    : EMPTY_STATIC_OPTIONS
+
   const normalisedStaticOptions = useMemo(() => {
-    if (!Array.isArray(staticOptions)) return []
-    return staticOptions
+    if (!Array.isArray(safeStaticOptions)) return []
+    return safeStaticOptions
       .map((option, index) => {
         if (option === null || option === undefined) return null
         if (typeof option === 'object') {
@@ -63,7 +69,7 @@ export default function EntitySearchSelect({
         return { id: text, name: text, _static: true }
       })
       .filter(Boolean)
-  }, [staticOptions])
+  }, [safeStaticOptions])
 
   const getDisplayName = (entity) => {
     if (!entity) return ''

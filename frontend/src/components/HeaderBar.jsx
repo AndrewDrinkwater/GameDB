@@ -5,6 +5,7 @@ import { useCampaignContext } from '../context/CampaignContext.jsx'
 import { useTheme } from '../context/ThemeContext.jsx'
 import { Link } from 'react-router-dom'
 import useIsMobile from '../hooks/useIsMobile.js'
+import { fetchCharacters } from '../api/characters.js'
 
 export default function HeaderBar({ onMenuToggle }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -18,6 +19,14 @@ export default function HeaderBar({ onMenuToggle }) {
     selectedCampaign,
     loading,
     error,
+    worlds,
+    selectedWorld,
+    selectedWorldId,
+    setSelectedWorldId,
+    worldLoading,
+    worldError,
+    viewAsCharacterId,
+    setViewAsCharacterId,
   } = useCampaignContext()
 
   // Close dropdown when clicking outside
@@ -35,7 +44,116 @@ export default function HeaderBar({ onMenuToggle }) {
     setSelectedCampaignId(event.target.value)
   }
 
+  const handleWorldChange = (event) => {
+    setSelectedWorldId(event.target.value)
+  }
+
   const isMobile = useIsMobile()
+
+  const [viewAsCharacters, setViewAsCharacters] = useState([])
+  const [viewAsLoading, setViewAsLoading] = useState(false)
+  const [viewAsError, setViewAsError] = useState('')
+
+  const membershipRole = useMemo(() => {
+    if (!selectedCampaign || !user) return ''
+    const member = selectedCampaign.members?.find((entry) => entry?.user_id === user.id)
+    return member?.role || ''
+  }, [selectedCampaign, user])
+
+  const selectedCampaignWorldOwnerId = useMemo(() => {
+    if (!selectedCampaign?.world) return ''
+    const world = selectedCampaign.world
+    return (
+      world.created_by ||
+      world.creator?.id ||
+      world.owner_id ||
+      world.owner?.id ||
+      ''
+    )
+  }, [selectedCampaign])
+
+  const canUseCharacterContext = useMemo(() => {
+    if (!selectedCampaignId) return false
+    if (!user) return false
+    if (user.role === 'system_admin') return true
+    if (membershipRole === 'dm') return true
+    if (!selectedCampaignWorldOwnerId) return false
+    return String(selectedCampaignWorldOwnerId) === String(user.id)
+  }, [membershipRole, selectedCampaignId, selectedCampaignWorldOwnerId, user])
+
+  useEffect(() => {
+    if (!canUseCharacterContext) {
+      setViewAsCharacterId('')
+    }
+  }, [canUseCharacterContext, setViewAsCharacterId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!canUseCharacterContext || !selectedCampaignId) {
+      setViewAsCharacters([])
+      setViewAsLoading(false)
+      setViewAsError('')
+      return
+    }
+
+    const loadCharacters = async () => {
+      setViewAsLoading(true)
+      setViewAsError('')
+
+      try {
+        const response = await fetchCharacters({ scope: 'others', campaign_id: selectedCampaignId })
+        const list = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response)
+            ? response
+            : []
+
+        if (cancelled) return
+
+        const options = list
+          .map((character) => {
+            if (!character?.id) return null
+            const name = character.name || 'Unnamed character'
+            const playerName =
+              character.player?.username || character.player?.email || character.player?.name || ''
+            return {
+              id: String(character.id),
+              label: playerName ? `${name} (${playerName})` : name,
+            }
+          })
+          .filter(Boolean)
+          .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
+
+        setViewAsCharacters(options)
+      } catch (err) {
+        if (!cancelled) {
+          console.error('❌ Failed to load characters for view-as context', err)
+          setViewAsCharacters([])
+          setViewAsError(err.message || 'Unable to load characters')
+          setViewAsCharacterId('')
+        }
+      } finally {
+        if (!cancelled) {
+          setViewAsLoading(false)
+        }
+      }
+    }
+
+    loadCharacters()
+
+    return () => {
+      cancelled = true
+    }
+  }, [canUseCharacterContext, selectedCampaignId, setViewAsCharacterId])
+
+  const viewAsStatus = useMemo(() => {
+    if (viewAsLoading) return 'Loading characters…'
+    if (viewAsError) return viewAsError
+    if (!viewAsCharacterId) return 'Viewing entities as yourself (DM/owner)'
+    const match = viewAsCharacters.find((character) => character.id === viewAsCharacterId)
+    return match ? `Viewing as ${match.label}` : 'Viewing as selected character'
+  }, [viewAsCharacterId, viewAsCharacters, viewAsError, viewAsLoading])
 
   const campaignStatus = useMemo(() => {
     if (loading) return 'Loading campaigns…'
@@ -44,6 +162,45 @@ export default function HeaderBar({ onMenuToggle }) {
     if (!selectedCampaign) return 'Select a campaign'
     return `${selectedCampaign.name}${selectedCampaign.world?.name ? ` · ${selectedCampaign.world.name}` : ''}`
   }, [campaigns, error, loading, selectedCampaign])
+
+  const worldStatus = useMemo(() => {
+    if (selectedCampaign?.world) {
+      return selectedCampaign.world.name
+        ? `Campaign world · ${selectedCampaign.world.name}`
+        : 'Campaign world selected'
+    }
+
+    if (worldLoading) return 'Loading worlds…'
+    if (worldError) return 'Unable to load worlds'
+    if (!worlds.length) return 'No accessible worlds'
+    if (!selectedWorld) return 'Select a world'
+    return selectedWorld.name ? `World · ${selectedWorld.name}` : 'Selected world'
+  }, [selectedCampaign, selectedWorld, worldLoading, worldError, worlds.length])
+
+  const worldOptions = useMemo(() => {
+    const seen = new Set()
+    const options = []
+
+    worlds.forEach((world) => {
+      if (!world?.id) return
+      const id = String(world.id)
+      if (seen.has(id)) return
+      options.push({ id, name: world.name || `World #${id}` })
+      seen.add(id)
+    })
+
+    if (selectedCampaign?.world?.id) {
+      const campaignWorldId = String(selectedCampaign.world.id)
+      if (!seen.has(campaignWorldId)) {
+        options.unshift({
+          id: campaignWorldId,
+          name: selectedCampaign.world.name || 'Campaign world',
+        })
+      }
+    }
+
+    return options
+  }, [worlds, selectedCampaign])
 
   const getRoleLabel = (campaign) => {
     if (!user) return ''
@@ -139,6 +296,58 @@ export default function HeaderBar({ onMenuToggle }) {
             })}
           </select>
         </div>
+        <div className="campaign-selector" title={worldStatus}>
+          <label htmlFor="world-context-select">World</label>
+          <select
+            id="world-context-select"
+            value={selectedWorldId}
+            onChange={handleWorldChange}
+            disabled={worldLoading}
+          >
+            <option value="">
+              {selectedCampaign?.world
+                ? selectedCampaign.world.name
+                  ? `Using ${selectedCampaign.world.name}`
+                  : 'Using campaign world'
+                : worldLoading
+                  ? 'Loading worlds…'
+                  : worldError
+                    ? 'Unable to load worlds'
+                    : worlds.length
+                      ? 'Select a world'
+                      : 'No worlds available'}
+            </option>
+            {worldOptions.map((world) => (
+              <option key={world.id} value={world.id}>
+                {world.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {canUseCharacterContext && (
+          <div className="campaign-selector" title={viewAsStatus}>
+            <label htmlFor="character-context-select">View as</label>
+            <select
+              id="character-context-select"
+              value={viewAsCharacterId}
+              onChange={(event) => setViewAsCharacterId(event.target.value)}
+              disabled={viewAsLoading || Boolean(viewAsError)}
+            >
+              <option value="">
+                {viewAsLoading
+                  ? 'Loading characters…'
+                  : viewAsError
+                    ? viewAsError
+                    : 'Entire campaign context'}
+              </option>
+              {viewAsCharacters.map((character) => (
+                <option key={character.id} value={character.id}>
+                  {character.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="user-menu" ref={dropdownRef}>

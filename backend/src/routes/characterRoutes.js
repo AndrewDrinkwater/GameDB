@@ -1,6 +1,6 @@
 import express from 'express'
 import { Op } from 'sequelize'
-import { Character, Campaign, User, UserCampaignRole } from '../models/index.js'
+import { Character, Campaign, User, UserCampaignRole, World } from '../models/index.js'
 import { authenticate as authMiddleware } from '../middleware/authMiddleware.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
 
@@ -77,7 +77,10 @@ router.get('/', authMiddleware, async (req, res) => {
       }
 
       const campaign = await Campaign.findByPk(campaignId, {
-        attributes: ['id', 'created_by'],
+        attributes: ['id', 'created_by', 'world_id'],
+        include: [
+          { model: World, as: 'world', attributes: ['id', 'created_by'] },
+        ],
       })
 
       if (!campaign) {
@@ -85,8 +88,11 @@ router.get('/', authMiddleware, async (req, res) => {
       }
 
       const isOwner = String(campaign.created_by) === String(req.user.id)
+      const isWorldOwner = campaign.world?.created_by
+        ? String(campaign.world.created_by) === String(req.user.id)
+        : false
 
-      if (!isOwner) {
+      if (!isOwner && !isWorldOwner) {
         const dmMembership = await UserCampaignRole.findOne({
           where: {
             campaign_id: campaignId,

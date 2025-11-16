@@ -37,7 +37,26 @@ export const updateEntityType = (id, data) => api.patch(`/entity-types/${id}`, d
 
 export const deleteEntityType = (id) => api.delete(`/entity-types/${id}`)
 
-export const getWorldEntityTypeUsage = (worldId) => api.get(`/worlds/${worldId}/entity-types`)
+export const getWorldEntityTypeUsage = (worldId, params = {}) => {
+  if (!worldId) {
+    return Promise.reject(new Error('worldId is required to load entity type usage'))
+  }
+
+  const searchParams = new URLSearchParams()
+
+  const rawCharacterId =
+    params.viewAsCharacterId ?? params.characterId ?? params.character_id ?? params.viewAs
+  if (rawCharacterId !== undefined && rawCharacterId !== null) {
+    const trimmed = String(rawCharacterId).trim()
+    if (trimmed) {
+      searchParams.set('viewAsCharacterId', trimmed)
+    }
+  }
+
+  const queryString = searchParams.toString()
+  const suffix = queryString ? `?${queryString}` : ''
+  return api.get(`/worlds/${worldId}/entity-types${suffix}`)
+}
 
 export const getEntityTypeListColumns = (id) => api.get(`/entity-types/${id}/list-columns`)
 

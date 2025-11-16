@@ -28,6 +28,9 @@ import RelationshipViewerPage from './pages/entities/RelationshipViewerPage.jsx'
 import BulkUploadPage from './pages/entities/BulkUploadPage.jsx'
 import SessionNotesPage from './pages/notes/SessionNotesPage.jsx'
 import EntityNotesPage from './pages/notes/EntityNotesPage.jsx'
+import BulkAccessToolPage from './pages/access/BulkAccessToolPage.jsx'
+import BulkAccessAuditPage from './pages/access/BulkAccessAuditPage.jsx'
+import CollectionsManagerPage from './pages/access/CollectionsManagerPage.jsx'
 
 const router = createBrowserRouter(
   createRoutesFromElements(
@@ -50,6 +53,10 @@ const router = createBrowserRouter(
         {/* Worlds routes */}
         <Route path="worlds" element={<WorldsPage />} />
         <Route path="worlds/:id" element={<WorldDetailPage />} />
+        <Route path="worlds/:worldId/access/bulk" element={<BulkAccessToolPage />} />
+        <Route path="worlds/:worldId/access/audit" element={<BulkAccessAuditPage />} />
+        <Route path="worlds/:worldId/collections" element={<CollectionsManagerPage />} />
+        <Route path="campaigns/:campaignId/access/bulk" element={<BulkAccessToolPage />} />
 
         {/* Campaign routes */}
         <Route path="campaigns">

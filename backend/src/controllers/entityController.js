@@ -7,6 +7,7 @@ import {
   EntityType,
   EntityTypeField,
   User,
+  UserCampaignRole,
   World,
   sequelize,
 } from '../models/index.js'
@@ -28,7 +29,8 @@ import {
 const VISIBILITY_VALUES = new Set(['hidden', 'visible', 'partial'])
 const PUBLIC_VISIBILITY = ['visible', 'partial']
 
-const ACCESS_VALUES = new Set(['global', 'selective', 'hidden'])
+const READ_ACCESS_VALUES = new Set(['global', 'selective', 'hidden'])
+const WRITE_ACCESS_VALUES = new Set(['global', 'selective', 'hidden', 'owner_only'])
 const MAX_IMAGE_MIME_TYPE_LENGTH = 50
 
 const normaliseImageDataInput = (value) => {
@@ -70,9 +72,12 @@ const normaliseAccessValue = (value, fieldName) => {
   }
 
   const trimmed = value.trim().toLowerCase()
+  const allowedValues = fieldName === 'write_access' ? WRITE_ACCESS_VALUES : READ_ACCESS_VALUES
 
-  if (!ACCESS_VALUES.has(trimmed)) {
-    throw new Error(`${fieldName} must be one of: ${Array.from(ACCESS_VALUES).join(', ')}`)
+  if (!allowedValues.has(trimmed)) {
+    throw new Error(
+      `${fieldName} must be one of: ${Array.from(allowedValues).join(', ')}`,
+    )
   }
 
   return trimmed
@@ -110,6 +115,165 @@ const toUniqueStringList = (values) => {
     result.push(str)
   })
   return result
+}
+
+const normaliseId = (value) => {
+  if (value === undefined || value === null) return null
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed || null
+  }
+  if (typeof value === 'object') {
+    const candidate = value.id ?? value.campaign_id ?? null
+    if (candidate !== null && candidate !== undefined) {
+      return normaliseId(candidate)
+    }
+  }
+  const stringValue = String(value).trim()
+  return stringValue || null
+}
+
+const ENTITY_CREATION_SCOPES = new Set(['owner_dm', 'all_players'])
+const DEFAULT_ENTITY_CREATION_SCOPE = 'owner_dm'
+
+const normaliseEntityCreationScope = (value) => {
+  if (typeof value !== 'string') return DEFAULT_ENTITY_CREATION_SCOPE
+  const trimmed = value.trim().toLowerCase()
+  if (ENTITY_CREATION_SCOPES.has(trimmed)) {
+    return trimmed
+  }
+  return DEFAULT_ENTITY_CREATION_SCOPE
+}
+
+const resolveCampaignMembership = async ({ worldId, campaignContextId, userId }) => {
+  const resolvedWorldId = normaliseId(worldId)
+  const resolvedCampaignId = normaliseId(campaignContextId)
+
+  if (!resolvedWorldId || !resolvedCampaignId) {
+    return null
+  }
+
+  const campaign = await Campaign.findOne({
+    where: { id: resolvedCampaignId, world_id: resolvedWorldId },
+    attributes: ['id'],
+  })
+
+  if (!campaign) {
+    return null
+  }
+
+  if (!userId) {
+    return { campaignId: String(campaign.id), membershipRole: null }
+  }
+
+  const membership = await UserCampaignRole.findOne({
+    where: { user_id: userId, campaign_id: campaign.id },
+    attributes: ['role'],
+  })
+
+  return {
+    campaignId: String(campaign.id),
+    membershipRole: membership?.role ?? null,
+  }
+}
+
+const userHasDmRoleInWorld = async ({ worldId, userId }) => {
+  const resolvedWorldId = normaliseId(worldId)
+  const resolvedUserId = normaliseId(userId)
+
+  if (!resolvedWorldId || !resolvedUserId) {
+    return false
+  }
+
+  const membership = await UserCampaignRole.findOne({
+    where: { user_id: resolvedUserId, role: 'dm' },
+    attributes: ['id'],
+    include: [
+      {
+        model: Campaign,
+        as: 'campaign',
+        required: true,
+        attributes: ['id', 'world_id'],
+        where: { world_id: resolvedWorldId },
+      },
+    ],
+  })
+
+  return Boolean(membership)
+}
+
+export const resolveEntityCreationAccess = async ({ world, user, campaignContextId }) => {
+  const resolvedWorldId = normaliseId(world?.id)
+  const userId = normaliseId(user?.id)
+  const scope = normaliseEntityCreationScope(world?.entity_creation_scope)
+
+  const baseResult = {
+    allowed: false,
+    defaultCampaignId: null,
+    enforceCampaignScope: false,
+    reason: 'You do not have permission to create entities in this world.',
+  }
+
+  if (!resolvedWorldId) {
+    return { ...baseResult, reason: 'World context is required to create entities.' }
+  }
+
+  if (!userId) {
+    return { ...baseResult, reason: 'Authentication required.' }
+  }
+
+  const isSystemAdmin = user?.role === 'system_admin'
+  const worldOwnerId = normaliseId(world?.created_by ?? world?.createdBy)
+  const isWorldOwner = Boolean(worldOwnerId && worldOwnerId === userId)
+
+  const campaignMembership = await resolveCampaignMembership({
+    worldId: resolvedWorldId,
+    campaignContextId,
+    userId,
+  })
+
+  if (isSystemAdmin || isWorldOwner) {
+    return {
+      allowed: true,
+      defaultCampaignId: campaignMembership?.campaignId ?? null,
+      enforceCampaignScope: false,
+    }
+  }
+
+  const isWorldDm = await userHasDmRoleInWorld({ worldId: resolvedWorldId, userId })
+  if (isWorldDm) {
+    const defaultCampaignId =
+      campaignMembership?.membershipRole === 'dm' ? campaignMembership.campaignId : null
+    return {
+      allowed: true,
+      defaultCampaignId,
+      enforceCampaignScope: false,
+    }
+  }
+
+  if (scope !== 'all_players') {
+    return baseResult
+  }
+
+  if (!campaignMembership?.campaignId) {
+    return {
+      ...baseResult,
+      reason: 'Select a campaign before creating entities as a player.',
+    }
+  }
+
+  if (!campaignMembership.membershipRole || campaignMembership.membershipRole === 'observer') {
+    return {
+      ...baseResult,
+      reason: 'Only active campaign members can create entities in this world.',
+    }
+  }
+
+  return {
+    allowed: true,
+    defaultCampaignId: campaignMembership.campaignId,
+    enforceCampaignScope: true,
+  }
 }
 
 const normaliseSecretAudienceIds = (value, fieldName) => {
@@ -658,7 +822,13 @@ const normaliseMetadata = (metadata) => {
   return metadata
 }
 
-export const createEntityResponse = async ({ world, user, body }) => {
+export const createEntityResponse = async ({
+  world,
+  user,
+  body,
+  campaignContextId,
+  creationAccess,
+}) => {
   const {
     name,
     description,
@@ -669,6 +839,7 @@ export const createEntityResponse = async ({ world, user, body }) => {
     write_access: writeAccessInput,
     read_campaign_ids: readCampaignIdsInput,
     read_user_ids: readUserIdsInput,
+    read_character_ids: readCharacterIdsInput,
     write_campaign_ids: writeCampaignIdsInput,
     write_user_ids: writeUserIdsInput,
     image_data: imageDataInput,
@@ -706,11 +877,34 @@ export const createEntityResponse = async ({ world, user, body }) => {
     return { status: 400, body: { success: false, message: 'Invalid visibility value' } }
   }
 
-  let readAccess = 'global'
-  let writeAccess = 'global'
-  let readCampaignIds = []
+  const creationAccessResult =
+    creationAccess ??
+    (await resolveEntityCreationAccess({ world, user, campaignContextId }))
+
+  if (!creationAccessResult.allowed) {
+    return {
+      status: 403,
+      body: {
+        success: false,
+        message: creationAccessResult.reason || 'You cannot create entities here.',
+      },
+    }
+  }
+
+  const defaultCampaignId = creationAccessResult.defaultCampaignId ?? null
+  const enforceCampaignScope = Boolean(
+    creationAccessResult.enforceCampaignScope && defaultCampaignId,
+  )
+
+  const defaultAccessMode = defaultCampaignId ? 'selective' : 'global'
+  const defaultCampaignTargets = defaultCampaignId ? [defaultCampaignId] : []
+
+  let readAccess = defaultAccessMode
+  let writeAccess = defaultAccessMode
+  let readCampaignIds = [...defaultCampaignTargets]
   let readUserIds = []
-  let writeCampaignIds = []
+  let readCharacterIds = []
+  let writeCampaignIds = [...defaultCampaignTargets]
   let writeUserIds = []
   let imageData
   let imageMimeType
@@ -732,6 +926,10 @@ export const createEntityResponse = async ({ world, user, body }) => {
       readUserIds = normaliseUuidArray(readUserIdsInput, 'read_user_ids')
     }
 
+    if (readCharacterIdsInput !== undefined) {
+      readCharacterIds = normaliseUuidArray(readCharacterIdsInput, 'read_character_ids')
+    }
+
     if (writeCampaignIdsInput !== undefined) {
       writeCampaignIds = normaliseUuidArray(writeCampaignIdsInput, 'write_campaign_ids')
     }
@@ -749,10 +947,21 @@ export const createEntityResponse = async ({ world, user, body }) => {
   if (readAccess !== 'selective') {
     readCampaignIds = []
     readUserIds = []
+    readCharacterIds = []
   }
 
   if (writeAccess !== 'selective') {
     writeCampaignIds = []
+    writeUserIds = []
+  }
+
+  if (enforceCampaignScope && defaultCampaignId) {
+    readAccess = 'selective'
+    writeAccess = 'selective'
+    readCampaignIds = [defaultCampaignId]
+    writeCampaignIds = [defaultCampaignId]
+    readUserIds = []
+    readCharacterIds = []
     writeUserIds = []
   }
 
@@ -785,6 +994,7 @@ export const createEntityResponse = async ({ world, user, body }) => {
     write_access: writeAccess,
     read_campaign_ids: readCampaignIds,
     read_user_ids: readUserIds,
+    read_character_ids: readCharacterIds,
     write_campaign_ids: writeCampaignIds,
     write_user_ids: writeUserIds,
     image_data: imageData ?? null,
@@ -813,6 +1023,13 @@ export const listWorldEntities = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
+    const viewAsCharacterId =
+      typeof req.query?.viewAsCharacterId === 'string'
+        ? req.query.viewAsCharacterId.trim()
+        : typeof req.query?.characterId === 'string'
+          ? req.query.characterId.trim()
+          : ''
+
     const where = { world_id: world.id }
 
     if (!access.isOwner && !access.isAdmin) {
@@ -827,6 +1044,7 @@ export const listWorldEntities = async (req, res) => {
       user,
       worldAccess: access,
       campaignContextId: req.campaignContextId,
+      characterContextId: viewAsCharacterId,
     })
 
     const entities = await Entity.findAll({
@@ -1017,7 +1235,12 @@ export const createWorldEntity = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    const result = await createEntityResponse({ world, user, body: req.body })
+    const result = await createEntityResponse({
+      world,
+      user,
+      body: req.body,
+      campaignContextId: req.campaignContextId,
+    })
 
     return res.status(result.status).json(result.body)
   } catch (error) {
@@ -1046,7 +1269,12 @@ export const createEntity = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    const result = await createEntityResponse({ world, user, body: req.body })
+    const result = await createEntityResponse({
+      world,
+      user,
+      body: req.body,
+      campaignContextId: req.campaignContextId,
+    })
 
     return res.status(result.status).json(result.body)
   } catch (error) {
@@ -1066,6 +1294,7 @@ export const updateEntity = async (req, res) => {
       write_access: writeAccessInput,
       read_campaign_ids: readCampaignIdsInput,
       read_user_ids: readUserIdsInput,
+      read_character_ids: readCharacterIdsInput,
       write_campaign_ids: writeCampaignIdsInput,
       write_user_ids: writeUserIdsInput,
       image_data: imageDataInput,
@@ -1105,6 +1334,7 @@ export const updateEntity = async (req, res) => {
     let writeAccess
     let readCampaignIds
     let readUserIds
+    let readCharacterIds
     let writeCampaignIds
     let writeUserIds
     let imageData
@@ -1115,6 +1345,7 @@ export const updateEntity = async (req, res) => {
       writeAccess = normaliseAccessValue(writeAccessInput, 'write_access')
       readCampaignIds = normaliseUuidArray(readCampaignIdsInput, 'read_campaign_ids')
       readUserIds = normaliseUuidArray(readUserIdsInput, 'read_user_ids')
+      readCharacterIds = normaliseUuidArray(readCharacterIdsInput, 'read_character_ids')
       writeCampaignIds = normaliseUuidArray(writeCampaignIdsInput, 'write_campaign_ids')
       writeUserIds = normaliseUuidArray(writeUserIdsInput, 'write_user_ids')
       imageData = normaliseImageDataInput(imageDataInput)
@@ -1148,6 +1379,7 @@ export const updateEntity = async (req, res) => {
       if (readAccess !== 'selective') {
         readCampaignIds = []
         readUserIds = []
+        readCharacterIds = []
       }
     }
 
@@ -1165,6 +1397,10 @@ export const updateEntity = async (req, res) => {
 
     if (readUserIds !== undefined) {
       updates.read_user_ids = readUserIds
+    }
+
+    if (readCharacterIds !== undefined) {
+      updates.read_character_ids = readCharacterIds
     }
 
     if (writeCampaignIds !== undefined) {

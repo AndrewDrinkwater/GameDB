@@ -26,6 +26,7 @@ import ConditionBuilderModal from '../../components/ConditionBuilderModal.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import useDataExplorer from '../../hooks/useDataExplorer.js'
 import useIsMobile from '../../hooks/useIsMobile.js'
+import { ENTITY_CREATION_SCOPES } from '../../utils/worldCreationScopes.js'
 
 const VISIBILITY_BADGES = {
   visible: 'badge-visible',
@@ -194,7 +195,15 @@ const formatMetadataValue = (value, column = null) => {
 
 export default function EntityList() {
   const { user, token, sessionReady } = useAuth()
-  const { selectedCampaign } = useCampaignContext()
+  const {
+    selectedCampaign,
+    selectedCampaignId,
+    activeWorld,
+    activeWorldId,
+    selectedContextType,
+    viewAsCharacterId,
+    contextKey,
+  } = useCampaignContext()
   const [searchParams, setSearchParams] = useSearchParams()
   const isMobile = useIsMobile()
 
@@ -237,12 +246,13 @@ export default function EntityList() {
 
   const currentSearch = searchParams.toString()
 
-  const worldId = selectedCampaign?.world?.id ?? ''
+  const worldId = activeWorldId || ''
+  const hasWorldContext = Boolean(worldId)
   const selectedFilter = searchParams.get(FILTER_PARAM) ?? ''
   const filterActive = Boolean(selectedFilter)
 
   const entityFormIdRef = useRef(`entity-form-${Math.random().toString(36).slice(2)}`)
-  const previousWorldIdRef = useRef(worldId)
+  const previousWorldIdRef = useRef(`${worldId}:${contextKey}`)
 
   const showToast = useCallback((message, tone = 'info') => {
     setToast({ message, tone })
@@ -295,19 +305,46 @@ export default function EntityList() {
   }, [selectedCampaign, user])
 
   const isWorldOwner = useMemo(() => {
-    if (!selectedCampaign || !user) return false
-    const ownerId = selectedCampaign.world?.created_by
-    return ownerId ? ownerId === user.id : false
-  }, [selectedCampaign, user])
+    if (!activeWorld || !user?.id) return false
+    const ownerId =
+      activeWorld.created_by ||
+      activeWorld.creator?.id ||
+      activeWorld.owner_id ||
+      activeWorld.owner?.id ||
+      ''
+    return ownerId ? String(ownerId) === String(user.id) : false
+  }, [activeWorld, user?.id])
 
   const canManage = useMemo(() => {
     if (!user) return false
     if (MANAGER_ROLES.has(user.role)) return true
-    if (!selectedCampaign) return false
-    if (membershipRole === 'dm') return true
-    if (isWorldOwner) return true
+    if (!worldId) return false
+    if (selectedContextType === 'world') {
+      return isWorldOwner
+    }
+    if (selectedCampaign) {
+      if (membershipRole === 'dm') return true
+      if (isWorldOwner) return true
+    }
     return false
-  }, [selectedCampaign, user, membershipRole, isWorldOwner])
+  }, [
+    user,
+    worldId,
+    selectedContextType,
+    selectedCampaign,
+    membershipRole,
+    isWorldOwner,
+  ])
+
+  const entityCreationScope = activeWorld?.entity_creation_scope ?? ''
+
+  const canPlayerCreateEntities = useMemo(() => {
+    if (!selectedCampaignId || !selectedCampaign || !user) return false
+    if (entityCreationScope !== ENTITY_CREATION_SCOPES.ALL_PLAYERS) return false
+    return membershipRole === 'player'
+  }, [selectedCampaignId, selectedCampaign, user, entityCreationScope, membershipRole])
+
+  const canCreateEntities = canManage || canPlayerCreateEntities
 
   const isSystemAdmin = user?.role === 'system_admin'
 
@@ -318,7 +355,7 @@ export default function EntityList() {
         return []
       }
 
-      const { useUnassigned = false } = options
+      const { useUnassigned = false, viewAsCharacterId: viewAsId = '' } = options
 
       if (useUnassigned) {
         if (!isSystemAdmin) {
@@ -359,7 +396,9 @@ export default function EntityList() {
       setEntitiesError('')
 
       try {
-        const response = await getWorldEntities(worldToFetch)
+        const response = await getWorldEntities(worldToFetch, {
+          viewAsCharacterId: viewAsId,
+        })
         const list = Array.isArray(response)
           ? response
           : Array.isArray(response?.data)
@@ -376,7 +415,7 @@ export default function EntityList() {
         setLoadingEntities(false)
       }
     },
-    [token, worldId, isSystemAdmin],
+    [token, worldId, isSystemAdmin, contextKey],
   )
 
   useEffect(() => {
@@ -395,15 +434,17 @@ export default function EntityList() {
       return
     }
 
-    loadEntities(worldId)
-  }, [worldId, token, viewingUnassigned, loadEntities])
+    loadEntities(worldId, { viewAsCharacterId })
+  }, [worldId, token, viewingUnassigned, loadEntities, contextKey, viewAsCharacterId])
 
   useEffect(() => {
     if (viewingUnassigned) {
+      previousWorldIdRef.current = `${worldId}:${contextKey}`
       return
     }
 
-    if (previousWorldIdRef.current !== worldId) {
+    const nextKey = `${worldId}:${contextKey}`
+    if (previousWorldIdRef.current !== nextKey) {
       if (panelOpen) {
         setPanelOpen(false)
         setEditingEntityId(null)
@@ -412,9 +453,9 @@ export default function EntityList() {
       setEntityFormUiState(createDrawerFooterState('create'))
       setEntitiesError('')
       setToast(null)
-      previousWorldIdRef.current = worldId
+      previousWorldIdRef.current = nextKey
     }
-  }, [worldId, panelOpen, viewingUnassigned])
+  }, [worldId, contextKey, panelOpen, viewingUnassigned])
 
   useEffect(() => {
     if (!isSystemAdmin && viewingUnassigned) {
@@ -1024,7 +1065,7 @@ export default function EntityList() {
     if (viewingUnassigned) {
       await loadEntities(null, { useUnassigned: true })
     } else if (worldId) {
-      await loadEntities(worldId)
+      await loadEntities(worldId, { viewAsCharacterId })
     }
     showToast(mode === 'create' ? 'Entity created' : 'Entity updated', 'success')
   }
@@ -1043,7 +1084,7 @@ export default function EntityList() {
       if (viewingUnassigned) {
         await loadEntities(null, { useUnassigned: true })
       } else if (worldId) {
-        await loadEntities(worldId)
+        await loadEntities(worldId, { viewAsCharacterId })
       }
     } catch (err) {
       console.error('❌ Failed to delete entity', err)
@@ -1059,11 +1100,11 @@ export default function EntityList() {
       return
     }
     if (!worldId) return
-    loadEntities(worldId)
+    loadEntities(worldId, { viewAsCharacterId })
   }
 
   const openCreate = () => {
-    if (!canManage || !worldId || viewingUnassigned) return
+    if (!canCreateEntities || !worldId || viewingUnassigned) return
     setEditingEntityId(null)
     setActiveEntityName('')
     setEntityFormUiState(createDrawerFooterState('create'))
@@ -1119,6 +1160,11 @@ export default function EntityList() {
     ? dataExplorer.groups.some((group) => group.items.length > 0)
     : dataExplorer.data.length > 0
   const pageClassName = `entities-page${isMobile ? ' entities-page--mobile' : ''}`
+  const entitySubtitle = selectedCampaign
+    ? `${selectedCampaign.name}${activeWorld?.name ? ` · ${activeWorld.name}` : ''}`
+    : hasWorldContext
+      ? `World · ${activeWorld?.name || 'Untitled world'}`
+      : ''
 
   return (
     <section className={pageClassName}>
@@ -1129,14 +1175,11 @@ export default function EntityList() {
             <p className="entities-subtitle">
               Showing entities without a world assignment.
             </p>
-          ) : selectedCampaign ? (
-            <p className="entities-subtitle">
-              {selectedCampaign.name}
-              {selectedCampaign.world?.name ? ` · ${selectedCampaign.world.name}` : ''}
-            </p>
+          ) : hasWorldContext ? (
+            <p className="entities-subtitle">{entitySubtitle}</p>
           ) : (
             <p className="entities-subtitle">
-              Select a campaign from the header to choose a world context.
+              Select a campaign or world you own to choose a world context.
             </p>
           )}
           {/* Filter chip removed for streamlined type-specific lists */}
@@ -1392,7 +1435,7 @@ export default function EntityList() {
             type="button"
             className="btn submit"
             onClick={openCreate}
-            disabled={!canManage || !worldId || loadingEntities || viewingUnassigned}
+            disabled={!canCreateEntities || !worldId || loadingEntities || viewingUnassigned}
           >
             <Plus size={18} /> Add Entity
           </button>
@@ -1583,7 +1626,7 @@ export default function EntityList() {
                 View all entities
               </button>
             </>
-          ) : canManage ? (
+          ) : canCreateEntities ? (
             <>
               <p className="empty-title">No entities yet.</p>
               <p>
@@ -1675,6 +1718,7 @@ export default function EntityList() {
           selectedEntityTypeId={filterActive ? selectedFilter : ''}
           activeView={entityFormView}
           onViewChange={setEntityFormView}
+          defaultCampaignId={selectedCampaign?.id || ''}
         />
       </DrawerPanel>
     </section>

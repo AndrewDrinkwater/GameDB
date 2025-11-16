@@ -4,13 +4,15 @@ import { fetchAccessOptionsForWorld } from '../utils/entityAccessOptions.js'
 
 /** --- helpers --- **/
 
-const ACCESS_MODES = ['global', 'selective', 'hidden']
-const ACCESS_MODE_SET = new Set(ACCESS_MODES)
+const READ_ACCESS_MODES = ['global', 'selective', 'hidden']
+const WRITE_ACCESS_MODES = [...READ_ACCESS_MODES, 'owner_only']
+const READ_ACCESS_MODE_SET = new Set(READ_ACCESS_MODES)
+const WRITE_ACCESS_MODE_SET = new Set(WRITE_ACCESS_MODES)
 
-const normaliseAccessMode = (value) => {
+const normaliseAccessMode = (value, allowedSet) => {
   if (typeof value !== 'string') return 'global'
   const key = value.toLowerCase()
-  return ACCESS_MODE_SET.has(key) ? key : 'global'
+  return allowedSet.has(key) ? key : 'global'
 }
 
 const normaliseIdArray = (value) => {
@@ -29,6 +31,8 @@ const normaliseIdArray = (value) => {
   return []
 }
 
+const createEmptyAccessOptions = () => ({ campaigns: [], users: [], characters: [] })
+
 /** --- main hook --- **/
 
 export default function useEntityAccess(entity, token, canEdit) {
@@ -41,6 +45,7 @@ export default function useEntityAccess(entity, token, canEdit) {
         readMode: 'global',
         readCampaigns: [],
         readUsers: [],
+        readCharacters: [],
         writeMode: 'global',
         writeCampaigns: [],
         writeUsers: [],
@@ -48,17 +53,26 @@ export default function useEntityAccess(entity, token, canEdit) {
     }
 
     return {
-      readMode: normaliseAccessMode(entity.read_access || entity.readAccess),
+      readMode: normaliseAccessMode(
+        entity.read_access || entity.readAccess,
+        READ_ACCESS_MODE_SET,
+      ),
       readCampaigns: normaliseIdArray(entity.read_campaign_ids || entity.readCampaignIds),
       readUsers: normaliseIdArray(entity.read_user_ids || entity.readUserIds),
-      writeMode: normaliseAccessMode(entity.write_access || entity.writeAccess),
+      readCharacters: normaliseIdArray(
+        entity.read_character_ids || entity.readCharacterIds,
+      ),
+      writeMode: normaliseAccessMode(
+        entity.write_access || entity.writeAccess,
+        WRITE_ACCESS_MODE_SET,
+      ),
       writeCampaigns: normaliseIdArray(entity.write_campaign_ids || entity.writeCampaignIds),
       writeUsers: normaliseIdArray(entity.write_user_ids || entity.writeUserIds),
     }
   }, [entity])
 
   const [accessSettings, setAccessSettings] = useState(accessDefaults)
-  const [accessOptions, setAccessOptions] = useState({ campaigns: [], users: [] })
+  const [accessOptions, setAccessOptions] = useState(() => createEmptyAccessOptions())
   const [accessOptionsLoading, setAccessOptionsLoading] = useState(false)
   const [accessOptionsError, setAccessOptionsError] = useState('')
   const [accessSaving, setAccessSaving] = useState(false)
@@ -73,7 +87,7 @@ export default function useEntityAccess(entity, token, canEdit) {
   const loadAccessOptions = useCallback(async () => {
     if (!token) return
     if (!worldId) {
-      setAccessOptions({ campaigns: [], users: [] })
+      setAccessOptions(createEmptyAccessOptions())
       setAccessOptionsError('')
       setAccessOptionsLoading(false)
       return
@@ -84,10 +98,14 @@ export default function useEntityAccess(entity, token, canEdit) {
 
     try {
       const options = await fetchAccessOptionsForWorld(worldId)
-      setAccessOptions(options)
+      setAccessOptions({
+        campaigns: options.campaigns ?? [],
+        users: options.users ?? [],
+        characters: options.characters ?? [],
+      })
     } catch (err) {
       console.error('❌ Failed to load access options', err)
-      setAccessOptions({ campaigns: [], users: [] })
+      setAccessOptions(createEmptyAccessOptions())
       setAccessOptionsError(err.message || 'Failed to load access options')
     } finally {
       setAccessOptionsLoading(false)
@@ -100,7 +118,15 @@ export default function useEntityAccess(entity, token, canEdit) {
 
   /** --- track unsaved state --- **/
   const isAccessDirty = useMemo(() => {
-    const keys = ['readMode','readCampaigns','readUsers','writeMode','writeCampaigns','writeUsers']
+    const keys = [
+      'readMode',
+      'readCampaigns',
+      'readUsers',
+      'readCharacters',
+      'writeMode',
+      'writeCampaigns',
+      'writeUsers',
+    ]
 
     const normalizeArray = (value) =>
       Array.isArray(value)
@@ -129,11 +155,13 @@ export default function useEntityAccess(entity, token, canEdit) {
       const next = { ...prev }
 
       if (key === 'readMode' || key === 'writeMode') {
-        const mode = normaliseAccessMode(value)
+        const allowedSet = key === 'readMode' ? READ_ACCESS_MODE_SET : WRITE_ACCESS_MODE_SET
+        const mode = normaliseAccessMode(value, allowedSet)
         next[key] = mode
         if (key === 'readMode' && mode !== 'selective') {
           next.readCampaigns = []
           next.readUsers = []
+          next.readCharacters = []
         }
         if (key === 'writeMode' && mode !== 'selective') {
           next.writeCampaigns = []
@@ -142,7 +170,15 @@ export default function useEntityAccess(entity, token, canEdit) {
         return next
       }
 
-      if (['readCampaigns', 'readUsers', 'writeCampaigns', 'writeUsers'].includes(key)) {
+      if (
+        [
+          'readCampaigns',
+          'readUsers',
+          'readCharacters',
+          'writeCampaigns',
+          'writeUsers',
+        ].includes(key)
+      ) {
         next[key] = Array.isArray(value)
           ? value.map((v) => String(v).trim()).filter(Boolean)
           : []
@@ -177,6 +213,8 @@ export default function useEntityAccess(entity, token, canEdit) {
           accessSettings.readMode === 'selective' ? accessSettings.readCampaigns : [],
         read_user_ids:
           accessSettings.readMode === 'selective' ? accessSettings.readUsers : [],
+        read_character_ids:
+          accessSettings.readMode === 'selective' ? accessSettings.readCharacters : [],
         write_campaign_ids:
           accessSettings.writeMode === 'selective' ? accessSettings.writeCampaigns : [],
         write_user_ids:
