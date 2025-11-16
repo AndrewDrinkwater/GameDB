@@ -453,153 +453,6 @@ export default function EntityDetailPage() {
     [buildLocationPath, navigate],
   )
 
-  const requestNavigation = useCallback(
-    (target) => {
-      if (!target) return
-
-      const resolveLabel = () => {
-        if (target.label) return target.label
-        if (target.externalUrl) {
-          return target.externalLabel || target.externalUrl
-        }
-
-        if (typeof target.to === 'string') {
-          const locationShape = target.location || parsePathToLocation(target.to)
-          return formatNavigationDestination(locationShape)
-        }
-
-        return formatNavigationDestination(target.location || target.to)
-      }
-
-      if (!hasUnsavedChanges) {
-        performNavigation(target)
-        return
-      }
-
-      setPendingAction({
-        type: 'navigation',
-        label: resolveLabel(),
-        proceed: () => performNavigation(target),
-        discard: () => performNavigation(target),
-        stay: () => {},
-      })
-      setUnsavedDialogOpen(true)
-    },
-    [
-      formatNavigationDestination,
-      hasUnsavedChanges,
-      parsePathToLocation,
-      performNavigation,
-      setPendingAction,
-      setUnsavedDialogOpen,
-    ],
-  )
-
-  const handleBack = useCallback(() => {
-    requestNavigation({
-      to: backUrl,
-      location: parsePathToLocation(backUrl),
-      label: 'the previous page',
-    })
-  }, [backUrl, parsePathToLocation, requestNavigation])
-
-  useEffect(() => {
-    if (typeof document === 'undefined') return undefined
-    if (!hasUnsavedChanges) return undefined
-
-    const handleAnchorClick = (event) => {
-      if (!hasUnsavedChanges) return
-      if (event.defaultPrevented) return
-      if (event.button !== 0) return
-      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-
-      const target = event.target
-      const element =
-        target instanceof Element
-          ? target
-          : target && 'parentElement' in target
-            ? target.parentElement
-            : null
-      if (!element || typeof element.closest !== 'function') return
-
-      const anchor = element.closest('a[href]')
-      if (!anchor) return
-      if (anchor.hasAttribute('data-ignore-unsaved-warning')) return
-
-      const href = anchor.getAttribute('href')
-      if (!href) return
-      if (href.startsWith('#')) return
-      if (href.startsWith('javascript:')) return
-
-      const targetAttr = anchor.getAttribute('target')
-      if (targetAttr && targetAttr.toLowerCase() !== '_self') {
-        return
-      }
-
-      let parsedUrl
-      try {
-        parsedUrl = new URL(href, window.location.href)
-      } catch {
-        return
-      }
-
-      const labelText =
-        anchor.getAttribute('data-navigation-label') ||
-        anchor.getAttribute('aria-label') ||
-        anchor.title ||
-        anchor.textContent?.trim() ||
-        ''
-
-      const isExternal = parsedUrl.origin !== window.location.origin
-
-      event.preventDefault()
-      event.stopPropagation()
-
-      if (isExternal) {
-        requestNavigation({
-          externalUrl: parsedUrl.href,
-          label: labelText || parsedUrl.href,
-        })
-        return
-      }
-
-      const destinationPath = `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`
-      const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`
-      if (!destinationPath || destinationPath === currentPath) {
-        return
-      }
-
-      requestNavigation({
-        to: destinationPath,
-        location: parsePathToLocation(destinationPath),
-        label:
-          labelText || formatNavigationDestination({
-            pathname: parsedUrl.pathname,
-            search: parsedUrl.search,
-          }),
-      })
-    }
-
-    document.addEventListener('click', handleAnchorClick, true)
-
-    return () => {
-      document.removeEventListener('click', handleAnchorClick, true)
-    }
-  }, [
-    formatNavigationDestination,
-    hasUnsavedChanges,
-    parsePathToLocation,
-    requestNavigation,
-  ])
-
-  const handleExplore = useCallback(() => {
-    const destination = `/entities/${id}/relationship-viewer`
-    requestNavigation({
-      to: destination,
-      location: parsePathToLocation(destination),
-    })
-  }, [id, parsePathToLocation, requestNavigation])
-
   const handleSecretUpsert = useCallback((secret) => {
     if (!secret) return
 
@@ -1425,6 +1278,153 @@ export default function EntityDetailPage() {
   }, [editInitialData, resetAccessSettings])
 
   const hasUnsavedChanges = isEditing && (formState.isDirty || isAccessDirty)
+
+  const requestNavigation = useCallback(
+    (target) => {
+      if (!target) return
+
+      const resolveLabel = () => {
+        if (target.label) return target.label
+        if (target.externalUrl) {
+          return target.externalLabel || target.externalUrl
+        }
+
+        if (typeof target.to === 'string') {
+          const locationShape = target.location || parsePathToLocation(target.to)
+          return formatNavigationDestination(locationShape)
+        }
+
+        return formatNavigationDestination(target.location || target.to)
+      }
+
+      if (!hasUnsavedChanges) {
+        performNavigation(target)
+        return
+      }
+
+      setPendingAction({
+        type: 'navigation',
+        label: resolveLabel(),
+        proceed: () => performNavigation(target),
+        discard: () => performNavigation(target),
+        stay: () => {},
+      })
+      setUnsavedDialogOpen(true)
+    },
+    [
+      formatNavigationDestination,
+      hasUnsavedChanges,
+      parsePathToLocation,
+      performNavigation,
+      setPendingAction,
+      setUnsavedDialogOpen,
+    ],
+  )
+
+  const handleBack = useCallback(() => {
+    requestNavigation({
+      to: backUrl,
+      location: parsePathToLocation(backUrl),
+      label: 'the previous page',
+    })
+  }, [backUrl, parsePathToLocation, requestNavigation])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+    if (!hasUnsavedChanges) return undefined
+
+    const handleAnchorClick = (event) => {
+      if (!hasUnsavedChanges) return
+      if (event.defaultPrevented) return
+      if (event.button !== 0) return
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+
+      const target = event.target
+      const element =
+        target instanceof Element
+          ? target
+          : target && 'parentElement' in target
+            ? target.parentElement
+            : null
+      if (!element || typeof element.closest !== 'function') return
+
+      const anchor = element.closest('a[href]')
+      if (!anchor) return
+      if (anchor.hasAttribute('data-ignore-unsaved-warning')) return
+
+      const href = anchor.getAttribute('href')
+      if (!href) return
+      if (href.startsWith('#')) return
+      if (href.startsWith('javascript:')) return
+
+      const targetAttr = anchor.getAttribute('target')
+      if (targetAttr && targetAttr.toLowerCase() !== '_self') {
+        return
+      }
+
+      let parsedUrl
+      try {
+        parsedUrl = new URL(href, window.location.href)
+      } catch {
+        return
+      }
+
+      const labelText =
+        anchor.getAttribute('data-navigation-label') ||
+        anchor.getAttribute('aria-label') ||
+        anchor.title ||
+        anchor.textContent?.trim() ||
+        ''
+
+      const isExternal = parsedUrl.origin !== window.location.origin
+
+      event.preventDefault()
+      event.stopPropagation()
+
+      if (isExternal) {
+        requestNavigation({
+          externalUrl: parsedUrl.href,
+          label: labelText || parsedUrl.href,
+        })
+        return
+      }
+
+      const destinationPath = `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`
+      const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`
+      if (!destinationPath || destinationPath === currentPath) {
+        return
+      }
+
+      requestNavigation({
+        to: destinationPath,
+        location: parsePathToLocation(destinationPath),
+        label:
+          labelText || formatNavigationDestination({
+            pathname: parsedUrl.pathname,
+            search: parsedUrl.search,
+          }),
+      })
+    }
+
+    document.addEventListener('click', handleAnchorClick, true)
+
+    return () => {
+      document.removeEventListener('click', handleAnchorClick, true)
+    }
+  }, [
+    formatNavigationDestination,
+    hasUnsavedChanges,
+    parsePathToLocation,
+    requestNavigation,
+  ])
+
+  const handleExplore = useCallback(() => {
+    const destination = `/entities/${id}/relationship-viewer`
+    requestNavigation({
+      to: destination,
+      location: parsePathToLocation(destination),
+    })
+  }, [id, parsePathToLocation, requestNavigation])
 
   const handleEditToggle = useCallback(() => {
     if (!canEdit) return
