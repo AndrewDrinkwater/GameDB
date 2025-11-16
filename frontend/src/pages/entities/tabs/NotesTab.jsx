@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, Loader2, Plus } from 'lucide-react'
 import PropTypes from '../../../utils/propTypes.js'
@@ -1531,77 +1532,82 @@ export default function NotesTab({
               />
             </div>
 
-            {mentionState.active && mentionDropdownPosition ? (
-              <div
-                className="entity-notes-mention-suggestions"
-                role="listbox"
-                aria-label="Entity mention suggestions"
-                onMouseDown={(event) => event.preventDefault()}
-                style={{
-                  top: `${mentionDropdownPosition.top}px`,
-                  left: `${mentionDropdownPosition.left}px`,
-                }}
-              >
-                {!resolvedWorldId ? (
-                  <div className="entity-notes-mention-message">
-                    Select a world to @mention entities in this note.
-                  </div>
-                ) : mentionState.query.trim().length === 0 ? (
-                  <div className="entity-notes-mention-message">
-                    Keep typing after <strong>@</strong> to search for entities.
-                  </div>
-                ) : mentionLoading ? (
-                  <div className="entity-notes-mention-message">Searching…</div>
-                ) : mentionResults.length > 0 ? (
-                  <ul className="entity-notes-mention-list" ref={mentionListRef}>
-                    {mentionResults.map((result, index) => {
-                      const rawName =
-                        result?.name ||
-                        result?.displayName ||
-                        result?.entity?.name ||
-                        'Unnamed entity'
-                      const name = cleanEntityName(rawName) || 'Unnamed entity'
-                      const typeName = getEntityTypeName(result)
-                      const itemClassName = [
-                        'entity-notes-mention-suggestion',
-                        mentionSelectedIndex === index ? 'active' : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' ')
-                      const key =
-                        result?.id ??
-                        result?.entity?.id ??
-                        `${name}-${String(index)}`
+            {mentionState.active &&
+            mentionDropdownPosition &&
+            typeof document !== 'undefined'
+              ? createPortal(
+                  <div
+                    className="entity-notes-mention-suggestions"
+                    role="listbox"
+                    aria-label="Entity mention suggestions"
+                    onMouseDown={(event) => event.preventDefault()}
+                    style={{
+                      top: `${mentionDropdownPosition.top}px`,
+                      left: `${mentionDropdownPosition.left}px`,
+                    }}
+                  >
+                    {!resolvedWorldId ? (
+                      <div className="entity-notes-mention-message">
+                        Select a world to @mention entities in this note.
+                      </div>
+                    ) : mentionState.query.trim().length === 0 ? (
+                      <div className="entity-notes-mention-message">
+                        Keep typing after <strong>@</strong> to search for entities.
+                      </div>
+                    ) : mentionLoading ? (
+                      <div className="entity-notes-mention-message">Searching…</div>
+                    ) : mentionResults.length > 0 ? (
+                      <ul className="entity-notes-mention-list" ref={mentionListRef}>
+                        {mentionResults.map((result, index) => {
+                          const rawName =
+                            result?.name ||
+                            result?.displayName ||
+                            result?.entity?.name ||
+                            'Unnamed entity'
+                          const name = cleanEntityName(rawName) || 'Unnamed entity'
+                          const typeName = getEntityTypeName(result)
+                          const itemClassName = [
+                            'entity-notes-mention-suggestion',
+                            mentionSelectedIndex === index ? 'active' : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')
+                          const key =
+                            result?.id ??
+                            result?.entity?.id ??
+                            `${name}-${String(index)}`
 
-                      return (
-                        <li
-                          key={String(key)}
-                          role="option"
-                          aria-selected={mentionSelectedIndex === index}
-                          className={itemClassName}
-                          data-index={index}
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => handleMentionSelect(result)}
-                        >
-                          <span className="entity-notes-mention-suggestion-name">
-                            {name}
-                          </span>
-                          {typeName ? (
-                            <span className="entity-notes-mention-suggestion-type">
-                              {typeName}
-                            </span>
-                          ) : null}
-                        </li>
-                      )
-                    })}
-                  </ul>
-                ) : (
-                  <div className="entity-notes-mention-message">
-                    No entities found for “{mentionState.query.trim()}”.
-                  </div>
-                )}
-              </div>
-            ) : null}
+                          return (
+                            <li
+                              key={String(key)}
+                              role="option"
+                              aria-selected={mentionSelectedIndex === index}
+                              className={itemClassName}
+                              data-index={index}
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => handleMentionSelect(result)}
+                            >
+                              <span className="entity-notes-mention-suggestion-name">
+                                {name}
+                              </span>
+                              {typeName ? (
+                                <span className="entity-notes-mention-suggestion-type">
+                                  {typeName}
+                                </span>
+                              ) : null}
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    ) : (
+                      <div className="entity-notes-mention-message">
+                        No entities found for “{mentionState.query.trim()}”.
+                      </div>
+                    )}
+                  </div>,
+                  document.body,
+                )
+              : null}
 
             <fieldset className="entity-notes-share">
               <legend>Share with</legend>

@@ -664,6 +664,9 @@
   overflow: hidden;
   border-radius: 10px;
   background: white;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
   z-index: 0;
 }
 
@@ -695,6 +698,8 @@
   color: transparent;
   caret-color: #0f172a;
   position: relative;
+  width: 100%;
+  box-sizing: border-box;
   z-index: 1;
 }
 
