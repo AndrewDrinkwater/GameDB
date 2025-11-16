@@ -196,9 +196,17 @@ const buildNoteOverlayMarkup = (content = '', placeholder = '') => {
 
     const rawName = match[1]
     const name = cleanEntityName(rawName) || rawName
+    const entityId = String(match[2] ?? '')
     segments.push(
       `<span class="entity-note-overlay-mention">@[${escapeHtml(name)}]</span>`,
     )
+    if (entityId) {
+      segments.push(
+        `<span class="entity-note-overlay-id-placeholder" aria-hidden="true">(${escapeHtml(
+          entityId,
+        )})</span>`,
+      )
+    }
     lastIndex = regex.lastIndex
   }
 
