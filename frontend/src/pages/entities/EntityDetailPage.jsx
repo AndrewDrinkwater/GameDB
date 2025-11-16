@@ -24,6 +24,7 @@ import RelationshipBuilder from '../../modules/relationships3/RelationshipBuilde
 import useEntityAccess from '../../hooks/useEntityAccess.js'
 import useIsMobile from '../../hooks/useIsMobile.js'
 import useNavigationBlocker from '../../hooks/useNavigationBlocker.js'
+import useRecordHistory from '../../hooks/useRecordHistory.js'
 import { resolveEntityResponse } from '../../utils/entityHelpers.js'
 
 // tabs
@@ -820,6 +821,22 @@ export default function EntityDetailPage() {
       return acc
     }, {})
   }, [entity])
+
+  const historyRecord = useMemo(() => {
+    if (!entity?.id) return null
+    const typeName =
+      entity?.entityType?.name ||
+      entity?.entity_type?.name ||
+      entity?.entityTypeName ||
+      'entity'
+    return {
+      id: entity.id,
+      type: `entity:${typeName}`,
+      title: entity.name || 'Untitled entity',
+    }
+  }, [entity?.id, entity?.name, entity?.entityType?.name, entity?.entity_type?.name, entity?.entityTypeName])
+
+  useRecordHistory(historyRecord)
 
   useEffect(() => {
     setIsEditing(false)

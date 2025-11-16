@@ -6,6 +6,7 @@ import { useTheme } from '../context/ThemeContext.jsx'
 import { Link } from 'react-router-dom'
 import useIsMobile from '../hooks/useIsMobile.js'
 import { fetchCharacters } from '../api/characters.js'
+import HistoryTab from './history/HistoryTab.jsx'
 
 export default function HeaderBar({ onMenuToggle }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -54,6 +55,7 @@ export default function HeaderBar({ onMenuToggle }) {
   const [viewAsLoading, setViewAsLoading] = useState(false)
   const [viewAsError, setViewAsError] = useState('')
   const [contextPanelOpen, setContextPanelOpen] = useState(false)
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false)
 
   const membershipRole = useMemo(() => {
     if (!selectedCampaign || !user) return ''
@@ -328,8 +330,9 @@ export default function HeaderBar({ onMenuToggle }) {
     <button
       type="button"
       className={`history-btn ${isMobile ? 'history-btn-icon' : 'history-btn-text'}`}
-      title="History (coming soon)"
-      aria-label={isMobile ? 'Open history (coming soon)' : undefined}
+      title="View recently viewed records"
+      aria-label={isMobile ? 'Open history' : undefined}
+      onClick={() => setHistoryPanelOpen(true)}
     >
       {isMobile ? <Clock size={20} /> : 'History'}
     </button>
@@ -423,6 +426,7 @@ export default function HeaderBar({ onMenuToggle }) {
           </div>
         </div>
       )}
+      <HistoryTab isOpen={historyPanelOpen} onClose={() => setHistoryPanelOpen(false)} />
     </header>
   )
 }
