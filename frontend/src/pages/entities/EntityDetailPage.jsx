@@ -380,14 +380,6 @@ export default function EntityDetailPage() {
       : `/entities?${fromEntitiesSearch}`
   }, [fromEntitiesSearch])
 
-  const handleBack = useCallback(() => {
-    requestNavigation({
-      to: backUrl,
-      location: parsePathToLocation(backUrl),
-      label: 'the previous page',
-    })
-  }, [backUrl, parsePathToLocation, requestNavigation])
-
   const formatNavigationDestination = useCallback(
     (location) => {
       if (!location) return 'the next page'
@@ -502,6 +494,14 @@ export default function EntityDetailPage() {
       setUnsavedDialogOpen,
     ],
   )
+
+  const handleBack = useCallback(() => {
+    requestNavigation({
+      to: backUrl,
+      location: parsePathToLocation(backUrl),
+      label: 'the previous page',
+    })
+  }, [backUrl, parsePathToLocation, requestNavigation])
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined
