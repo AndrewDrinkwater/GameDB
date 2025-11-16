@@ -52,12 +52,51 @@ export const getEntityTypeFieldOrder = (id) => {
   return api.get(`/entity-types/${id}/field-order`)
 }
 
+export const updateEntityTypeFieldOrder = (id, data) => {
+  const validationError = ensureEntityTypeId(id, 'update entity type field order')
+  if (validationError) {
+    return validationError
+  }
+  return api.put(`/entity-types/${id}/field-order`, data)
+}
+
 export const getEntityTypeFieldRules = (id) => {
   const validationError = ensureEntityTypeId(id, 'load entity type field rules')
   if (validationError) {
     return validationError
   }
   return api.get(`/entity-types/${id}/field-rules`)
+}
+
+export const createEntityTypeFieldRule = (id, data) => {
+  const validationError = ensureEntityTypeId(id, 'create entity type field rule')
+  if (validationError) {
+    return validationError
+  }
+  return api.post(`/entity-types/${id}/field-rules`, data)
+}
+
+const ensureFieldRuleId = (id, actionDescription = 'perform this action') => {
+  if (id === undefined || id === null || id === '') {
+    return Promise.reject(new Error(`Field rule id is required to ${actionDescription}`))
+  }
+  return null
+}
+
+export const updateEntityTypeFieldRule = (ruleId, data) => {
+  const validationError = ensureFieldRuleId(ruleId, 'update this field rule')
+  if (validationError) {
+    return validationError
+  }
+  return api.patch(`/entity-type-field-rules/${ruleId}`, data)
+}
+
+export const deleteEntityTypeFieldRule = (ruleId) => {
+  const validationError = ensureFieldRuleId(ruleId, 'delete this field rule')
+  if (validationError) {
+    return validationError
+  }
+  return api.delete(`/entity-type-field-rules/${ruleId}`)
 }
 
 export const getWorldEntityTypeUsage = (worldId, params = {}) => {
