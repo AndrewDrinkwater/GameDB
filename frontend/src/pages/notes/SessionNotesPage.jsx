@@ -20,6 +20,7 @@ import {
   Trash2,
   Users,
 } from 'lucide-react'
+import { MentionsInput, Mention } from 'react-mentions'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import {
   createCampaignSessionNote,
@@ -30,7 +31,6 @@ import {
 import { searchEntities } from '../../api/entities.js'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
-import { getTextareaCaretCoordinates } from '../../utils/textareaCaret.js'
 import './NotesPage.css'
 
 const AUTOSAVE_DELAY_MS = 2500
@@ -48,88 +48,7 @@ const cleanEntityName = (value) => {
   return trimmed
 }
 
-const escapeHtml = (value) =>
-  String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-
-const formatTextForOverlay = (value) =>
-  escapeHtml(value)
-    .replace(/ {2}/g, ' &nbsp;')
-    .replace(/\n/g, '<br />')
-
-const buildEditorOverlayMarkup = (content = '', placeholder = '') => {
-  const text = typeof content === 'string' ? content : ''
-  if (!text) {
-    return placeholder
-      ? `<span class="session-note-overlay-placeholder">${escapeHtml(placeholder)}</span>`
-      : ''
-  }
-
-  const segments = []
-  const regex = /@\[(.*?)(?:\s*\([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\))?\]\(([^)]+)\)/gi
-  let lastIndex = 0
-  let match
-
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push(formatTextForOverlay(text.slice(lastIndex, match.index)))
-    }
-
-    const rawName = match[1] || ''
-    const entityName = cleanEntityName(rawName) || 'entity'
-    const entityId = String(match[3] || match[2] || '')
-    
-    // Only show the clean entity name in the UI
-    segments.push(
-      `<span class="session-note-overlay-mention">@${escapeHtml(entityName)}</span>`,
-    )
-    
-    // Add hidden span to maintain the same text width as the original content
-    const originalMatch = match[0]
-    segments.push(
-      `<span class="session-note-overlay-hidden" aria-hidden="true" style="display: none;">${escapeHtml(originalMatch)}</span>`
-    )
-    
-    lastIndex = regex.lastIndex
-  }
-
-  if (lastIndex < text.length) {
-    segments.push(formatTextForOverlay(text.slice(lastIndex)))
-  }
-
-  return segments.join('')
-}
-
-const mentionBoundaryRegex = /[\s()[\]{}.,;:!?/\\"'`~]/
 const SESSION_NOTE_PLACEHOLDER = 'Use @ to tag entities mentioned in this session.'
-const MENTION_DROPDOWN_MAX_WIDTH = 340
-
-const findActiveMention = (value, caret) => {
-  if (typeof value !== 'string' || typeof caret !== 'number') {
-    return null
-  }
-
-  const prefix = value.slice(0, caret)
-  const atIndex = prefix.lastIndexOf('@')
-  if (atIndex === -1) return null
-  if (prefix.slice(atIndex, atIndex + 2) === '@[') return null
-
-  if (atIndex > 0) {
-    const charBefore = prefix[atIndex - 1]
-    if (charBefore && !mentionBoundaryRegex.test(charBefore)) {
-      return null
-    }
-  }
-
-  const query = prefix.slice(atIndex + 1)
-  if (query.includes('\n') || query.includes('\r')) {
-    return null
-  }
-
-  return { start: atIndex, query }
-}
 
 const buildNoteSegments = (content = '', mentionList = []) => {
   const text = typeof content === 'string' ? content : ''
@@ -260,14 +179,6 @@ const formatTimestamp = (value) => {
   })
 }
 
-const getEntityTypeName = (entity) =>
-  entity?.entity_type?.name ||
-  entity?.entityType?.name ||
-  entity?.typeName ||
-  entity?.entity?.entity_type?.name ||
-  entity?.entity?.entityType?.name ||
-  ''
-
 export default function SessionNotesPage() {
   const { user } = useAuth()
   const { selectedCampaign, selectedCampaignId } = useCampaignContext()
@@ -280,25 +191,11 @@ export default function SessionNotesPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
-  const textareaRef = useRef(null)
   const editorRef = useRef(null)
   const selectedNoteIdRef = useRef('')
   const lastSavedRef = useRef(null)
   const savingRef = useRef(false)
   const justCreatedNoteRef = useRef('')
-
-  const [mentionState, setMentionState] = useState({
-    active: false,
-    query: '',
-    start: 0,
-    end: 0,
-  })
-  const [mentionResults, setMentionResults] = useState(emptyArray)
-  const [mentionLoading, setMentionLoading] = useState(false)
-  const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0)
-  const mentionListRef = useRef(null)
-  const overlayContentRef = useRef(null)
-  const [mentionDropdownPosition, setMentionDropdownPosition] = useState(null)
 
   const resolvedWorldId = useMemo(() => {
     if (selectedCampaign?.world?.id) return selectedCampaign.world.id
@@ -421,15 +318,6 @@ export default function SessionNotesPage() {
     return buildNoteSegments(editorState.content, editorState.mentions)
   }, [editorState?.content, editorState?.mentions])
 
-  const editorOverlayMarkup = useMemo(() => {
-    if (!editorState?.content) {
-      return `<span class="session-note-overlay-placeholder">${escapeHtml(
-        SESSION_NOTE_PLACEHOLDER,
-      )}</span>`
-    }
-    return buildEditorOverlayMarkup(editorState.content, SESSION_NOTE_PLACEHOLDER)
-  }, [editorState?.content])
-
   useEffect(() => {
     const hasQuery = searchQuery.trim().length > 0
     const availableNotes = filteredNotes.length > 0 ? filteredNotes : sortedNotes
@@ -498,288 +386,52 @@ export default function SessionNotesPage() {
     setSearchQuery('')
   }, [selectedCampaignId])
 
-  const resetMentionState = useCallback(() => {
-    setMentionState({ active: false, query: '', start: 0, end: 0 })
-    setMentionResults(emptyArray)
-    setMentionLoading(false)
-    setMentionSelectedIndex(0)
-    setMentionDropdownPosition(null)
+  const handleEditorChange = useCallback((event, nextValue) => {
+    const value =
+      typeof nextValue === 'string'
+        ? nextValue
+        : typeof event?.target?.value === 'string'
+        ? event.target.value
+        : ''
+    setEditorState((previous) => (previous ? { ...previous, content: value } : previous))
   }, [])
 
-  const updateMentionTracking = useCallback(
-    (value, caret) => {
-      if (typeof caret !== 'number') return
-      const trigger = findActiveMention(value, caret)
-      if (trigger) {
-        if (
-          mentionState.query !== trigger.query ||
-          mentionState.start !== trigger.start
-        ) {
-          setMentionSelectedIndex(0)
-        }
+  const handleMentionSearch = useCallback(
+    async (query, callback) => {
+      const trimmedQuery = query?.trim() ?? ''
+      if (typeof callback !== 'function') return
 
-        setMentionState({
-          active: true,
-          query: trigger.query,
-          start: trigger.start,
-          end: caret,
-        })
-      } else if (mentionState.active) {
-        resetMentionState()
+      if (!resolvedWorldId || trimmedQuery.length === 0) {
+        callback([])
+        return
       }
-    },
-    [mentionState.active, mentionState.query, mentionState.start, resetMentionState],
-  )
 
-  const syncOverlayScroll = useCallback(() => {
-    const textarea = textareaRef.current
-    const overlayContent = overlayContentRef.current
-    if (!textarea || !overlayContent) return
-    overlayContent.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`
-  }, [])
-
-  const updateMentionDropdownPosition = useCallback(() => {
-    const textarea = textareaRef.current
-    if (!textarea) return
-    const coordinates = getTextareaCaretCoordinates(textarea)
-    if (!coordinates) return
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0
-    const maxLeft = Math.max(16, viewportWidth - MENTION_DROPDOWN_MAX_WIDTH - 16)
-    const safeLeft = Math.min(Math.max(16, coordinates.left), maxLeft)
-    const safeTop = Math.max(16, coordinates.top + coordinates.lineHeight + 8)
-    setMentionDropdownPosition({ top: safeTop, left: safeLeft })
-  }, [])
-
-  useEffect(() => {
-    if (!mentionState.active) {
-      setMentionLoading(false)
-      setMentionResults(emptyArray)
-      return
-    }
-
-    const trimmedQuery = mentionState.query.trim()
-    if (!resolvedWorldId || trimmedQuery.length === 0) {
-      setMentionLoading(false)
-      setMentionResults(emptyArray)
-      return
-    }
-
-    let cancelled = false
-    setMentionLoading(true)
-
-    const timeout = setTimeout(async () => {
       try {
         const response = await searchEntities({
           worldId: resolvedWorldId,
           query: trimmedQuery,
           limit: 8,
         })
-        if (cancelled) return
         const data = Array.isArray(response?.data) ? response.data : response
-        setMentionResults(Array.isArray(data) ? data : emptyArray)
+        const formatted = Array.isArray(data)
+          ? data
+              .map((entity) => {
+                const entityId = entity?.id ?? entity?.entity?.id
+                if (!entityId) return null
+                const rawName =
+                  entity?.name || entity?.displayName || entity?.entity?.name || 'Unnamed entity'
+                const display = cleanEntityName(rawName) || 'Unnamed entity'
+                return { id: entityId, display }
+              })
+              .filter(Boolean)
+          : []
+        callback(formatted)
       } catch (error) {
-        if (!cancelled) {
-          console.error('❌ Failed to search entities for mentions', error)
-          setMentionResults(emptyArray)
-        }
-      } finally {
-        if (!cancelled) {
-          setMentionLoading(false)
-        }
-      }
-    }, 250)
-
-    return () => {
-      cancelled = true
-      clearTimeout(timeout)
-    }
-  }, [mentionState.active, mentionState.query, resolvedWorldId])
-
-  useEffect(() => {
-    if (!mentionState.active) {
-      setMentionDropdownPosition(null)
-      return
-    }
-    updateMentionDropdownPosition()
-  }, [mentionState.active, mentionState.query, mentionState.start, updateMentionDropdownPosition])
-
-  useEffect(() => {
-    if (!mentionState.active) return
-    const handleReposition = () => updateMentionDropdownPosition()
-    window.addEventListener('scroll', handleReposition, true)
-    window.addEventListener('resize', handleReposition)
-    return () => {
-      window.removeEventListener('scroll', handleReposition, true)
-      window.removeEventListener('resize', handleReposition)
-    }
-  }, [mentionState.active, updateMentionDropdownPosition])
-
-  useEffect(() => {
-    syncOverlayScroll()
-  }, [editorState?.content, syncOverlayScroll])
-
-  useEffect(() => {
-    if (!mentionState.active) return
-    if (mentionResults.length === 0) {
-      setMentionSelectedIndex(0)
-      return
-    }
-
-    if (mentionSelectedIndex >= mentionResults.length) {
-      setMentionSelectedIndex(mentionResults.length - 1)
-    }
-  }, [mentionResults, mentionSelectedIndex, mentionState.active])
-
-  useEffect(() => {
-    if (!mentionState.active) return
-    const listElement = mentionListRef.current
-    if (!listElement) return
-
-    const active = listElement.querySelector(
-      `[data-index="${mentionSelectedIndex}"]`,
-    )
-
-    if (active && typeof active.scrollIntoView === 'function') {
-      active.scrollIntoView({ block: 'nearest' })
-    }
-  }, [mentionSelectedIndex, mentionState.active])
-
-  const handleInsertMention = useCallback((entityOption) => {
-    if (!entityOption) return
-    const rawName =
-      entityOption?.name ||
-      entityOption?.displayName ||
-      entityOption?.entity?.name ||
-      'Entity'
-    const entityName = cleanEntityName(rawName) || 'Entity'
-    const entityId =
-      entityOption?.id ?? entityOption?.entity?.id ?? entityOption?.entityId
-    if (!entityId) return
-
-    const token = `@[${entityName}](${entityId})`
-
-    setEditorState((previous) => {
-      if (!previous) return previous
-
-      const textarea = textareaRef.current
-      if (!textarea) {
-        const nextContent = previous.content
-          ? `${previous.content} ${token}`.trim()
-          : token
-        const nextMentions = Array.isArray(previous.mentions)
-          ? [...previous.mentions, { entityId, entityName }]
-          : [{ entityId, entityName }]
-
-        return { ...previous, content: nextContent, mentions: nextMentions }
-      }
-
-      const { selectionStart, selectionEnd, value } = textarea
-      const prefix = value.slice(0, selectionStart)
-      const suffix = value.slice(selectionEnd)
-      const needsSpace = prefix && !prefix.endsWith(' ')
-      const insertion = needsSpace ? ` ${token}` : token
-      const nextValue = `${prefix}${insertion}${suffix}`
-
-      requestAnimationFrame(() => {
-        const caret = selectionStart + insertion.length
-        textarea.selectionStart = caret
-        textarea.selectionEnd = caret
-        textarea.focus()
-      })
-
-      const nextMentions = Array.isArray(previous.mentions)
-        ? [...previous.mentions, { entityId, entityName }]
-        : [{ entityId, entityName }]
-
-      return { ...previous, content: nextValue, mentions: nextMentions }
-    })
-  }, [])
-
-  const handleMentionSelect = useCallback(
-    (entityOption) => {
-      if (!entityOption) return
-      const textarea = textareaRef.current
-      if (textarea) {
-        const { start, end } = mentionState
-        textarea.focus()
-        textarea.setSelectionRange(start, end)
-      }
-
-      handleInsertMention(entityOption)
-      resetMentionState()
-    },
-    [handleInsertMention, mentionState, resetMentionState],
-  )
-
-  const handleEditorChange = useCallback(
-    (event) => {
-      const { value, selectionStart } = event.target
-      setEditorState((previous) =>
-        previous ? { ...previous, content: value } : previous,
-      )
-      updateMentionTracking(value, selectionStart)
-    },
-    [updateMentionTracking],
-  )
-
-  const handleTextareaSelect = useCallback(
-    (event) => {
-      updateMentionTracking(event.target.value, event.target.selectionStart)
-      if (mentionState.active) {
-        requestAnimationFrame(() => {
-          updateMentionDropdownPosition()
-        })
+        console.error('❌ Failed to search entities for mentions', error)
+        callback([])
       }
     },
-    [mentionState.active, updateMentionTracking, updateMentionDropdownPosition],
-  )
-
-  const handleTextareaScroll = useCallback(() => {
-    syncOverlayScroll()
-    if (mentionState.active) {
-      updateMentionDropdownPosition()
-    }
-  }, [mentionState.active, syncOverlayScroll, updateMentionDropdownPosition])
-
-  const handleTextareaKeyDown = useCallback(
-    (event) => {
-      if (!mentionState.active) return
-
-      if (event.key === 'Escape') {
-        resetMentionState()
-        return
-      }
-
-      if (event.key === 'ArrowDown') {
-        if (mentionResults.length === 0) return
-        event.preventDefault()
-        setMentionSelectedIndex((prev) => (prev + 1) % mentionResults.length)
-        return
-      }
-
-      if (event.key === 'ArrowUp') {
-        if (mentionResults.length === 0) return
-        event.preventDefault()
-        setMentionSelectedIndex((prev) =>
-          prev <= 0 ? mentionResults.length - 1 : prev - 1,
-        )
-        return
-      }
-
-      if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
-        const choice = mentionResults[mentionSelectedIndex]
-        if (!choice) return
-        event.preventDefault()
-        handleMentionSelect(choice)
-      }
-    },
-    [
-      handleMentionSelect,
-      mentionResults,
-      mentionSelectedIndex,
-      mentionState.active,
-      resetMentionState,
-    ],
+    [resolvedWorldId],
   )
 
   const handleFieldChange = useCallback((key, value) => {
@@ -1178,92 +830,27 @@ export default function SessionNotesPage() {
                   <div className="session-note-fields">
                     <label htmlFor="session-note-content">Notes</label>
                     <div className="session-note-editor-field">
-                      <div className="session-note-content-overlay" aria-hidden="true">
-                        <div
-                          className="session-note-content-overlay-inner"
-                          ref={overlayContentRef}
-                          dangerouslySetInnerHTML={{ __html: editorOverlayMarkup }}
-                        />
-                      </div>
-                      <textarea
-                        id="session-note-content"
-                        ref={textareaRef}
-                        className="session-note-textarea"
+                      <MentionsInput
                         value={editorState.content || ''}
                         onChange={handleEditorChange}
-                        onKeyDown={handleTextareaKeyDown}
-                        onSelect={handleTextareaSelect}
-                        onScroll={handleTextareaScroll}
-                        rows={14}
+                        markup="@[__display__](__id__)"
+                        displayTransform={(id, display) => `@${display}`}
                         placeholder={SESSION_NOTE_PLACEHOLDER}
-                      />
-                    </div>
-
-                    {mentionState.active && mentionDropdownPosition ? (
-                      <div
-                        className="session-note-mention-suggestions"
-                        role="listbox"
-                        aria-label="Entity mention suggestions"
-                        onMouseDown={(event) => event.preventDefault()}
-                        style={{
-                          top: `${mentionDropdownPosition.top}px`,
-                          left: `${mentionDropdownPosition.left}px`,
+                        className="session-note-mentions"
+                        inputProps={{
+                          id: 'session-note-content',
+                          className: 'session-note-textarea',
+                          'aria-label': 'Session note content',
+                          rows: 14,
                         }}
                       >
-                        {!resolvedWorldId ? (
-                          <div className="session-note-mention-message">
-                            Select a campaign world to @mention entities.
-                          </div>
-                        ) : mentionState.query.trim().length === 0 ? (
-                          <div className="session-note-mention-message">
-                            Keep typing after <strong>@</strong> to search for entities.
-                          </div>
-                        ) : mentionLoading ? (
-                          <div className="session-note-mention-message">Searching…</div>
-                        ) : mentionResults.length > 0 ? (
-                          <ul className="session-note-mention-list" ref={mentionListRef}>
-                            {mentionResults.map((result, index) => {
-                              const rawName =
-                                result?.name ||
-                                result?.displayName ||
-                                result?.entity?.name ||
-                                'Unnamed entity'
-                              const name = cleanEntityName(rawName) || 'Unnamed entity'
-                              const typeName = getEntityTypeName(result)
-                              const key =
-                                result?.id ?? result?.entity?.id ?? `${name}-${String(index)}`
-                              const className = [
-                                'session-note-mention-suggestion',
-                                mentionSelectedIndex === index ? 'active' : '',
-                              ]
-                                .filter(Boolean)
-                                .join(' ')
-
-                              return (
-                                <li
-                                  key={String(key)}
-                                  role="option"
-                                  aria-selected={mentionSelectedIndex === index}
-                                  className={className}
-                                  data-index={index}
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={() => handleMentionSelect(result)}
-                                >
-                                  <span className="session-note-mention-name">{name}</span>
-                                  {typeName ? (
-                                    <span className="session-note-mention-type">{typeName}</span>
-                                  ) : null}
-                                </li>
-                              )
-                            })}
-                          </ul>
-                        ) : (
-                          <div className="session-note-mention-message">
-                            No entities found for “{mentionState.query.trim()}”.
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
+                        <Mention
+                          trigger="@"
+                          data={handleMentionSearch}
+                          appendSpaceOnAdd
+                        />
+                      </MentionsInput>
+                    </div>
 
                     {editorPreviewSegments.length > 0 ? (
                       <div className="session-note-preview" aria-live="polite">
