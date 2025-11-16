@@ -41,6 +41,14 @@ const SHARE_OPTIONS_DM = [
   },
 ]
 
+const uuidSuffixPattern = /\s*\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)$/i
+
+const cleanEntityName = (value) => {
+  if (!value) return ''
+  const trimmed = String(value).trim()
+  return trimmed.replace(uuidSuffixPattern, '').trim()
+}
+
 const buildSegments = (content = '', mentionList = []) => {
   const text = typeof content === 'string' ? content : ''
   if (!text) {
@@ -56,11 +64,12 @@ const buildSegments = (content = '', mentionList = []) => {
     if (!key) return
     const id = String(key)
     if (!mentionLookup.has(id)) {
-      const label =
+      const rawLabel =
         mention.entityName ?? mention.entity_name ?? mention.label ?? mention.name
+      const entityName = rawLabel ? cleanEntityName(rawLabel) : ''
       mentionLookup.set(id, {
         entityId: id,
-        entityName: label ? String(label) : '',
+        entityName,
       })
     }
   })
@@ -76,7 +85,7 @@ const buildSegments = (content = '', mentionList = []) => {
     }
 
     const entityId = String(match[2])
-    const fallbackName = String(match[1])
+    const fallbackName = cleanEntityName(match[1]) || String(match[1] ?? '')
     const mention = mentionLookup.get(entityId) || {
       entityId,
       entityName: fallbackName,
@@ -163,7 +172,7 @@ const escapeHtml = (value) =>
 
 const formatTextForOverlay = (value) =>
   escapeHtml(value)
-    .replace(/  /g, ' &nbsp;')
+    .replace(/ {2}/g, ' &nbsp;')
     .replace(/\n/g, '<br />')
 
 const buildNoteOverlayMarkup = (content = '', placeholder = '') => {
@@ -184,7 +193,8 @@ const buildNoteOverlayMarkup = (content = '', placeholder = '') => {
       segments.push(formatTextForOverlay(text.slice(lastIndex, match.index)))
     }
 
-    const name = match[1]
+    const rawName = match[1]
+    const name = cleanEntityName(rawName) || rawName
     segments.push(
       `<span class="entity-note-overlay-mention">@[${escapeHtml(name)}]</span>`,
     )
@@ -514,9 +524,10 @@ export default function NotesTab({
   const handleInsertMention = useCallback((entityOption) => {
     if (!entityOption || !entityOption.id) return
 
-    const entityName = entityOption.name || entityOption.displayName || entityOption.entity?.name
-    const label = entityName ? String(entityName) : 'entity'
-    const token = `@[${label}](${entityOption.id})`
+    const rawName =
+      entityOption.name || entityOption.displayName || entityOption.entity?.name || 'entity'
+    const entityName = cleanEntityName(rawName) || 'entity'
+    const token = `@[${entityName}](${entityOption.id})`
 
     setNoteContent((previous) => {
       const textarea = textareaRef.current
@@ -1544,11 +1555,12 @@ export default function NotesTab({
                 ) : mentionResults.length > 0 ? (
                   <ul className="entity-notes-mention-list" ref={mentionListRef}>
                     {mentionResults.map((result, index) => {
-                      const name =
+                      const rawName =
                         result?.name ||
                         result?.displayName ||
                         result?.entity?.name ||
                         'Unnamed entity'
+                      const name = cleanEntityName(rawName) || 'Unnamed entity'
                       const typeName = getEntityTypeName(result)
                       const itemClassName = [
                         'entity-notes-mention-suggestion',
