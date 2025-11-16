@@ -9,6 +9,7 @@ import {
   fetchEntityMentionSessionNotes,
   searchEntities,
 } from '../../../api/entities.js'
+import { getTextareaCaretCoordinates } from '../../../utils/textareaCaret.js'
 import './NotesTab.css'
 
 const SHARE_LABELS = {
@@ -151,6 +152,51 @@ const resolveAuthorKey = (note) => {
 const emptyArray = Object.freeze([])
 
 const mentionBoundaryRegex = /[\s()[\]{}.,;:!?/\\"'`~]/
+const ENTITY_NOTE_PLACEHOLDER = 'What do you want to remember?'
+const ENTITY_MENTION_DROPDOWN_MAX_WIDTH = 320
+
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+const formatTextForOverlay = (value) =>
+  escapeHtml(value)
+    .replace(/  /g, ' &nbsp;')
+    .replace(/\n/g, '<br />')
+
+const buildNoteOverlayMarkup = (content = '', placeholder = '') => {
+  const text = typeof content === 'string' ? content : ''
+  if (!text) {
+    return placeholder
+      ? `<span class="entity-note-overlay-placeholder">${escapeHtml(placeholder)}</span>`
+      : ''
+  }
+
+  const segments = []
+  const regex = /@\[(.+?)]\(([^)]+)\)/g
+  let lastIndex = 0
+  let match
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push(formatTextForOverlay(text.slice(lastIndex, match.index)))
+    }
+
+    const name = match[1]
+    segments.push(
+      `<span class="entity-note-overlay-mention">@[${escapeHtml(name)}]</span>`,
+    )
+    lastIndex = regex.lastIndex
+  }
+
+  if (lastIndex < text.length) {
+    segments.push(formatTextForOverlay(text.slice(lastIndex)))
+  }
+
+  return segments.join('')
+}
 
 const findActiveMention = (value, caret) => {
   if (typeof value !== 'string' || typeof caret !== 'number') {
@@ -217,6 +263,7 @@ export default function NotesTab({
   const [formError, setFormError] = useState('')
   const [formSuccess, setFormSuccess] = useState('')
   const textareaRef = useRef(null)
+  const overlayContentRef = useRef(null)
   const [mentionState, setMentionState] = useState({
     active: false,
     query: '',
@@ -227,6 +274,7 @@ export default function NotesTab({
   const [mentionLoading, setMentionLoading] = useState(false)
   const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0)
   const mentionListRef = useRef(null)
+  const [mentionDropdownPosition, setMentionDropdownPosition] = useState(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selectedAuthor, setSelectedAuthor] = useState('all')
   const [activeSubTab, setActiveSubTab] = useState('notes')
@@ -255,6 +303,11 @@ export default function NotesTab({
     [isCampaignDm],
   )
 
+  const noteOverlayMarkup = useMemo(
+    () => buildNoteOverlayMarkup(noteContent, ENTITY_NOTE_PLACEHOLDER),
+    [noteContent],
+  )
+
   const resolvedWorldId = useMemo(() => {
     if (worldId) {
       return worldId
@@ -273,6 +326,7 @@ export default function NotesTab({
     setMentionResults(emptyArray)
     setMentionLoading(false)
     setMentionSelectedIndex(0)
+    setMentionDropdownPosition(null)
   }, [])
 
   const updateMentionTracking = useCallback(
@@ -302,6 +356,25 @@ export default function NotesTab({
     },
     [mentionState.active, mentionState.query, mentionState.start, resetMentionState],
   )
+
+  const syncOverlayScroll = useCallback(() => {
+    const textarea = textareaRef.current
+    const overlayContent = overlayContentRef.current
+    if (!textarea || !overlayContent) return
+    overlayContent.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`
+  }, [])
+
+  const updateMentionDropdownPosition = useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const coordinates = getTextareaCaretCoordinates(textarea)
+    if (!coordinates) return
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0
+    const maxLeft = Math.max(16, viewportWidth - ENTITY_MENTION_DROPDOWN_MAX_WIDTH - 16)
+    const safeLeft = Math.min(Math.max(16, coordinates.left), maxLeft)
+    const safeTop = Math.max(16, coordinates.top + coordinates.lineHeight + 8)
+    setMentionDropdownPosition({ top: safeTop, left: safeLeft })
+  }, [])
 
   const sortedNotes = useMemo(() => {
     const list = Array.isArray(notes) ? notes : emptyArray
@@ -500,9 +573,21 @@ export default function NotesTab({
   const handleTextareaSelect = useCallback(
     (event) => {
       updateMentionTracking(event.target.value, event.target.selectionStart)
+      if (mentionState.active) {
+        requestAnimationFrame(() => {
+          updateMentionDropdownPosition()
+        })
+      }
     },
-    [updateMentionTracking],
+    [mentionState.active, updateMentionTracking, updateMentionDropdownPosition],
   )
+
+  const handleTextareaScroll = useCallback(() => {
+    syncOverlayScroll()
+    if (mentionState.active) {
+      updateMentionDropdownPosition()
+    }
+  }, [mentionState.active, syncOverlayScroll, updateMentionDropdownPosition])
 
   const handleTextareaKeyDown = useCallback(
     (event) => {
@@ -671,6 +756,31 @@ export default function NotesTab({
       clearTimeout(timeout)
     }
   }, [mentionState.active, mentionState.query, resolvedWorldId])
+
+  useEffect(() => {
+    if (!mentionState.active) {
+      setMentionDropdownPosition(null)
+      return
+    }
+    updateMentionDropdownPosition()
+  }, [mentionState.active, mentionState.query, mentionState.start, updateMentionDropdownPosition])
+
+  useEffect(() => {
+    if (!mentionState.active) {
+      return
+    }
+    const handleReposition = () => updateMentionDropdownPosition()
+    window.addEventListener('scroll', handleReposition, true)
+    window.addEventListener('resize', handleReposition)
+    return () => {
+      window.removeEventListener('scroll', handleReposition, true)
+      window.removeEventListener('resize', handleReposition)
+    }
+  }, [mentionState.active, updateMentionDropdownPosition])
+
+  useEffect(() => {
+    syncOverlayScroll()
+  }, [noteContent, syncOverlayScroll])
 
   useEffect(() => {
     if (!mentionState.active) {
@@ -1386,25 +1496,40 @@ export default function NotesTab({
             <label className="entity-notes-label" htmlFor="entity-note-content">
               Note
             </label>
-            <textarea
-              id="entity-note-content"
-              ref={textareaRef}
-              value={noteContent}
-              onChange={handleNoteContentChange}
-              onKeyDown={handleTextareaKeyDown}
-              onSelect={handleTextareaSelect}
-              placeholder="What do you want to remember?"
-              rows={5}
-              required
-              data-autofocus
-            />
+            <div className="entity-note-editor-field">
+              <div className="entity-note-content-overlay" aria-hidden="true">
+                <div
+                  className="entity-note-content-overlay-inner"
+                  ref={overlayContentRef}
+                  dangerouslySetInnerHTML={{ __html: noteOverlayMarkup }}
+                />
+              </div>
+              <textarea
+                id="entity-note-content"
+                ref={textareaRef}
+                className="entity-note-textarea"
+                value={noteContent}
+                onChange={handleNoteContentChange}
+                onKeyDown={handleTextareaKeyDown}
+                onSelect={handleTextareaSelect}
+                onScroll={handleTextareaScroll}
+                placeholder={ENTITY_NOTE_PLACEHOLDER}
+                rows={5}
+                required
+                data-autofocus
+              />
+            </div>
 
-            {mentionState.active ? (
+            {mentionState.active && mentionDropdownPosition ? (
               <div
                 className="entity-notes-mention-suggestions"
                 role="listbox"
                 aria-label="Entity mention suggestions"
                 onMouseDown={(event) => event.preventDefault()}
+                style={{
+                  top: `${mentionDropdownPosition.top}px`,
+                  left: `${mentionDropdownPosition.left}px`,
+                }}
               >
                 {!resolvedWorldId ? (
                   <div className="entity-notes-mention-message">

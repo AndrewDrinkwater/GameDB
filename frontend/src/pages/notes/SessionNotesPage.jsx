@@ -30,6 +30,7 @@ import {
 import { searchEntities } from '../../api/entities.js'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { getTextareaCaretCoordinates } from '../../utils/textareaCaret.js'
 import './NotesPage.css'
 
 const AUTOSAVE_DELAY_MS = 2500
@@ -42,7 +43,53 @@ const cleanEntityName = (value) => {
   return trimmed.replace(uuidSuffixPattern, '').trim()
 }
 
+const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+const formatTextForOverlay = (value) =>
+  escapeHtml(value)
+    .replace(/  /g, ' &nbsp;')
+    .replace(/\n/g, '<br />')
+
+const buildEditorOverlayMarkup = (content = '', placeholder = '') => {
+  const text = typeof content === 'string' ? content : ''
+  if (!text) {
+    return placeholder
+      ? `<span class="session-note-overlay-placeholder">${escapeHtml(placeholder)}</span>`
+      : ''
+  }
+
+  const segments = []
+  const regex = /@\[(.+?)]\(([^)]+)\)/g
+  let lastIndex = 0
+  let match
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push(formatTextForOverlay(text.slice(lastIndex, match.index)))
+    }
+
+    const rawName = match[1]
+    const entityName = cleanEntityName(rawName) || rawName
+    segments.push(
+      `<span class="session-note-overlay-mention">@[${escapeHtml(entityName)}]</span>`,
+    )
+    lastIndex = regex.lastIndex
+  }
+
+  if (lastIndex < text.length) {
+    segments.push(formatTextForOverlay(text.slice(lastIndex)))
+  }
+
+  return segments.join('')
+}
+
 const mentionBoundaryRegex = /[\s()[\]{}.,;:!?/\\"'`~]/
+const SESSION_NOTE_PLACEHOLDER = 'Use @ to tag entities mentioned in this session.'
+const MENTION_DROPDOWN_MAX_WIDTH = 340
 
 const findActiveMention = (value, caret) => {
   if (typeof value !== 'string' || typeof caret !== 'number') {
@@ -235,6 +282,8 @@ export default function SessionNotesPage() {
   const [mentionLoading, setMentionLoading] = useState(false)
   const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0)
   const mentionListRef = useRef(null)
+  const overlayContentRef = useRef(null)
+  const [mentionDropdownPosition, setMentionDropdownPosition] = useState(null)
 
   const resolvedWorldId = useMemo(() => {
     if (selectedCampaign?.world?.id) return selectedCampaign.world.id
@@ -357,6 +406,15 @@ export default function SessionNotesPage() {
     return buildNoteSegments(editorState.content, editorState.mentions)
   }, [editorState?.content, editorState?.mentions])
 
+  const editorOverlayMarkup = useMemo(() => {
+    if (!editorState?.content) {
+      return `<span class="session-note-overlay-placeholder">${escapeHtml(
+        SESSION_NOTE_PLACEHOLDER,
+      )}</span>`
+    }
+    return buildEditorOverlayMarkup(editorState.content, SESSION_NOTE_PLACEHOLDER)
+  }, [editorState?.content])
+
   useEffect(() => {
     const hasQuery = searchQuery.trim().length > 0
     const availableNotes = filteredNotes.length > 0 ? filteredNotes : sortedNotes
@@ -430,6 +488,7 @@ export default function SessionNotesPage() {
     setMentionResults(emptyArray)
     setMentionLoading(false)
     setMentionSelectedIndex(0)
+    setMentionDropdownPosition(null)
   }, [])
 
   const updateMentionTracking = useCallback(
@@ -456,6 +515,25 @@ export default function SessionNotesPage() {
     },
     [mentionState.active, mentionState.query, mentionState.start, resetMentionState],
   )
+
+  const syncOverlayScroll = useCallback(() => {
+    const textarea = textareaRef.current
+    const overlayContent = overlayContentRef.current
+    if (!textarea || !overlayContent) return
+    overlayContent.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`
+  }, [])
+
+  const updateMentionDropdownPosition = useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const coordinates = getTextareaCaretCoordinates(textarea)
+    if (!coordinates) return
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0
+    const maxLeft = Math.max(16, viewportWidth - MENTION_DROPDOWN_MAX_WIDTH - 16)
+    const safeLeft = Math.min(Math.max(16, coordinates.left), maxLeft)
+    const safeTop = Math.max(16, coordinates.top + coordinates.lineHeight + 8)
+    setMentionDropdownPosition({ top: safeTop, left: safeLeft })
+  }, [])
 
   useEffect(() => {
     if (!mentionState.active) {
@@ -501,6 +579,29 @@ export default function SessionNotesPage() {
       clearTimeout(timeout)
     }
   }, [mentionState.active, mentionState.query, resolvedWorldId])
+
+  useEffect(() => {
+    if (!mentionState.active) {
+      setMentionDropdownPosition(null)
+      return
+    }
+    updateMentionDropdownPosition()
+  }, [mentionState.active, mentionState.query, mentionState.start, updateMentionDropdownPosition])
+
+  useEffect(() => {
+    if (!mentionState.active) return
+    const handleReposition = () => updateMentionDropdownPosition()
+    window.addEventListener('scroll', handleReposition, true)
+    window.addEventListener('resize', handleReposition)
+    return () => {
+      window.removeEventListener('scroll', handleReposition, true)
+      window.removeEventListener('resize', handleReposition)
+    }
+  }, [mentionState.active, updateMentionDropdownPosition])
+
+  useEffect(() => {
+    syncOverlayScroll()
+  }, [editorState?.content, syncOverlayScroll])
 
   useEffect(() => {
     if (!mentionState.active) return
@@ -609,9 +710,21 @@ export default function SessionNotesPage() {
   const handleTextareaSelect = useCallback(
     (event) => {
       updateMentionTracking(event.target.value, event.target.selectionStart)
+      if (mentionState.active) {
+        requestAnimationFrame(() => {
+          updateMentionDropdownPosition()
+        })
+      }
     },
-    [updateMentionTracking],
+    [mentionState.active, updateMentionTracking, updateMentionDropdownPosition],
   )
+
+  const handleTextareaScroll = useCallback(() => {
+    syncOverlayScroll()
+    if (mentionState.active) {
+      updateMentionDropdownPosition()
+    }
+  }, [mentionState.active, syncOverlayScroll, updateMentionDropdownPosition])
 
   const handleTextareaKeyDown = useCallback(
     (event) => {
@@ -1049,23 +1162,38 @@ export default function SessionNotesPage() {
 
                   <div className="session-note-fields">
                     <label htmlFor="session-note-content">Notes</label>
-                    <textarea
-                      id="session-note-content"
-                      ref={textareaRef}
-                      value={editorState.content || ''}
-                      onChange={handleEditorChange}
-                      onKeyDown={handleTextareaKeyDown}
-                      onSelect={handleTextareaSelect}
-                      rows={14}
-                      placeholder="Use @ to tag entities mentioned in this session."
-                    />
+                    <div className="session-note-editor-field">
+                      <div className="session-note-content-overlay" aria-hidden="true">
+                        <div
+                          className="session-note-content-overlay-inner"
+                          ref={overlayContentRef}
+                          dangerouslySetInnerHTML={{ __html: editorOverlayMarkup }}
+                        />
+                      </div>
+                      <textarea
+                        id="session-note-content"
+                        ref={textareaRef}
+                        className="session-note-textarea"
+                        value={editorState.content || ''}
+                        onChange={handleEditorChange}
+                        onKeyDown={handleTextareaKeyDown}
+                        onSelect={handleTextareaSelect}
+                        onScroll={handleTextareaScroll}
+                        rows={14}
+                        placeholder={SESSION_NOTE_PLACEHOLDER}
+                      />
+                    </div>
 
-                    {mentionState.active ? (
+                    {mentionState.active && mentionDropdownPosition ? (
                       <div
                         className="session-note-mention-suggestions"
                         role="listbox"
                         aria-label="Entity mention suggestions"
                         onMouseDown={(event) => event.preventDefault()}
+                        style={{
+                          top: `${mentionDropdownPosition.top}px`,
+                          left: `${mentionDropdownPosition.left}px`,
+                        }}
                       >
                         {!resolvedWorldId ? (
                           <div className="session-note-mention-message">
