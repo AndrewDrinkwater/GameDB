@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { User, Menu, LogOut, Moon, Sun, Clock } from 'lucide-react'
+import { User, Menu, LogOut, Moon, Sun, Clock, Layers, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
 import { useTheme } from '../context/ThemeContext.jsx'
@@ -53,6 +53,7 @@ export default function HeaderBar({ onMenuToggle }) {
   const [viewAsCharacters, setViewAsCharacters] = useState([])
   const [viewAsLoading, setViewAsLoading] = useState(false)
   const [viewAsError, setViewAsError] = useState('')
+  const [contextPanelOpen, setContextPanelOpen] = useState(false)
 
   const membershipRole = useMemo(() => {
     if (!selectedCampaign || !user) return ''
@@ -202,6 +203,12 @@ export default function HeaderBar({ onMenuToggle }) {
     return options
   }, [worlds, selectedCampaign])
 
+  useEffect(() => {
+    if (!isMobile) {
+      setContextPanelOpen(false)
+    }
+  }, [isMobile])
+
   const getRoleLabel = (campaign) => {
     if (!user) return ''
     const membership = campaign?.members?.find((member) => member.user_id === user.id)
@@ -212,6 +219,99 @@ export default function HeaderBar({ onMenuToggle }) {
     if (membership.role === 'player') return 'Player'
     return membership.role || ''
   }
+
+  const closeContextPanel = () => setContextPanelOpen(false)
+
+  const contextSelectors = (
+    <>
+      <div className="campaign-selector" title={campaignStatus}>
+        <label htmlFor="campaign-context-select">Campaign</label>
+        <select
+          id="campaign-context-select"
+          value={selectedCampaignId}
+          onChange={handleCampaignChange}
+          disabled={loading || (!campaigns.length && !selectedCampaignId)}
+        >
+          <option value="">
+            {loading
+              ? 'Loading campaigns…'
+              : error
+                ? 'Unable to load campaigns'
+                : campaigns.length
+                  ? 'Select a campaign'
+                  : 'No campaigns available'}
+          </option>
+          {campaigns.map((campaign) => {
+            const role = getRoleLabel(campaign)
+            const suffix = [
+              role ? `as ${role}` : null,
+              campaign.world?.name ? `World: ${campaign.world.name}` : null,
+            ]
+              .filter(Boolean)
+              .join(' • ')
+            const optionLabel = suffix ? `${campaign.name} (${suffix})` : campaign.name
+            return (
+              <option key={campaign.id} value={campaign.id}>
+                {optionLabel}
+              </option>
+            )
+          })}
+        </select>
+      </div>
+      <div className="campaign-selector" title={worldStatus}>
+        <label htmlFor="world-context-select">World</label>
+        <select
+          id="world-context-select"
+          value={selectedWorldId}
+          onChange={handleWorldChange}
+          disabled={worldLoading}
+        >
+          <option value="">
+            {selectedCampaign?.world
+              ? selectedCampaign.world.name
+                ? `Using ${selectedCampaign.world.name}`
+                : 'Using campaign world'
+              : worldLoading
+                ? 'Loading worlds…'
+                : worldError
+                  ? 'Unable to load worlds'
+                  : worlds.length
+                    ? 'Select a world'
+                    : 'No worlds available'}
+          </option>
+          {worldOptions.map((world) => (
+            <option key={world.id} value={world.id}>
+              {world.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      {canUseCharacterContext && (
+        <div className="campaign-selector" title={viewAsStatus}>
+          <label htmlFor="character-context-select">View as</label>
+          <select
+            id="character-context-select"
+            value={viewAsCharacterId}
+            onChange={(event) => setViewAsCharacterId(event.target.value)}
+            disabled={viewAsLoading || Boolean(viewAsError)}
+          >
+            <option value="">
+              {viewAsLoading
+                ? 'Loading characters…'
+                : viewAsError
+                  ? viewAsError
+                  : 'Entire campaign context'}
+            </option>
+            {viewAsCharacters.map((character) => (
+              <option key={character.id} value={character.id}>
+                {character.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+    </>
+  )
 
   const menuButton = (
     <button
@@ -235,6 +335,19 @@ export default function HeaderBar({ onMenuToggle }) {
     </button>
   )
 
+  const contextButton = (
+    <button
+      type="button"
+      className={`context-btn ${isMobile ? 'context-btn-icon' : 'context-btn-text'}`}
+      onClick={() => setContextPanelOpen(true)}
+      aria-label={isMobile ? 'Change context' : undefined}
+      title={isMobile ? 'Change context' : undefined}
+      disabled={!isMobile}
+    >
+      {isMobile ? <Layers size={20} /> : 'Context'}
+    </button>
+  )
+
   return (
     <header className="app-header">
       <div className="header-start">
@@ -246,6 +359,7 @@ export default function HeaderBar({ onMenuToggle }) {
               </Link>
             </h1>
             {menuButton}
+            {contextButton}
             {historyButton}
           </>
         ) : (
@@ -261,94 +375,7 @@ export default function HeaderBar({ onMenuToggle }) {
         )}
       </div>
 
-      <div className="header-center">
-        <div className="campaign-selector" title={campaignStatus}>
-          <label htmlFor="campaign-context-select">Campaign</label>
-          <select
-            id="campaign-context-select"
-            value={selectedCampaignId}
-            onChange={handleCampaignChange}
-            disabled={loading || (!campaigns.length && !selectedCampaignId)}
-          >
-            <option value="">
-              {loading
-                ? 'Loading campaigns…'
-                : error
-                  ? 'Unable to load campaigns'
-                  : campaigns.length
-                    ? 'Select a campaign'
-                    : 'No campaigns available'}
-            </option>
-            {campaigns.map((campaign) => {
-              const role = getRoleLabel(campaign)
-              const suffix = [
-                role ? `as ${role}` : null,
-                campaign.world?.name ? `World: ${campaign.world.name}` : null,
-              ]
-                .filter(Boolean)
-                .join(' • ')
-              const optionLabel = suffix ? `${campaign.name} (${suffix})` : campaign.name
-              return (
-                <option key={campaign.id} value={campaign.id}>
-                  {optionLabel}
-                </option>
-              )
-            })}
-          </select>
-        </div>
-        <div className="campaign-selector" title={worldStatus}>
-          <label htmlFor="world-context-select">World</label>
-          <select
-            id="world-context-select"
-            value={selectedWorldId}
-            onChange={handleWorldChange}
-            disabled={worldLoading}
-          >
-            <option value="">
-              {selectedCampaign?.world
-                ? selectedCampaign.world.name
-                  ? `Using ${selectedCampaign.world.name}`
-                  : 'Using campaign world'
-                : worldLoading
-                  ? 'Loading worlds…'
-                  : worldError
-                    ? 'Unable to load worlds'
-                    : worlds.length
-                      ? 'Select a world'
-                      : 'No worlds available'}
-            </option>
-            {worldOptions.map((world) => (
-              <option key={world.id} value={world.id}>
-                {world.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        {canUseCharacterContext && (
-          <div className="campaign-selector" title={viewAsStatus}>
-            <label htmlFor="character-context-select">View as</label>
-            <select
-              id="character-context-select"
-              value={viewAsCharacterId}
-              onChange={(event) => setViewAsCharacterId(event.target.value)}
-              disabled={viewAsLoading || Boolean(viewAsError)}
-            >
-              <option value="">
-                {viewAsLoading
-                  ? 'Loading characters…'
-                  : viewAsError
-                    ? viewAsError
-                    : 'Entire campaign context'}
-              </option>
-              {viewAsCharacters.map((character) => (
-                <option key={character.id} value={character.id}>
-                  {character.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
+      {!isMobile && <div className="header-center">{contextSelectors}</div>}
 
       <div className="user-menu" ref={dropdownRef}>
         <button
@@ -359,24 +386,43 @@ export default function HeaderBar({ onMenuToggle }) {
           <User size={20} />
         </button>
 
-        {dropdownOpen && (
-          <div className="user-dropdown">
-            <div className="user-info">
-              <strong>{user?.username || 'User'}</strong>
-              <br />
-              <small>{user?.role || ''}</small>
-            </div>
-            <button className="dropdown-action" onClick={toggleTheme}>
-              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-              {theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            </button>
-            <button className="dropdown-action logout" onClick={logout}>
-              <LogOut size={16} />
-              Logout
-            </button>
+      {dropdownOpen && (
+        <div className="user-dropdown">
+          <div className="user-info">
+            <strong>{user?.username || 'User'}</strong>
+            <br />
+            <small>{user?.role || ''}</small>
           </div>
-        )}
-      </div>
+          <button className="dropdown-action" onClick={toggleTheme}>
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          </button>
+          <button className="dropdown-action logout" onClick={logout}>
+            <LogOut size={16} />
+            Logout
+          </button>
+        </div>
+      )}
+    </div>
+
+      {isMobile && contextPanelOpen && (
+        <div className="mobile-context-overlay" role="dialog" aria-modal="true">
+          <button
+            className="mobile-context-overlay-close"
+            onClick={closeContextPanel}
+            aria-label="Close context picker"
+          />
+          <div className="mobile-context-panel">
+            <div className="mobile-context-header">
+              <h2>Choose context</h2>
+              <button type="button" onClick={closeContextPanel} aria-label="Close context picker">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="mobile-context-body">{contextSelectors}</div>
+          </div>
+        </div>
+      )}
     </header>
   )
 }
