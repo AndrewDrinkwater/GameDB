@@ -846,6 +846,8 @@ export default function SessionNotesPage() {
                       >
                         <Mention
                           trigger="@"
+                          markup="@[__display__](__id__)"
+                          displayTransform={(id, display) => `@${display}`}
                           data={handleMentionSearch}
                           appendSpaceOnAdd
                         />
