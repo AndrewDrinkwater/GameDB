@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle,
   CalendarDays,
@@ -20,6 +14,7 @@ import {
   Trash2,
   Users,
 } from 'lucide-react'
+import { MentionsInput, Mention } from 'react-mentions'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import {
   createCampaignSessionNote,
@@ -28,97 +23,15 @@ import {
   updateCampaignSessionNote,
 } from '../../api/campaigns.js'
 import { searchEntities } from '../../api/entities.js'
-import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
+import TaggedNoteContent from '../../components/notes/TaggedNoteContent.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { buildNoteSegments, cleanEntityName } from '../../utils/noteMentions.js'
 import './NotesPage.css'
 
 const AUTOSAVE_DELAY_MS = 2500
 const emptyArray = Object.freeze([])
-const uuidSuffixPattern = /\s*\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)$/i
 
-const cleanEntityName = (value) => {
-  if (!value) return ''
-  const trimmed = String(value).trim()
-  return trimmed.replace(uuidSuffixPattern, '').trim()
-}
-
-const mentionBoundaryRegex = /[\s()[\]{}.,;:!?/\\"'`~]/
-
-const findActiveMention = (value, caret) => {
-  if (typeof value !== 'string' || typeof caret !== 'number') {
-    return null
-  }
-
-  const prefix = value.slice(0, caret)
-  const atIndex = prefix.lastIndexOf('@')
-  if (atIndex === -1) return null
-  if (prefix.slice(atIndex, atIndex + 2) === '@[') return null
-
-  if (atIndex > 0) {
-    const charBefore = prefix[atIndex - 1]
-    if (charBefore && !mentionBoundaryRegex.test(charBefore)) {
-      return null
-    }
-  }
-
-  const query = prefix.slice(atIndex + 1)
-  if (query.includes('\n') || query.includes('\r')) {
-    return null
-  }
-
-  return { start: atIndex, query }
-}
-
-const buildNoteSegments = (content = '', mentionList = []) => {
-  const text = typeof content === 'string' ? content : ''
-  if (!text) return []
-
-  const mentions = Array.isArray(mentionList) ? mentionList : []
-  const mentionLookup = new Map()
-  mentions.forEach((mention) => {
-    if (!mention) return
-    const key =
-      mention.entityId ?? mention.entity_id ?? mention.id ?? mention.entityID ?? null
-    if (!key) return
-    const id = String(key)
-    if (mentionLookup.has(id)) return
-    const label =
-      mention.entityName ?? mention.entity_name ?? mention.label ?? mention.name
-    const entityName = label ? cleanEntityName(label) : ''
-    mentionLookup.set(id, {
-      entityId: id,
-      entityName,
-    })
-  })
-
-  const segments = []
-  const regex = /@\[(.+?)]\(([^)]+)\)/g
-  let lastIndex = 0
-  let match
-
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push({ type: 'text', text: text.slice(lastIndex, match.index) })
-    }
-
-    const entityId = String(match[2])
-    const rawFallback = match[1]
-    const fallbackName = cleanEntityName(rawFallback) || String(rawFallback ?? '')
-    const mention = mentionLookup.get(entityId) || {
-      entityId,
-      entityName: fallbackName,
-    }
-
-    segments.push({ type: 'mention', ...mention })
-    lastIndex = regex.lastIndex
-  }
-
-  if (lastIndex < text.length) {
-    segments.push({ type: 'text', text: text.slice(lastIndex) })
-  }
-
-  return segments
-}
+const SESSION_NOTE_PLACEHOLDER = 'Use @ to tag entities mentioned in this session.'
 
 const normaliseSessionNote = (note) => {
   if (!note) {
@@ -198,14 +111,6 @@ const formatTimestamp = (value) => {
   })
 }
 
-const getEntityTypeName = (entity) =>
-  entity?.entity_type?.name ||
-  entity?.entityType?.name ||
-  entity?.typeName ||
-  entity?.entity?.entity_type?.name ||
-  entity?.entity?.entityType?.name ||
-  ''
-
 export default function SessionNotesPage() {
   const { user } = useAuth()
   const { selectedCampaign, selectedCampaignId } = useCampaignContext()
@@ -218,23 +123,11 @@ export default function SessionNotesPage() {
   const [isEditing, setIsEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
-  const textareaRef = useRef(null)
   const editorRef = useRef(null)
   const selectedNoteIdRef = useRef('')
   const lastSavedRef = useRef(null)
   const savingRef = useRef(false)
   const justCreatedNoteRef = useRef('')
-
-  const [mentionState, setMentionState] = useState({
-    active: false,
-    query: '',
-    start: 0,
-    end: 0,
-  })
-  const [mentionResults, setMentionResults] = useState(emptyArray)
-  const [mentionLoading, setMentionLoading] = useState(false)
-  const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0)
-  const mentionListRef = useRef(null)
 
   const resolvedWorldId = useMemo(() => {
     if (selectedCampaign?.world?.id) return selectedCampaign.world.id
@@ -425,233 +318,52 @@ export default function SessionNotesPage() {
     setSearchQuery('')
   }, [selectedCampaignId])
 
-  const resetMentionState = useCallback(() => {
-    setMentionState({ active: false, query: '', start: 0, end: 0 })
-    setMentionResults(emptyArray)
-    setMentionLoading(false)
-    setMentionSelectedIndex(0)
+  const handleEditorChange = useCallback((event, nextValue) => {
+    const value =
+      typeof nextValue === 'string'
+        ? nextValue
+        : typeof event?.target?.value === 'string'
+        ? event.target.value
+        : ''
+    setEditorState((previous) => (previous ? { ...previous, content: value } : previous))
   }, [])
 
-  const updateMentionTracking = useCallback(
-    (value, caret) => {
-      if (typeof caret !== 'number') return
-      const trigger = findActiveMention(value, caret)
-      if (trigger) {
-        if (
-          mentionState.query !== trigger.query ||
-          mentionState.start !== trigger.start
-        ) {
-          setMentionSelectedIndex(0)
-        }
+  const handleMentionSearch = useCallback(
+    async (query, callback) => {
+      const trimmedQuery = query?.trim() ?? ''
+      if (typeof callback !== 'function') return
 
-        setMentionState({
-          active: true,
-          query: trigger.query,
-          start: trigger.start,
-          end: caret,
-        })
-      } else if (mentionState.active) {
-        resetMentionState()
+      if (!resolvedWorldId || trimmedQuery.length === 0) {
+        callback([])
+        return
       }
-    },
-    [mentionState.active, mentionState.query, mentionState.start, resetMentionState],
-  )
 
-  useEffect(() => {
-    if (!mentionState.active) {
-      setMentionLoading(false)
-      setMentionResults(emptyArray)
-      return
-    }
-
-    const trimmedQuery = mentionState.query.trim()
-    if (!resolvedWorldId || trimmedQuery.length === 0) {
-      setMentionLoading(false)
-      setMentionResults(emptyArray)
-      return
-    }
-
-    let cancelled = false
-    setMentionLoading(true)
-
-    const timeout = setTimeout(async () => {
       try {
         const response = await searchEntities({
           worldId: resolvedWorldId,
           query: trimmedQuery,
           limit: 8,
         })
-        if (cancelled) return
         const data = Array.isArray(response?.data) ? response.data : response
-        setMentionResults(Array.isArray(data) ? data : emptyArray)
+        const formatted = Array.isArray(data)
+          ? data
+              .map((entity) => {
+                const entityId = entity?.id ?? entity?.entity?.id
+                if (!entityId) return null
+                const rawName =
+                  entity?.name || entity?.displayName || entity?.entity?.name || 'Unnamed entity'
+                const display = cleanEntityName(rawName) || 'Unnamed entity'
+                return { id: entityId, display }
+              })
+              .filter(Boolean)
+          : []
+        callback(formatted)
       } catch (error) {
-        if (!cancelled) {
-          console.error('❌ Failed to search entities for mentions', error)
-          setMentionResults(emptyArray)
-        }
-      } finally {
-        if (!cancelled) {
-          setMentionLoading(false)
-        }
-      }
-    }, 250)
-
-    return () => {
-      cancelled = true
-      clearTimeout(timeout)
-    }
-  }, [mentionState.active, mentionState.query, resolvedWorldId])
-
-  useEffect(() => {
-    if (!mentionState.active) return
-    if (mentionResults.length === 0) {
-      setMentionSelectedIndex(0)
-      return
-    }
-
-    if (mentionSelectedIndex >= mentionResults.length) {
-      setMentionSelectedIndex(mentionResults.length - 1)
-    }
-  }, [mentionResults, mentionSelectedIndex, mentionState.active])
-
-  useEffect(() => {
-    if (!mentionState.active) return
-    const listElement = mentionListRef.current
-    if (!listElement) return
-
-    const active = listElement.querySelector(
-      `[data-index="${mentionSelectedIndex}"]`,
-    )
-
-    if (active && typeof active.scrollIntoView === 'function') {
-      active.scrollIntoView({ block: 'nearest' })
-    }
-  }, [mentionSelectedIndex, mentionState.active])
-
-  const handleInsertMention = useCallback((entityOption) => {
-    if (!entityOption) return
-    const name =
-      entityOption?.name ||
-      entityOption?.displayName ||
-      entityOption?.entity?.name ||
-      'Entity'
-    const entityName = cleanEntityName(name) || 'Entity'
-    const entityId =
-      entityOption?.id ?? entityOption?.entity?.id ?? entityOption?.entityId
-    if (!entityId) return
-
-    const token = `@[${entityName}](${entityId})`
-
-    setEditorState((previous) => {
-      if (!previous) return previous
-
-      const textarea = textareaRef.current
-      if (!textarea) {
-        const nextContent = previous.content
-          ? `${previous.content} ${token}`.trim()
-          : token
-        const nextMentions = Array.isArray(previous.mentions)
-          ? [...previous.mentions, { entityId, entityName }]
-          : [{ entityId, entityName }]
-
-        return { ...previous, content: nextContent, mentions: nextMentions }
-      }
-
-      const { selectionStart, selectionEnd, value } = textarea
-      const prefix = value.slice(0, selectionStart)
-      const suffix = value.slice(selectionEnd)
-      const needsSpace = prefix && !prefix.endsWith(' ')
-      const insertion = needsSpace ? ` ${token}` : token
-      const nextValue = `${prefix}${insertion}${suffix}`
-
-      requestAnimationFrame(() => {
-        const caret = selectionStart + insertion.length
-        textarea.selectionStart = caret
-        textarea.selectionEnd = caret
-        textarea.focus()
-      })
-
-      const nextMentions = Array.isArray(previous.mentions)
-        ? [...previous.mentions, { entityId, entityName }]
-        : [{ entityId, entityName }]
-
-      return { ...previous, content: nextValue, mentions: nextMentions }
-    })
-  }, [])
-
-  const handleMentionSelect = useCallback(
-    (entityOption) => {
-      if (!entityOption) return
-      const textarea = textareaRef.current
-      if (textarea) {
-        const { start, end } = mentionState
-        textarea.focus()
-        textarea.setSelectionRange(start, end)
-      }
-
-      handleInsertMention(entityOption)
-      resetMentionState()
-    },
-    [handleInsertMention, mentionState, resetMentionState],
-  )
-
-  const handleEditorChange = useCallback(
-    (event) => {
-      const { value, selectionStart } = event.target
-      setEditorState((previous) =>
-        previous ? { ...previous, content: value } : previous,
-      )
-      updateMentionTracking(value, selectionStart)
-    },
-    [updateMentionTracking],
-  )
-
-  const handleTextareaSelect = useCallback(
-    (event) => {
-      updateMentionTracking(event.target.value, event.target.selectionStart)
-    },
-    [updateMentionTracking],
-  )
-
-  const handleTextareaKeyDown = useCallback(
-    (event) => {
-      if (!mentionState.active) return
-
-      if (event.key === 'Escape') {
-        resetMentionState()
-        return
-      }
-
-      if (event.key === 'ArrowDown') {
-        if (mentionResults.length === 0) return
-        event.preventDefault()
-        setMentionSelectedIndex((prev) => (prev + 1) % mentionResults.length)
-        return
-      }
-
-      if (event.key === 'ArrowUp') {
-        if (mentionResults.length === 0) return
-        event.preventDefault()
-        setMentionSelectedIndex((prev) =>
-          prev <= 0 ? mentionResults.length - 1 : prev - 1,
-        )
-        return
-      }
-
-      if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
-        const choice = mentionResults[mentionSelectedIndex]
-        if (!choice) return
-        event.preventDefault()
-        handleMentionSelect(choice)
+        console.error('❌ Failed to search entities for mentions', error)
+        callback([])
       }
     },
-    [
-      handleMentionSelect,
-      mentionResults,
-      mentionSelectedIndex,
-      mentionState.active,
-      resetMentionState,
-    ],
+    [resolvedWorldId],
   )
 
   const handleFieldChange = useCallback((key, value) => {
@@ -1049,109 +761,41 @@ export default function SessionNotesPage() {
 
                   <div className="session-note-fields">
                     <label htmlFor="session-note-content">Notes</label>
-                    <textarea
-                      id="session-note-content"
-                      ref={textareaRef}
-                      value={editorState.content || ''}
-                      onChange={handleEditorChange}
-                      onKeyDown={handleTextareaKeyDown}
-                      onSelect={handleTextareaSelect}
-                      rows={14}
-                      placeholder="Use @ to tag entities mentioned in this session."
-                    />
-
-                    {mentionState.active ? (
-                      <div
-                        className="session-note-mention-suggestions"
-                        role="listbox"
-                        aria-label="Entity mention suggestions"
-                        onMouseDown={(event) => event.preventDefault()}
+                    <div className="session-note-editor-field">
+                      <MentionsInput
+                        value={editorState.content || ''}
+                        onChange={handleEditorChange}
+                        markup="@[__display__](__id__)"
+                        displayTransform={(id, display) => `@${display}`}
+                        placeholder={SESSION_NOTE_PLACEHOLDER}
+                        className="session-note-mentions"
+                        inputProps={{
+                          id: 'session-note-content',
+                          className: 'session-note-textarea',
+                          'aria-label': 'Session note content',
+                          rows: 14,
+                        }}
                       >
-                        {!resolvedWorldId ? (
-                          <div className="session-note-mention-message">
-                            Select a campaign world to @mention entities.
-                          </div>
-                        ) : mentionState.query.trim().length === 0 ? (
-                          <div className="session-note-mention-message">
-                            Keep typing after <strong>@</strong> to search for entities.
-                          </div>
-                        ) : mentionLoading ? (
-                          <div className="session-note-mention-message">Searching…</div>
-                        ) : mentionResults.length > 0 ? (
-                          <ul className="session-note-mention-list" ref={mentionListRef}>
-                            {mentionResults.map((result, index) => {
-                              const rawName =
-                                result?.name ||
-                                result?.displayName ||
-                                result?.entity?.name ||
-                                'Unnamed entity'
-                              const name = cleanEntityName(rawName) || 'Unnamed entity'
-                              const typeName = getEntityTypeName(result)
-                              const key =
-                                result?.id ?? result?.entity?.id ?? `${name}-${String(index)}`
-                              const className = [
-                                'session-note-mention-suggestion',
-                                mentionSelectedIndex === index ? 'active' : '',
-                              ]
-                                .filter(Boolean)
-                                .join(' ')
-
-                              return (
-                                <li
-                                  key={String(key)}
-                                  role="option"
-                                  aria-selected={mentionSelectedIndex === index}
-                                  className={className}
-                                  data-index={index}
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={() => handleMentionSelect(result)}
-                                >
-                                  <span className="session-note-mention-name">{name}</span>
-                                  {typeName ? (
-                                    <span className="session-note-mention-type">{typeName}</span>
-                                  ) : null}
-                                </li>
-                              )
-                            })}
-                          </ul>
-                        ) : (
-                          <div className="session-note-mention-message">
-                            No entities found for “{mentionState.query.trim()}”.
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
+                        <Mention
+                          trigger="@"
+                          markup="@[__display__](__id__)"
+                          displayTransform={(id, display) => `@${display}`}
+                          data={handleMentionSearch}
+                          appendSpaceOnAdd
+                        />
+                      </MentionsInput>
+                    </div>
 
                     {editorPreviewSegments.length > 0 ? (
                       <div className="session-note-preview" aria-live="polite">
                         <h3>Preview</h3>
                         <div className="session-note-preview-content">
-                          {editorPreviewSegments.map((segment, index) => {
-                            if (segment.type === 'mention' && segment.entityId) {
-                              const label = segment.entityName || 'entity'
-                              return (
-                                <span
-                                  key={`${editorState?.id || 'note'}-preview-mention-${index}`}
-                                  className="session-note-mention"
-                                >
-                                  @{label}
-                                  <EntityInfoPreview
-                                    entityId={segment.entityId}
-                                    entityName={label}
-                                  />
-                                </span>
-                              )
-                            }
-
-                            return (
-                              <span
-                                key={`${editorState?.id || 'note'}-preview-text-${index}`}
-                                className="session-note-text"
-                              >
-                                {segment.text}
-                              </span>
-                            )
-                          })}
+                          <TaggedNoteContent
+                            segments={editorPreviewSegments}
+                            noteId={`${editorState?.id || 'note'}-preview`}
+                            textClassName="session-note-text"
+                            mentionClassName="session-note-mention"
+                          />
                         </div>
                       </div>
                     ) : null}
@@ -1191,36 +835,15 @@ export default function SessionNotesPage() {
                     {editorUpdatedLabel ? <span>Updated {editorUpdatedLabel}</span> : null}
                   </div>
                   <div className="session-note-view-body">
-                    {editorPreviewSegments.length > 0 ? (
-                      editorPreviewSegments.map((segment, index) => {
-                        if (segment.type === 'mention' && segment.entityId) {
-                          const label = segment.entityName || 'entity'
-                          return (
-                            <span
-                              key={`${editorState?.id || 'note'}-view-mention-${index}`}
-                              className="session-note-mention"
-                            >
-                              @{label}
-                              <EntityInfoPreview
-                                entityId={segment.entityId}
-                                entityName={label}
-                              />
-                            </span>
-                          )
-                        }
-
-                        return (
-                          <span
-                            key={`${editorState?.id || 'note'}-view-text-${index}`}
-                            className="session-note-text"
-                          >
-                            {segment.text}
-                          </span>
-                        )
-                      })
-                    ) : (
-                      <p className="session-note-view-empty">No notes captured yet.</p>
-                    )}
+                    <TaggedNoteContent
+                      segments={editorPreviewSegments}
+                      noteId={`${editorState?.id || 'note'}-view`}
+                      textClassName="session-note-text"
+                      mentionClassName="session-note-mention"
+                      renderEmpty={() => (
+                        <p className="session-note-view-empty">No notes captured yet.</p>
+                      )}
+                    />
                   </div>
                   {editorState.author?.username ? (
                     <div className="session-note-view-meta session-note-view-authors">
