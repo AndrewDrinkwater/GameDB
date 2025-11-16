@@ -11,6 +11,7 @@ import {
   searchEntities,
 } from '../../../api/entities.js'
 import { buildNoteSegments, cleanEntityName } from '../../../utils/noteMentions.js'
+import TaggedNoteContent from '../../../components/notes/TaggedNoteContent.jsx'
 import './NotesTab.css'
 
 const SHARE_LABELS = {
@@ -625,27 +626,22 @@ export default function NotesTab({
   ])
 
   const renderNoteBody = useCallback((note) => {
-    const segments = buildNoteSegments(note?.content, note?.mentions)
-    if (!segments.length) return null
+    const content = typeof note?.content === 'string' ? note.content : ''
+    const hasContent = content.trim().length > 0
+    const hasMentions = Array.isArray(note?.mentions) && note.mentions.length > 0
+    if (!hasContent && !hasMentions) {
+      return null
+    }
 
-    return segments.map((segment, index) => {
-      if (segment.type === 'mention' && segment.entityId) {
-        const key = `${note?.id || 'note'}-mention-${index}`
-        const label = segment.entityName || 'entity'
-        return (
-          <span key={key} className="entity-note-mention">
-            @{label}
-            <EntityInfoPreview entityId={segment.entityId} entityName={label} />
-          </span>
-        )
-      }
-
-      return (
-        <span key={`${note?.id || 'note'}-text-${index}`} className="entity-note-text">
-          {segment.text}
-        </span>
-      )
-    })
+    return (
+      <TaggedNoteContent
+        content={content}
+        mentions={note?.mentions}
+        noteId={`entity-note-${note?.id || 'note'}`}
+        textClassName="entity-note-text"
+        mentionClassName="entity-note-mention"
+      />
+    )
   }, [])
 
   const shareBadgeClass = useCallback(

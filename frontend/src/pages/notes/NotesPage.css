@@ -214,7 +214,7 @@
 }
 
 .note-text {
-  white-space: pre-wrap;
+  white-space: normal;
 }
 
 .notes-helper,
@@ -796,7 +796,7 @@
 }
 
 .session-note-text {
-  white-space: pre-wrap;
+  white-space: normal;
 }
 
 .spinner {

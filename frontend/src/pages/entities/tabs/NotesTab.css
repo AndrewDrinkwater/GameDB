@@ -796,5 +796,5 @@ body.theme-dark .entity-note-mention {
 }
 
 .entity-note-text {
-  white-space: pre-wrap;
+  white-space: normal;
 }

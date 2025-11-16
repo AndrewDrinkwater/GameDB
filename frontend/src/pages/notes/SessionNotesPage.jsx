@@ -25,7 +25,7 @@ import {
 import { searchEntities } from '../../api/entities.js'
 import TaggedNoteContent from '../../components/notes/TaggedNoteContent.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
-import { buildNoteSegments, cleanEntityName } from '../../utils/noteMentions.js'
+import { cleanEntityName } from '../../utils/noteMentions.js'
 import './NotesPage.css'
 
 const AUTOSAVE_DELAY_MS = 2500
@@ -245,9 +245,14 @@ export default function SessionNotesPage() {
     return formatTimestamp(editorState.updatedAt)
   }, [editorState?.updatedAt])
 
-  const editorPreviewSegments = useMemo(() => {
-    if (!editorState?.content) return emptyArray
-    return buildNoteSegments(editorState.content, editorState.mentions)
+  const editorHasContent = useMemo(() => {
+    if (typeof editorState?.content === 'string' && editorState.content.trim().length > 0) {
+      return true
+    }
+    if (Array.isArray(editorState?.mentions) && editorState.mentions.length > 0) {
+      return true
+    }
+    return false
   }, [editorState?.content, editorState?.mentions])
 
   useEffect(() => {
@@ -786,12 +791,13 @@ export default function SessionNotesPage() {
                       </MentionsInput>
                     </div>
 
-                    {editorPreviewSegments.length > 0 ? (
+                    {editorHasContent ? (
                       <div className="session-note-preview" aria-live="polite">
                         <h3>Preview</h3>
                         <div className="session-note-preview-content">
                           <TaggedNoteContent
-                            segments={editorPreviewSegments}
+                            content={editorState?.content}
+                            mentions={editorState?.mentions}
                             noteId={`${editorState?.id || 'note'}-preview`}
                             textClassName="session-note-text"
                             mentionClassName="session-note-mention"
@@ -836,7 +842,8 @@ export default function SessionNotesPage() {
                   </div>
                   <div className="session-note-view-body">
                     <TaggedNoteContent
-                      segments={editorPreviewSegments}
+                      content={editorState?.content}
+                      mentions={editorState?.mentions}
                       noteId={`${editorState?.id || 'note'}-view`}
                       textClassName="session-note-text"
                       mentionClassName="session-note-mention"
