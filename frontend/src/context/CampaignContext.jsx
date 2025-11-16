@@ -86,6 +86,7 @@ export function CampaignProvider({ children }) {
   const [worldError, setWorldError] = useState('')
   const [selectedWorldId, setSelectedWorldIdState] = useState('')
   const [viewAsCharacterId, setViewAsCharacterIdState] = useState('')
+  const [contextRestored, setContextRestored] = useState(false)
 
   // Restore persisted selection once the auth session is ready
   useEffect(() => {
@@ -114,14 +115,16 @@ export function CampaignProvider({ children }) {
       console.warn('⚠️ Unable to restore campaign context', err)
       setSelectedCampaignIdState('')
       setSelectedWorldIdState('')
+    } finally {
+      setContextRestored(true)
     }
   }, [sessionReady])
 
   // Persist the selected campaign id for the current session
   useEffect(() => {
-    if (!sessionReady) return
+    if (!sessionReady || !contextRestored) return
     persistContextSelection(selectedCampaignId, selectedWorldId)
-  }, [selectedCampaignId, selectedWorldId, sessionReady])
+  }, [selectedCampaignId, selectedWorldId, sessionReady, contextRestored])
 
   const loadCampaigns = useCallback(async () => {
     if (!sessionReady || !user) {
@@ -202,7 +205,7 @@ export function CampaignProvider({ children }) {
   }, [sessionReady, user])
 
   useEffect(() => {
-    if (!sessionReady) return
+    if (!sessionReady || !contextRestored) return
 
     if (!user) {
       setCampaigns([])
@@ -218,7 +221,7 @@ export function CampaignProvider({ children }) {
 
     loadCampaigns()
     loadWorlds()
-  }, [sessionReady, user, loadCampaigns, loadWorlds])
+  }, [sessionReady, contextRestored, user, loadCampaigns, loadWorlds])
 
   const setSelectedCampaignId = useCallback((value) => {
     const nextValue = value === undefined || value === null ? '' : String(value)
