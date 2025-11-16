@@ -1,5 +1,6 @@
 import { Clock, Trash2 } from 'lucide-react'
 import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import DrawerPanel from '../DrawerPanel.jsx'
 import useRecordHistory from '../../hooks/useRecordHistory.js'
 
@@ -63,6 +64,15 @@ const formatType = (type) => {
     .replace(/[-_]+/g, ' ')
 }
 
+const getEntryPath = (entry) => {
+  if (!entry?.type || !entry?.id) return null
+  const type = String(entry.type).toLowerCase()
+  if (type.startsWith('entity')) {
+    return `/entities/${entry.id}`
+  }
+  return null
+}
+
 export default function HistoryTab({ isOpen, onClose }) {
   const { history, clearHistory } = useRecordHistory()
   const now = new Date()
@@ -121,17 +131,36 @@ export default function HistoryTab({ isOpen, onClose }) {
           <section key={group.key} className="history-group">
             <h3 className="history-group-title">{group.label}</h3>
             <ul className="history-entry-list">
-              {group.items.map((entry) => (
-                <li key={`${entry.type}-${entry.id}`} className="history-entry">
-                  <div className="history-entry-title">{entry.title || 'Untitled record'}</div>
-                  <div className="history-entry-meta">
-                    <span className="history-entry-type">{formatType(entry.type)}</span>
-                    <time className="history-entry-time">
-                      {formatTimestamp(entry.parsedDate, now)}
-                    </time>
-                  </div>
-                </li>
-              ))}
+              {group.items.map((entry) => {
+                const entryPath = getEntryPath(entry)
+                const content = (
+                  <>
+                    <div className="history-entry-title">{entry.title || 'Untitled record'}</div>
+                    <div className="history-entry-meta">
+                      <span className="history-entry-type">{formatType(entry.type)}</span>
+                      <time className="history-entry-time">
+                        {formatTimestamp(entry.parsedDate, now)}
+                      </time>
+                    </div>
+                  </>
+                )
+
+                return (
+                  <li key={`${entry.type}-${entry.id}`}>
+                    {entryPath ? (
+                      <Link
+                        to={entryPath}
+                        className="history-entry history-entry-link"
+                        onClick={onClose}
+                      >
+                        {content}
+                      </Link>
+                    ) : (
+                      <div className="history-entry">{content}</div>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           </section>
         ))}

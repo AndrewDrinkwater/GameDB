@@ -556,6 +556,25 @@
   background: #f8fafc;
   border-radius: 0.5rem;
   padding: 0.6rem 0.75rem;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.history-entry-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.history-entry-link:hover,
+.history-entry-link:focus-visible {
+  border-color: rgba(15, 23, 42, 0.25);
+  background: #ffffff;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.12);
+}
+
+.history-entry-link:focus-visible {
+  outline: 2px solid rgba(94, 234, 212, 0.8);
+  outline-offset: 2px;
 }
 
 .history-entry-title {
