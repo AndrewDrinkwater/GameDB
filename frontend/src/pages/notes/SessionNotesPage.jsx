@@ -36,11 +36,16 @@ import './NotesPage.css'
 const AUTOSAVE_DELAY_MS = 2500
 const emptyArray = Object.freeze([])
 const uuidSuffixPattern = /\s*\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)$/i
+const uuidPattern = /\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/gi
 
 const cleanEntityName = (value) => {
   if (!value) return ''
-  const trimmed = String(value).trim()
-  return trimmed.replace(uuidSuffixPattern, '').trim()
+  let trimmed = String(value).trim()
+  // First, try to remove UUID at the end (most common case)
+  trimmed = trimmed.replace(uuidSuffixPattern, '').trim()
+  // Then, remove any remaining UUID patterns anywhere in the string
+  trimmed = trimmed.replace(uuidPattern, '').trim()
+  return trimmed
 }
 
 const escapeHtml = (value) =>
@@ -79,6 +84,8 @@ const buildEditorOverlayMarkup = (content = '', placeholder = '') => {
       `<span class="session-note-overlay-mention">@[${escapeHtml(entityName)}]</span>`,
     )
     if (entityId) {
+      // Include the UUID text in the placeholder so it takes up the exact same space
+      // This ensures it properly covers the UUID in the textarea
       segments.push(
         `<span class="session-note-overlay-id-placeholder" aria-hidden="true">(${escapeHtml(
           entityId,
@@ -639,12 +646,12 @@ export default function SessionNotesPage() {
 
   const handleInsertMention = useCallback((entityOption) => {
     if (!entityOption) return
-    const name =
+    const rawName =
       entityOption?.name ||
       entityOption?.displayName ||
       entityOption?.entity?.name ||
       'Entity'
-    const entityName = cleanEntityName(name) || 'Entity'
+    const entityName = cleanEntityName(rawName) || 'Entity'
     const entityId =
       entityOption?.id ?? entityOption?.entity?.id ?? entityOption?.entityId
     if (!entityId) return

@@ -651,6 +651,10 @@
 .session-note-editor-field {
   position: relative;
   min-height: 220px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.65);
+  background: white;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .session-note-content-overlay {
@@ -660,19 +664,24 @@
   pointer-events: none;
   white-space: pre-wrap;
   font: inherit;
+  line-height: inherit;
   color: #0f172a;
   overflow: hidden;
-  border-radius: 10px;
-  background: white;
+  background: transparent;
   width: 100%;
   height: 100%;
   box-sizing: border-box;
   z-index: 0;
 }
 
+.session-note-content-overlay * {
+  pointer-events: none;
+}
+
 .session-note-content-overlay-inner {
   min-height: 100%;
   word-break: break-word;
+  line-height: inherit;
 }
 
 .session-note-overlay-placeholder {
@@ -692,11 +701,13 @@
 }
 
 .session-note-overlay-id-placeholder {
-  opacity: 0;
+  color: transparent;
+  background: white;
   pointer-events: none;
   user-select: none;
   white-space: pre;
   font: inherit;
+  display: inline;
 }
 
 .session-note-textarea {
@@ -706,9 +717,15 @@
   color: transparent;
   caret-color: #0f172a;
   position: relative;
+  padding: 0.6rem 0.75rem;
   width: 100%;
   box-sizing: border-box;
   z-index: 1;
+  border: none;
+  outline: none;
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
 }
 
 .session-note-textarea::placeholder {
