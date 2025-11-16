@@ -2,19 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PropTypes from '../../utils/propTypes.js'
 import { buildEntityImageUrl } from '../../utils/entityHelpers.js'
+import { sortFieldsByOrder } from '../../utils/fieldLayout.js'
+import {
+  evaluateFieldRuleActions,
+  isFieldHiddenByRules,
+  normaliseFieldRules,
+} from '../../utils/fieldRuleEngine.js'
+import { buildMetadataViewMap, formatDateTimeValue } from '../../utils/metadataFieldUtils.js'
 import './EntityInfoDrawer.css'
 
 const ANIMATION_DURATION = 450
 const PREPARING_OPEN_STATE = 'preparing-open'
-
-const formatDateTime = (value) => {
-  if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return typeof value === 'string' ? value : String(value)
-  }
-  return date.toLocaleString()
-}
 
 const resolvePrimitive = (value) => {
   if (value === null || value === undefined) return '—'
@@ -143,24 +141,31 @@ const formatFieldValue = (field) => {
       return String(value)
     }
     case 'date':
-      return formatDateTime(value)
+      return formatDateTimeValue(value)
     case 'text':
     default:
       return resolvePrimitive(value)
   }
 }
 
-const extractMetadataEntries = (entity) => {
+const extractMetadataEntries = (entity, fieldOrder) => {
   if (!entity) return []
   const fieldList = Array.isArray(entity.fields) ? entity.fields : []
   if (fieldList.length > 0) {
-    return fieldList
+    const sortedFields = sortFieldsByOrder(fieldList, fieldOrder)
+    return sortedFields
       .filter((field) => field?.name || field?.label)
-      .map((field) => ({
-        key: field.name || field.label,
-        label: field.label || field.name,
-        value: formatFieldValue(field),
-      }))
+      .map((field, index) => {
+        const key = field.name || field.label || `field-${index}`
+        const label = field.label || field.name || `Field ${index + 1}`
+        const fieldKey = field?.name ? `metadata.${field.name}` : field?.key || key
+        return {
+          key,
+          label,
+          value: formatFieldValue(field),
+          fieldKey,
+        }
+      })
   }
 
   const metadataSource =
@@ -174,7 +179,22 @@ const extractMetadataEntries = (entity) => {
     key,
     label: key,
     value: resolvePrimitive(rawValue),
+    fieldKey: key ? `metadata.${key}` : key,
   }))
+}
+
+const buildMetadataRuleValues = (entity) => {
+  if (!entity) return {}
+  if (Array.isArray(entity.fields) && entity.fields.length > 0) {
+    return buildMetadataViewMap(entity.fields)
+  }
+
+  const metadataSource =
+    (entity.metadata && typeof entity.metadata === 'object' && entity.metadata) ||
+    (entity.meta && typeof entity.meta === 'object' && entity.meta) ||
+    null
+  if (!metadataSource) return {}
+  return { ...metadataSource }
 }
 
 export default function EntityInfoDrawer({
@@ -184,6 +204,8 @@ export default function EntityInfoDrawer({
   isLoading = false,
   error = '',
   fallbackName = '',
+  fieldOrder = [],
+  fieldRules = [],
 }) {
   const navigate = useNavigate()
   const [displayedState, setDisplayedState] = useState(() =>
@@ -305,11 +327,43 @@ export default function EntityInfoDrawer({
   const visibleError = displayedState?.error ?? ''
   const visibleFallbackName = displayedState?.fallbackName
 
-  const metadataEntries = useMemo(
-    () => extractMetadataEntries(visibleEntity),
+  const normalisedFieldRules = useMemo(
+    () => normaliseFieldRules(fieldRules),
+    [fieldRules],
+  )
+
+  const metadataRuleValues = useMemo(
+    () => buildMetadataRuleValues(visibleEntity),
     [visibleEntity],
   )
-  const hasMetadata = metadataEntries.length > 0
+
+  const drawerRuleValues = useMemo(
+    () => ({ metadata: metadataRuleValues }),
+    [metadataRuleValues],
+  )
+
+  const viewRuleContext = useMemo(
+    () => evaluateFieldRuleActions(normalisedFieldRules, drawerRuleValues),
+    [normalisedFieldRules, drawerRuleValues],
+  )
+
+  const metadataEntries = useMemo(
+    () => extractMetadataEntries(visibleEntity, fieldOrder),
+    [visibleEntity, fieldOrder],
+  )
+
+  const visibleMetadataEntries = useMemo(() => {
+    if (!metadataEntries.length) return []
+    const actionsByField = viewRuleContext?.actionsByField ?? {}
+    const showRuleTargets = viewRuleContext?.showRuleTargets ?? new Set()
+    return metadataEntries.filter((entry) => {
+      if (!entry?.fieldKey) return true
+      const action = actionsByField[entry.fieldKey]
+      return !isFieldHiddenByRules(entry.fieldKey, action, showRuleTargets)
+    })
+  }, [metadataEntries, viewRuleContext])
+
+  const hasMetadata = visibleMetadataEntries.length > 0
   const entityName =
     visibleEntity?.name ||
     visibleFallbackName ||
@@ -414,7 +468,7 @@ export default function EntityInfoDrawer({
 
         {!visibleLoading && !visibleError && hasMetadata && (
           <dl className="entity-info-drawer__metadata">
-            {metadataEntries.map((item) => (
+            {visibleMetadataEntries.map((item) => (
               <div key={item.key} className="entity-info-drawer__metadata-item">
                 <dt>{item.label}</dt>
                 <dd>{item.value}</dd>
@@ -437,4 +491,6 @@ EntityInfoDrawer.propTypes = {
   isLoading: PropTypes.bool,
   error: PropTypes.string,
   fallbackName: PropTypes.string,
+  fieldOrder: PropTypes.arrayOf(PropTypes.object),
+  fieldRules: PropTypes.arrayOf(PropTypes.object),
 }

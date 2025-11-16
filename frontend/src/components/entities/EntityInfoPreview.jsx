@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Info } from 'lucide-react'
 import PropTypes from '../../utils/propTypes.js'
 import { getEntity } from '../../api/entities.js'
+import { getEntityTypeFieldOrder, getEntityTypeFieldRules } from '../../api/entityTypes.js'
 import { resolveEntityResponse } from '../../utils/entityHelpers.js'
+import { extractListResponse } from '../../utils/apiUtils.js'
 import EntityInfoDrawer from '../relationshipViewer/EntityInfoDrawer.jsx'
 
 export default function EntityInfoPreview({ entityId, entityName = 'entity', className = '' }) {
@@ -10,6 +12,8 @@ export default function EntityInfoPreview({ entityId, entityName = 'entity', cla
   const [loading, setLoading] = useState(false)
   const [previewEntity, setPreviewEntity] = useState(null)
   const [error, setError] = useState('')
+  const [fieldOrder, setFieldOrder] = useState([])
+  const [fieldRules, setFieldRules] = useState([])
   const drawerEntityId = useMemo(() => {
     if (entityId === null || entityId === undefined) return null
     return String(entityId)
@@ -90,6 +94,61 @@ export default function EntityInfoPreview({ entityId, entityName = 'entity', cla
     }
   }, [open, drawerEntityId])
 
+  const previewEntityTypeId = useMemo(() => {
+    if (!previewEntity) return null
+    return (
+      previewEntity.entity_type_id ||
+      previewEntity.entityType?.id ||
+      previewEntity.entity_type?.id ||
+      null
+    )
+  }, [previewEntity])
+
+  useEffect(() => {
+    if (!previewEntityTypeId) {
+      setFieldOrder([])
+      setFieldRules([])
+      return undefined
+    }
+
+    if (!open) {
+      return undefined
+    }
+
+    let cancelled = false
+
+    const loadFieldLayout = async () => {
+      try {
+        const [orderResponse, rulesResponse] = await Promise.all([
+          getEntityTypeFieldOrder(previewEntityTypeId).catch((err) => {
+            console.error('⚠️ Failed to load preview field order', err)
+            return null
+          }),
+          getEntityTypeFieldRules(previewEntityTypeId).catch((err) => {
+            console.error('⚠️ Failed to load preview field rules', err)
+            return null
+          }),
+        ])
+
+        if (cancelled) return
+
+        setFieldOrder(extractListResponse(orderResponse))
+        setFieldRules(extractListResponse(rulesResponse))
+      } catch (err) {
+        if (cancelled) return
+        console.error('❌ Failed to load preview field layout', err)
+        setFieldOrder([])
+        setFieldRules([])
+      }
+    }
+
+    loadFieldLayout()
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, previewEntityTypeId])
+
   useEffect(() => {
     if (!open) return undefined
 
@@ -124,6 +183,8 @@ export default function EntityInfoPreview({ entityId, entityName = 'entity', cla
           error={error}
           fallbackName={entityName}
           onClose={handleClose}
+          fieldOrder={fieldOrder}
+          fieldRules={fieldRules}
         />
       )}
     </>
