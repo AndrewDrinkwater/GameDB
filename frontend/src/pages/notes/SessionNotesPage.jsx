@@ -74,9 +74,17 @@ const buildEditorOverlayMarkup = (content = '', placeholder = '') => {
 
     const rawName = match[1]
     const entityName = cleanEntityName(rawName) || rawName
+    const entityId = String(match[2] ?? '')
     segments.push(
       `<span class="session-note-overlay-mention">@[${escapeHtml(entityName)}]</span>`,
     )
+    if (entityId) {
+      segments.push(
+        `<span class="session-note-overlay-id-placeholder" aria-hidden="true">(${escapeHtml(
+          entityId,
+        )})</span>`,
+      )
+    }
     lastIndex = regex.lastIndex
   }
 

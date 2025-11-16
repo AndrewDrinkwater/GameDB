@@ -265,6 +265,14 @@ body.theme-dark .entity-notes-filter-count {
   font-weight: 600;
 }
 
+.entity-note-overlay-id-placeholder {
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+  white-space: pre;
+  font: inherit;
+}
+
 .entity-note-textarea {
   width: 100%;
   border-radius: 8px;
