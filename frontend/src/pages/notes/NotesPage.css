@@ -648,19 +648,71 @@
   box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
-.session-note-fields textarea {
-  resize: vertical;
+.session-note-editor-field {
+  position: relative;
   min-height: 220px;
 }
 
+.session-note-content-overlay {
+  position: absolute;
+  inset: 0;
+  padding: 0.6rem 0.75rem;
+  pointer-events: none;
+  white-space: pre-wrap;
+  font: inherit;
+  color: #0f172a;
+  overflow: hidden;
+  border-radius: 10px;
+  background: white;
+  z-index: 0;
+}
+
+.session-note-content-overlay-inner {
+  min-height: 100%;
+  word-break: break-word;
+}
+
+.session-note-overlay-placeholder {
+  color: #94a3b8;
+}
+
+.session-note-overlay-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.05rem 0.35rem;
+  margin: 0 0.1rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.16);
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.session-note-textarea {
+  resize: vertical;
+  min-height: 220px;
+  background: transparent;
+  color: transparent;
+  caret-color: #0f172a;
+  position: relative;
+  z-index: 1;
+}
+
+.session-note-textarea::placeholder {
+  color: transparent;
+}
+
 .session-note-mention-suggestions {
-  margin-top: 0.75rem;
+  position: fixed;
+  margin-top: 0;
   border: 1px solid rgba(148, 163, 184, 0.45);
   border-radius: 10px;
   background: white;
   box-shadow: 0 12px 24px -16px rgba(15, 23, 42, 0.28);
   max-height: 260px;
   overflow: hidden;
+  width: min(340px, calc(100vw - 2rem));
+  z-index: 50;
 }
 
 .session-note-mention-message {
@@ -979,6 +1031,20 @@ body.theme-dark .session-note-mention-suggestions {
   background: rgba(15, 23, 42, 0.95);
   border-color: rgba(148, 163, 184, 0.35);
   box-shadow: 0 12px 24px -18px rgba(8, 15, 30, 0.75);
+}
+
+body.theme-dark .session-note-content-overlay {
+  color: #e2e8f0;
+  background: rgba(15, 23, 42, 0.85);
+}
+
+body.theme-dark .session-note-overlay-placeholder {
+  color: #94a3b8;
+}
+
+body.theme-dark .session-note-overlay-mention {
+  background: rgba(59, 130, 246, 0.32);
+  color: #bfdbfe;
 }
 
 body.theme-dark .session-note-mention-message {
