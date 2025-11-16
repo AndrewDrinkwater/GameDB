@@ -51,7 +51,7 @@ const escapeHtml = (value) =>
 
 const formatTextForOverlay = (value) =>
   escapeHtml(value)
-    .replace(/  /g, ' &nbsp;')
+    .replace(/ {2}/g, ' &nbsp;')
     .replace(/\n/g, '<br />')
 
 const buildEditorOverlayMarkup = (content = '', placeholder = '') => {
