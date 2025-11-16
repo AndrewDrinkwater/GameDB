@@ -185,7 +185,7 @@ const buildNoteOverlayMarkup = (content = '', placeholder = '') => {
   }
 
   const segments = []
-  const regex = /@\[(.+?)]\(([^)]+)\)/g
+  const regex = /@\[(.*?)(?:\s*\([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\))?\]\(([^)]+)\)/gi
   let lastIndex = 0
   let match
 
@@ -194,19 +194,21 @@ const buildNoteOverlayMarkup = (content = '', placeholder = '') => {
       segments.push(formatTextForOverlay(text.slice(lastIndex, match.index)))
     }
 
-    const rawName = match[1]
-    const name = cleanEntityName(rawName) || rawName
-    const entityId = String(match[2] ?? '')
+    const rawName = match[1] || ''
+    const entityName = cleanEntityName(rawName) || 'entity'
+    const entityId = String(match[3] || match[2] || '')
+    
+    // Only show the clean entity name in the UI
     segments.push(
-      `<span class="entity-note-overlay-mention">@[${escapeHtml(name)}]</span>`,
+      `<span class="entity-note-overlay-mention">@${escapeHtml(entityName)}</span>`,
     )
-    if (entityId) {
-      segments.push(
-        `<span class="entity-note-overlay-id-placeholder" aria-hidden="true">(${escapeHtml(
-          entityId,
-        )})</span>`,
-      )
-    }
+    
+    // Add hidden span to maintain the same text width as the original content
+    const originalMatch = match[0]
+    segments.push(
+      `<span class="entity-note-overlay-hidden" aria-hidden="true" style="display: none;">${escapeHtml(originalMatch)}</span>`
+    )
+    
     lastIndex = regex.lastIndex
   }
 
