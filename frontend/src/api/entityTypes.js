@@ -37,6 +37,29 @@ export const updateEntityType = (id, data) => api.patch(`/entity-types/${id}`, d
 
 export const deleteEntityType = (id) => api.delete(`/entity-types/${id}`)
 
+const ensureEntityTypeId = (id, actionDescription = 'perform this action') => {
+  if (id === undefined || id === null || id === '') {
+    return Promise.reject(new Error(`Entity type id is required to ${actionDescription}`))
+  }
+  return null
+}
+
+export const getEntityTypeFieldOrder = (id) => {
+  const validationError = ensureEntityTypeId(id, 'load entity type field order')
+  if (validationError) {
+    return validationError
+  }
+  return api.get(`/entity-types/${id}/field-order`)
+}
+
+export const getEntityTypeFieldRules = (id) => {
+  const validationError = ensureEntityTypeId(id, 'load entity type field rules')
+  if (validationError) {
+    return validationError
+  }
+  return api.get(`/entity-types/${id}/field-rules`)
+}
+
 export const getWorldEntityTypeUsage = (worldId, params = {}) => {
   if (!worldId) {
     return Promise.reject(new Error('worldId is required to load entity type usage'))
