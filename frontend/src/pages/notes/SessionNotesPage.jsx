@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle,
   CalendarDays,
@@ -29,77 +23,15 @@ import {
   updateCampaignSessionNote,
 } from '../../api/campaigns.js'
 import { searchEntities } from '../../api/entities.js'
-import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
+import TaggedNoteContent from '../../components/notes/TaggedNoteContent.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { buildNoteSegments, cleanEntityName } from '../../utils/noteMentions.js'
 import './NotesPage.css'
 
 const AUTOSAVE_DELAY_MS = 2500
 const emptyArray = Object.freeze([])
-const uuidSuffixPattern = /\s*\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)$/i
-const uuidPattern = /\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/gi
-
-const cleanEntityName = (value) => {
-  if (!value) return ''
-  let trimmed = String(value).trim()
-  // First, try to remove UUID at the end (most common case)
-  trimmed = trimmed.replace(uuidSuffixPattern, '').trim()
-  // Then, remove any remaining UUID patterns anywhere in the string
-  trimmed = trimmed.replace(uuidPattern, '').trim()
-  return trimmed
-}
 
 const SESSION_NOTE_PLACEHOLDER = 'Use @ to tag entities mentioned in this session.'
-
-const buildNoteSegments = (content = '', mentionList = []) => {
-  const text = typeof content === 'string' ? content : ''
-  if (!text) return []
-
-  const mentions = Array.isArray(mentionList) ? mentionList : []
-  const mentionLookup = new Map()
-  mentions.forEach((mention) => {
-    if (!mention) return
-    const key =
-      mention.entityId ?? mention.entity_id ?? mention.id ?? mention.entityID ?? null
-    if (!key) return
-    const id = String(key)
-    if (mentionLookup.has(id)) return
-    const label =
-      mention.entityName ?? mention.entity_name ?? mention.label ?? mention.name
-    const entityName = label ? cleanEntityName(label) : ''
-    mentionLookup.set(id, {
-      entityId: id,
-      entityName,
-    })
-  })
-
-  const segments = []
-  const regex = /@\[(.+?)]\(([^)]+)\)/g
-  let lastIndex = 0
-  let match
-
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push({ type: 'text', text: text.slice(lastIndex, match.index) })
-    }
-
-    const entityId = String(match[2])
-    const rawFallback = match[1]
-    const fallbackName = cleanEntityName(rawFallback) || String(rawFallback ?? '')
-    const mention = mentionLookup.get(entityId) || {
-      entityId,
-      entityName: fallbackName,
-    }
-
-    segments.push({ type: 'mention', ...mention })
-    lastIndex = regex.lastIndex
-  }
-
-  if (lastIndex < text.length) {
-    segments.push({ type: 'text', text: text.slice(lastIndex) })
-  }
-
-  return segments
-}
 
 const normaliseSessionNote = (note) => {
   if (!note) {
@@ -858,32 +790,12 @@ export default function SessionNotesPage() {
                       <div className="session-note-preview" aria-live="polite">
                         <h3>Preview</h3>
                         <div className="session-note-preview-content">
-                          {editorPreviewSegments.map((segment, index) => {
-                            if (segment.type === 'mention' && segment.entityId) {
-                              const label = segment.entityName || 'entity'
-                              return (
-                                <span
-                                  key={`${editorState?.id || 'note'}-preview-mention-${index}`}
-                                  className="session-note-mention"
-                                >
-                                  @{label}
-                                  <EntityInfoPreview
-                                    entityId={segment.entityId}
-                                    entityName={label}
-                                  />
-                                </span>
-                              )
-                            }
-
-                            return (
-                              <span
-                                key={`${editorState?.id || 'note'}-preview-text-${index}`}
-                                className="session-note-text"
-                              >
-                                {segment.text}
-                              </span>
-                            )
-                          })}
+                          <TaggedNoteContent
+                            segments={editorPreviewSegments}
+                            noteId={`${editorState?.id || 'note'}-preview`}
+                            textClassName="session-note-text"
+                            mentionClassName="session-note-mention"
+                          />
                         </div>
                       </div>
                     ) : null}
@@ -923,36 +835,15 @@ export default function SessionNotesPage() {
                     {editorUpdatedLabel ? <span>Updated {editorUpdatedLabel}</span> : null}
                   </div>
                   <div className="session-note-view-body">
-                    {editorPreviewSegments.length > 0 ? (
-                      editorPreviewSegments.map((segment, index) => {
-                        if (segment.type === 'mention' && segment.entityId) {
-                          const label = segment.entityName || 'entity'
-                          return (
-                            <span
-                              key={`${editorState?.id || 'note'}-view-mention-${index}`}
-                              className="session-note-mention"
-                            >
-                              @{label}
-                              <EntityInfoPreview
-                                entityId={segment.entityId}
-                                entityName={label}
-                              />
-                            </span>
-                          )
-                        }
-
-                        return (
-                          <span
-                            key={`${editorState?.id || 'note'}-view-text-${index}`}
-                            className="session-note-text"
-                          >
-                            {segment.text}
-                          </span>
-                        )
-                      })
-                    ) : (
-                      <p className="session-note-view-empty">No notes captured yet.</p>
-                    )}
+                    <TaggedNoteContent
+                      segments={editorPreviewSegments}
+                      noteId={`${editorState?.id || 'note'}-view`}
+                      textClassName="session-note-text"
+                      mentionClassName="session-note-mention"
+                      renderEmpty={() => (
+                        <p className="session-note-view-empty">No notes captured yet.</p>
+                      )}
+                    />
                   </div>
                   {editorState.author?.username ? (
                     <div className="session-note-view-meta session-note-view-authors">
