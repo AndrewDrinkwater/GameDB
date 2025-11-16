@@ -1,7 +1,24 @@
 const HISTORY_STORAGE_KEY = 'app_history'
 const HISTORY_LIMIT = 100
+const HISTORY_EVENT_NAME = 'history:updated'
 
-const canUseStorage = () => typeof window !== 'undefined' && window?.localStorage
+const getWindow = () => (typeof window !== 'undefined' ? window : null)
+
+const canUseStorage = () => Boolean(getWindow()?.localStorage)
+
+const broadcastHistoryChange = (entries) => {
+  const win = getWindow()
+  if (!win) return
+  try {
+    win.dispatchEvent(
+      new CustomEvent(HISTORY_EVENT_NAME, {
+        detail: Array.isArray(entries) ? entries : [],
+      }),
+    )
+  } catch (err) {
+    console.warn('⚠️ Failed to broadcast history change', err)
+  }
+}
 
 const toDate = (value) => {
   if (!value) return null
@@ -58,6 +75,7 @@ export const saveHistory = (entries) => {
 
   const normalised = entries.map(normaliseEntry).filter(Boolean).slice(0, HISTORY_LIMIT)
   window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(normalised))
+  broadcastHistoryChange(normalised)
   return normalised
 }
 
@@ -78,6 +96,7 @@ export const addHistoryEntry = (entry) => {
 export const clearHistory = () => {
   if (!canUseStorage()) return
   window.localStorage.removeItem(HISTORY_STORAGE_KEY)
+  broadcastHistoryChange([])
 }
 
-export { HISTORY_STORAGE_KEY }
+export { HISTORY_STORAGE_KEY, HISTORY_EVENT_NAME }

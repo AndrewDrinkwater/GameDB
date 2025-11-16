@@ -4,6 +4,7 @@ import {
   clearHistory as clearHistoryHelper,
   loadHistory,
   HISTORY_STORAGE_KEY,
+  HISTORY_EVENT_NAME,
 } from '../utils/historyStorage.js'
 
 const safeLoad = () => {
@@ -56,8 +57,16 @@ export default function useRecordHistory(recordInfo = null) {
       refreshHistory()
     }
 
+    const handleHistoryEvent = () => {
+      refreshHistory()
+    }
+
     window.addEventListener('storage', handleStorage)
-    return () => window.removeEventListener('storage', handleStorage)
+    window.addEventListener(HISTORY_EVENT_NAME, handleHistoryEvent)
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener(HISTORY_EVENT_NAME, handleHistoryEvent)
+    }
   }, [refreshHistory])
 
   return { history, addEntry, refreshHistory, clearHistory }
