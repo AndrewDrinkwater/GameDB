@@ -1,5 +1,6 @@
 import FormRenderer from '../../../components/RecordForm/FormRenderer.jsx'
 import FieldRenderer from '../../../components/RecordForm/FieldRenderer.jsx'
+import { isFieldHiddenByRules } from '../../../utils/fieldRuleEngine.js'
 
 export default function DossierTab({
   isEditing,
@@ -15,6 +16,8 @@ export default function DossierTab({
   featuredImageSrc,
   renderSchemaSections,
   imageSection,
+  fieldRules,
+  viewRuleContext,
 }) {
   const sections = Array.isArray(dossierSchema?.sections)
     ? dossierSchema.sections
@@ -22,6 +25,9 @@ export default function DossierTab({
   const summarySection = sections[0] || null
   const descriptionSection = sections[1] || null
   const remainingSections = sections.slice(2)
+
+  const actionsByField = viewRuleContext?.actionsByField ?? {}
+  const showRuleTargets = viewRuleContext?.showRuleTargets ?? new Set()
 
   const renderSectionFields = (section, keyPrefix) => {
     if (!section) return null
@@ -42,6 +48,25 @@ export default function DossierTab({
         {fields.map((field, index) => {
           const fieldKey =
             field?.key || field?.name || field?.field || `${keyPrefix}-${index}`
+
+          const action = actionsByField[fieldKey]
+          const defaultVisible =
+            field.visibleByDefault !== undefined
+              ? Boolean(field.visibleByDefault)
+              : field.visible_by_default !== undefined
+                ? Boolean(field.visible_by_default)
+                : true
+
+          if (
+            isFieldHiddenByRules(
+              fieldKey,
+              action,
+              showRuleTargets,
+              defaultVisible,
+            )
+          ) {
+            return null
+          }
           return (
             <FieldRenderer
               key={`${keyPrefix}-${fieldKey}`}
@@ -61,7 +86,12 @@ export default function DossierTab({
 
   const renderViewContent = () => {
     if (!showFeaturedImage) {
-      return renderSchemaSections(dossierSchema, viewData, 'dossier')
+      return renderSchemaSections(
+        dossierSchema,
+        viewData,
+        'dossier',
+        viewRuleContext,
+      )
     }
 
     const remainingSchema = {
@@ -94,7 +124,12 @@ export default function DossierTab({
             </div>
           </div>
         </section>
-        {renderSchemaSections(remainingSchema, viewData, 'dossier')}
+        {renderSchemaSections(
+          remainingSchema,
+          viewData,
+          'dossier',
+          viewRuleContext,
+        )}
       </>
     )
   }
@@ -148,6 +183,7 @@ export default function DossierTab({
               onStateChange={handleFormStateChange}
               hideActions
               enableUnsavedPrompt={false}
+              fieldRules={fieldRules}
             />
           </section>
         </>
