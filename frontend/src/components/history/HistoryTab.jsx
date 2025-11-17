@@ -118,7 +118,7 @@ export default function HistoryTab({ isOpen, onClose }) {
   const filteredHistory = useMemo(() => {
     if (!Array.isArray(history) || history.length === 0) return []
     if (!accessFilteringReady) return history
-    if (!accessibleWorldIds.size) return []
+    if (!accessibleWorldIds.size) return history
 
     return history.filter((entry) => {
       if (!entry) return false
@@ -127,13 +127,16 @@ export default function HistoryTab({ isOpen, onClose }) {
 
       const entryWorldId =
         entry.worldId ?? entry.world_id ?? entry.world?.id ?? entry.world?.world_id ?? null
-      if (!entryWorldId) return false
+      if (!entryWorldId) return true
       return accessibleWorldIds.has(String(entryWorldId))
     })
   }, [history, accessibleWorldIds, accessFilteringReady])
 
   const hasHiddenEntries =
-    accessFilteringReady && Array.isArray(history) && history.length > 0 && !filteredHistory.length
+    accessFilteringReady &&
+    Array.isArray(history) &&
+    history.length > 0 &&
+    filteredHistory.length < history.length
 
   const grouped = useMemo(() => {
     if (!Array.isArray(filteredHistory) || filteredHistory.length === 0) return []
