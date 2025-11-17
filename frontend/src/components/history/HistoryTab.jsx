@@ -81,6 +81,8 @@ export default function HistoryTab({ isOpen, onClose }) {
     worlds,
     loading: campaignsLoading,
     worldLoading,
+    selectedContextType,
+    activeWorldId,
   } = useCampaignContext()
   const now = new Date()
 
@@ -115,6 +117,12 @@ export default function HistoryTab({ isOpen, onClose }) {
     return ids
   }, [campaigns, worlds])
 
+  const activeContextWorldId = useMemo(() => {
+    if (!selectedContextType) return ''
+    if (!activeWorldId) return ''
+    return String(activeWorldId)
+  }, [selectedContextType, activeWorldId])
+
   const filteredHistory = useMemo(() => {
     if (!Array.isArray(history) || history.length === 0) return []
     if (!accessFilteringReady) return history
@@ -127,10 +135,21 @@ export default function HistoryTab({ isOpen, onClose }) {
 
       const entryWorldId =
         entry.worldId ?? entry.world_id ?? entry.world?.id ?? entry.world?.world_id ?? null
+
+      if (activeContextWorldId) {
+        if (!entryWorldId) return false
+        if (String(entryWorldId) !== activeContextWorldId) return false
+      }
+
       if (!entryWorldId) return true
       return accessibleWorldIds.has(String(entryWorldId))
     })
-  }, [history, accessibleWorldIds, accessFilteringReady])
+  }, [
+    history,
+    accessibleWorldIds,
+    accessFilteringReady,
+    activeContextWorldId,
+  ])
 
   const hasHiddenEntries =
     accessFilteringReady &&
