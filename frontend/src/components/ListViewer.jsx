@@ -11,6 +11,7 @@ export default function ListViewer({
   title,
   extraActions,
   onRowClick,
+  density = 'comfortable',
 }) {
   const [visibleCols, setVisibleCols] = useState(columns.map((column) => column.key))
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -95,8 +96,19 @@ export default function ListViewer({
     ? explorer.groups.some((group) => group.items.length > 0)
     : explorer.data.length > 0
 
+  const viewerClassName = [
+    'list-viewer',
+    density === 'compact' ? 'list-viewer--compact' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  const tableClassName = ['data-table', density === 'compact' ? 'data-table--compact' : '']
+    .filter(Boolean)
+    .join(' ')
+
   return (
-    <div className="list-viewer">
+    <div className={viewerClassName}>
       <div className="list-viewer-header">
         <h2>{title}</h2>
 
@@ -145,7 +157,7 @@ export default function ListViewer({
         </div>
       ) : (
         <div className="list-viewer-table-wrapper">
-          <table>
+          <table className={tableClassName}>
             <thead>
               <tr>
                 {visibleColumns.map((column) => {
