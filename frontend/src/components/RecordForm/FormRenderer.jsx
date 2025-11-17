@@ -11,6 +11,11 @@ import FieldRenderer from './FieldRenderer'
 import useUnsavedChangesPrompt, {
   UNSAVED_CHANGES_MESSAGE,
 } from '../../hooks/useUnsavedChangesPrompt'
+import {
+  normaliseFieldRules,
+  evaluateFieldRuleActions,
+  isFieldHiddenByRules,
+} from '../../utils/fieldRuleEngine.js'
 
 /**
  * Backwards-compatible form renderer.
@@ -28,6 +33,7 @@ function FormRenderer(
     hideActions = false,
     enableUnsavedPrompt = true,
     onStateChange,
+    fieldRules = [],
   },
   ref,
 ) {
@@ -40,6 +46,31 @@ function FormRenderer(
   const [statusMessage, setStatusMessage] = useState('')
   const [statusType, setStatusType] = useState('success')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [ruleContext, setRuleContext] = useState(() => ({
+    actionsByField: {},
+    showRuleTargets: new Set(),
+  }))
+
+  const schemaFieldsForRules = useMemo(() => {
+    if (!schema) return []
+    const directFields = Array.isArray(schema.fields)
+      ? schema.fields.filter((field) => field && typeof field === 'object')
+      : []
+    const sectionFields = Array.isArray(schema.sections)
+      ? schema.sections
+          .flatMap((section) => (Array.isArray(section?.fields) ? section.fields : []))
+          .filter((field) => field && typeof field === 'object')
+      : []
+    if (directFields.length === 0 && sectionFields.length === 0) {
+      return []
+    }
+    return [...sectionFields, ...directFields]
+  }, [schema])
+
+  const normalisedRules = useMemo(
+    () => normaliseFieldRules(fieldRules, schemaFieldsForRules),
+    [fieldRules, schemaFieldsForRules],
+  )
 
   useEffect(() => {
     const nextData = initialData ? { ...initialData } : {}
@@ -48,6 +79,15 @@ function FormRenderer(
     setStatusMessage('')
     setStatusType('success')
   }, [initialData])
+
+  useEffect(() => {
+    if (!normalisedRules.length) {
+      setRuleContext({ actionsByField: {}, showRuleTargets: new Set() })
+      return
+    }
+    const evaluation = evaluateFieldRuleActions(normalisedRules, formData)
+    setRuleContext(evaluation)
+  }, [normalisedRules, formData])
 
   // Normalize schema to sections so both shapes work
   const sections = useMemo(() => {
@@ -84,6 +124,20 @@ function FormRenderer(
     }
 
     return next
+  }
+
+  const readValueByPath = (source, path) => {
+    if (!path || typeof path !== 'string') return undefined
+    if (!source || typeof source !== 'object') return undefined
+    if (!path.includes('.')) return source?.[path]
+    return path
+      .split('.')
+      .filter((segment) => segment.length > 0)
+      .reduce((acc, segment) => {
+        if (acc === null || acc === undefined) return undefined
+        if (typeof acc !== 'object') return undefined
+        return acc[segment]
+      }, source)
   }
 
   const handleChange = (key, value) => {
@@ -137,8 +191,59 @@ function FormRenderer(
   const shouldPrompt = enableUnsavedPrompt && isDirty
   useUnsavedChangesPrompt(shouldPrompt, undefined, bypassRef)
 
+  const validateRequiredFields = useCallback(() => {
+    if (!sections.length) return true
+
+    const missingFields = []
+    sections.forEach((section) => {
+        const fields = Array.isArray(section.fields) ? section.fields : []
+        fields.forEach((field) => {
+          const fieldKey = field?.key || field?.name || field?.field
+          if (!fieldKey) return
+          const action = ruleContext.actionsByField[fieldKey]
+          const defaultVisible =
+            field?.visibleByDefault !== undefined
+              ? Boolean(field.visibleByDefault)
+              : field?.visible_by_default !== undefined
+                ? Boolean(field.visible_by_default)
+                : true
+          if (
+            isFieldHiddenByRules(
+              fieldKey,
+              action,
+              ruleContext.showRuleTargets,
+              defaultVisible,
+            )
+          ) {
+            return
+          }
+          const isRequired = Boolean(field?.required) || action === 'require'
+        if (!isRequired) return
+        const value = readValueByPath(formData, fieldKey)
+        const hasValue = Array.isArray(value)
+          ? value.length > 0
+          : value !== undefined && value !== null && value !== ''
+        if (!hasValue) {
+          missingFields.push(field.label || field.name || fieldKey)
+        }
+      })
+    })
+
+    if (missingFields.length > 0) {
+      setStatusType('error')
+      setStatusMessage(`Please complete required fields: ${missingFields.join(', ')}`)
+      return false
+    }
+
+    return true
+  }, [sections, formData, ruleContext])
+
   const handleActionSubmit = useCallback(async () => {
     if (!onSubmit) return true
+
+    if (!validateRequiredFields()) {
+      return false
+    }
 
     const nextSignature = JSON.stringify(formData ?? {})
 
@@ -181,7 +286,7 @@ function FormRenderer(
     } finally {
       setIsSubmitting(false)
     }
-  }, [formData, onSubmit, schema])
+  }, [formData, onSubmit, schema, validateRequiredFields])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -247,19 +352,44 @@ function FormRenderer(
           {section.title ? <h3>{section.title}</h3> : null}
           <div className={`form-grid cols-${section.columns || 1}`}>
             {(section.fields || []).map((field, idx) => {
-                if (!field || typeof field !== 'object') {
-                    console.warn('⚠️ Skipping invalid field in schema:', field)
+              if (!field || typeof field !== 'object') {
+                console.warn('⚠️ Skipping invalid field in schema:', field)
                 return null
-                }
-                return (
-                    <FieldRenderer
-                        key={`${field.key || field.name || field.field || 'field'}-${idx}`}
-                        field={field}
-                        data={formData}
-                        onChange={handleChange}
-                        mode="edit"
-                    />
+              }
+              const fieldKey = field.key || field.name || field.field || `field-${idx}`
+              const action = ruleContext.actionsByField[fieldKey]
+              const defaultVisible =
+                field.visibleByDefault !== undefined
+                  ? Boolean(field.visibleByDefault)
+                  : field.visible_by_default !== undefined
+                    ? Boolean(field.visible_by_default)
+                    : true
+              if (
+                isFieldHiddenByRules(
+                  fieldKey,
+                  action,
+                  ruleContext.showRuleTargets,
+                  defaultVisible,
                 )
+              ) {
+                return null
+              }
+              const fieldProps = { ...field }
+              if (action === 'disable') {
+                fieldProps.disabled = true
+              }
+              if (action === 'require') {
+                fieldProps.required = true
+              }
+              return (
+                <FieldRenderer
+                  key={`${fieldKey}-${idx}`}
+                  field={fieldProps}
+                  data={formData}
+                  onChange={handleChange}
+                  mode="edit"
+                />
+              )
             })}
           </div>
         </div>

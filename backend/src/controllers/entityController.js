@@ -785,6 +785,12 @@ export const buildEntityPayload = async (entityInstance, fieldsCache) => {
       metadataWithDisplayValues[field.name] !== undefined
         ? metadataWithDisplayValues[field.name]
         : null
+    const isVisibleByDefault =
+      field.visible_by_default !== undefined
+        ? Boolean(field.visible_by_default)
+        : field.visibleByDefault !== undefined
+          ? Boolean(field.visibleByDefault)
+          : true
 
     return {
       id: field.id,
@@ -809,6 +815,8 @@ export const buildEntityPayload = async (entityInstance, fieldsCache) => {
         (field.data_type ?? field.dataType) === 'reference'
           ? resolveReferenceDisplayValue(fieldValue)
           : null,
+      visibleByDefault: isVisibleByDefault,
+      visible_by_default: isVisibleByDefault,
     }
   })
 

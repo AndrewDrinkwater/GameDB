@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ReactFlow, { Background, Controls, MiniMap, applyEdgeChanges, applyNodeChanges } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { getEntityGraph, getEntity } from '../../api/entities.js'
+import { getEntityTypeFieldOrder, getEntityTypeFieldRules } from '../../api/entityTypes.js'
 import ClusterNode from '../../components/nodes/ClusterNode.jsx'
 import EntityNode from '../../components/nodes/EntityNode.jsx'
 import {
@@ -16,6 +17,7 @@ import {
 import RelationshipToolbar from '../../components/relationshipViewer/RelationshipToolbar.jsx'
 import EntityInfoDrawer from '../../components/relationshipViewer/EntityInfoDrawer.jsx'
 import { resolveEntityResponse } from '../../utils/entityHelpers.js'
+import { extractListResponse } from '../../utils/apiUtils.js'
 
 const nodeTypes = { cluster: ClusterNode, entity: EntityNode }
 const edgeTypes = {}
@@ -244,6 +246,8 @@ export default function RelationshipViewerPage() {
   const [selectedEntityInfo, setSelectedEntityInfo] = useState(null)
   const [selectedEntityInfoError, setSelectedEntityInfoError] = useState(null)
   const [selectedEntityInfoLoading, setSelectedEntityInfoLoading] = useState(false)
+  const [selectedEntityFieldOrder, setSelectedEntityFieldOrder] = useState([])
+  const [selectedEntityFieldRules, setSelectedEntityFieldRules] = useState([])
   const suppressedNodesRef = useRef(new Map())
   const suppressedNodeMetaRef = useRef(new Map())
   const suppressedNodeDefinitionsRef = useRef(new Map())
@@ -324,6 +328,8 @@ export default function RelationshipViewerPage() {
       setSelectedEntityInfo(null)
       setSelectedEntityInfoError(null)
       setSelectedEntityInfoLoading(false)
+      setSelectedEntityFieldOrder([])
+      setSelectedEntityFieldRules([])
       return
     }
 
@@ -357,6 +363,57 @@ export default function RelationshipViewerPage() {
       cancelled = true
     }
   }, [selectedEntityInfoId])
+
+  const selectedEntityTypeId = useMemo(() => {
+    if (!selectedEntityInfo) return null
+    return (
+      selectedEntityInfo.entity_type_id ||
+      selectedEntityInfo.entityType?.id ||
+      selectedEntityInfo.entity_type?.id ||
+      null
+    )
+  }, [selectedEntityInfo])
+
+  useEffect(() => {
+    if (!selectedEntityTypeId) {
+      setSelectedEntityFieldOrder([])
+      setSelectedEntityFieldRules([])
+      return undefined
+    }
+
+    let cancelled = false
+
+    const loadFieldLayout = async () => {
+      try {
+        const [orderResponse, rulesResponse] = await Promise.all([
+          getEntityTypeFieldOrder(selectedEntityTypeId).catch((err) => {
+            console.error('⚠️ Failed to load drawer field order', err)
+            return null
+          }),
+          getEntityTypeFieldRules(selectedEntityTypeId).catch((err) => {
+            console.error('⚠️ Failed to load drawer field rules', err)
+            return null
+          }),
+        ])
+
+        if (cancelled) return
+
+        setSelectedEntityFieldOrder(extractListResponse(orderResponse))
+        setSelectedEntityFieldRules(extractListResponse(rulesResponse))
+      } catch (err) {
+        if (cancelled) return
+        console.error('❌ Failed to load drawer field layout', err)
+        setSelectedEntityFieldOrder([])
+        setSelectedEntityFieldRules([])
+      }
+    }
+
+    loadFieldLayout()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedEntityTypeId])
 
   const onNodesChange = useCallback((changes) => setNodes((n) => applyNodeChanges(changes, n)), [])
   const onEdgesChange = useCallback((changes) => setEdges((e) => applyEdgeChanges(changes, e)), [])
@@ -2354,6 +2411,8 @@ export default function RelationshipViewerPage() {
         isLoading={selectedEntityInfoLoading}
         error={selectedEntityInfoError}
         onClose={handleCloseEntityInfo}
+        fieldOrder={selectedEntityFieldOrder}
+        fieldRules={selectedEntityFieldRules}
       />
     </div>
   )

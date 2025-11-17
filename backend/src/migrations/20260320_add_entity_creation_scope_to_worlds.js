@@ -6,33 +6,59 @@ const SCOPE_VALUES = ['owner_dm', 'all_players']
 
 export async function up(queryInterface, Sequelize) {
   const transaction = await queryInterface.sequelize.transaction()
+
   try {
-    await queryInterface.addColumn(
-      TABLE_NAME,
-      COLUMN_NAME,
-      {
-        type: Sequelize.ENUM(...SCOPE_VALUES),
-        allowNull: false,
-        defaultValue: 'owner_dm',
-      },
-      { transaction },
+    // Create ENUM if missing
+    await queryInterface.sequelize.query(
+      `DO $$ BEGIN
+         IF NOT EXISTS (
+          SELECT 1 FROM pg_type WHERE typname = '${ENUM_NAME}'
+         ) THEN
+            CREATE TYPE "${ENUM_NAME}" AS ENUM ('owner_dm', 'all_players');
+         END IF;
+       END $$;`,
+      { transaction }
     )
 
+    // Check for column
+    const table = await queryInterface.describeTable(TABLE_NAME)
+    if (!table[COLUMN_NAME]) {
+      await queryInterface.addColumn(
+        TABLE_NAME,
+        COLUMN_NAME,
+        {
+          type: Sequelize.ENUM(...SCOPE_VALUES),
+          allowNull: false,
+          defaultValue: 'owner_dm'
+        },
+        { transaction }
+      )
+    }
+
     await transaction.commit()
-  } catch (error) {
+  } catch (err) {
     await transaction.rollback()
-    throw error
+    throw err
   }
 }
 
 export async function down(queryInterface) {
   const transaction = await queryInterface.sequelize.transaction()
+
   try {
-    await queryInterface.removeColumn(TABLE_NAME, COLUMN_NAME, { transaction })
-    await queryInterface.sequelize.query(`DROP TYPE IF EXISTS "${ENUM_NAME}"`, { transaction })
+    const table = await queryInterface.describeTable(TABLE_NAME)
+    if (table[COLUMN_NAME]) {
+      await queryInterface.removeColumn(TABLE_NAME, COLUMN_NAME, { transaction })
+    }
+
+    await queryInterface.sequelize.query(
+      `DROP TYPE IF EXISTS "${ENUM_NAME}"`,
+      { transaction }
+    )
+
     await transaction.commit()
-  } catch (error) {
+  } catch (err) {
     await transaction.rollback()
-    throw error
+    throw err
   }
 }

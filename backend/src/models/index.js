@@ -17,6 +17,8 @@ import SessionNoteModel from './sessionNote.js'
 import EntityRelationshipTypeModel from './entityRelationshipType.js'
 import EntityRelationshipModel from './entityRelationship.js'
 import EntityTypeFieldModel from './entityTypeField.js'
+import EntityTypeFieldLayoutModel from './entityTypeFieldLayout.js'
+import EntityTypeFieldRuleModel from './entityTypeFieldRule.js'
 import UserCampaignRoleModel from './userCampaignRole.js'
 import EntityRelationshipTypeEntityTypeModel from './entityRelationshipTypeEntityType.js'
 import EntityListPreferenceModel from './entityListPreference.js'
@@ -45,6 +47,8 @@ export const SessionNote = SessionNoteModel(sequelize, DataTypes)
 export const EntityRelationshipType = EntityRelationshipTypeModel(sequelize, DataTypes)
 export const EntityRelationship = EntityRelationshipModel(sequelize, DataTypes)
 export const EntityTypeField = EntityTypeFieldModel(sequelize, DataTypes)
+export const EntityTypeFieldLayout = EntityTypeFieldLayoutModel(sequelize, DataTypes)
+export const EntityTypeFieldRule = EntityTypeFieldRuleModel(sequelize, DataTypes)
 export const UserCampaignRole = UserCampaignRoleModel(sequelize, DataTypes)
 export const EntityRelationshipTypeEntityType =
   EntityRelationshipTypeEntityTypeModel(sequelize, DataTypes)
@@ -89,6 +93,9 @@ if (EntityRelationshipType.associate)
 if (EntityRelationship.associate)
   EntityRelationship.associate({ Entity, EntityRelationshipType })
 if (EntityTypeField.associate) EntityTypeField.associate({ EntityType })
+if (EntityTypeFieldLayout.associate)
+  EntityTypeFieldLayout.associate({ EntityType, EntityTypeField })
+if (EntityTypeFieldRule.associate) EntityTypeFieldRule.associate({ EntityType })
 if (EntityRelationshipTypeEntityType.associate)
   EntityRelationshipTypeEntityType.associate({
     EntityRelationshipType,
@@ -135,4 +142,6 @@ export default {
   BulkUpdateRun,
   BulkUpdateChange,
   EntityCollection,
+  EntityTypeFieldLayout,
+  EntityTypeFieldRule,
 }
