@@ -251,6 +251,7 @@ export const buildEntityReadContext = async ({
     worldAccess: worldAccess ?? null,
     activeCampaignId,
     viewAs,
+    suppressPersonalAccess: simulateOwnerAsPlayer,
   }
 }
 
@@ -260,7 +261,9 @@ export const canUserWriteEntity = (entityInput, context) => {
   const writeCampaignIds = normaliseIdList(entity.write_campaign_ids)
   const writeUserIds = normaliseIdList(entity.write_user_ids)
 
-  const userId = context?.userId ?? null
+  const rawUserId = context?.userId ?? null
+  const suppressPersonalAccess = Boolean(context?.suppressPersonalAccess)
+  const userId = suppressPersonalAccess ? null : rawUserId
   const isAdmin = Boolean(context?.isAdmin)
   const isOwner = Boolean(context?.isOwner)
   const worldAccess = context?.worldAccess ?? null
@@ -322,7 +325,9 @@ export const canUserReadEntity = (entityInput, context) => {
 
   const viewAs = context?.viewAs ?? null
   const isViewAs = Boolean(viewAs)
-  const userId = isViewAs ? viewAs?.userId ?? null : context?.userId ?? null
+  const baseUserId = isViewAs ? viewAs?.userId ?? null : context?.userId ?? null
+  const suppressPersonalAccess = isViewAs ? false : Boolean(context?.suppressPersonalAccess)
+  const userId = suppressPersonalAccess ? null : baseUserId
   const isAdmin = isViewAs ? false : Boolean(context?.isAdmin)
   const isOwner = isViewAs ? false : Boolean(context?.isOwner)
   const worldAccess = context?.worldAccess ?? null
@@ -405,7 +410,9 @@ export const buildReadableEntitiesWhereClause = (context) => {
   }
 
   const clauses = []
-  const userId = isViewAs ? viewAs?.userId ?? null : context.userId ?? null
+  const baseUserId = isViewAs ? viewAs?.userId ?? null : context.userId ?? null
+  const suppressPersonalAccess = isViewAs ? false : Boolean(context?.suppressPersonalAccess)
+  const userId = suppressPersonalAccess ? null : baseUserId
   const characterIds = isViewAs
     ? new Set(viewAs?.characterId ? [String(viewAs.characterId)] : [])
     : context.characterIds ?? new Set()
