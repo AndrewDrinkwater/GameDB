@@ -748,9 +748,11 @@ export default function EntityDetailPage() {
     return buildMetadataViewMap(entity.fields)
   }, [entity])
 
+  const entityFields = entity?.fields
+
   const normalisedFieldRules = useMemo(
-    () => normaliseFieldRules(fieldRules),
-    [fieldRules],
+    () => normaliseFieldRules(fieldRules, entityFields),
+    [fieldRules, entityFields],
   )
 
   const metadataDisplayValues = useMemo(() => {
