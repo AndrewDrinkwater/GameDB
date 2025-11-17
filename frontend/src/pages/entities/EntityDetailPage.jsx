@@ -224,6 +224,7 @@ export default function EntityDetailPage() {
   })
   const [unsavedDialogOpen, setUnsavedDialogOpen] = useState(false)
   const [pendingAction, setPendingAction] = useState(null)
+  const pendingActionRef = useRef(null)
   const [unsavedDialogSaving, setUnsavedDialogSaving] = useState(false)
   const [relationships, setRelationships] = useState([])
   const [relationshipsError, setRelationshipsError] = useState('')
@@ -1219,10 +1220,9 @@ export default function EntityDetailPage() {
   }, [canEdit, formState.isDirty, isAccessDirty, handleAccessSave])
 
   const proceedPendingAction = useCallback(() => {
-    setPendingAction((action) => {
-      action?.proceed?.()
-      return null
-    })
+    const action = pendingActionRef.current
+    setPendingAction(null)
+    action?.proceed?.()
   }, [])
 
   const handleUnsavedSaveAndContinue = useCallback(async () => {
@@ -1487,18 +1487,16 @@ export default function EntityDetailPage() {
 
   const handleUnsavedContinue = useCallback(() => {
     setUnsavedDialogOpen(false)
-    setPendingAction((action) => {
-      action?.discard?.()
-      return null
-    })
+    const action = pendingActionRef.current
+    setPendingAction(null)
+    action?.discard?.()
   }, [])
 
   const handleUnsavedStay = useCallback(() => {
     setUnsavedDialogOpen(false)
-    setPendingAction((action) => {
-      action?.stay?.()
-      return null
-    })
+    const action = pendingActionRef.current
+    setPendingAction(null)
+    action?.stay?.()
   }, [])
 
   useBeforeUnload(
@@ -1529,6 +1527,10 @@ export default function EntityDetailPage() {
   )
 
   const navigationBlocker = useNavigationBlocker(shouldBlockNavigation)
+
+  useEffect(() => {
+    pendingActionRef.current = pendingAction
+  }, [pendingAction])
 
   useEffect(() => {
     if (navigationBlocker.state !== 'blocked') return
