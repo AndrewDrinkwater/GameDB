@@ -38,6 +38,77 @@ const normaliseFieldKeyInput = (input) => {
   return null
 }
 
+const resolveMetadataFieldKey = (field) => {
+  if (!field || typeof field !== 'object') return null
+
+  const coerceString = (value) => {
+    if (value === undefined || value === null) return null
+    const text = String(value).trim()
+    return text || null
+  }
+
+  const explicitKey = coerceString(field.key ?? field.name ?? field.field)
+  if (explicitKey && explicitKey.startsWith('metadata.')) {
+    return explicitKey
+  }
+
+  const metadataField =
+    coerceString(field.metadataField ?? field.metadata_field) ||
+    (explicitKey && !explicitKey.includes('.') ? explicitKey : null) ||
+    coerceString(field.name)
+
+  if (metadataField) {
+    return metadataField.startsWith('metadata.') ? metadataField : `metadata.${metadataField}`
+  }
+
+  return explicitKey
+}
+
+const buildFieldReferenceLookup = (fields = []) => {
+  const lookup = new Map()
+
+  const register = (identifier, targetKey) => {
+    if (!identifier || !targetKey) return
+    const normalisedIdentifier = normaliseFieldKeyInput(identifier)
+    const normalisedTarget = normaliseFieldKeyInput(targetKey)
+    if (!normalisedIdentifier || !normalisedTarget) return
+    lookup.set(normalisedIdentifier, normalisedTarget)
+    lookup.set(normalisedIdentifier.toLowerCase(), normalisedTarget)
+  }
+
+  fields.forEach((field) => {
+    if (!field || typeof field !== 'object') return
+    const resolvedTarget = resolveMetadataFieldKey(field)
+    if (!resolvedTarget) return
+
+    register(resolvedTarget, resolvedTarget)
+
+    const identifiers = [
+      field.id,
+      field.field_id,
+      field.fieldId,
+      field.entity_type_field_id,
+      field.field,
+      field.name,
+      field.key,
+      field.metadataField,
+      field.metadata_field,
+      field.fieldKey,
+      field.field_key,
+      field.target,
+      field.targetField,
+      field.target_field,
+      field.source,
+      field.sourceField,
+      field.source_field,
+    ]
+
+    identifiers.forEach((identifier) => register(identifier, resolvedTarget))
+  })
+
+  return lookup
+}
+
 const OPERATOR_ALIASES = {
   eq: 'equals',
   '=': 'equals',
@@ -434,8 +505,24 @@ const evaluateRule = (rule, data) => {
   }
 }
 
-export const normaliseFieldRules = (rules = []) => {
+export const normaliseFieldRules = (rules = [], fields = []) => {
   if (!Array.isArray(rules)) return []
+
+  const fieldLookup = buildFieldReferenceLookup(fields)
+
+  const mapFieldReference = (value) => {
+    const normalised = normaliseFieldKeyInput(value)
+    if (!normalised) {
+      return typeof value === 'string' ? value : null
+    }
+    if (fieldLookup.size > 0) {
+      const mapped = fieldLookup.get(normalised) || fieldLookup.get(normalised.toLowerCase())
+      if (mapped) {
+        return mapped
+      }
+    }
+    return normalised
+  }
 
   const normalised = rules
     .map((rule, index) => {
@@ -459,6 +546,26 @@ export const normaliseFieldRules = (rules = []) => {
         return null
       }
 
+      const remappedConditions = conditions
+        .map((condition) => {
+          const mappedField = mapFieldReference(condition?.field)
+          if (!mappedField) return null
+          return { ...condition, field: mappedField }
+        })
+        .filter(Boolean)
+
+      const remappedActions = actions
+        .map((action) => {
+          const mappedTarget = mapFieldReference(action?.target)
+          if (!mappedTarget) return null
+          return { ...action, target: mappedTarget }
+        })
+        .filter(Boolean)
+
+      if (!remappedConditions.length || !remappedActions.length) {
+        return null
+      }
+
       const priorityRaw = rule.priority ?? rule.order ?? rule.sort ?? rule.rank ?? index
       const priority = Number.isFinite(Number(priorityRaw)) ? Number(priorityRaw) : index
 
@@ -466,8 +573,8 @@ export const normaliseFieldRules = (rules = []) => {
         id: rule.id ?? `field-rule-${index}`,
         name: rule.name ?? rule.label ?? '',
         matchMode: normaliseMatchMode(rule.matchMode ?? rule.match_mode ?? rule.matchType ?? rule.logic ?? rule.condition),
-        conditions,
-        actions,
+        conditions: remappedConditions,
+        actions: remappedActions,
         priority,
       }
     })

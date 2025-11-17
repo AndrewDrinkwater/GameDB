@@ -335,9 +335,11 @@ export default function EntityInfoDrawer({
   const visibleError = displayedState?.error ?? ''
   const visibleFallbackName = displayedState?.fallbackName
 
+  const visibleFields = visibleEntity?.fields
+
   const normalisedFieldRules = useMemo(
-    () => normaliseFieldRules(fieldRules),
-    [fieldRules],
+    () => normaliseFieldRules(fieldRules, visibleFields),
+    [fieldRules, visibleFields],
   )
 
   const metadataRuleValues = useMemo(

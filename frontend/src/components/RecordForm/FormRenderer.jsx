@@ -51,7 +51,26 @@ function FormRenderer(
     showRuleTargets: new Set(),
   }))
 
-  const normalisedRules = useMemo(() => normaliseFieldRules(fieldRules), [fieldRules])
+  const schemaFieldsForRules = useMemo(() => {
+    if (!schema) return []
+    const directFields = Array.isArray(schema.fields)
+      ? schema.fields.filter((field) => field && typeof field === 'object')
+      : []
+    const sectionFields = Array.isArray(schema.sections)
+      ? schema.sections
+          .flatMap((section) => (Array.isArray(section?.fields) ? section.fields : []))
+          .filter((field) => field && typeof field === 'object')
+      : []
+    if (directFields.length === 0 && sectionFields.length === 0) {
+      return []
+    }
+    return [...sectionFields, ...directFields]
+  }, [schema])
+
+  const normalisedRules = useMemo(
+    () => normaliseFieldRules(fieldRules, schemaFieldsForRules),
+    [fieldRules, schemaFieldsForRules],
+  )
 
   useEffect(() => {
     const nextData = initialData ? { ...initialData } : {}
