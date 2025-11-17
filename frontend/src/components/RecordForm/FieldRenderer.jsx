@@ -306,12 +306,13 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
       isMounted = false
     }
   }, [
-    field,
     field.optionsSource,
     field.optionLabelKey,
     field.optionValueKey,
     field.optionsCriteria,
     field.roles,
+    field.worldId,
+    field.world_id,
     data?.world_id,
     data?.worldId,
   ])
@@ -763,7 +764,12 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
   }
 
   if (type === 'multiselect') {
-    const combinedOptions = [...(field.options || []), ...dynamicOptions]
+    const supplementalOptions = [
+      ...(Array.isArray(field.selectedOptions) ? field.selectedOptions : []),
+      ...(Array.isArray(field.prefillOptions) ? field.prefillOptions : []),
+    ]
+
+    const combinedOptions = [...(field.options || []), ...dynamicOptions, ...supplementalOptions]
       .map((option, index) => {
         const normalised = normaliseListCollectorOption(option)
         if (normalised) return normalised
