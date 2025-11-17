@@ -41,7 +41,28 @@ export default function useRecordHistory(recordInfo = null) {
     if (!recordInfo) return null
     const { id, type, title, viewedAt } = recordInfo
     if (id === undefined || id === null || !type) return null
-    return { id, type, title, viewedAt }
+
+    const record = { id, type, title, viewedAt }
+
+    const resolvedWorldId =
+      recordInfo.worldId ??
+      recordInfo.world_id ??
+      recordInfo.world?.id ??
+      recordInfo.world?.world_id ??
+      null
+
+    const resolvedWorldName =
+      recordInfo.worldName ?? recordInfo.world_name ?? recordInfo.world?.name ?? null
+
+    if (resolvedWorldId !== undefined && resolvedWorldId !== null) {
+      record.worldId = resolvedWorldId
+    }
+
+    if (resolvedWorldName) {
+      record.worldName = resolvedWorldName
+    }
+
+    return record
   }, [recordInfo])
 
   useEffect(() => {
