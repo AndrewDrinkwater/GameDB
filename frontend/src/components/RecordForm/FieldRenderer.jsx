@@ -913,11 +913,13 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
   }
 
   // --- DEFAULT TEXT INPUT ---
+  const inputType = (isReadOnly ? 'text' : field.inputType) || 'text'
+
   return (
     <div className={`form-group ${isReadOnly ? 'readonly' : ''}`}>
       <label>{label}</label>
       <input
-        type={field.inputType || 'text'}
+        type={inputType}
         value={isReadOnly ? safeValue : normalisedValue}
         onChange={handleChange}
         placeholder={field.placeholder || ''}
