@@ -44,6 +44,11 @@ export default (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      visible_by_default: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+      },
       sort_order: {
         type: DataTypes.INTEGER,
         defaultValue: 0,

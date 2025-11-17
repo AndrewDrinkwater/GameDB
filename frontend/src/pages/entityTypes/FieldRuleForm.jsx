@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 const OPERATOR_OPTIONS = [
   { value: 'equals', label: 'Equals' },
@@ -26,8 +26,38 @@ const MATCH_MODE_OPTIONS = [
   { value: 'none', label: 'None of the conditions can match' },
 ]
 
+const VALUELESS_OPERATORS = new Set(['is_set', 'is_not_set'])
+
 const defaultCondition = () => ({ field: '', operator: 'equals', valuesText: '' })
 const defaultAction = () => ({ target: '', action: 'show' })
+
+const mapEnumChoices = (choices = []) => {
+  if (!Array.isArray(choices)) return []
+
+  return choices
+    .map((choice, index) => {
+      if (choice === null || choice === undefined) return null
+      if (typeof choice === 'object') {
+        const value =
+          choice.value ??
+          choice.id ??
+          choice.key ??
+          choice.slug ??
+          `choice-${index}`
+        if (value === null || value === undefined) return null
+        const label =
+          choice.label ??
+          choice.name ??
+          choice.title ??
+          choice.display ??
+          value
+        return { value: String(value), label: String(label ?? value) }
+      }
+      const text = String(choice)
+      return { value: text, label: text }
+    })
+    .filter(Boolean)
+}
 
 const normaliseConditions = (conditions = []) => {
   if (!Array.isArray(conditions) || !conditions.length) {
@@ -92,6 +122,40 @@ export default function FieldRuleForm({
     [fields],
   )
 
+  const fieldDefinitionLookup = useMemo(() => {
+    const lookup = new Map()
+    fields.forEach((field) => {
+      if (!field) return
+      const registerKey = (key) => {
+        if (key === undefined || key === null) return
+        const stringKey = String(key)
+        if (!stringKey) return
+        lookup.set(stringKey, field)
+        lookup.set(stringKey.toLowerCase(), field)
+      }
+
+      registerKey(field.id)
+      registerKey(field.field_id)
+      registerKey(field.fieldId)
+      registerKey(field.name)
+      registerKey(field.key)
+    })
+    return lookup
+  }, [fields])
+
+  const resolveFieldDefinition = useCallback(
+    (fieldKey) => {
+      if (fieldKey === undefined || fieldKey === null) return null
+      const stringKey = String(fieldKey)
+      return (
+        fieldDefinitionLookup.get(stringKey) ||
+        fieldDefinitionLookup.get(stringKey.toLowerCase()) ||
+        null
+      )
+    },
+    [fieldDefinitionLookup],
+  )
+
   const handleConditionChange = (index, key, value) => {
     setConditions((prev) => {
       const next = prev.slice()
@@ -114,6 +178,27 @@ export default function FieldRuleForm({
 
   const addAction = () => setActions((prev) => [...prev, defaultAction()])
   const removeAction = (index) => setActions((prev) => (prev.length === 1 ? prev : prev.filter((_, idx) => idx !== index)))
+
+  const handleEnumValueToggle = useCallback((conditionIndex, optionValue) => {
+    setConditions((prev) => {
+      if (!Array.isArray(prev) || conditionIndex < 0 || conditionIndex >= prev.length) {
+        return prev
+      }
+      const next = prev.slice()
+      const target = next[conditionIndex]
+      if (!target) return prev
+      const parsed = parseValuesText(target.valuesText || '')
+      const value = String(optionValue)
+      let nextValues
+      if (parsed.includes(value)) {
+        nextValues = parsed.filter((entry) => entry !== value)
+      } else {
+        nextValues = [...parsed, value]
+      }
+      next[conditionIndex] = { ...target, valuesText: nextValues.join(', ') }
+      return next
+    })
+  }, [])
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -233,13 +318,47 @@ export default function FieldRuleForm({
                 ))}
               </select>
 
-              <input
-                type="text"
-                value={condition.valuesText}
-                onChange={(event) => handleConditionChange(index, 'valuesText', event.target.value)}
-                placeholder="Comma separated values"
-                disabled={submitting || ['is_set', 'is_not_set'].includes(condition.operator)}
-              />
+              {(() => {
+                const fieldDefinition = resolveFieldDefinition(condition.field)
+                const fieldDataType = fieldDefinition?.data_type || fieldDefinition?.dataType
+                const enumChoices =
+                  fieldDataType === 'enum'
+                    ? mapEnumChoices(fieldDefinition?.options?.choices)
+                    : []
+                const disableValueInput = VALUELESS_OPERATORS.has(condition.operator)
+                const showEnumChoiceList = !disableValueInput && enumChoices.length > 0
+                if (showEnumChoiceList) {
+                  const selectedValues = new Set(parseValuesText(condition.valuesText || ''))
+                  return (
+                    <div className="field-rule-enum-values" role="group" aria-label="Enum choices">
+                      {enumChoices.map((choice) => (
+                        <label
+                          key={`${choice.value}-${index}`}
+                          className="field-rule-enum-option"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedValues.has(choice.value)}
+                            onChange={() => handleEnumValueToggle(index, choice.value)}
+                            disabled={submitting}
+                          />
+                          <span>{choice.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )
+                }
+
+                return (
+                  <input
+                    type="text"
+                    value={condition.valuesText}
+                    onChange={(event) => handleConditionChange(index, 'valuesText', event.target.value)}
+                    placeholder="Comma separated values"
+                    disabled={submitting || disableValueInput}
+                  />
+                )
+              })()}
 
               <button
                 type="button"

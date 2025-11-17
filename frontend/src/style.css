@@ -4627,6 +4627,28 @@ body.theme-dark .entity-mini-create-inline {
   justify-self: flex-end;
 }
 
+.field-rule-enum-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.field-rule-enum-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid #cbd5f5;
+  background: #fff;
+  font-size: 0.85rem;
+  color: #0f172a;
+}
+
+.field-rule-enum-option input {
+  margin: 0;
+}
+
 .card-header {
   display: flex;
   justify-content: space-between;

@@ -58,6 +58,10 @@ const validateFieldPayload = (payload) => {
 
   const options = normaliseOptions(payload.options)
   const referenceFilter = normaliseReferenceFilter(payload.reference_filter)
+  const visibleByDefault =
+    payload.visible_by_default !== undefined
+      ? Boolean(payload.visible_by_default)
+      : true
   const trimmedReferenceTypeId =
     typeof payload.reference_type_id === 'string' ? payload.reference_type_id.trim() : payload.reference_type_id
 
@@ -104,6 +108,7 @@ const validateFieldPayload = (payload) => {
     options,
     reference_type_id: payload.data_type === 'reference' ? trimmedReferenceTypeId : null,
     reference_filter: payload.data_type === 'reference' ? referenceFilter : {},
+    visible_by_default: visibleByDefault,
   }
 }
 
@@ -141,6 +146,23 @@ const mapFieldResponse = (fieldInstance) => {
   }
 
   delete plain.referenceType
+
+  if (plain.visible_by_default === undefined && plain.visibleByDefault !== undefined) {
+    plain.visible_by_default = plain.visibleByDefault
+  }
+
+  if (plain.visibleByDefault === undefined) {
+    plain.visibleByDefault =
+      plain.visible_by_default !== undefined ? Boolean(plain.visible_by_default) : true
+  } else {
+    plain.visibleByDefault = Boolean(plain.visibleByDefault)
+  }
+
+  if (plain.visible_by_default === undefined) {
+    plain.visible_by_default = plain.visibleByDefault
+  } else {
+    plain.visible_by_default = Boolean(plain.visible_by_default)
+  }
 
   return plain
 }
@@ -203,6 +225,8 @@ export const createEntityTypeField = async (req, res) => {
       sort_order,
       reference_type_id,
       reference_filter,
+      visible_by_default,
+      visibleByDefault,
     } = req.body
 
     const entityType = await EntityType.findByPk(id)
@@ -229,6 +253,9 @@ export const createEntityTypeField = async (req, res) => {
       return res.status(400).json({ success: false, message: 'sort_order must be a number' })
     }
 
+    const resolvedVisibleByDefault =
+      visible_by_default !== undefined ? visible_by_default : visibleByDefault
+
     let payload
     try {
       payload = validateFieldPayload({
@@ -242,6 +269,7 @@ export const createEntityTypeField = async (req, res) => {
         sort_order: parsedSortOrder,
         reference_type_id,
         reference_filter,
+        visible_by_default: resolvedVisibleByDefault,
       })
     } catch (validationError) {
       return res.status(400).json({ success: false, message: validationError.message })
@@ -287,6 +315,8 @@ export const updateEntityTypeField = async (req, res) => {
       sort_order,
       reference_type_id,
       reference_filter,
+      visible_by_default,
+      visibleByDefault,
     } = req.body
 
     const field = await EntityTypeField.findByPk(id)
@@ -327,6 +357,12 @@ export const updateEntityTypeField = async (req, res) => {
         reference_type_id !== undefined ? reference_type_id : field.reference_type_id,
       reference_filter:
         reference_filter !== undefined ? reference_filter : field.reference_filter,
+      visible_by_default:
+        visible_by_default !== undefined
+          ? Boolean(visible_by_default)
+          : visibleByDefault !== undefined
+            ? Boolean(visibleByDefault)
+            : field.visible_by_default,
     }
 
     let validated
