@@ -159,11 +159,18 @@ const extractMetadataEntries = (entity, fieldOrder) => {
         const key = field.name || field.label || `field-${index}`
         const label = field.label || field.name || `Field ${index + 1}`
         const fieldKey = field?.name ? `metadata.${field.name}` : field?.key || key
+        const visibleByDefault =
+          field.visibleByDefault !== undefined
+            ? Boolean(field.visibleByDefault)
+            : field.visible_by_default !== undefined
+              ? Boolean(field.visible_by_default)
+              : true
         return {
           key,
           label,
           value: formatFieldValue(field),
           fieldKey,
+          visibleByDefault,
         }
       })
   }
@@ -180,6 +187,7 @@ const extractMetadataEntries = (entity, fieldOrder) => {
     label: key,
     value: resolvePrimitive(rawValue),
     fieldKey: key ? `metadata.${key}` : key,
+    visibleByDefault: true,
   }))
 }
 
@@ -359,7 +367,18 @@ export default function EntityInfoDrawer({
     return metadataEntries.filter((entry) => {
       if (!entry?.fieldKey) return true
       const action = actionsByField[entry.fieldKey]
-      return !isFieldHiddenByRules(entry.fieldKey, action, showRuleTargets)
+      const defaultVisible =
+        entry.visibleByDefault !== undefined
+          ? Boolean(entry.visibleByDefault)
+          : entry.visible_by_default !== undefined
+            ? Boolean(entry.visible_by_default)
+            : true
+      return !isFieldHiddenByRules(
+        entry.fieldKey,
+        action,
+        showRuleTargets,
+        defaultVisible,
+      )
     })
   }, [metadataEntries, viewRuleContext])
 

@@ -22,6 +22,7 @@ export default function EntityTypeFieldForm({
     label: '',
     data_type: 'text',
     required: false,
+    visibleByDefault: true,
     enumChoices: '',
     reference_type_id: '',
     reference_filter: '',
@@ -35,6 +36,7 @@ export default function EntityTypeFieldForm({
         label: '',
         data_type: 'text',
         required: false,
+        visibleByDefault: true,
         enumChoices: '',
         reference_type_id: '',
         reference_filter: '',
@@ -60,6 +62,12 @@ export default function EntityTypeFieldForm({
       label: initialData.label || '',
       data_type: initialData.data_type || 'text',
       required: Boolean(initialData.required),
+      visibleByDefault:
+        initialData.visibleByDefault !== undefined
+          ? Boolean(initialData.visibleByDefault)
+          : initialData.visible_by_default !== undefined
+            ? Boolean(initialData.visible_by_default)
+            : true,
       enumChoices,
       reference_type_id: initialData.reference_type_id || '',
       reference_filter: filterValue,
@@ -136,6 +144,7 @@ export default function EntityTypeFieldForm({
       label: trimmedLabel,
       data_type: values.data_type,
       required: Boolean(values.required),
+      visible_by_default: Boolean(values.visibleByDefault),
     }
 
     if (isEnum) {
@@ -231,6 +240,22 @@ export default function EntityTypeFieldForm({
             <label htmlFor="entity-field-required">Required</label>
           </div>
           <span className="field-hint">Mark as required on entity forms.</span>
+        </div>
+
+        <div className="form-group checkbox-group">
+          <div className="checkbox-control">
+            <input
+              id="entity-field-visible-default"
+              type="checkbox"
+              checked={values.visibleByDefault}
+              onChange={handleChange('visibleByDefault')}
+              disabled={submitting}
+            />
+            <label htmlFor="entity-field-visible-default">Visible by default</label>
+          </div>
+          <span className="field-hint">
+            Uncheck to hide this field unless a rule explicitly shows it.
+          </span>
         </div>
 
         {isEnum && (

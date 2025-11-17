@@ -514,7 +514,12 @@ export const evaluateFieldRuleActions = (rules, data = {}) => {
   return { actionsByField, showRuleTargets }
 }
 
-export const isFieldHiddenByRules = (fieldKey, action, showRuleTargets = new Set()) => {
+export const isFieldHiddenByRules = (
+  fieldKey,
+  action,
+  showRuleTargets = new Set(),
+  defaultVisible = true,
+) => {
   if (!fieldKey) return false
   const normalisedAction = typeof action === 'string' ? action.toLowerCase() : ''
   const normalisedKey = normaliseFieldKeyInput(fieldKey)?.toLowerCase() ?? null
@@ -525,9 +530,17 @@ export const isFieldHiddenByRules = (fieldKey, action, showRuleTargets = new Set
 
   if (hasShowOverride) return false
 
-  if (!normalisedAction) return false
+  if (normalisedAction === 'show') return false
 
-  return normalisedAction === 'hide' || normalisedAction === 'hidden'
+  if (normalisedAction === 'hide' || normalisedAction === 'hidden') {
+    return true
+  }
+
+  if (defaultVisible === false) {
+    return true
+  }
+
+  return false
 }
 
 export default {

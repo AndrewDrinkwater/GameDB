@@ -81,12 +81,19 @@ const buildEnumOptions = (field) => {
 const mapFieldToSchemaField = (field) => {
   if (!field?.name) return null
   const key = `metadata.${field.name}`
+  const visibleByDefault =
+    field.visibleByDefault !== undefined
+      ? Boolean(field.visibleByDefault)
+      : field.visible_by_default !== undefined
+        ? Boolean(field.visible_by_default)
+        : true
   const base = {
     key,
     name: key,
     label: field.label || field.name,
     metadataField: field.name,
     dataType: field.dataType,
+    visibleByDefault,
   }
 
   switch (field.dataType) {
@@ -617,7 +624,21 @@ export default function EntityDetailPage() {
                   `${sectionKey}-field-${fieldIndex}`
 
                 const action = actionsByField[fieldKey]
-                if (isFieldHiddenByRules(fieldKey, action, showRuleTargets)) {
+                const defaultVisible =
+                  field.visibleByDefault !== undefined
+                    ? Boolean(field.visibleByDefault)
+                    : field.visible_by_default !== undefined
+                      ? Boolean(field.visible_by_default)
+                      : true
+
+                if (
+                  isFieldHiddenByRules(
+                    fieldKey,
+                    action,
+                    showRuleTargets,
+                    defaultVisible,
+                  )
+                ) {
                   return null
                 }
 

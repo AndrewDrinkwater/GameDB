@@ -177,15 +177,28 @@ function FormRenderer(
 
     const missingFields = []
     sections.forEach((section) => {
-      const fields = Array.isArray(section.fields) ? section.fields : []
-      fields.forEach((field) => {
-        const fieldKey = field?.key || field?.name || field?.field
-        if (!fieldKey) return
-        const action = ruleContext.actionsByField[fieldKey]
-        if (isFieldHiddenByRules(fieldKey, action, ruleContext.showRuleTargets)) {
-          return
-        }
-        const isRequired = Boolean(field?.required) || action === 'require'
+        const fields = Array.isArray(section.fields) ? section.fields : []
+        fields.forEach((field) => {
+          const fieldKey = field?.key || field?.name || field?.field
+          if (!fieldKey) return
+          const action = ruleContext.actionsByField[fieldKey]
+          const defaultVisible =
+            field?.visibleByDefault !== undefined
+              ? Boolean(field.visibleByDefault)
+              : field?.visible_by_default !== undefined
+                ? Boolean(field.visible_by_default)
+                : true
+          if (
+            isFieldHiddenByRules(
+              fieldKey,
+              action,
+              ruleContext.showRuleTargets,
+              defaultVisible,
+            )
+          ) {
+            return
+          }
+          const isRequired = Boolean(field?.required) || action === 'require'
         if (!isRequired) return
         const value = readValueByPath(formData, fieldKey)
         const hasValue = Array.isArray(value)
@@ -326,7 +339,20 @@ function FormRenderer(
               }
               const fieldKey = field.key || field.name || field.field || `field-${idx}`
               const action = ruleContext.actionsByField[fieldKey]
-              if (isFieldHiddenByRules(fieldKey, action, ruleContext.showRuleTargets)) {
+              const defaultVisible =
+                field.visibleByDefault !== undefined
+                  ? Boolean(field.visibleByDefault)
+                  : field.visible_by_default !== undefined
+                    ? Boolean(field.visible_by_default)
+                    : true
+              if (
+                isFieldHiddenByRules(
+                  fieldKey,
+                  action,
+                  ruleContext.showRuleTargets,
+                  defaultVisible,
+                )
+              ) {
                 return null
               }
               const fieldProps = { ...field }
