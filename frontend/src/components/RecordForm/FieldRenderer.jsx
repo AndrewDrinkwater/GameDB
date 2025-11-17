@@ -8,6 +8,9 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
   const key = field.key || field.name || field.field || ''
   const [dynamicOptions, setDynamicOptions] = useState([])
   const [optionsLoaded, setOptionsLoaded] = useState(!field.optionsSource)
+  const [criteriaSignature, setCriteriaSignature] = useState(() =>
+    JSON.stringify(field.optionsCriteria ?? null)
+  )
   const [referenceState, setReferenceState] = useState(() => ({
     selectedLabel: field?.selectedLabel ? String(field.selectedLabel) : '',
     selectedValue: null,
@@ -23,6 +26,21 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     }
     return null
   }
+
+  const serialiseCriteria = useCallback((criteria) => {
+    if (criteria === undefined || criteria === null) return 'null'
+    try {
+      return JSON.stringify(criteria)
+    } catch (err) {
+      console.warn('⚠️ Unable to serialise options criteria', err)
+      return String(criteria)
+    }
+  }, [])
+
+  useEffect(() => {
+    const signature = serialiseCriteria(field.optionsCriteria ?? null)
+    setCriteriaSignature((prev) => (prev === signature ? prev : signature))
+  }, [field.optionsCriteria, serialiseCriteria])
 
   // 🔄 Fetch options dynamically if `optionsSource` provided
   useEffect(() => {
@@ -309,7 +327,7 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     field.optionsSource,
     field.optionLabelKey,
     field.optionValueKey,
-    field.optionsCriteria,
+    criteriaSignature,
     field.roles,
     field.worldId,
     field.world_id,
