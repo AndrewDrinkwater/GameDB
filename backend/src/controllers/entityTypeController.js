@@ -297,11 +297,13 @@ export const listWorldEntityTypesWithEntities = async (req, res) => {
     })
 
     const where = { world_id: world.id }
+    const isPrivilegedView = Boolean(readContext?.isOwner || readContext?.isAdmin)
+    const allowPersonalAccess = Boolean(user?.id && !readContext?.suppressPersonalAccess)
 
-    if (!access.isOwner && !access.isAdmin) {
+    if (!isPrivilegedView) {
       const orClauses = [{ visibility: { [Op.in]: PUBLIC_VISIBILITY } }]
 
-      if (user?.id) {
+      if (allowPersonalAccess) {
         orClauses.push({ created_by: user.id })
       }
 
