@@ -915,6 +915,33 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
   // --- DEFAULT TEXT INPUT ---
   const inputType = (isReadOnly ? 'text' : field.inputType) || 'text'
 
+  const sanitisedInputValue = (() => {
+    if (normalisedValue === null || normalisedValue === undefined) {
+      return ''
+    }
+
+    const strictInputTypes = new Set([
+      'number',
+      'date',
+      'datetime-local',
+      'month',
+      'time',
+      'week',
+      'range',
+    ])
+
+    if (strictInputTypes.has(inputType)) {
+      if (typeof normalisedValue === 'string') {
+        const trimmed = normalisedValue.trim()
+        if (!trimmed || trimmed === '—') {
+          return ''
+        }
+      }
+    }
+
+    return normalisedValue
+  })()
+
   if (isReadOnly) {
     return (
       <div className="form-group readonly">
@@ -930,7 +957,7 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
       <label>{label}</label>
       <input
         type={inputType}
-        value={normalisedValue}
+        value={sanitisedInputValue}
         onChange={handleChange}
         placeholder={field.placeholder || ''}
         className={isReadOnly ? 'readonly-control' : undefined}
