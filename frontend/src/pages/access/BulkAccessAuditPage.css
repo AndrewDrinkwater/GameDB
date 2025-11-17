@@ -151,3 +151,56 @@
     align-items: flex-start;
   }
 }
+
+/* ---- Dark theme ---- */
+body.theme-dark .bulk-audit-page {
+  color: #e2e8f0;
+}
+
+body.theme-dark .audit-run-row {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.75);
+}
+
+body.theme-dark .audit-run-row.active {
+  border-color: rgba(129, 140, 248, 0.65);
+  background: rgba(79, 70, 229, 0.25);
+}
+
+body.theme-dark .audit-run-meta {
+  color: rgba(226, 232, 240, 0.8);
+}
+
+body.theme-dark .status-pill.active {
+  background: rgba(59, 130, 246, 0.2);
+  color: #bfdbfe;
+}
+
+body.theme-dark .status-pill.reverted {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fecaca;
+}
+
+body.theme-dark .audit-detail-meta {
+  background: rgba(15, 23, 42, 0.8);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+body.theme-dark .audit-change-card {
+  background: rgba(15, 23, 42, 0.9);
+  border-color: rgba(148, 163, 184, 0.35);
+  box-shadow: 0 18px 36px rgba(2, 6, 23, 0.65);
+}
+
+body.theme-dark .audit-change-subtitle,
+body.theme-dark .audit-diff-label {
+  color: rgba(226, 232, 240, 0.75);
+}
+
+body.theme-dark .audit-diff-values .old {
+  color: #fca5a5;
+}
+
+body.theme-dark .audit-diff-values .new {
+  color: #86efac;
+}
