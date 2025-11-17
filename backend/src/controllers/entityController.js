@@ -1038,15 +1038,6 @@ export const listWorldEntities = async (req, res) => {
           ? req.query.characterId.trim()
           : ''
 
-    const where = { world_id: world.id }
-
-    if (!access.isOwner && !access.isAdmin) {
-      where[Op.or] = [
-        { visibility: { [Op.in]: PUBLIC_VISIBILITY } },
-        { created_by: user.id },
-      ]
-    }
-
     const readContext = await buildEntityReadContext({
       worldId: world.id,
       user,
@@ -1054,6 +1045,24 @@ export const listWorldEntities = async (req, res) => {
       campaignContextId: req.campaignContextId,
       characterContextId: viewAsCharacterId,
     })
+
+    const where = { world_id: world.id }
+    const isPrivilegedView = Boolean(readContext?.isOwner || readContext?.isAdmin)
+    const allowPersonalAccess = Boolean(user?.id && !readContext?.suppressPersonalAccess)
+
+    if (!isPrivilegedView) {
+      const visibilityClauses = [{ visibility: { [Op.in]: PUBLIC_VISIBILITY } }]
+
+      if (allowPersonalAccess) {
+        visibilityClauses.push({ created_by: user.id })
+      }
+
+      if (visibilityClauses.length > 1) {
+        where[Op.or] = visibilityClauses
+      } else {
+        where[Op.and] = [...(where[Op.and] ?? []), visibilityClauses[0]]
+      }
+    }
 
     const entities = await Entity.findAll({
       where,
@@ -1154,11 +1163,6 @@ export const searchEntities = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    const limit = clampNumber(rawLimit, { min: 1, max: 100, fallback: 20 })
-    const offset = clampNumber(rawOffset, { min: 0, fallback: 0 })
-    const trimmedQuery = typeof q === 'string' ? q.trim() : ''
-    const where = { world_id: world.id }
-
     const readContext = await buildEntityReadContext({
       worldId: world.id,
       user,
@@ -1166,11 +1170,25 @@ export const searchEntities = async (req, res) => {
       campaignContextId: req.campaignContextId,
     })
 
-    if (!access.isOwner && !access.isAdmin) {
-      where[Op.or] = [
-        { visibility: { [Op.in]: PUBLIC_VISIBILITY } },
-        { created_by: user.id },
-      ]
+    const limit = clampNumber(rawLimit, { min: 1, max: 100, fallback: 20 })
+    const offset = clampNumber(rawOffset, { min: 0, fallback: 0 })
+    const trimmedQuery = typeof q === 'string' ? q.trim() : ''
+    const where = { world_id: world.id }
+    const isPrivilegedView = Boolean(readContext?.isOwner || readContext?.isAdmin)
+    const allowPersonalAccess = Boolean(user?.id && !readContext?.suppressPersonalAccess)
+
+    if (!isPrivilegedView) {
+      const visibilityClauses = [{ visibility: { [Op.in]: PUBLIC_VISIBILITY } }]
+
+      if (allowPersonalAccess) {
+        visibilityClauses.push({ created_by: user.id })
+      }
+
+      if (visibilityClauses.length > 1) {
+        where[Op.or] = visibilityClauses
+      } else {
+        where[Op.and] = [...(where[Op.and] ?? []), visibilityClauses[0]]
+      }
     }
 
     const readAccessWhere = buildReadableEntitiesWhereClause(readContext)

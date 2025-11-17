@@ -33,7 +33,7 @@ function FormRenderer(
     hideActions = false,
     enableUnsavedPrompt = true,
     onStateChange,
-    fieldRules = [],
+    fieldRules,
   },
   ref,
 ) {
@@ -67,10 +67,10 @@ function FormRenderer(
     return [...sectionFields, ...directFields]
   }, [schema])
 
-  const normalisedRules = useMemo(
-    () => normaliseFieldRules(fieldRules, schemaFieldsForRules),
-    [fieldRules, schemaFieldsForRules],
-  )
+  const normalisedRules = useMemo(() => {
+    const safeFieldRules = Array.isArray(fieldRules) ? fieldRules : []
+    return normaliseFieldRules(safeFieldRules, schemaFieldsForRules)
+  }, [fieldRules, schemaFieldsForRules])
 
   useEffect(() => {
     const nextData = initialData ? { ...initialData } : {}

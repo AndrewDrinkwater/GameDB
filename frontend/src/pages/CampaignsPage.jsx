@@ -312,6 +312,29 @@ export default function CampaignsPage({ scope = 'all' }) {
     return schema
   }, [editSchema])
 
+  const membershipSelectedOptions = useMemo(() => {
+    if (!selectedCampaign || !Array.isArray(selectedCampaign.members)) return []
+    const seen = new Set()
+    return selectedCampaign.members
+      .map((member) => {
+        const memberId = member?.user_id ?? member?.user?.id
+        if (!memberId) return null
+        const value = String(memberId)
+        if (seen.has(value)) return null
+        seen.add(value)
+        const label =
+          member?.user?.username ||
+          member?.user?.displayName ||
+          member?.user?.display_name ||
+          member?.user?.name ||
+          member?.user?.email ||
+          member?.display_name ||
+          value
+        return { value, label }
+      })
+      .filter(Boolean)
+  }, [selectedCampaign])
+
   const membershipSchema = useMemo(() => {
     const schema = { title: 'Campaign Membership', fields: [] }
 
@@ -337,11 +360,15 @@ export default function CampaignsPage({ scope = 'all' }) {
     }
 
     if (playersField) {
-      schema.fields = [JSON.parse(JSON.stringify(playersField))]
+      const fieldCopy = JSON.parse(JSON.stringify(playersField))
+      if (membershipSelectedOptions.length > 0) {
+        fieldCopy.selectedOptions = membershipSelectedOptions
+      }
+      schema.fields = [fieldCopy]
     }
 
     return schema
-  }, [editSchema])
+  }, [editSchema, membershipSelectedOptions])
 
   const membershipInitialData = useMemo(() => {
     if (!editInitialData) return null
@@ -383,7 +410,7 @@ export default function CampaignsPage({ scope = 'all' }) {
   const campaignAccessLink = selectedCampaign ? `/campaigns/${selectedCampaign.id}/access/bulk` : ''
   const canUseCampaignAccess = Boolean(selectedCampaign && isDmForSelectedCampaign)
   const campaignAccessCta =
-    canUseCampaignAccess && campaignAccessLink ? (
+    scope !== 'my' && canUseCampaignAccess && campaignAccessLink ? (
       <div className="campaign-access-cta">
         <div>
           <p className="campaign-access-eyebrow">Campaign Tools</p>

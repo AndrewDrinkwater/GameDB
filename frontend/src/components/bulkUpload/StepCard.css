@@ -53,6 +53,20 @@
   font-size: 0.95rem;
 }
 
+body.theme-dark .step-card {
+  border-color: rgba(148, 163, 184, 0.35);
+  box-shadow: 0 24px 36px -24px rgba(2, 6, 23, 0.85);
+}
+
+body.theme-dark .step-card:hover {
+  border-color: rgba(129, 140, 248, 0.6);
+  box-shadow: 0 32px 50px -30px rgba(99, 102, 241, 0.7);
+}
+
+body.theme-dark .step-card__subtitle {
+  color: rgba(226, 232, 240, 0.75);
+}
+
 .step-card__body {
   display: flex;
   flex-direction: column;

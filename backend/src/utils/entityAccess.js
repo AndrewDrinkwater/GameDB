@@ -82,6 +82,50 @@ export const fetchUserWorldCharacterCampaignIds = async (worldId, userId) => {
   }
 }
 
+const shouldSimulateWorldOwnerAsPlayer = async ({
+  worldId,
+  userId,
+  campaignContextId,
+  isOwner,
+  isAdmin,
+}) => {
+  if (!isOwner || isAdmin) {
+    return false
+  }
+
+  const resolvedWorldId = normaliseId(worldId)
+  const resolvedUserId = normaliseId(userId)
+  const resolvedCampaignId = normaliseId(campaignContextId)
+
+  if (!resolvedWorldId || !resolvedUserId || !resolvedCampaignId) {
+    return false
+  }
+
+  const membership = await UserCampaignRole.findOne({
+    where: { user_id: resolvedUserId, campaign_id: resolvedCampaignId },
+    attributes: ['role'],
+    include: [
+      {
+        model: Campaign,
+        as: 'campaign',
+        required: true,
+        attributes: ['id', 'world_id'],
+      },
+    ],
+  })
+
+  if (!membership || membership.role !== 'player') {
+    return false
+  }
+
+  const membershipWorldId = normaliseId(membership.campaign?.world_id ?? membership.campaign?.world)
+  if (!membershipWorldId) {
+    return false
+  }
+
+  return String(membershipWorldId) === String(resolvedWorldId)
+}
+
 const normaliseCharacterContextId = (value) => {
   if (!value) return null
   if (typeof value === 'string') {
@@ -157,19 +201,31 @@ export const buildEntityReadContext = async ({
   campaignContextId,
   characterContextId,
 }) => {
+  const resolvedWorldId = normaliseId(worldId)
   const userId = user?.id ?? null
   const isAdmin = Boolean(worldAccess?.isAdmin || user?.role === 'system_admin')
   const isOwner = Boolean(worldAccess?.isOwner)
   const providedContextId = normaliseId(campaignContextId)
   const normalisedContextId = providedContextId ? String(providedContextId) : null
 
+  const simulateOwnerAsPlayer = await shouldSimulateWorldOwnerAsPlayer({
+    worldId: resolvedWorldId,
+    userId,
+    campaignContextId: normalisedContextId,
+    isOwner,
+    isAdmin,
+  })
+
+  const effectiveIsOwner = simulateOwnerAsPlayer ? false : isOwner
+  const effectiveIsAdmin = simulateOwnerAsPlayer ? false : isAdmin
+
   let campaignIds = new Set()
   let characterIds = new Set()
   let hasAnyCharacter = false
   let activeCampaignId = normalisedContextId
 
-  if (userId && !isAdmin && !isOwner) {
-    const context = await fetchUserWorldCharacterCampaignIds(worldId, userId)
+  if (userId && resolvedWorldId && !effectiveIsAdmin && !effectiveIsOwner) {
+    const context = await fetchUserWorldCharacterCampaignIds(resolvedWorldId, userId)
     campaignIds = context.campaignIds
     characterIds = context.characterIds
     hasAnyCharacter = context.hasAnyCharacter
@@ -187,14 +243,15 @@ export const buildEntityReadContext = async ({
 
   return {
     userId,
-    isAdmin,
-    isOwner,
+    isAdmin: effectiveIsAdmin,
+    isOwner: effectiveIsOwner,
     campaignIds,
     characterIds,
     hasWorldCharacter: viewAs ? Boolean(viewAs.characterId) : hasAnyCharacter,
     worldAccess: worldAccess ?? null,
     activeCampaignId,
     viewAs,
+    suppressPersonalAccess: simulateOwnerAsPlayer,
   }
 }
 
@@ -204,7 +261,9 @@ export const canUserWriteEntity = (entityInput, context) => {
   const writeCampaignIds = normaliseIdList(entity.write_campaign_ids)
   const writeUserIds = normaliseIdList(entity.write_user_ids)
 
-  const userId = context?.userId ?? null
+  const rawUserId = context?.userId ?? null
+  const suppressPersonalAccess = Boolean(context?.suppressPersonalAccess)
+  const userId = suppressPersonalAccess ? null : rawUserId
   const isAdmin = Boolean(context?.isAdmin)
   const isOwner = Boolean(context?.isOwner)
   const worldAccess = context?.worldAccess ?? null
@@ -266,7 +325,9 @@ export const canUserReadEntity = (entityInput, context) => {
 
   const viewAs = context?.viewAs ?? null
   const isViewAs = Boolean(viewAs)
-  const userId = isViewAs ? viewAs?.userId ?? null : context?.userId ?? null
+  const baseUserId = isViewAs ? viewAs?.userId ?? null : context?.userId ?? null
+  const suppressPersonalAccess = isViewAs ? false : Boolean(context?.suppressPersonalAccess)
+  const userId = suppressPersonalAccess ? null : baseUserId
   const isAdmin = isViewAs ? false : Boolean(context?.isAdmin)
   const isOwner = isViewAs ? false : Boolean(context?.isOwner)
   const worldAccess = context?.worldAccess ?? null
@@ -349,7 +410,9 @@ export const buildReadableEntitiesWhereClause = (context) => {
   }
 
   const clauses = []
-  const userId = isViewAs ? viewAs?.userId ?? null : context.userId ?? null
+  const baseUserId = isViewAs ? viewAs?.userId ?? null : context.userId ?? null
+  const suppressPersonalAccess = isViewAs ? false : Boolean(context?.suppressPersonalAccess)
+  const userId = suppressPersonalAccess ? null : baseUserId
   const characterIds = isViewAs
     ? new Set(viewAs?.characterId ? [String(viewAs.characterId)] : [])
     : context.characterIds ?? new Set()

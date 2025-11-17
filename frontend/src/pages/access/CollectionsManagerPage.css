@@ -267,3 +267,108 @@
     transform: rotate(360deg);
   }
 }
+
+/* ---- Dark theme ---- */
+body.theme-dark .collections-page {
+  color: #e2e8f0;
+}
+
+body.theme-dark .collections-eyebrow,
+body.theme-dark .collections-helper {
+  color: #cbd5f5;
+}
+
+body.theme-dark .collections-alert {
+  border: 1px solid transparent;
+}
+
+body.theme-dark .collections-alert.error {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fecaca;
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+body.theme-dark .collections-alert.warning {
+  background: rgba(251, 191, 36, 0.16);
+  color: #fde68a;
+  border-color: rgba(251, 191, 36, 0.45);
+}
+
+body.theme-dark .collections-alert.success {
+  background: rgba(34, 197, 94, 0.16);
+  color: #bbf7d0;
+  border-color: rgba(34, 197, 94, 0.45);
+}
+
+body.theme-dark .collections-card {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(148, 163, 184, 0.45);
+  box-shadow: 0 18px 36px rgba(2, 6, 23, 0.65);
+}
+
+body.theme-dark .collections-placeholder {
+  color: #94a3b8;
+}
+
+body.theme-dark .collections-table th,
+body.theme-dark .collections-table td {
+  border-color: rgba(15, 23, 42, 0.9);
+}
+
+body.theme-dark .collections-table tr.active {
+  background: rgba(129, 140, 248, 0.25);
+}
+
+body.theme-dark .collection-description {
+  color: rgba(226, 232, 240, 0.8);
+}
+
+body.theme-dark .shared-chip {
+  background: rgba(56, 189, 248, 0.25);
+  color: #bae6fd;
+}
+
+body.theme-dark .shared-chip.private {
+  background: rgba(148, 163, 184, 0.2);
+  color: #e2e8f0;
+}
+
+body.theme-dark .collections-form label {
+  color: #e2e8f0;
+}
+
+body.theme-dark .collections-form input[type='text'],
+body.theme-dark .collections-form textarea,
+body.theme-dark .collections-entity-toolbar input {
+  background: rgba(15, 23, 42, 0.75);
+  border-color: rgba(148, 163, 184, 0.45);
+  color: #f8fafc;
+}
+
+body.theme-dark .collections-form input::placeholder,
+body.theme-dark .collections-form textarea::placeholder,
+body.theme-dark .collections-entity-toolbar input::placeholder {
+  color: rgba(226, 232, 240, 0.55);
+}
+
+body.theme-dark .collections-entity-picker {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.55);
+}
+
+body.theme-dark .collections-entity-list li label:hover {
+  background: rgba(99, 102, 241, 0.2);
+}
+
+body.theme-dark .entity-type {
+  color: #a5b4fc;
+}
+
+body.theme-dark .collections-page .primary-button {
+  background: #4f46e5;
+}
+
+body.theme-dark .collections-page .ghost-button,
+body.theme-dark .collections-page .link-button {
+  color: #93c5fd;
+}

@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import DrawerPanel from '../DrawerPanel.jsx'
 import useRecordHistory from '../../hooks/useRecordHistory.js'
+import { useCampaignContext } from '../../context/CampaignContext.jsx'
 
 const MS_IN_HOUR = 60 * 60 * 1000
 const MS_IN_DAY = 24 * MS_IN_HOUR
@@ -75,15 +76,94 @@ const getEntryPath = (entry) => {
 
 export default function HistoryTab({ isOpen, onClose }) {
   const { history, clearHistory } = useRecordHistory()
+  const {
+    campaigns,
+    worlds,
+    loading: campaignsLoading,
+    worldLoading,
+    selectedContextType,
+    activeWorldId,
+  } = useCampaignContext()
   const now = new Date()
 
-  const grouped = useMemo(() => {
+  const accessFilteringReady = useMemo(
+    () => !campaignsLoading && !worldLoading,
+    [campaignsLoading, worldLoading],
+  )
+
+  const accessibleWorldIds = useMemo(() => {
+    const ids = new Set()
+
+    const addId = (value) => {
+      if (!value && value !== 0) return
+      const stringValue = String(value)
+      if (stringValue) {
+        ids.add(stringValue)
+      }
+    }
+
+    if (Array.isArray(worlds)) {
+      worlds.forEach((world) => {
+        addId(world?.id ?? world?.world_id)
+      })
+    }
+
+    if (Array.isArray(campaigns)) {
+      campaigns.forEach((campaign) => {
+        addId(campaign?.world?.id ?? campaign?.world_id)
+      })
+    }
+
+    return ids
+  }, [campaigns, worlds])
+
+  const activeContextWorldId = useMemo(() => {
+    if (!selectedContextType) return ''
+    if (!activeWorldId) return ''
+    return String(activeWorldId)
+  }, [selectedContextType, activeWorldId])
+
+  const filteredHistory = useMemo(() => {
     if (!Array.isArray(history) || history.length === 0) return []
+    if (!accessFilteringReady) return history
+    if (!accessibleWorldIds.size) return history
+
+    return history.filter((entry) => {
+      if (!entry) return false
+      const type = String(entry.type || '').toLowerCase()
+      if (!type.startsWith('entity')) return true
+
+      const entryWorldId =
+        entry.worldId ?? entry.world_id ?? entry.world?.id ?? entry.world?.world_id ?? null
+
+      if (activeContextWorldId) {
+        if (!entryWorldId) return false
+        if (String(entryWorldId) !== activeContextWorldId) return false
+      }
+
+      if (!entryWorldId) return true
+      return accessibleWorldIds.has(String(entryWorldId))
+    })
+  }, [
+    history,
+    accessibleWorldIds,
+    accessFilteringReady,
+    activeContextWorldId,
+  ])
+
+  const hasHiddenEntries =
+    accessFilteringReady &&
+    Array.isArray(history) &&
+    history.length > 0 &&
+    filteredHistory.length < history.length
+
+  const grouped = useMemo(() => {
+    if (!Array.isArray(filteredHistory) || filteredHistory.length === 0) return []
     const nowDate = new Date()
     const buckets = BUCKETS.map((bucket) => ({ ...bucket, items: [] }))
     const bucketMap = new Map(buckets.map((bucket) => [bucket.key, bucket]))
 
-    history.forEach((entry) => {
+    filteredHistory.forEach((entry) => {
       const date = parseDate(entry?.viewedAt)
       const key = getBucketKey(date, nowDate)
       const bucket = bucketMap.get(key)
@@ -92,7 +172,7 @@ export default function HistoryTab({ isOpen, onClose }) {
     })
 
     return buckets.filter((bucket) => bucket.items.length > 0)
-  }, [history])
+  }, [filteredHistory])
 
   const handleClear = () => {
     clearHistory()
@@ -123,8 +203,12 @@ export default function HistoryTab({ isOpen, onClose }) {
           </button>
         </div>
 
-        {!history.length && (
-          <p className="history-empty">No records viewed yet. Start exploring to build a history.</p>
+        {!filteredHistory.length && (
+          <p className="history-empty">
+            {hasHiddenEntries
+              ? 'You do not currently have access to any records in your recent history.'
+              : 'No records viewed yet. Start exploring to build a history.'}
+          </p>
         )}
 
         {grouped.map((group) => (

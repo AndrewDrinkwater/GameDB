@@ -8,6 +8,9 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
   const key = field.key || field.name || field.field || ''
   const [dynamicOptions, setDynamicOptions] = useState([])
   const [optionsLoaded, setOptionsLoaded] = useState(!field.optionsSource)
+  const [criteriaSignature, setCriteriaSignature] = useState(() =>
+    JSON.stringify(field.optionsCriteria ?? null)
+  )
   const [referenceState, setReferenceState] = useState(() => ({
     selectedLabel: field?.selectedLabel ? String(field.selectedLabel) : '',
     selectedValue: null,
@@ -23,6 +26,21 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     }
     return null
   }
+
+  const serialiseCriteria = useCallback((criteria) => {
+    if (criteria === undefined || criteria === null) return 'null'
+    try {
+      return JSON.stringify(criteria)
+    } catch (err) {
+      console.warn('⚠️ Unable to serialise options criteria', err)
+      return String(criteria)
+    }
+  }, [])
+
+  useEffect(() => {
+    const signature = serialiseCriteria(field.optionsCriteria ?? null)
+    setCriteriaSignature((prev) => (prev === signature ? prev : signature))
+  }, [field.optionsCriteria, serialiseCriteria])
 
   // 🔄 Fetch options dynamically if `optionsSource` provided
   useEffect(() => {
@@ -306,12 +324,13 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
       isMounted = false
     }
   }, [
-    field,
     field.optionsSource,
     field.optionLabelKey,
     field.optionValueKey,
-    field.optionsCriteria,
+    criteriaSignature,
     field.roles,
+    field.worldId,
+    field.world_id,
     data?.world_id,
     data?.worldId,
   ])
@@ -763,7 +782,12 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
   }
 
   if (type === 'multiselect') {
-    const combinedOptions = [...(field.options || []), ...dynamicOptions]
+    const supplementalOptions = [
+      ...(Array.isArray(field.selectedOptions) ? field.selectedOptions : []),
+      ...(Array.isArray(field.prefillOptions) ? field.prefillOptions : []),
+    ]
+
+    const combinedOptions = [...(field.options || []), ...dynamicOptions, ...supplementalOptions]
       .map((option, index) => {
         const normalised = normaliseListCollectorOption(option)
         if (normalised) return normalised
@@ -889,15 +913,53 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
   }
 
   // --- DEFAULT TEXT INPUT ---
+  const inputType = (isReadOnly ? 'text' : field.inputType) || 'text'
+
+  const sanitisedInputValue = (() => {
+    if (normalisedValue === null || normalisedValue === undefined) {
+      return ''
+    }
+
+    const strictInputTypes = new Set([
+      'number',
+      'date',
+      'datetime-local',
+      'month',
+      'time',
+      'week',
+      'range',
+    ])
+
+    if (strictInputTypes.has(inputType)) {
+      if (typeof normalisedValue === 'string') {
+        const trimmed = normalisedValue.trim()
+        if (!trimmed || trimmed === '—') {
+          return ''
+        }
+      }
+    }
+
+    return normalisedValue
+  })()
+
+  if (isReadOnly) {
+    return (
+      <div className="form-group readonly">
+        <label>{label}</label>
+        <div className="readonly-value">{safeValue}</div>
+        {renderHelpText(false)}
+      </div>
+    )
+  }
+
   return (
-    <div className={`form-group ${isReadOnly ? 'readonly' : ''}`}>
+    <div className="form-group">
       <label>{label}</label>
       <input
-        type={field.inputType || 'text'}
-        value={isReadOnly ? safeValue : normalisedValue}
+        type={inputType}
+        value={sanitisedInputValue}
         onChange={handleChange}
         placeholder={field.placeholder || ''}
-        disabled={isReadOnly}
         className={isReadOnly ? 'readonly-control' : undefined}
       />
       {renderHelpText(false)}

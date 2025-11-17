@@ -1,18 +1,31 @@
-:root {
-  --page-background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
-  --card-background: rgba(255, 255, 255, 0.85);
-  --accent: #6366f1;
-  --accent-strong: #4f46e5;
-  --border-subtle: rgba(15, 23, 42, 0.08);
-}
-
 .bulk-upload-page {
+  --bulk-upload-page-background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+  --bulk-upload-card-background: rgba(255, 255, 255, 0.9);
+  --bulk-upload-accent: #6366f1;
+  --bulk-upload-accent-strong: #4f46e5;
+  --bulk-upload-border-subtle: rgba(15, 23, 42, 0.08);
+  --bulk-upload-text-strong: #0f172a;
+  --bulk-upload-text-muted: rgba(15, 23, 42, 0.65);
+  --bulk-upload-surface-muted: rgba(99, 102, 241, 0.08);
+  --surface-elevated: var(--bulk-upload-card-background);
+  --text-strong: var(--bulk-upload-text-strong);
   min-height: 100%;
   padding: 2.5rem clamp(1rem, 5vw, 4rem);
-  background: var(--page-background);
+  background: var(--bulk-upload-page-background);
   display: flex;
   flex-direction: column;
   gap: 2rem;
+}
+
+body.theme-dark .bulk-upload-page {
+  --bulk-upload-page-background: linear-gradient(180deg, #0f172a 0%, #020617 100%);
+  --bulk-upload-card-background: rgba(15, 23, 42, 0.9);
+  --bulk-upload-accent: #a5b4fc;
+  --bulk-upload-accent-strong: #c7d2fe;
+  --bulk-upload-border-subtle: rgba(148, 163, 184, 0.35);
+  --bulk-upload-text-strong: #f8fafc;
+  --bulk-upload-text-muted: rgba(226, 232, 240, 0.75);
+  --bulk-upload-surface-muted: rgba(99, 102, 241, 0.18);
 }
 
 .bulk-upload-page__header {
@@ -24,13 +37,13 @@
 .bulk-upload-page__title {
   font-size: clamp(1.75rem, 3vw, 2.5rem);
   font-weight: 700;
-  color: #0f172a;
+  color: var(--bulk-upload-text-strong);
   margin: 0;
 }
 
 .bulk-upload-page__subtitle {
   font-size: 1rem;
-  color: rgba(15, 23, 42, 0.65);
+  color: var(--bulk-upload-text-muted);
   margin: 0;
   max-width: 720px;
 }
@@ -46,7 +59,7 @@
   gap: 0.75rem;
   padding: 0.85rem 1rem;
   border-radius: 14px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--bulk-upload-border-subtle);
   background: rgba(22, 163, 74, 0.08);
   color: #166534;
 }
@@ -61,11 +74,11 @@
   width: 100%;
   padding: 0.85rem 1rem;
   border-radius: 12px;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--bulk-upload-border-subtle);
   font-size: 1rem;
   font-weight: 500;
-  background: #fff;
-  color: #0f172a;
+  background: var(--bulk-upload-card-background);
+  color: var(--bulk-upload-text-strong);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -114,7 +127,7 @@
 
 .secondary-action {
   background: rgba(99, 102, 241, 0.12);
-  color: var(--accent-strong);
+  color: var(--bulk-upload-accent-strong);
 }
 
 .file-input {
@@ -125,14 +138,14 @@
 
 .file-input label {
   flex: 1;
-  background: rgba(99, 102, 241, 0.08);
+  background: var(--bulk-upload-surface-muted);
   border: 2px dashed rgba(99, 102, 241, 0.4);
   border-radius: 14px;
   padding: 1rem;
   display: flex;
   align-items: center;
   gap: 0.85rem;
-  color: rgba(15, 23, 42, 0.75);
+  color: var(--bulk-upload-text-muted);
   cursor: pointer;
   transition: border-color 0.2s ease, background 0.2s ease;
 }
@@ -160,7 +173,48 @@
 
 .bulk-upload-page__empty-state {
   margin: 0;
-  color: rgba(15, 23, 42, 0.55);
+  color: var(--bulk-upload-text-muted);
+}
+
+body.theme-dark .bulk-upload-page__status {
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+body.theme-dark .bulk-upload-page__status--error {
+  background: rgba(248, 113, 113, 0.18);
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+body.theme-dark .entity-type-select {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #f8fafc;
+  box-shadow: inset 0 1px 2px rgba(2, 6, 23, 0.6);
+}
+
+body.theme-dark .secondary-action {
+  background: rgba(99, 102, 241, 0.24);
+  color: var(--bulk-upload-accent-strong);
+  box-shadow: 0 12px 24px -20px rgba(99, 102, 241, 0.75);
+}
+
+body.theme-dark .file-input label {
+  background: rgba(15, 23, 42, 0.85);
+  border-color: rgba(99, 102, 241, 0.45);
+  color: #e2e8f0;
+}
+
+body.theme-dark .file-input label:hover {
+  background: rgba(99, 102, 241, 0.24);
+  border-color: rgba(129, 140, 248, 0.65);
+}
+
+body.theme-dark .selected-file-banner {
+  background: rgba(99, 102, 241, 0.24);
+  color: #c7d2fe;
 }
 
 @media (min-width: 1024px) {

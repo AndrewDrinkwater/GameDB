@@ -32,12 +32,22 @@ const normaliseEntry = (entry) => {
   }
 
   const viewedAtDate = toDate(entry.viewedAt) || new Date()
+  const worldId =
+    entry.worldId ??
+    entry.world_id ??
+    entry.worldID ??
+    entry.world?.id ??
+    entry.world?.world_id ??
+    null
+  const worldName = entry.worldName ?? entry.world_name ?? entry.world?.name ?? null
 
   return {
     id: String(entry.id),
     type: String(entry.type),
     title: entry.title ? String(entry.title) : 'Untitled record',
     viewedAt: viewedAtDate.toISOString(),
+    ...(worldId ? { worldId: String(worldId) } : {}),
+    ...(worldName ? { worldName: String(worldName) } : {}),
   }
 }
 
