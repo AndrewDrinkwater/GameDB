@@ -783,8 +783,19 @@ export default function EntityDetailPage() {
       id: entity.id,
       type: `entity:${typeName}`,
       title: entity.name || 'Untitled entity',
+      worldId: entityWorldId,
+      worldName: entity?.world?.name || entity?.world_name || '',
     }
-  }, [entity?.id, entity?.name, entity?.entityType?.name, entity?.entity_type?.name, entity?.entityTypeName])
+  }, [
+    entity?.id,
+    entity?.name,
+    entity?.entityType?.name,
+    entity?.entity_type?.name,
+    entity?.entityTypeName,
+    entityWorldId,
+    entity?.world?.name,
+    entity?.world_name,
+  ])
 
   useRecordHistory(historyRecord)
 
