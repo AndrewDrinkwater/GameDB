@@ -2665,6 +2665,16 @@ body.theme-dark .campaign-tab.is-active {
   width: 100%;
 }
 
+.entity-detail-topbar {
+  position: fixed;
+  top: 56px;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+}
+
 .entity-detail-shell {
   width: min(100%, var(--entity-page-max-width));
   margin: 1.5rem auto 0;
@@ -2672,7 +2682,7 @@ body.theme-dark .campaign-tab.is-active {
   flex-direction: column;
   gap: 1.5rem;
   padding: 0 var(--entity-page-inline-padding);
-  padding-top: 0.5rem;
+  padding-top: 112px;
   box-sizing: border-box;
 }
 
@@ -2694,6 +2704,7 @@ body.theme-dark .campaign-tab.is-active {
 .entity-detail-page--mobile .entity-detail-shell {
   margin-top: 1rem;
   gap: 1rem;
+  padding-top: 112px;
 }
 
 .entity-detail-page--mobile .entity-detail-body {
@@ -3635,7 +3646,7 @@ body.theme-dark .entity-secret-share-pill {
 
   .entity-detail-shell {
     margin-top: 1rem;
-    padding-top: 0.25rem;
+    padding-top: 112px;
     gap: 1rem;
   }
 
