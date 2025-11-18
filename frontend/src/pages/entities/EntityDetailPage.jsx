@@ -6,6 +6,7 @@ import ListCollector from '../../components/ListCollector.jsx'
 import TabNav from '../../components/TabNav.jsx'
 import DrawerPanel from '../../components/DrawerPanel.jsx'
 import EntityHeader from '../../components/entities/EntityHeader.jsx'
+import EntityPageLayout from '../../components/entities/EntityPageLayout.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import EntityImageCard from '../../components/entities/EntityImageCard.jsx'
 import UnsavedChangesDialog from '../../components/UnsavedChangesDialog.jsx'
@@ -1647,7 +1648,7 @@ export default function EntityDetailPage() {
 
   return (
     <>
-      <div className={pageClassName}>
+      <EntityPageLayout maxWidth={1280} className={pageClassName}>
         <DrawerPanel
           isOpen={showRelationshipForm}
           onClose={() => setShowRelationshipForm(false)}
@@ -1666,9 +1667,8 @@ export default function EntityDetailPage() {
           />
         </DrawerPanel>
 
-        {/* --- ENTITY DETAIL TOP BAR --- */}
-        <div className="entity-detail-topbar">
-          <div className="entity-detail-topbar-inner">
+        <header className="entity-page-header">
+          <div className="entity-page-header__inner">
             <EntityHeader
               name={entity.name}
               onBack={handleBack}
@@ -1680,13 +1680,15 @@ export default function EntityDetailPage() {
               isSaving={formState.isSubmitting || accessSaving}
               isSaveDisabled={!formState.isDirty && !isAccessDirty}
             />
-            <TabNav
-              tabs={tabItems}
-              activeTab={activeTab}
-              onChange={handleTabChange}
-            />
+            <div className="entity-page-header__tabs">
+              <TabNav
+                tabs={tabItems}
+                activeTab={activeTab}
+                onChange={handleTabChange}
+              />
+            </div>
           </div>
-        </div>
+        </header>
 
         {/* --- MAIN SHELL --- */}
         <div className="entity-detail-shell">
@@ -1794,7 +1796,7 @@ export default function EntityDetailPage() {
             )}
           </div>
         </div>
-      </div>
+      </EntityPageLayout>
 
       <UnsavedChangesDialog
         open={unsavedDialogOpen}
