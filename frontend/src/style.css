@@ -412,7 +412,7 @@
   }
 
   .content {
-    padding: 0.75rem;
+    --content-padding: 0.75rem;
   }
 }
 
@@ -649,9 +649,10 @@
 
 /* Main content area */
 .content {
+  --content-padding: 1rem;
   flex: 1;
   background: #f1f5f9;
-  padding: 1rem;
+  padding: var(--content-padding);
   overflow-y: auto;
   z-index: 0;
   transition: all 0.3s ease;
@@ -659,6 +660,10 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+
+.content--entity-detail {
+  --content-padding: 0;
 }
 
 /* === HOME PAGE === */
@@ -2619,9 +2624,10 @@ body.theme-dark .campaign-tab.is-active {
 /* === ENTITY DETAIL PAGE === */
 .entity-page-layout {
   --entity-page-max-width: 1280px;
+  --entity-page-inline-padding: clamp(1rem, 3vw, 1.5rem);
   min-height: 100vh;
   background: #f8fafc;
-  padding: 0 1.5rem 2.5rem;
+  padding-bottom: 2.5rem;
   overflow-x: hidden;
   display: flex;
   width: 100%;
@@ -2629,8 +2635,7 @@ body.theme-dark .campaign-tab.is-active {
 }
 
 .entity-page-layout__inner {
-  width: min(100%, var(--entity-page-max-width));
-  margin: 0 auto;
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -2644,14 +2649,18 @@ body.theme-dark .campaign-tab.is-active {
   background: rgba(255, 255, 255, 0.97);
   border-bottom: 1px solid #e2e8f0;
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
-  padding: 1rem 0 0.5rem;
+  padding: 0;
   backdrop-filter: blur(8px);
 }
 
 .entity-page-header__inner {
+  width: min(100%, var(--entity-page-max-width));
+  margin: 0 auto;
+  padding: 1rem var(--entity-page-inline-padding) 0.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  box-sizing: border-box;
 }
 
 .entity-page-header__tabs {
@@ -2659,11 +2668,14 @@ body.theme-dark .campaign-tab.is-active {
 }
 
 .entity-detail-shell {
-  width: 100%;
+  width: min(100%, var(--entity-page-max-width));
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  padding: 0 var(--entity-page-inline-padding);
   padding-top: 0.5rem;
+  box-sizing: border-box;
 }
 
 .entity-detail-body {
@@ -2673,11 +2685,12 @@ body.theme-dark .campaign-tab.is-active {
 }
 
 .entity-detail-page--mobile.entity-page-layout {
-  padding: 0 1rem 2rem;
+  --entity-page-inline-padding: 1rem;
+  padding-bottom: 2rem;
 }
 
-.entity-detail-page--mobile .entity-page-header {
-  padding: 0.75rem 0 0.5rem;
+.entity-detail-page--mobile .entity-page-header__inner {
+  padding: 0.75rem var(--entity-page-inline-padding) 0.5rem;
 }
 
 .entity-detail-page--mobile .entity-detail-shell {
