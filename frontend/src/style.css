@@ -2644,7 +2644,9 @@ body.theme-dark .campaign-tab.is-active {
 .entity-page-header {
   position: sticky;
   top: 0;
-  z-index: 20;
+  left: 0;
+  right: 0;
+  z-index: 30;
   width: 100%;
   background: rgba(255, 255, 255, 0.97);
   border-bottom: 1px solid #e2e8f0;
