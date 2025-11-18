@@ -5,6 +5,7 @@ import EntityInfoPreview from '../../../components/entities/EntityInfoPreview.js
 export default function RelationshipsTab({
   entity,
   toast,
+  onExplore,
   canEdit,
   relationshipsLoading,
   relationshipsError,
@@ -35,6 +36,11 @@ export default function RelationshipsTab({
         <div className="entity-card-header">
           <h2 className="entity-card-title">Relationships</h2>
           <div className="entity-card-actions">
+            {typeof onExplore === 'function' ? (
+              <button type="button" className="btn secondary" onClick={onExplore}>
+                Explore
+              </button>
+            ) : null}
             <EntityRelationshipFilters
               options={relationshipFilterOptions}
               value={relationshipFilters}
