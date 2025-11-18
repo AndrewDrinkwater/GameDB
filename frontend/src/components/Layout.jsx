@@ -98,6 +98,12 @@ export default function Layout() {
     }
   }, [location.pathname, location.search])
 
+  const entityPathMatch = (location.pathname || '').match(/^\/entities\/([^/]+)\/?$/)
+  const isEntityDetailPage = Boolean(entityPathMatch && entityPathMatch[1] !== 'bulk-upload')
+  const mainClassName = ['content', menuPinned ? 'pinned' : '', isEntityDetailPage ? 'content--entity-detail' : '']
+    .filter(Boolean)
+    .join(' ')
+
   return (
     <div className="app-shell">
       <HeaderBar onMenuToggle={handleMenuToggle} />
@@ -117,7 +123,7 @@ export default function Layout() {
             onClick={() => setMenuOpen(false)}
           />
         )}
-        <main className={`content ${menuPinned ? 'pinned' : ''}`}>
+        <main className={mainClassName}>
           <Outlet /> {/* ✅ Renders child route (Worlds, Campaigns, etc.) */}
         </main>
       </div>
