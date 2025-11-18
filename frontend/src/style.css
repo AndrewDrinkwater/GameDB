@@ -2629,16 +2629,12 @@ body.theme-dark .campaign-tab.is-active {
   background: #f8fafc;
   padding-bottom: 2.5rem;
   overflow-x: hidden;
-  display: flex;
   width: 100%;
-  justify-content: center;
 }
 
 .entity-page-layout__inner {
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+  display: block;
 }
 
 .entity-page-header {
@@ -2671,7 +2667,7 @@ body.theme-dark .campaign-tab.is-active {
 
 .entity-detail-shell {
   width: min(100%, var(--entity-page-max-width));
-  margin: 0 auto;
+  margin: 1.5rem auto 0;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -2696,6 +2692,7 @@ body.theme-dark .campaign-tab.is-active {
 }
 
 .entity-detail-page--mobile .entity-detail-shell {
+  margin-top: 1rem;
   gap: 1rem;
 }
 
@@ -3637,6 +3634,7 @@ body.theme-dark .entity-secret-share-pill {
   }
 
   .entity-detail-shell {
+    margin-top: 1rem;
     padding-top: 0.25rem;
     gap: 1rem;
   }
