@@ -2626,7 +2626,6 @@ body.theme-dark .campaign-tab.is-active {
 .entity-page-layout {
   --entity-page-max-width: 1280px;
   --entity-page-inline-padding: clamp(1rem, 3vw, 1.5rem);
-  min-height: 100vh;
   background: #f8fafc;
   padding-bottom: 2.5rem;
   overflow-x: hidden;
@@ -2667,11 +2666,6 @@ body.theme-dark .campaign-tab.is-active {
 }
 
 .entity-detail-topbar {
-  position: fixed;
-  top: 56px;
-  left: 0;
-  right: 0;
-  z-index: 20;
   background: #fff;
   border-bottom: 1px solid #ddd;
 }
