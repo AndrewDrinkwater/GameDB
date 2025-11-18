@@ -1304,14 +1304,6 @@ export default function EntityDetailPage() {
     ],
   )
 
-  const handleBack = useCallback(() => {
-    requestNavigation({
-      to: backUrl,
-      location: parsePathToLocation(backUrl),
-      label: 'the previous page',
-    })
-  }, [backUrl, parsePathToLocation, requestNavigation])
-
   useEffect(() => {
     if (typeof document === 'undefined') return undefined
     if (!hasUnsavedChanges) return undefined
@@ -1671,8 +1663,6 @@ export default function EntityDetailPage() {
           <div className="entity-page-header__inner">
             <EntityHeader
               name={entity.name}
-              onBack={handleBack}
-              onExplore={isMobile ? undefined : handleExplore}
               canEdit={canEdit}
               isEditing={isEditing}
               onToggleEdit={handleEditToggle}
@@ -1743,6 +1733,7 @@ export default function EntityDetailPage() {
               <RelationshipsTab
                 entity={entity}
                 toast={toast}
+                onExplore={handleExplore}
                 canEdit={canEdit}
                 relationshipsLoading={relationshipsLoading}
                 relationshipsError={relationshipsError}

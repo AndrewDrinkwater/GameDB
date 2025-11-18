@@ -1,7 +1,5 @@
 export default function EntityHeader({
   name,
-  onBack,
-  onExplore,
   canEdit,
   isEditing,
   onToggleEdit,
@@ -10,18 +8,6 @@ export default function EntityHeader({
   isSaveDisabled = false,
 }) {
   const title = name || 'Untitled entity'
-
-  const handleBackClick = () => {
-    if (typeof onBack === 'function') {
-      onBack()
-    }
-  }
-
-  const handleExploreClick = () => {
-    if (typeof onExplore === 'function') {
-      onExplore()
-    }
-  }
 
   const handleEditClick = () => {
     if (typeof onToggleEdit === 'function') {
@@ -37,21 +23,11 @@ export default function EntityHeader({
 
   return (
     <div className="entity-header" role="banner">
-      <div className="entity-header-left">
-        <button type="button" className="btn secondary" onClick={handleBackClick}>
-          Back to entities
-        </button>
-        {typeof onExplore === 'function' ? (
-          <button type="button" className="btn secondary" onClick={handleExploreClick}>
-            Explore
-          </button>
-        ) : null}
-      </div>
       <div className="entity-header-center">
         <h1>{title}</h1>
       </div>
-      <div className="entity-header-right">
-        {canEdit ? (
+      {canEdit ? (
+        <div className="entity-header-right">
           <div className="entity-header-actions">
             {isEditing && typeof onSave === 'function' ? (
               <button
@@ -76,8 +52,8 @@ export default function EntityHeader({
               <span className="edit-mode-toggle-text">Edit</span>
             </button>
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   )
 }
