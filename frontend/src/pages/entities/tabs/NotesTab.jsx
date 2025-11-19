@@ -784,7 +784,21 @@ export default function NotesTab({
             {error ? (
               <div className="entity-notes-alert error">
                 <AlertCircle size={16} />
-                <p>{error}</p>
+                {error === 'CAMPAIGN_CONTEXT_ACCESS_DENIED' ? (
+                  <div>
+                    <p style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                      Access Restricted by Campaign Context
+                    </p>
+                    <p style={{ marginBottom: '0.5rem' }}>
+                      You don't have access to view notes for this entity with your current campaign context selected.
+                    </p>
+                    <p>
+                      Please change your campaign context using the selector in the header, or clear your campaign context to view notes from all campaigns you have access to.
+                    </p>
+                  </div>
+                ) : (
+                  <p>{error}</p>
+                )}
               </div>
             ) : null}
 

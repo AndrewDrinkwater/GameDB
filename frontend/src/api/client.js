@@ -111,7 +111,9 @@ async function request(method, url, data, config = {}) {
       (isJson && payload?.message) ||
       (typeof payload === 'string' ? payload : 'Request failed')
 
-    throw new Error(message)
+    const error = new Error(message)
+    error.status = response.status
+    throw error
   }
 
   return payload
