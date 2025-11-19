@@ -316,10 +316,10 @@ export default function BulkAccessAuditPage() {
                   <strong>Status:</strong> {selectedRun.reverted ? 'Reverted' : 'Active'}
                 </p>
                 <p>
-                  <strong>Actor:</strong> {selectedRun.actor?.username || 'Unknown user'}
+                  <strong>User:</strong> {selectedRun.actor?.username || 'Unknown user'}
                 </p>
                 <p>
-                  <strong>Actor role:</strong> {selectedRun.role_used === 'dm' ? 'Campaign DM' : 'World owner'}
+                  <strong>User role:</strong> {selectedRun.role_used === 'dm' ? 'Campaign DM' : 'World owner'}
                 </p>
                 <p>
                   <strong>Scope:</strong> {selectedRun.campaignContext?.name || 'World-wide'}

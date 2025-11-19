@@ -30,11 +30,24 @@
   background: #f8fafc;
   cursor: pointer;
   text-align: left;
+  transition: all 0.2s ease;
+}
+
+.audit-run-row:hover {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
 .audit-run-row.active {
   border-color: #a5b4fc;
   background: #eef2ff;
+}
+
+.audit-run-row.active:hover {
+  border-color: #8b9aff;
+  background: #e0e7ff;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.15);
 }
 
 .audit-run-title {
