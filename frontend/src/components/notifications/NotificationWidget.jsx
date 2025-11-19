@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bell, Check, ChevronRight } from 'lucide-react'
+import { Bell, BellRing, Check, ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useNotifications } from '../../hooks/useNotifications.js'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
@@ -88,7 +88,7 @@ export default function NotificationWidget() {
         onClick={() => setDropdownOpen(!dropdownOpen)}
         title="Notifications"
       >
-        <Bell size={20} />
+        {unreadCount > 0 ? <BellRing size={20} /> : <Bell size={20} />}
         {unreadCount > 0 && (
           <span className="notification-widget-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
         )}

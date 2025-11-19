@@ -19,6 +19,17 @@
   transition: background 0.2s ease;
 }
 
+.notification-widget-button svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  color: currentColor;
+  stroke: currentColor;
+  fill: none;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
 .notification-widget-button:hover {
   background: rgba(0, 0, 0, 0.05);
 }
