@@ -31,6 +31,7 @@ import EntityNotesPage from './pages/notes/EntityNotesPage.jsx'
 import BulkAccessToolPage from './pages/access/BulkAccessToolPage.jsx'
 import BulkAccessAuditPage from './pages/access/BulkAccessAuditPage.jsx'
 import CollectionsManagerPage from './pages/access/CollectionsManagerPage.jsx'
+import SettingsPage from './pages/SettingsPage.jsx'
 
 const router = createBrowserRouter(
   createRoutesFromElements(
@@ -111,6 +112,9 @@ const router = createBrowserRouter(
 
         {/* Admin-only route */}
         <Route path="users" element={<UsersPage />} />
+
+        {/* Security route */}
+        <Route path="security" element={<SettingsPage />} />
       </Route>
 
       {/* Fallback: redirect anything unknown */}

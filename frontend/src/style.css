@@ -1098,6 +1098,12 @@
   border: none;
   background: none;
   text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
   font-size: 0.9rem;
   color: inherit;
   cursor: pointer;
@@ -1765,6 +1771,120 @@ body.theme-dark .entity-relationships-toggle p {
 
 .login-card button[type='submit']:hover {
   background: #2563eb;
+}
+
+.settings-page {
+  padding: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.settings-container {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  padding: 2rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.settings-header {
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 1rem;
+}
+
+.settings-title {
+  font-size: 1.8rem;
+  margin: 0 0 0.5rem 0;
+  color: #1e3a8a;
+}
+
+.settings-subtitle {
+  color: #475569;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.settings-section-title {
+  font-size: 1.25rem;
+  margin: 0;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.settings-section-description {
+  color: #64748b;
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.settings-submit-btn {
+  width: 100%;
+  background: #1e3a8a;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 0.5rem;
+  transition: background 0.3s;
+}
+
+.settings-submit-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.settings-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.success-msg {
+  color: #065f46;
+  background: #d1fae5;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+  font-size: 0.95rem;
+}
+
+body.theme-dark .settings-container {
+  background: rgba(15, 23, 42, 0.95);
+  color: #e2e8f0;
+}
+
+body.theme-dark .settings-title {
+  color: #93c5fd;
+}
+
+body.theme-dark .settings-section-title {
+  color: #e2e8f0;
+}
+
+body.theme-dark .settings-submit-btn {
+  background: #1d4ed8;
+}
+
+body.theme-dark .settings-submit-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+body.theme-dark .success-msg {
+  color: #a7f3d0;
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.4);
 }
 
 .error-msg {
