@@ -1888,6 +1888,7 @@ export default function EntityDetailPage() {
           <header className="entity-page-header">
             <div className="entity-page-header__inner">
               <EntityHeader
+                entityId={id}
                 name={entity.name}
                 canEdit={canEdit}
                 isEditing={isEditing}

@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom'
 import useIsMobile from '../hooks/useIsMobile.js'
 import { fetchCharacters } from '../api/characters.js'
 import HistoryTab from './history/HistoryTab.jsx'
+import NotificationWidget from './notifications/NotificationWidget.jsx'
 
 export default function HeaderBar({ onMenuToggle }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -379,6 +380,10 @@ export default function HeaderBar({ onMenuToggle }) {
       </div>
 
       {!isMobile && <div className="header-center">{contextSelectors}</div>}
+
+      <div className="header-end">
+        <NotificationWidget />
+      </div>
 
       <div className="user-menu" ref={dropdownRef}>
         <button

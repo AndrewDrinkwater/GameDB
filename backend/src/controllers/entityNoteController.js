@@ -11,6 +11,10 @@ import {
   buildEntityReadContext,
   canUserReadEntity,
 } from '../utils/entityAccess.js'
+import {
+  notifyEntityComment,
+  notifyEntityMentions,
+} from '../utils/notificationService.js'
 
 const SHARE_TYPES = new Set(['private', 'companions', 'dm', 'party'])
 const PLAYER_SHARE_TYPES = new Set(['private', 'companions', 'dm'])
@@ -675,6 +679,29 @@ export const createEntityNote = async (req, res) => {
         { model: Character, as: 'character', attributes: ['id', 'name'] },
       ],
     })
+
+    // Trigger notifications asynchronously (don't block response)
+    ;(async () => {
+      try {
+        // Notify followers when entity comment is added
+        await notifyEntityComment(payload, campaignId)
+
+        // Notify mentioned entity followers
+        if (mentions && Array.isArray(mentions) && mentions.length > 0) {
+          await notifyEntityMentions(
+            content,
+            mentions,
+            campaignId,
+            'entity_note',
+            note.id,
+            userId,
+          )
+        }
+      } catch (notificationErr) {
+        console.error('❌ Failed to send notifications for entity note', notificationErr)
+        // Don't fail the request if notifications fail
+      }
+    })()
 
     return res
       .status(201)

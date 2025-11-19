@@ -1,0 +1,218 @@
+.notification-widget {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.notification-widget-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+
+.notification-widget-button:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+body.theme-dark .notification-widget-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.notification-widget-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  background: #dc2626;
+  color: white;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.notification-widget-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 360px;
+  max-height: 480px;
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+body.theme-dark .notification-widget-dropdown {
+  background: #1e293b;
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.notification-widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+body.theme-dark .notification-widget-header {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.notification-widget-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.notification-widget-count {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+body.theme-dark .notification-widget-count {
+  color: #94a3b8;
+}
+
+.notification-widget-loading,
+.notification-widget-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+body.theme-dark .notification-widget-loading,
+body.theme-dark .notification-widget-empty {
+  color: #94a3b8;
+}
+
+.notification-widget-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 320px;
+}
+
+.notification-widget-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  gap: 0.75rem;
+}
+
+body.theme-dark .notification-widget-item {
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+.notification-widget-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+body.theme-dark .notification-widget-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.notification-widget-item.unread {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+body.theme-dark .notification-widget-item.unread {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.notification-widget-item-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.notification-widget-item-message {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: #1e293b;
+}
+
+body.theme-dark .notification-widget-item-message {
+  color: #e2e8f0;
+}
+
+.notification-widget-item.unread .notification-widget-item-message {
+  font-weight: 600;
+}
+
+.notification-widget-item-time {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+body.theme-dark .notification-widget-item-time {
+  color: #94a3b8;
+}
+
+.notification-widget-item-dot {
+  width: 8px;
+  height: 8px;
+  background: #3b82f6;
+  border-radius: 50%;
+  margin-top: 0.25rem;
+  flex-shrink: 0;
+}
+
+.notification-widget-footer {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+body.theme-dark .notification-widget-footer {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.notification-widget-view-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: #3b82f6;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+.notification-widget-view-all:hover {
+  color: #2563eb;
+}
+
+body.theme-dark .notification-widget-view-all {
+  color: #60a5fa;
+}
+
+body.theme-dark .notification-widget-view-all:hover {
+  color: #93c5fd;
+}
+
