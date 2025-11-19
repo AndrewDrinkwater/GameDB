@@ -1884,24 +1884,6 @@ export default function EntityDetailPage() {
   return (
     <>
       <EntityPageLayout maxWidth={1280} className={pageClassName}>
-        <DrawerPanel
-          isOpen={showRelationshipForm}
-          onClose={() => setShowRelationshipForm(false)}
-          title="Add relationship"
-          description="Link this entity to others without leaving the page."
-          size="lg"
-        >
-          <RelationshipBuilder
-            worldId={worldId}
-            fromEntity={entity}
-            onCreated={() => {
-              setShowRelationshipForm(false)
-              loadRelationships()
-            }}
-            onCancel={() => setShowRelationshipForm(false)}
-          />
-        </DrawerPanel>
-
         <header className="entity-page-header">
           <div className="entity-page-header__inner">
             <EntityHeader
@@ -1990,7 +1972,10 @@ export default function EntityDetailPage() {
                 filterButtonDisabled={filterButtonDisabled}
                 handleRelationshipFiltersChange={handleRelationshipFiltersChange}
                 handleRelationshipFiltersReset={handleRelationshipFiltersReset}
+                showRelationshipForm={showRelationshipForm}
                 setShowRelationshipForm={setShowRelationshipForm}
+                worldId={worldId}
+                loadRelationships={loadRelationships}
               />
             )}
 
