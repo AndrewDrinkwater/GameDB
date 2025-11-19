@@ -433,10 +433,111 @@ export const getBulkAccessRun = async (req, res) => {
 
     const changeCount = run.changes?.length ?? 0
 
+    // Convert to plain object first to ensure we can access all properties
+    const plainRun = run.get({ plain: true })
+
+    // Collect all unique campaign and user IDs from changes
+    const campaignIds = new Set()
+    const userIds = new Set()
+
+    plainRun.changes?.forEach((change) => {
+      // Old values
+      if (Array.isArray(change.old_read_campaign_ids)) {
+        change.old_read_campaign_ids.forEach((id) => campaignIds.add(String(id)))
+      }
+      if (Array.isArray(change.old_write_campaign_ids)) {
+        change.old_write_campaign_ids.forEach((id) => campaignIds.add(String(id)))
+      }
+      if (Array.isArray(change.old_read_user_ids)) {
+        change.old_read_user_ids.forEach((id) => userIds.add(String(id)))
+      }
+      if (Array.isArray(change.old_write_user_ids)) {
+        change.old_write_user_ids.forEach((id) => userIds.add(String(id)))
+      }
+
+      // New values from entity
+      if (change.entity?.read_campaign_ids && Array.isArray(change.entity.read_campaign_ids)) {
+        change.entity.read_campaign_ids.forEach((id) => campaignIds.add(String(id)))
+      }
+      if (change.entity?.write_campaign_ids && Array.isArray(change.entity.write_campaign_ids)) {
+        change.entity.write_campaign_ids.forEach((id) => campaignIds.add(String(id)))
+      }
+      if (change.entity?.read_user_ids && Array.isArray(change.entity.read_user_ids)) {
+        change.entity.read_user_ids.forEach((id) => userIds.add(String(id)))
+      }
+      if (change.entity?.write_user_ids && Array.isArray(change.entity.write_user_ids)) {
+        change.entity.write_user_ids.forEach((id) => userIds.add(String(id)))
+      }
+    })
+
+    // Fetch campaigns and users
+    const [campaigns, users] = await Promise.all([
+      campaignIds.size > 0
+        ? Campaign.findAll({
+            where: { id: { [Op.in]: Array.from(campaignIds) } },
+            attributes: ['id', 'name'],
+          })
+        : [],
+      userIds.size > 0
+        ? User.findAll({
+            where: { id: { [Op.in]: Array.from(userIds) } },
+            attributes: ['id', 'username', 'email'],
+          })
+        : [],
+    ])
+
+    // Create lookup maps
+    const campaignMap = new Map()
+    campaigns.forEach((campaign) => {
+      campaignMap.set(String(campaign.id), campaign.name || `Campaign ${campaign.id.slice(0, 8)}`)
+    })
+
+    const userMap = new Map()
+    users.forEach((user) => {
+      const label = user.username || user.email || `User ${user.id.slice(0, 8)}`
+      userMap.set(String(user.id), label)
+    })
+
+    // Transform the run data to include resolved names
+    const transformedChanges = plainRun.changes?.map((change) => {
+      const transformIds = (ids, map) => {
+        if (!ids) return []
+        if (!Array.isArray(ids)) return []
+        if (ids.length === 0) return []
+        return ids.map((id) => {
+          if (!id) return id
+          return map.get(String(id)) || id
+        })
+      }
+
+      const oldReadCampaignIds = change.old_read_campaign_ids || []
+      const oldWriteCampaignIds = change.old_write_campaign_ids || []
+      const oldReadUserIds = change.old_read_user_ids || []
+      const oldWriteUserIds = change.old_write_user_ids || []
+
+      return {
+        ...change,
+        old_read_campaign_names: transformIds(oldReadCampaignIds, campaignMap),
+        old_write_campaign_names: transformIds(oldWriteCampaignIds, campaignMap),
+        old_read_user_names: transformIds(oldReadUserIds, userMap),
+        old_write_user_names: transformIds(oldWriteUserIds, userMap),
+        entity: change.entity
+          ? {
+              ...change.entity,
+              read_campaign_names: transformIds(change.entity.read_campaign_ids, campaignMap),
+              write_campaign_names: transformIds(change.entity.write_campaign_ids, campaignMap),
+              read_user_names: transformIds(change.entity.read_user_ids, userMap),
+              write_user_names: transformIds(change.entity.write_user_ids, userMap),
+            }
+          : null,
+      }
+    })
+
     return res.json({
       success: true,
       data: {
-        ...run.get({ plain: true }),
+        ...plainRun,
+        changes: transformedChanges,
         change_count: changeCount,
       },
     })

@@ -316,10 +316,10 @@ export default function BulkAccessAuditPage() {
                   <strong>Status:</strong> {selectedRun.reverted ? 'Reverted' : 'Active'}
                 </p>
                 <p>
-                  <strong>Actor:</strong> {selectedRun.actor?.username || 'Unknown user'}
+                  <strong>User:</strong> {selectedRun.actor?.username || 'Unknown user'}
                 </p>
                 <p>
-                  <strong>Actor role:</strong> {selectedRun.role_used === 'dm' ? 'Campaign DM' : 'World owner'}
+                  <strong>User role:</strong> {selectedRun.role_used === 'dm' ? 'Campaign DM' : 'World owner'}
                 </p>
                 <p>
                   <strong>Scope:</strong> {selectedRun.campaignContext?.name || 'World-wide'}
@@ -356,13 +356,29 @@ export default function BulkAccessAuditPage() {
                         )}
                         {renderDiffRow(
                           'Read campaigns',
-                          formatAudience(change.old_read_campaign_ids),
-                          formatAudience(change.entity?.read_campaign_ids),
+                          formatAudience(
+                            change.old_read_campaign_names !== undefined
+                              ? change.old_read_campaign_names
+                              : change.old_read_campaign_ids,
+                          ),
+                          formatAudience(
+                            change.entity?.read_campaign_names !== undefined
+                              ? change.entity.read_campaign_names
+                              : change.entity?.read_campaign_ids,
+                          ),
                         )}
                         {renderDiffRow(
                           'Read users',
-                          formatAudience(change.old_read_user_ids),
-                          formatAudience(change.entity?.read_user_ids),
+                          formatAudience(
+                            change.old_read_user_names !== undefined
+                              ? change.old_read_user_names
+                              : change.old_read_user_ids,
+                          ),
+                          formatAudience(
+                            change.entity?.read_user_names !== undefined
+                              ? change.entity.read_user_names
+                              : change.entity?.read_user_ids,
+                          ),
                         )}
                         {renderDiffRow(
                           'Read characters',
@@ -371,13 +387,29 @@ export default function BulkAccessAuditPage() {
                         )}
                         {renderDiffRow(
                           'Write campaigns',
-                          formatAudience(change.old_write_campaign_ids),
-                          formatAudience(change.entity?.write_campaign_ids),
+                          formatAudience(
+                            change.old_write_campaign_names !== undefined
+                              ? change.old_write_campaign_names
+                              : change.old_write_campaign_ids,
+                          ),
+                          formatAudience(
+                            change.entity?.write_campaign_names !== undefined
+                              ? change.entity.write_campaign_names
+                              : change.entity?.write_campaign_ids,
+                          ),
                         )}
                         {renderDiffRow(
                           'Write users',
-                          formatAudience(change.old_write_user_ids),
-                          formatAudience(change.entity?.write_user_ids),
+                          formatAudience(
+                            change.old_write_user_names !== undefined
+                              ? change.old_write_user_names
+                              : change.old_write_user_ids,
+                          ),
+                          formatAudience(
+                            change.entity?.write_user_names !== undefined
+                              ? change.entity.write_user_names
+                              : change.entity?.write_user_ids,
+                          ),
                         )}
                       </div>
                     </div>
