@@ -110,11 +110,6 @@ export default function DossierTab({
               {renderSectionFields(summarySection, 'dossier-summary')}
               {descriptionSection ? (
                 <div className="entity-dossier-description">
-                  {descriptionSection?.title ? (
-                    <h3 className="entity-card-subtitle">
-                      {descriptionSection.title}
-                    </h3>
-                  ) : null}
                   {renderSectionFields(descriptionSection, 'dossier-description')}
                 </div>
               ) : null}
