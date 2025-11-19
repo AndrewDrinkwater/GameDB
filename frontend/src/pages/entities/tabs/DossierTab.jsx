@@ -134,33 +134,6 @@ export default function DossierTab({
     )
   }
 
-  const renderEditSummary = () => {
-    if (!isEditing || !canEdit) return null
-    if (!summarySection && !showImageManager) return null
-
-    return (
-      <section className="entity-card entity-dossier-header-card entity-dossier-header-card--editing">
-        <div className="entity-dossier-header entity-dossier-header--editing">
-          <div className="entity-dossier-header-content">
-            {summarySection?.title ? (
-              <h2 className="entity-card-title">{summarySection.title}</h2>
-            ) : null}
-            {summarySection ? (
-              renderSectionFields(summarySection, 'dossier-summary-edit')
-            ) : (
-              <p className="entity-empty-state">Summary details are unavailable.</p>
-            )}
-          </div>
-          {showImageManager ? (
-            <div className="entity-dossier-header-image entity-dossier-header-image--manager">
-              {imageSection}
-            </div>
-          ) : null}
-        </div>
-      </section>
-    )
-  }
-
   return (
     <div className="entity-tab-content">
       {formError && (
@@ -172,21 +145,27 @@ export default function DossierTab({
       )}
 
       {isEditing && canEdit ? (
-        <>
-          {renderEditSummary()}
-          <section className="entity-card entity-card--form">
-            <FormRenderer
-              ref={formRef}
-              schema={editSchema}
-              initialData={editInitialData || {}}
-              onSubmit={handleUpdate}
-              onStateChange={handleFormStateChange}
-              hideActions
-              enableUnsavedPrompt={false}
-              fieldRules={fieldRules}
-            />
-          </section>
-        </>
+        <section className="entity-card entity-card--form entity-edit-form-wrapper">
+          <div className="entity-edit-form-container">
+            <div className="entity-edit-form-content">
+              <FormRenderer
+                ref={formRef}
+                schema={editSchema}
+                initialData={editInitialData || {}}
+                onSubmit={handleUpdate}
+                onStateChange={handleFormStateChange}
+                hideActions
+                enableUnsavedPrompt={false}
+                fieldRules={fieldRules}
+              />
+            </div>
+            {showImageManager ? (
+              <div className="entity-edit-form-image">
+                {imageSection}
+              </div>
+            ) : null}
+          </div>
+        </section>
       ) : (
         renderViewContent()
       )}

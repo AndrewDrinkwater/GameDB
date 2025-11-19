@@ -381,7 +381,8 @@ function FormRenderer(
               if (action === 'require') {
                 fieldProps.required = true
               }
-              return (
+              const fieldSpan = field.span || field.colSpan || null
+              const fieldElement = (
                 <FieldRenderer
                   key={`${fieldKey}-${idx}`}
                   field={fieldProps}
@@ -390,6 +391,14 @@ function FormRenderer(
                   mode="edit"
                 />
               )
+              if (fieldSpan && Number.isFinite(fieldSpan) && fieldSpan > 1) {
+                return (
+                  <div key={`${fieldKey}-${idx}-wrapper`} style={{ gridColumn: `span ${fieldSpan}` }}>
+                    {fieldElement}
+                  </div>
+                )
+              }
+              return fieldElement
             })}
           </div>
         </div>

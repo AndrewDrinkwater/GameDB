@@ -1047,22 +1047,17 @@ export default function EntityDetailPage() {
 
     const sections = [
       {
-        title: 'Details',
+        title: 'Edit Entity',
         columns: 2,
         fields: [
           { key: 'name', label: 'Name', type: 'text' },
           { key: 'entityTypeName', label: 'Type', type: 'readonly' },
-        ],
-      },
-      {
-        title: 'Description',
-        columns: 1,
-        fields: [
           {
             key: 'description',
             label: 'Description',
             type: 'textarea',
             rows: 4,
+            span: 2, // Make description span both columns
           },
         ],
       },
