@@ -24,6 +24,8 @@ import { UploadedFile, EntityType, EntityTypeField } from '../models/index.js'
 import {
   getEntityNotes,
   createEntityNote,
+  updateEntityNote,
+  deleteEntityNote,
   listEntityMentionNotes,
 } from '../controllers/entityNoteController.js'
 import { listEntityMentionSessionNotes } from '../controllers/sessionNoteController.js'
@@ -497,6 +499,8 @@ router.get('/:id/mentions/entity-notes', listEntityMentionNotes)
 router.get('/:id/mentions/session-notes', listEntityMentionSessionNotes)
 router.get('/:id/notes', getEntityNotes)
 router.post('/:id/notes', createEntityNote)
+router.patch('/:id/notes/:noteId', updateEntityNote)
+router.delete('/:id/notes/:noteId', deleteEntityNote)
 router.post('/:id/image', authenticate, upload.single('file'), uploadEntityImage)
 router.delete('/:id/image', authenticate, deleteEntityImage)
 

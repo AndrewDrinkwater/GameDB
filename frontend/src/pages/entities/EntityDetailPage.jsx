@@ -574,6 +574,77 @@ export default function EntityDetailPage() {
     [id, selectedCampaignId],
   )
 
+  const handleNoteUpdate = useCallback(
+    async (updatedNote) => {
+      if (!updatedNote?.id) {
+        return
+      }
+
+      const timestamp =
+        updatedNote?.updatedAt ??
+        updatedNote?.updated_at ??
+        updatedNote?.createdAt ??
+        updatedNote?.created_at ??
+        new Date().toISOString()
+      const normalizedNote =
+        updatedNote?.updatedAt && updatedNote?.updated_at
+          ? updatedNote
+          : {
+              ...updatedNote,
+              ...(updatedNote?.updatedAt ? {} : { updatedAt: timestamp }),
+              ...(updatedNote?.updated_at ? {} : { updated_at: timestamp }),
+            }
+
+      setNotesState((previous) => {
+        const currentItems = Array.isArray(previous?.items)
+          ? previous.items.slice()
+          : []
+        const noteId = normalizedNote?.id
+        if (!noteId) return previous
+
+        const index = currentItems.findIndex((entry) => entry?.id === noteId)
+        if (index >= 0) {
+          const updated = [...currentItems]
+          updated[index] = normalizedNote
+          return {
+            items: updated,
+            loading: false,
+            error: '',
+          }
+        }
+
+        return {
+          items: [normalizedNote, ...currentItems],
+          loading: false,
+          error: '',
+        }
+      })
+    },
+    [],
+  )
+
+  const handleNoteDelete = useCallback(
+    async (noteId) => {
+      if (!noteId) {
+        return
+      }
+
+      setNotesState((previous) => {
+        const currentItems = Array.isArray(previous?.items)
+          ? previous.items.slice()
+          : []
+        const filtered = currentItems.filter((entry) => entry?.id !== noteId)
+
+        return {
+          items: filtered,
+          loading: false,
+          error: '',
+        }
+      })
+    },
+    [],
+  )
+
   const canEdit = useMemo(() => {
     const result = (() => {
       // First check explicit permissions if they exist
@@ -1895,6 +1966,8 @@ export default function EntityDetailPage() {
                 error={notesState.error}
                 onReload={handleNotesReload}
                 onCreateNote={handleNoteCreate}
+                onNoteUpdate={handleNoteUpdate}
+                onNoteDelete={handleNoteDelete}
                 creating={notesSaving}
                 campaignMatchesEntityWorld={campaignMatchesEntityWorld}
               />
