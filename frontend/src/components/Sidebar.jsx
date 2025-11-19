@@ -9,7 +9,6 @@ import {
   FileText,
   NotebookPen,
   ShieldCheck,
-  ShieldPlus,
   History,
   Layers,
 } from 'lucide-react'
@@ -102,7 +101,6 @@ export default function Sidebar({
     )
   }, [selectedCampaign, user])
 
-  const canUseCampaignBulkAccess = Boolean(selectedCampaignId && isDMInSelectedCampaign)
   const shouldShowWorldAdminGroup = Boolean(
     hasWorldContext &&
       (canViewAllEntities ||
@@ -368,17 +366,6 @@ export default function Sidebar({
           <Link to="/campaigns/all" className={isActive('/campaigns/all') ? 'active' : ''}>
             All
           </Link>
-          {canUseCampaignBulkAccess && (
-            <Link
-              to={`/campaigns/${selectedCampaignId}/access/bulk`}
-              className={
-                isActive(`/campaigns/${selectedCampaignId}/access/bulk`) ? 'active' : ''
-              }
-            >
-              <ShieldPlus size={16} className="nav-icon" />
-              <span>Campaign Access Editor</span>
-            </Link>
-          )}
         </div>
         </div>
 

@@ -192,14 +192,35 @@ export default function EntityDetailPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, token, sessionReady } = useAuth()
-  const { selectedCampaign, selectedCampaignId } = useCampaignContext()
+  const { selectedCampaign, selectedCampaignId, setSelectedCampaignId } = useCampaignContext()
   const isMobile = useIsMobile()
 
   const [entity, setEntity] = useState(null)
+  
   const handleEntityPayloadUpdate = useCallback((nextEntity) => {
     const normalized = resolveEntityResponse(nextEntity)
     if (normalized) {
-      setEntity(normalized)
+      // Preserve existing permissions if the update doesn't include them
+      // This prevents canEdit from flipping to false after save
+      setEntity((prevEntity) => {
+        if (!prevEntity) return normalized
+        
+        // If the new entity doesn't have permissions but the old one did, preserve them
+        if (!normalized.permissions && prevEntity.permissions) {
+          return {
+            ...normalized,
+            permissions: prevEntity.permissions,
+          }
+        }
+        
+        // If the new entity has permissions, use them (they might be updated)
+        if (normalized.permissions) {
+          return normalized
+        }
+        
+        // Otherwise, use the normalized entity as-is
+        return normalized
+      })
     }
   }, [])
   const [loading, setLoading] = useState(true)
@@ -445,10 +466,18 @@ export default function EntityDetailPage() {
         }
       } catch (err) {
         if (!cancelled) {
+          // Check if this is a 403 error with campaign context active
+          const isForbidden = err.status === 403 || err.status === '403' || err.message === 'Forbidden'
+          const hasCampaignContext = Boolean(selectedCampaignId)
+          
+          const errorMessage = isForbidden && hasCampaignContext
+            ? 'CAMPAIGN_CONTEXT_ACCESS_DENIED'
+            : err.message || 'Failed to load notes'
+          
           setNotesState((previous) => ({
             ...previous,
             loading: false,
-            error: err.message || 'Failed to load notes',
+            error: errorMessage,
           }))
         }
       }
@@ -534,7 +563,6 @@ export default function EntityDetailPage() {
 
         return { success: true, note: normalizedNote }
       } catch (err) {
-        console.error('❌ Failed to create note', err)
         return {
           success: false,
           message: err.message || 'Failed to create note',
@@ -546,15 +574,96 @@ export default function EntityDetailPage() {
     [id, selectedCampaignId],
   )
 
+  const handleNoteUpdate = useCallback(
+    async (updatedNote) => {
+      if (!updatedNote?.id) {
+        return
+      }
+
+      const timestamp =
+        updatedNote?.updatedAt ??
+        updatedNote?.updated_at ??
+        updatedNote?.createdAt ??
+        updatedNote?.created_at ??
+        new Date().toISOString()
+      const normalizedNote =
+        updatedNote?.updatedAt && updatedNote?.updated_at
+          ? updatedNote
+          : {
+              ...updatedNote,
+              ...(updatedNote?.updatedAt ? {} : { updatedAt: timestamp }),
+              ...(updatedNote?.updated_at ? {} : { updated_at: timestamp }),
+            }
+
+      setNotesState((previous) => {
+        const currentItems = Array.isArray(previous?.items)
+          ? previous.items.slice()
+          : []
+        const noteId = normalizedNote?.id
+        if (!noteId) return previous
+
+        const index = currentItems.findIndex((entry) => entry?.id === noteId)
+        if (index >= 0) {
+          const updated = [...currentItems]
+          updated[index] = normalizedNote
+          return {
+            items: updated,
+            loading: false,
+            error: '',
+          }
+        }
+
+        return {
+          items: [normalizedNote, ...currentItems],
+          loading: false,
+          error: '',
+        }
+      })
+    },
+    [],
+  )
+
+  const handleNoteDelete = useCallback(
+    async (noteId) => {
+      if (!noteId) {
+        return
+      }
+
+      setNotesState((previous) => {
+        const currentItems = Array.isArray(previous?.items)
+          ? previous.items.slice()
+          : []
+        const filtered = currentItems.filter((entry) => entry?.id !== noteId)
+
+        return {
+          items: filtered,
+          loading: false,
+          error: '',
+        }
+      })
+    },
+    [],
+  )
+
   const canEdit = useMemo(() => {
-    if (entity?.permissions && typeof entity.permissions.canEdit === 'boolean') {
-      return entity.permissions.canEdit
-    }
-    if (!entity || !user) return false
-    if (user.role === 'system_admin') return true
-    if (entity.world?.created_by && entity.world.created_by === user.id) return true
-    if (entity.created_by && entity.created_by === user.id) return true
-    return false
+    const result = (() => {
+      // First check explicit permissions if they exist
+      if (entity?.permissions && typeof entity.permissions.canEdit === 'boolean') {
+        return entity.permissions.canEdit
+      }
+      
+      // Fall back to other checks if permissions are not provided
+      if (!entity || !user) return false
+      if (user.role === 'system_admin') return true
+      if (entity.world?.created_by && entity.world.created_by === user.id) return true
+      if (entity.created_by && entity.created_by === user.id) return true
+      
+      // If we had permissions before but they're missing now, preserve the last known value
+      // This prevents canEdit from flipping to false when save response doesn't include permissions
+      return false
+    })()
+    
+    return result
   }, [entity, user])
 
   const secrets = useMemo(
@@ -683,13 +792,20 @@ export default function EntityDetailPage() {
       }
       handleEntityPayloadUpdate(data)
     } catch (err) {
-      console.error('❌ Failed to load entity', err)
-      setError(err.message || 'Failed to load entity')
+      // Check if this is a 403 error with campaign context active
+      const isForbidden = err.status === 403 || err.status === '403' || err.message === 'Forbidden'
+      const hasCampaignContext = Boolean(selectedCampaignId)
+      
+      if (isForbidden && hasCampaignContext) {
+        setError('CAMPAIGN_CONTEXT_ACCESS_DENIED')
+      } else {
+        setError(err.message || 'Failed to load entity')
+      }
       setEntity(null)
     } finally {
       setLoading(false)
     }
-  }, [id, handleEntityPayloadUpdate])
+  }, [id, handleEntityPayloadUpdate, selectedCampaignId])
 
   const loadEntityFieldLayout = useCallback(async (entityTypeId) => {
     if (!entityTypeId) {
@@ -700,20 +816,13 @@ export default function EntityDetailPage() {
 
     try {
       const [orderResponse, rulesResponse] = await Promise.all([
-        getEntityTypeFieldOrder(entityTypeId).catch((err) => {
-          console.error('❌ Failed to load entity type field order', err)
-          return null
-        }),
-        getEntityTypeFieldRules(entityTypeId).catch((err) => {
-          console.error('❌ Failed to load entity type field rules', err)
-          return null
-        }),
+        getEntityTypeFieldOrder(entityTypeId).catch(() => null),
+        getEntityTypeFieldRules(entityTypeId).catch(() => null),
       ])
 
       setFieldOrder(extractListResponse(orderResponse))
       setFieldRules(extractListResponse(rulesResponse))
     } catch (err) {
-      console.error('❌ Failed to load entity type layout', err)
       setFieldOrder([])
       setFieldRules([])
     }
@@ -800,9 +909,27 @@ export default function EntityDetailPage() {
 
   useRecordHistory(historyRecord)
 
+  // Track previous entity ID to detect navigation vs updates
+  const prevEntityIdRef = useRef(null)
+  // Track when we've just saved to reset form state
+  const justSavedRef = useRef(false)
+  // Track if we're currently saving to prevent exiting edit mode during save
+  const isSavingRef = useRef(false)
+
   useEffect(() => {
-    setIsEditing(false)
-  }, [entity?.id])
+    const currentId = entity?.id
+    const prevId = prevEntityIdRef.current
+    
+    // Only exit edit mode if entity ID actually changed (navigation to different entity)
+    // This prevents exiting edit mode when the same entity is updated after save
+    // Also don't exit if we're currently saving (to prevent race conditions)
+    if (currentId !== prevId && prevId !== null && !isSavingRef.current) {
+      setIsEditing(false)
+      justSavedRef.current = false
+    }
+    
+    prevEntityIdRef.current = currentId
+  }, [entity?.id, isEditing])
 
   const createdAtValue = entity?.createdAt || entity?.created_at
   const updatedAtValue = entity?.updatedAt || entity?.updated_at
@@ -857,6 +984,28 @@ export default function EntityDetailPage() {
     }
   }, [entity, entityWorldId, createdAtValue, updatedAtValue, metadataInitialValues])
 
+  // Reset form baseline after successful save when entity updates
+  // This ensures hasUnsavedChanges becomes false by resetting the form's baseline state
+  useEffect(() => {
+    if (!isEditing || !entity || !editInitialData) return
+    if (!formRef.current?.reset) return
+    if (!justSavedRef.current) return
+
+    // Reset form baseline to match the saved entity data
+    // This updates the form's initialSignature to match currentSignature, clearing isDirty
+    // Use a small delay to ensure entity state has fully updated and editInitialData is current
+    const timeoutId = setTimeout(() => {
+      if (formRef.current?.reset && editInitialData) {
+        // Reset the form with the updated entity data
+        // This sets the baseline state to match the current editor state
+        formRef.current.reset(editInitialData)
+      }
+      justSavedRef.current = false
+    }, 150)
+
+    return () => clearTimeout(timeoutId)
+  }, [isEditing, entity, editInitialData])
+
   const entityImageDataUrl = useMemo(() => {
     if (!entity) return ''
     const mimeType = entity.imageMimeType || entity.image_mime_type || ''
@@ -885,22 +1034,17 @@ export default function EntityDetailPage() {
 
     const sections = [
       {
-        title: 'Details',
+        title: 'Edit Entity',
         columns: 2,
         fields: [
           { key: 'name', label: 'Name', type: 'text' },
           { key: 'entityTypeName', label: 'Type', type: 'readonly' },
-        ],
-      },
-      {
-        title: 'Description',
-        columns: 1,
-        fields: [
           {
             key: 'description',
             label: 'Description',
             type: 'textarea',
             rows: 4,
+            span: 2, // Make description span both columns
           },
         ],
       },
@@ -1032,7 +1176,6 @@ export default function EntityDetailPage() {
           : []
       setRelationships(list)
     } catch (err) {
-      console.error('❌ Failed to load relationships', err)
       setRelationships([])
       setRelationshipsError(err.message || 'Failed to load relationships')
     } finally {
@@ -1210,26 +1353,64 @@ export default function EntityDetailPage() {
   }, [entity?.name])
 
   const handleSaveAll = useCallback(async () => {
-    if (!canEdit) return false
+    if (!canEdit) {
+      return false
+    }
 
+    isSavingRef.current = true
     let success = true
+    let accessSaved = false
 
-    if (formState.isDirty && formRef.current?.submit) {
-      const result = await formRef.current.submit()
-      if (result === false) {
-        success = false
+    try {
+      // Save form changes if dirty
+      if (formState.isDirty && formRef.current?.submit) {
+        const result = await formRef.current.submit()
+        if (result === false) {
+          success = false
+        }
+        // Form save updates entity via handleUpdate, which sets justSavedRef.current = true
+        // The form reset effect will then reset the baseline state
       }
-    }
 
-    if (success && isAccessDirty) {
-      const accessResult = await handleAccessSave()
-      if (!accessResult) {
-        success = false
+      // Save access changes if dirty
+      if (success && isAccessDirty) {
+        const accessResult = await handleAccessSave()
+        if (!accessResult) {
+          success = false
+        } else {
+          accessSaved = true
+        }
       }
-    }
 
-    return success
-  }, [canEdit, formState.isDirty, isAccessDirty, handleAccessSave])
+      // After access save, reload entity to sync accessDefaults and clear isAccessDirty
+      // This ensures the baseline state for access settings matches the saved state
+      if (success && accessSaved && entity?.id) {
+        try {
+          const response = await getEntity(entity.id)
+          const data = resolveEntityResponse(response)
+          if (data) {
+            handleEntityPayloadUpdate(data)
+            // The entity reload will update accessDefaults in useEntityAccess hook
+            // which will cause isAccessDirty to become false
+          }
+        } catch (err) {
+          // Don't fail the save operation if reload fails
+        }
+      }
+
+      // After successful save, the baseline state should be reset:
+      // - Form baseline: reset via formRef.current.reset() in the useEffect (triggered by justSavedRef)
+      // - Access baseline: updated via entity reload which updates accessDefaults
+      // - hasUnsavedChanges will become false once both formState.isDirty and isAccessDirty are false
+
+      return success
+    } finally {
+      // Use a small delay to ensure entity state has updated before clearing the flag
+      setTimeout(() => {
+        isSavingRef.current = false
+      }, 200)
+    }
+  }, [canEdit, formState.isDirty, isAccessDirty, handleAccessSave, entity?.id, handleEntityPayloadUpdate, isEditing])
 
   const proceedPendingAction = useCallback(() => {
     const action = pendingActionRef.current
@@ -1243,24 +1424,41 @@ export default function EntityDetailPage() {
       const saved = await handleSaveAll()
       if (saved) {
         setUnsavedDialogOpen(false)
-        proceedPendingAction()
+        // Only proceed with the pending action if it's not an exit-edit action
+        // For exit-edit actions, the proceed function already handles saving and exiting
+        const action = pendingActionRef.current
+        if (action?.type !== 'exit-edit') {
+          proceedPendingAction()
+        } else {
+          // For exit-edit, the proceed function already saved, so just exit
+          setPendingAction(null)
+          action?.proceed?.()
+        }
       }
     } finally {
       setUnsavedDialogSaving(false)
     }
-  }, [handleSaveAll, proceedPendingAction, setUnsavedDialogOpen, setUnsavedDialogSaving])
-
-  const exitEditMode = useCallback(() => {
-    setIsEditing(false)
-    setActiveTab('dossier')
-  }, [setActiveTab])
+  }, [handleSaveAll, proceedPendingAction])
 
   const resetPendingChanges = useCallback(() => {
     formRef.current?.reset?.(editInitialData || {})
     resetAccessSettings()
   }, [editInitialData, resetAccessSettings])
 
-  const hasUnsavedChanges = isEditing && (formState.isDirty || isAccessDirty)
+  // Compute hasUnsavedChanges by comparing current editor state to baseline state
+  // This will automatically become false when:
+  // - formState.isDirty becomes false (after form baseline reset via formRef.current.reset())
+  // - isAccessDirty becomes false (after access baseline reset via entity reload updating accessDefaults)
+  // Using useMemo ensures it recalculates when any dependency changes
+  const hasUnsavedChanges = useMemo(() => {
+    return isEditing && (formState.isDirty || isAccessDirty)
+  }, [isEditing, formState.isDirty, isAccessDirty])
+
+  // exitEditMode moved here after hasUnsavedChanges is defined
+  const exitEditMode = useCallback(() => {
+    setIsEditing(false)
+    setActiveTab('dossier')
+  }, [setActiveTab, entity?.id, canEdit, hasUnsavedChanges])
 
   const requestNavigation = useCallback(
     (target) => {
@@ -1414,8 +1612,12 @@ export default function EntityDetailPage() {
       setPendingAction({
         type: 'exit-edit',
         label: 'view mode',
-        proceed: () => {
-          exitEditMode()
+        proceed: async () => {
+          // Save changes before exiting edit mode
+          const saved = await handleSaveAll()
+          if (saved) {
+            exitEditMode()
+          }
         },
         discard: () => {
           resetPendingChanges()
@@ -1427,7 +1629,7 @@ export default function EntityDetailPage() {
     }
 
     exitEditMode()
-  }, [canEdit, exitEditMode, hasUnsavedChanges, isEditing, resetPendingChanges])
+  }, [canEdit, exitEditMode, hasUnsavedChanges, isEditing, resetPendingChanges, handleSaveAll])
 
   const handleUpdate = useCallback(
     async (values) => {
@@ -1452,15 +1654,21 @@ export default function EntityDetailPage() {
           throw new Error('Failed to update entity')
         }
 
+        // Update entity state first
         handleEntityPayloadUpdate(updated)
+        
+        // Mark that we've just saved so the form can be reset after entity updates
+        // This ensures the baseline state is reset to match the saved data
+        justSavedRef.current = true
+        
         return { message: 'Entity updated successfully.' }
       } catch (err) {
-        console.error('❌ Failed to update entity', err)
         setFormError(err.message || 'Failed to update entity')
+        justSavedRef.current = false
         return false
       }
     },
-    [entity?.id, entity?.visibility, handleEntityPayloadUpdate],
+    [entity?.id, entity?.visibility, handleEntityPayloadUpdate, isEditing],
   )
 
   const handleFormStateChange = useCallback((nextState) => {
@@ -1479,7 +1687,7 @@ export default function EntityDetailPage() {
 
       return next
     })
-  }, [])
+  }, [entity?.id, isEditing])
 
   const handleTabChange = useCallback(
     (nextTab) => {
@@ -1633,6 +1841,41 @@ export default function EntityDetailPage() {
   if (!token) return <p>Authenticating...</p>
 
   if (loading) return <p>Loading entity...</p>
+  
+  // Render campaign context access error with helpful message
+  if (error === 'CAMPAIGN_CONTEXT_ACCESS_DENIED') {
+    return (
+      <div className="alert error" style={{ padding: '1.5rem', maxWidth: '600px', margin: '2rem auto' }}>
+        <h2 style={{ marginTop: 0, marginBottom: '1rem' }}>Access Restricted by Campaign Context</h2>
+        <p style={{ marginBottom: '1rem' }}>
+          You don't have access to this entity with your current campaign context selected. 
+          This entity may belong to a different campaign or world, or your current campaign 
+          context doesn't have permission to view it.
+        </p>
+        <p style={{ marginBottom: '1.5rem' }}>
+          To view this entity, please change your campaign context using the selector in the 
+          header to a campaign that has access to this entity.
+        </p>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => navigate('/entities')}
+            style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: '#6c757d',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+            }}
+          >
+            Go to Entities
+          </button>
+        </div>
+      </div>
+    )
+  }
+  
   if (error) return <div className="alert error">{error}</div>
   if (!entity || !viewData) return <p>Entity not found</p>
 
@@ -1723,6 +1966,8 @@ export default function EntityDetailPage() {
                 error={notesState.error}
                 onReload={handleNotesReload}
                 onCreateNote={handleNoteCreate}
+                onNoteUpdate={handleNoteUpdate}
+                onNoteDelete={handleNoteDelete}
                 creating={notesSaving}
                 campaignMatchesEntityWorld={campaignMatchesEntityWorld}
               />

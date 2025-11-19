@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { MentionsInput, Mention } from 'react-mentions'
-import { AlertCircle, Loader2, Plus } from 'lucide-react'
+import { Mention } from 'react-mentions'
+import MentionsInputWrapper from '../../../components/notes/MentionsInputWrapper.jsx'
+import { AlertCircle, Loader2, Plus, Edit2, X, Check, Trash2 } from 'lucide-react'
 import PropTypes from '../../../utils/propTypes.js'
 import EntityInfoPreview from '../../../components/entities/EntityInfoPreview.jsx'
 import { fetchCharacters } from '../../../api/characters.js'
@@ -9,8 +10,11 @@ import {
   fetchEntityMentionNotes,
   fetchEntityMentionSessionNotes,
   searchEntities,
+  updateEntityNote,
+  deleteEntityNote,
 } from '../../../api/entities.js'
 import { buildNoteSegments, cleanEntityName } from '../../../utils/noteMentions.js'
+import { useAuth } from '../../../context/AuthContext.jsx'
 import './NotesTab.css'
 
 const SHARE_LABELS = {
@@ -43,22 +47,54 @@ const SHARE_OPTIONS_DM = [
 ]
 
 const formatTimestamp = (value) => {
-  if (!value) return ''
-  try {
-    const date = value instanceof Date ? value : new Date(value)
-    if (Number.isNaN(date.getTime())) return ''
-    return date.toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    })
-  } catch (err) {
-    console.warn('Unable to format timestamp', err)
+  if (!value) {
     return ''
   }
+  
+  // Handle Date objects directly
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      return ''
+    }
+    try {
+      return value.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    } catch (err) {
+      console.warn('Unable to format Date object', err, value)
+      return ''
+    }
+  }
+  
+  // Handle string or number values
+  if (typeof value === 'string' || typeof value === 'number') {
+    try {
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) {
+        console.warn('Invalid date value:', value)
+        return ''
+      }
+      return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+    } catch (err) {
+      console.warn('Unable to parse date value', err, value)
+      return ''
+    }
+  }
+  
+  console.warn('Unexpected date value type:', typeof value, value)
+  return ''
 }
 
 const resolveAuthorLabel = (note) =>
@@ -115,7 +151,10 @@ export default function NotesTab({
   onCreateNote,
   creating,
   campaignMatchesEntityWorld,
+  onNoteUpdate,
+  onNoteDelete,
 }) {
+  const { user } = useAuth()
   const [noteContent, setNoteContent] = useState('')
   const [shareType, setShareType] = useState('private')
   const [characterId, setCharacterId] = useState('')
@@ -128,6 +167,12 @@ export default function NotesTab({
   const [selectedAuthor, setSelectedAuthor] = useState('all')
   const [activeSubTab, setActiveSubTab] = useState('notes')
   const [mentionSource, setMentionSource] = useState('entity')
+  const [editingNoteId, setEditingNoteId] = useState(null)
+  const [editNoteContent, setEditNoteContent] = useState('')
+  const [editShareType, setEditShareType] = useState('private')
+  const [editCharacterId, setEditCharacterId] = useState('')
+  const [updating, setUpdating] = useState(false)
+  const [deletingNoteId, setDeletingNoteId] = useState(null)
   const [mentionEntityNotesState, setMentionEntityNotesState] = useState({
     items: emptyArray,
     loading: false,
@@ -164,6 +209,22 @@ export default function NotesTab({
 
     return ''
   }, [entity, worldId])
+
+  const isNoteAuthor = useCallback(
+    (note) => {
+      if (!user || !note) return false
+      const authorId =
+        note?.author?.id ??
+        note?.createdBy ??
+        note?.created_by ??
+        note?.authorId ??
+        note?.author_id ??
+        null
+      if (!authorId) return false
+      return String(authorId) === String(user.id)
+    },
+    [user],
+  )
 
   const handleNoteContentChange = useCallback((event, nextValue) => {
     const value =
@@ -288,6 +349,130 @@ export default function NotesTab({
       characterId,
       closeDrawer,
     ],
+  )
+
+  const handleStartEdit = useCallback(
+    (note) => {
+      if (!note || !entity?.id) return
+      const noteCharId = note?.characterId ?? note?.character_id ?? ''
+      setEditingNoteId(note.id)
+      setEditNoteContent(note?.content ?? '')
+      setEditShareType(note?.shareType ?? note?.share_type ?? 'private')
+      setEditCharacterId(noteCharId)
+      setFormError('')
+    },
+    [entity?.id],
+  )
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingNoteId(null)
+    setEditNoteContent('')
+    setEditShareType('private')
+    setEditCharacterId('')
+    setFormError('')
+  }, [])
+
+  const handleEditNoteContentChange = useCallback((event, nextValue) => {
+    const value =
+      typeof nextValue === 'string'
+        ? nextValue
+        : typeof event?.target?.value === 'string'
+        ? event.target.value
+        : ''
+    setEditNoteContent(value)
+    setFormError('')
+  }, [])
+
+  const handleSaveEdit = useCallback(
+    async (note) => {
+      if (!note || !entity?.id || !selectedCampaignId) return
+
+      const trimmed = editNoteContent.trim()
+      if (!trimmed) {
+        setFormError('Please enter a note before saving')
+        return
+      }
+
+      const originalCharacterId = note?.characterId ?? note?.character_id ?? ''
+      if (isCampaignPlayer && originalCharacterId && !editCharacterId) {
+        setFormError('Select which character this note is for')
+        return
+      }
+
+      setUpdating(true)
+      setFormError('')
+
+      try {
+        const payload = {
+          content: trimmed,
+          shareType: editShareType,
+          campaignId: selectedCampaignId,
+        }
+
+        if (isCampaignPlayer && editCharacterId) {
+          payload.characterId = editCharacterId
+        }
+
+        const response = await updateEntityNote(entity.id, note.id, payload)
+        const updatedNote = response?.data || response
+
+        if (!updatedNote) {
+          throw new Error('Note could not be updated')
+        }
+
+        if (onNoteUpdate) {
+          await onNoteUpdate(updatedNote)
+        }
+
+        handleCancelEdit()
+      } catch (err) {
+        console.error('Failed to update note', err)
+        setFormError(err.message || 'Failed to update note')
+      } finally {
+        setUpdating(false)
+      }
+    },
+    [
+      entity?.id,
+      selectedCampaignId,
+      editNoteContent,
+      editShareType,
+      editCharacterId,
+      isCampaignPlayer,
+      onNoteUpdate,
+      handleCancelEdit,
+    ],
+  )
+
+  const handleDeleteClick = useCallback(
+    async (note) => {
+      if (!note?.id || !entity?.id || !selectedCampaignId) return
+
+      const confirmed = window.confirm(
+        'Are you sure you want to delete this note? This action cannot be undone.',
+      )
+
+      if (!confirmed) return
+
+      setDeletingNoteId(note.id)
+      setFormError('')
+
+      try {
+        await deleteEntityNote(entity.id, note.id, {
+          campaignId: selectedCampaignId,
+        })
+
+        if (onNoteDelete) {
+          await onNoteDelete(note.id)
+        }
+      } catch (err) {
+        console.error('Failed to delete note', err)
+        setFormError(err.message || 'Failed to delete note')
+      } finally {
+        setDeletingNoteId(null)
+      }
+    },
+    [entity?.id, selectedCampaignId, onNoteDelete],
   )
 
   const sortedNotes = useMemo(() => {
@@ -784,7 +969,21 @@ export default function NotesTab({
             {error ? (
               <div className="entity-notes-alert error">
                 <AlertCircle size={16} />
-                <p>{error}</p>
+                {error === 'CAMPAIGN_CONTEXT_ACCESS_DENIED' ? (
+                  <div>
+                    <p style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                      Access Restricted by Campaign Context
+                    </p>
+                    <p style={{ marginBottom: '0.5rem' }}>
+                      You don't have access to view notes for this entity with your current campaign context selected.
+                    </p>
+                    <p>
+                      Please change your campaign context using the selector in the header, or clear your campaign context to view notes from all campaigns you have access to.
+                    </p>
+                  </div>
+                ) : (
+                  <p>{error}</p>
+                )}
               </div>
             ) : null}
 
@@ -805,16 +1004,43 @@ export default function NotesTab({
 
             <div className="entity-notes-list" role="list">
               {filteredNotes.map((note) => {
-                const createdAtValue = note?.createdAt ?? note?.created_at
-                const createdAtDate = createdAtValue ? new Date(createdAtValue) : null
-                const formattedTimestamp = formatTimestamp(createdAtDate)
+                // Try multiple possible date field names and formats
+                const createdAtValue =
+                  note?.createdAt ??
+                  note?.created_at ??
+                  note?.timestamp ??
+                  null
+                
+                // Debug: log if timestamp is missing (remove after debugging)
+                if (!createdAtValue && process.env.NODE_ENV === 'development') {
+                  console.debug('Note missing timestamp:', note?.id, note)
+                }
+                
+                // formatTimestamp can handle both Date objects and date strings
+                const formattedTimestamp = formatTimestamp(createdAtValue)
+                
+                // For the ISO timestamp attribute, try to create a proper Date object
+                let isoTimestamp = undefined
+                if (createdAtValue) {
+                  try {
+                    const date = new Date(createdAtValue)
+                    if (!Number.isNaN(date.getTime())) {
+                      isoTimestamp = date.toISOString()
+                    }
+                  } catch (err) {
+                    // If date parsing fails, use the raw value if it's a string
+                    if (typeof createdAtValue === 'string') {
+                      isoTimestamp = createdAtValue
+                    }
+                  }
+                }
+                
                 const share = String(note?.shareType ?? note?.share_type ?? 'private')
                 const authorName = resolveAuthorLabel(note)
                 const characterName = note?.character?.name || ''
-                const isoTimestamp =
-                  createdAtDate && !Number.isNaN(createdAtDate.getTime())
-                    ? createdAtDate.toISOString()
-                    : undefined
+                const isEditing = editingNoteId === note?.id
+                const canEdit = isNoteAuthor(note)
+                const noteCharacterId = note?.characterId ?? note?.character_id ?? ''
 
                 return (
                   <article key={note?.id} className="entity-note-card" role="listitem">
@@ -828,15 +1054,146 @@ export default function NotesTab({
                           {SHARE_LABELS[share] || 'Private'}
                         </span>
                       </div>
-                      <time
-                        className="entity-note-timestamp"
-                        dateTime={isoTimestamp}
-                        title={formattedTimestamp || undefined}
-                      >
-                        {formattedTimestamp || '—'}
-                      </time>
+                      <div className="entity-note-header-actions">
+                        <time
+                          className="entity-note-timestamp"
+                          dateTime={isoTimestamp}
+                          title={formattedTimestamp || (createdAtValue ? String(createdAtValue) : undefined)}
+                        >
+                          {formattedTimestamp || (createdAtValue ? 'Invalid date' : '—')}
+                        </time>
+                        {canEdit && !isEditing ? (
+                          <div className="entity-note-action-buttons">
+                            <button
+                              type="button"
+                              className="entity-note-edit-button"
+                              onClick={() => handleStartEdit(note)}
+                              title="Edit note"
+                              aria-label="Edit note"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              className="entity-note-delete-button"
+                              onClick={() => handleDeleteClick(note)}
+                              title="Delete note"
+                              aria-label="Delete note"
+                              disabled={deletingNoteId === note.id}
+                            >
+                              {deletingNoteId === note.id ? (
+                                <Loader2 className="spin" size={14} />
+                              ) : (
+                                <Trash2 size={14} />
+                              )}
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     </header>
-                    <div className="entity-note-body">{renderNoteBody(note)}</div>
+                    {isEditing ? (
+                      <div className="entity-note-edit-form">
+                        <div className="entity-note-editor-field">
+                          <MentionsInputWrapper
+                            value={editNoteContent}
+                            onChange={handleEditNoteContentChange}
+                            markup="@[__display__](__id__)"
+                            placeholder={ENTITY_NOTE_PLACEHOLDER}
+                            className="entity-note-mentions"
+                            inputProps={{
+                              className: 'entity-note-textarea',
+                              'aria-label': 'Edit note content',
+                              rows: 5,
+                              required: true,
+                            }}
+                          >
+                            <Mention
+                              trigger="@"
+                              markup="@[__display__](__id__)"
+                              displayTransform={(id, display) => `@${display}`}
+                              data={handleEntityMentionSearch}
+                              appendSpaceOnAdd
+                            />
+                          </MentionsInputWrapper>
+                        </div>
+
+                        <fieldset className="entity-notes-share">
+                          <legend>Share with</legend>
+                          {shareOptions.map((option) => (
+                            <label key={option.value} className="entity-notes-share-option">
+                              <input
+                                type="radio"
+                                name={`entity-note-share-edit-${note.id}`}
+                                value={option.value}
+                                checked={editShareType === option.value}
+                                onChange={() => setEditShareType(option.value)}
+                                disabled={updating}
+                              />
+                              <span>{option.label}</span>
+                            </label>
+                          ))}
+                        </fieldset>
+
+                        {showCharacterPicker && noteCharacterId ? (
+                          <div className="entity-notes-character">
+                            <label htmlFor={`entity-note-character-edit-${note.id}`}>
+                              Character
+                            </label>
+                            <select
+                              id={`entity-note-character-edit-${note.id}`}
+                              value={editCharacterId || noteCharacterId}
+                              onChange={(event) => setEditCharacterId(event.target.value)}
+                              disabled={charactersLoading || characterLocked || updating}
+                            >
+                              <option value="" disabled>
+                                {charactersLoading ? 'Loading characters…' : 'Select character'}
+                              </option>
+                              {characters.map((character) => (
+                                <option key={character.id} value={character.id}>
+                                  {character.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : null}
+
+                        {formError ? (
+                          <div className="entity-notes-alert error">
+                            <AlertCircle size={16} />
+                            <p>{formError}</p>
+                          </div>
+                        ) : null}
+
+                        <div className="entity-notes-actions">
+                          <button
+                            type="button"
+                            className="primary"
+                            onClick={() => handleSaveEdit(note)}
+                            disabled={updating || !editNoteContent.trim()}
+                          >
+                            {updating ? (
+                              <>
+                                <Loader2 className="spin" size={16} /> Saving…
+                              </>
+                            ) : (
+                              <>
+                                <Check size={16} /> Save
+                              </>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            className="entity-note-cancel-button"
+                            onClick={handleCancelEdit}
+                            disabled={updating}
+                          >
+                            <X size={16} /> Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="entity-note-body">{renderNoteBody(note)}</div>
+                    )}
                   </article>
                 )
               })}
@@ -1107,11 +1464,10 @@ export default function NotesTab({
               Note
             </label>
             <div className="entity-note-editor-field">
-              <MentionsInput
+              <MentionsInputWrapper
                 value={noteContent}
                 onChange={handleNoteContentChange}
                 markup="@[__display__](__id__)"
-                displayTransform={(id, display) => `@${display}`}
                 placeholder={ENTITY_NOTE_PLACEHOLDER}
                 className="entity-note-mentions"
                 inputProps={{
@@ -1130,7 +1486,7 @@ export default function NotesTab({
                   data={handleEntityMentionSearch}
                   appendSpaceOnAdd
                 />
-              </MentionsInput>
+              </MentionsInputWrapper>
             </div>
 
             <fieldset className="entity-notes-share">
@@ -1236,4 +1592,6 @@ NotesTab.propTypes = {
   onCreateNote: PropTypes.func,
   creating: PropTypes.bool,
   campaignMatchesEntityWorld: PropTypes.bool,
+  onNoteUpdate: PropTypes.func,
+  onNoteDelete: PropTypes.func,
 }

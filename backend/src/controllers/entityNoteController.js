@@ -809,3 +809,311 @@ export const listCampaignEntityNotes = async (req, res) => {
       .json({ success: false, message: err.message || 'Failed to load notes' })
   }
 }
+
+export const updateEntityNote = async (req, res) => {
+  try {
+    const { id, noteId } = req.params
+    const campaignId = resolveCampaignId(req)
+
+    if (!campaignId) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Campaign id is required to update a note' })
+    }
+
+    const entity = await Entity.findByPk(id)
+    if (!entity) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Entity not found' })
+    }
+
+    const access = await checkWorldAccess(entity.world_id, req.user)
+    if (!access.world) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'World not found' })
+    }
+
+    const readContext = await buildEntityReadContext({
+      worldId: entity.world_id,
+      user: req.user,
+      worldAccess: access,
+      campaignContextId: campaignId,
+    })
+
+    if (!canUserReadEntity(entity, readContext)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const campaign = await Campaign.findByPk(campaignId, {
+      include: [
+        {
+          model: UserCampaignRole,
+          as: 'members',
+          attributes: ['user_id', 'role'],
+        },
+      ],
+    })
+
+    if (!campaign) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Campaign not found' })
+    }
+
+    if (
+      campaign.world_id &&
+      entity.world_id &&
+      String(campaign.world_id) !== String(entity.world_id)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Campaign must belong to the same world as the entity',
+      })
+    }
+
+    const userId = normaliseId(req.user?.id)
+    if (!userId) {
+      return res
+        .status(401)
+        .json({ success: false, message: 'Authentication required' })
+    }
+
+    const note = await EntityNote.findOne({
+      where: {
+        id: noteId,
+        entity_id: entity.id,
+        campaign_id: campaign.id,
+      },
+    })
+
+    if (!note) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Note not found' })
+    }
+
+    // Check if user is the author
+    const noteAuthorId = normaliseId(note.created_by)
+    if (!noteAuthorId || String(noteAuthorId) !== String(userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the author can edit this note',
+      })
+    }
+
+    const isSystemAdmin = req.user?.role === 'system_admin'
+
+    let membershipRole = null
+    if (!isSystemAdmin) {
+      const membership = Array.isArray(campaign.members)
+        ? campaign.members.find((member) =>
+            member && String(member.user_id) === String(userId),
+          )
+        : await findCampaignMembership(campaignId, userId)
+
+      membershipRole = membership?.role ?? null
+    }
+
+    const isCampaignDm = isSystemAdmin || membershipRole === 'dm'
+    const isCampaignPlayer = membershipRole === 'player'
+
+    if (!isCampaignDm && !isCampaignPlayer) {
+      return res.status(403).json({
+        success: false,
+        message: 'You must be a DM or player in this campaign to edit notes',
+      })
+    }
+
+    let shareType
+    try {
+      shareType = normaliseShareType(
+        req.body?.shareType ?? req.body?.share_type ?? note.share_type,
+      )
+    } catch (err) {
+      return res.status(400).json({ success: false, message: err.message })
+    }
+
+    const allowedShares = isCampaignDm ? DM_SHARE_TYPES : PLAYER_SHARE_TYPES
+    if (!allowedShares.has(shareType)) {
+      return res.status(400).json({
+        success: false,
+        message: `Share type must be one of: ${Array.from(allowedShares).join(', ')}`,
+      })
+    }
+
+    const contentInput = req.body?.content
+    if (typeof contentInput !== 'string') {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Note content is required' })
+    }
+
+    const content = contentInput.trim()
+    if (!content) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Note content cannot be empty' })
+    }
+
+    // For players, validate character if it was originally set
+    let validatedCharacterId = note.character_id
+    if (isCampaignPlayer && note.character_id) {
+      const rawCharacterId = normaliseId(
+        req.body?.characterId ?? req.body?.character_id ?? note.character_id,
+      )
+      if (!rawCharacterId) {
+        return res.status(400).json({
+          success: false,
+          message: 'A character must be selected for player notes',
+        })
+      }
+
+      const character = await Character.findOne({
+        where: {
+          id: rawCharacterId,
+          campaign_id: campaign.id,
+          user_id: userId,
+        },
+      })
+
+      if (!character) {
+        return res.status(404).json({
+          success: false,
+          message: 'Character not found for this campaign',
+        })
+      }
+
+      validatedCharacterId = character.id
+    }
+
+    const mentions = extractMentions(content)
+
+    // Update the note
+    await note.update({
+      content,
+      share_type: shareType,
+      mentions,
+      ...(validatedCharacterId !== undefined ? { character_id: validatedCharacterId } : {}),
+    })
+
+    const payload = await EntityNote.findByPk(note.id, {
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'username', 'email', 'role'] },
+        { model: Character, as: 'character', attributes: ['id', 'name'] },
+      ],
+    })
+
+    return res.json({ success: true, data: formatNoteRecord(payload) })
+  } catch (err) {
+    console.error('❌ Failed to update entity note', err)
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || 'Failed to update note' })
+  }
+}
+
+export const deleteEntityNote = async (req, res) => {
+  try {
+    const { id, noteId } = req.params
+    const campaignId = resolveCampaignId(req)
+
+    if (!campaignId) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Campaign id is required to delete a note' })
+    }
+
+    const entity = await Entity.findByPk(id)
+    if (!entity) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Entity not found' })
+    }
+
+    const access = await checkWorldAccess(entity.world_id, req.user)
+    if (!access.world) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'World not found' })
+    }
+
+    const readContext = await buildEntityReadContext({
+      worldId: entity.world_id,
+      user: req.user,
+      worldAccess: access,
+      campaignContextId: campaignId,
+    })
+
+    if (!canUserReadEntity(entity, readContext)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const campaign = await Campaign.findByPk(campaignId, {
+      include: [
+        {
+          model: UserCampaignRole,
+          as: 'members',
+          attributes: ['user_id', 'role'],
+        },
+      ],
+    })
+
+    if (!campaign) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Campaign not found' })
+    }
+
+    if (
+      campaign.world_id &&
+      entity.world_id &&
+      String(campaign.world_id) !== String(entity.world_id)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Campaign must belong to the same world as the entity',
+      })
+    }
+
+    const userId = normaliseId(req.user?.id)
+    if (!userId) {
+      return res
+        .status(401)
+        .json({ success: false, message: 'Authentication required' })
+    }
+
+    const note = await EntityNote.findOne({
+      where: {
+        id: noteId,
+        entity_id: entity.id,
+        campaign_id: campaign.id,
+      },
+    })
+
+    if (!note) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Note not found' })
+    }
+
+    // Check if user is the author
+    const noteAuthorId = normaliseId(note.created_by)
+    if (!noteAuthorId || String(noteAuthorId) !== String(userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the author can delete this note',
+      })
+    }
+
+    await note.destroy()
+
+    return res.json({ success: true, data: { id: noteId } })
+  } catch (err) {
+    console.error('❌ Failed to delete entity note', err)
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || 'Failed to delete note' })
+  }
+}

@@ -132,6 +132,22 @@ export const fetchEntityMentionSessionNotes = (id, params = {}) => {
 
 export const createEntityNote = (id, data) => api.post(`/entities/${id}/notes`, data)
 
+export const updateEntityNote = (entityId, noteId, data) =>
+  api.patch(`/entities/${entityId}/notes/${noteId}`, data)
+
+export const deleteEntityNote = (entityId, noteId, params = {}) => {
+  const query = new URLSearchParams()
+  const campaignId = params.campaignId ?? params.campaign_id
+  if (campaignId) {
+    query.set('campaignId', campaignId)
+  }
+
+  const queryString = query.toString()
+  return api.delete(
+    `/entities/${entityId}/notes/${noteId}${queryString ? `?${queryString}` : ''}`,
+  )
+}
+
 export const getEntityGraph = async (entityId, depth = 1) => {
   const params = new URLSearchParams()
   if (depth !== undefined && depth !== null) {

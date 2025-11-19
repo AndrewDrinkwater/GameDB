@@ -672,7 +672,14 @@ body.theme-dark .entity-note-card {
   justify-content: space-between;
   gap: 0.75rem;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
+}
+
+.entity-note-header-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
 }
 
 .entity-note-meta {
@@ -797,4 +804,162 @@ body.theme-dark .entity-note-mention {
 
 .entity-note-text {
   white-space: pre-wrap;
+}
+
+.entity-note-edit-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle, #d6dbe4);
+  background: var(--surface-weak, #fff);
+  color: var(--text-muted, #5f6b7a);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  font-size: 0.85rem;
+}
+
+.entity-note-edit-button:hover:not(:disabled),
+.entity-note-edit-button:focus-visible {
+  outline: none;
+  background: var(--surface-strong, #f3f6fb);
+  color: var(--accent-strong, #36488f);
+  border-color: var(--accent, #556cd6);
+}
+
+.entity-note-edit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+body.theme-dark .entity-note-edit-button {
+  background: rgba(15, 23, 42, 0.7);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: rgba(226, 232, 240, 0.8);
+}
+
+body.theme-dark .entity-note-edit-button:hover:not(:disabled),
+body.theme-dark .entity-note-edit-button:focus-visible {
+  background: rgba(51, 65, 85, 0.75);
+  color: #c7d2fe;
+  border-color: rgba(129, 140, 248, 0.65);
+}
+
+.entity-note-cancel-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, #d6dbe4);
+  background: var(--surface-weak, #fff);
+  color: var(--text-primary, #1f2933);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.entity-note-cancel-button:hover:not(:disabled),
+.entity-note-cancel-button:focus-visible {
+  outline: none;
+  background: var(--surface-strong, #f3f6fb);
+  border-color: var(--border-subtle, #d6dbe4);
+}
+
+.entity-note-cancel-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+body.theme-dark .entity-note-cancel-button {
+  background: rgba(15, 23, 42, 0.7);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: rgba(226, 232, 240, 0.9);
+}
+
+body.theme-dark .entity-note-cancel-button:hover:not(:disabled),
+body.theme-dark .entity-note-cancel-button:focus-visible {
+  background: rgba(51, 65, 85, 0.75);
+  border-color: rgba(148, 163, 184, 0.5);
+}
+
+.entity-note-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.entity-note-edit-form .entity-notes-character {
+  margin-top: 0;
+}
+
+.entity-note-edit-form .entity-notes-character select {
+  background: var(--surface-weak, #fff);
+  border: 1px solid var(--border-subtle, #d6dbe4);
+  color: var(--text-primary, #1f2933);
+}
+
+body.theme-dark .entity-note-edit-form .entity-notes-character select {
+  background: rgba(15, 23, 42, 0.8);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #e2e8f0;
+}
+
+body.theme-dark .entity-note-edit-form .entity-notes-character select:focus {
+  outline: none;
+  border-color: rgba(129, 140, 248, 0.65);
+  box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.2);
+}
+
+body.theme-dark .entity-note-edit-form .entity-notes-character label {
+  color: rgba(226, 232, 240, 0.88);
+}
+
+.entity-note-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.entity-note-delete-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle, #d6dbe4);
+  background: var(--surface-weak, #fff);
+  color: var(--text-muted, #5f6b7a);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  font-size: 0.85rem;
+}
+
+.entity-note-delete-button:hover:not(:disabled),
+.entity-note-delete-button:focus-visible {
+  outline: none;
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
+.entity-note-delete-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+body.theme-dark .entity-note-delete-button {
+  background: rgba(15, 23, 42, 0.7);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: rgba(226, 232, 240, 0.8);
+}
+
+body.theme-dark .entity-note-delete-button:hover:not(:disabled),
+body.theme-dark .entity-note-delete-button:focus-visible {
+  background: rgba(220, 38, 38, 0.2);
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.4);
 }

@@ -45,6 +45,12 @@ const createChainableTypeChecker = (validate, expectedDescription, options = {})
 const createPrimitiveTypeChecker = (expectedType) =>
   createChainableTypeChecker((value) => typeof value === expectedType, expectedType)
 
+const createObjectTypeChecker = () =>
+  createChainableTypeChecker(
+    (value) => value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date),
+    'object',
+  )
+
 const createArrayOfTypeChecker = (typeChecker) => {
   const validate = (value) => {
     if (!Array.isArray(value)) return false
@@ -102,6 +108,7 @@ const PropTypes = {
   number: createPrimitiveTypeChecker('number'),
   bool: createPrimitiveTypeChecker('boolean'),
   func: createPrimitiveTypeChecker('function'),
+  object: createObjectTypeChecker(),
   arrayOf: (typeChecker) => createArrayOfTypeChecker(typeChecker),
   oneOfType: (checkers) => createUnionTypeChecker(checkers),
 }
