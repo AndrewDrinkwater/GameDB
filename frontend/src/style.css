@@ -2625,9 +2625,11 @@ body.theme-dark .campaign-tab.is-active {
 .entity-page-layout {
   --entity-page-max-width: 1280px;
   --entity-page-inline-padding: clamp(1rem, 3vw, 1.5rem);
+  --entity-header-height: 120px;
   min-height: 100vh;
   background: #f8fafc;
   padding-bottom: 2.5rem;
+  padding-top: calc(56px + var(--entity-header-height));
   overflow-x: hidden;
   width: 100%;
 }
@@ -2638,8 +2640,8 @@ body.theme-dark .campaign-tab.is-active {
 }
 
 .entity-page-header {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  top: 56px;
   left: 0;
   right: 0;
   z-index: 30;
@@ -2682,7 +2684,7 @@ body.theme-dark .campaign-tab.is-active {
   flex-direction: column;
   gap: 1.5rem;
   padding: 0 var(--entity-page-inline-padding);
-  padding-top: 112px;
+  padding-top: 0;
   box-sizing: border-box;
 }
 
@@ -2694,7 +2696,9 @@ body.theme-dark .campaign-tab.is-active {
 
 .entity-detail-page--mobile.entity-page-layout {
   --entity-page-inline-padding: 1rem;
+  --entity-header-height: 110px;
   padding-bottom: 2rem;
+  padding-top: calc(56px + var(--entity-header-height));
 }
 
 .entity-detail-page--mobile .entity-page-header__inner {
@@ -2704,7 +2708,7 @@ body.theme-dark .campaign-tab.is-active {
 .entity-detail-page--mobile .entity-detail-shell {
   margin-top: 1rem;
   gap: 1rem;
-  padding-top: 112px;
+  padding-top: 0;
 }
 
 .entity-detail-page--mobile .entity-detail-body {
