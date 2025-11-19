@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { MentionsInput, Mention } from 'react-mentions'
+import { Mention } from 'react-mentions'
+import MentionsInputWrapper from '../../../components/notes/MentionsInputWrapper.jsx'
 import { AlertCircle, Loader2, Plus } from 'lucide-react'
 import PropTypes from '../../../utils/propTypes.js'
 import EntityInfoPreview from '../../../components/entities/EntityInfoPreview.jsx'
@@ -1121,11 +1122,10 @@ export default function NotesTab({
               Note
             </label>
             <div className="entity-note-editor-field">
-              <MentionsInput
+              <MentionsInputWrapper
                 value={noteContent}
                 onChange={handleNoteContentChange}
                 markup="@[__display__](__id__)"
-                displayTransform={(id, display) => `@${display}`}
                 placeholder={ENTITY_NOTE_PLACEHOLDER}
                 className="entity-note-mentions"
                 inputProps={{
@@ -1144,7 +1144,7 @@ export default function NotesTab({
                   data={handleEntityMentionSearch}
                   appendSpaceOnAdd
                 />
-              </MentionsInput>
+              </MentionsInputWrapper>
             </div>
 
             <fieldset className="entity-notes-share">

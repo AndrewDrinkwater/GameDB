@@ -14,7 +14,8 @@ import {
   Trash2,
   Users,
 } from 'lucide-react'
-import { MentionsInput, Mention } from 'react-mentions'
+import { Mention } from 'react-mentions'
+import MentionsInputWrapper from '../../components/notes/MentionsInputWrapper.jsx'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import {
   createCampaignSessionNote,
@@ -762,11 +763,10 @@ export default function SessionNotesPage() {
                   <div className="session-note-fields">
                     <label htmlFor="session-note-content">Notes</label>
                     <div className="session-note-editor-field">
-                      <MentionsInput
+                      <MentionsInputWrapper
                         value={editorState.content || ''}
                         onChange={handleEditorChange}
                         markup="@[__display__](__id__)"
-                        displayTransform={(id, display) => `@${display}`}
                         placeholder={SESSION_NOTE_PLACEHOLDER}
                         className="session-note-mentions"
                         inputProps={{
@@ -783,7 +783,7 @@ export default function SessionNotesPage() {
                           data={handleMentionSearch}
                           appendSpaceOnAdd
                         />
-                      </MentionsInput>
+                      </MentionsInputWrapper>
                     </div>
 
                     {editorPreviewSegments.length > 0 ? (
