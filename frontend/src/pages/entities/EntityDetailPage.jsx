@@ -718,12 +718,12 @@ export default function EntityDetailPage() {
       const fields = Array.isArray(section.fields) ? section.fields : []
 
       return (
-        <section key={sectionKey} className="entity-card">
+        <section key={sectionKey} className="entity-card bg-white rounded-lg border p-4 sm:p-6 w-full">
           {section.title ? (
             <h2 className="entity-card-title">{section.title}</h2>
           ) : null}
           <div
-            className="entity-field-grid"
+            className={`entity-field-grid ${columnCount > 1 ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : ''}`}
             style={{ '--entity-field-columns': columnCount }}
           >
             {fields.length > 0 ? (
@@ -1884,30 +1884,31 @@ export default function EntityDetailPage() {
   return (
     <>
       <EntityPageLayout maxWidth={1280} className={pageClassName}>
-        <header className="entity-page-header">
-          <div className="entity-page-header__inner">
-            <EntityHeader
-              name={entity.name}
-              canEdit={canEdit}
-              isEditing={isEditing}
-              onToggleEdit={handleEditToggle}
-              onSave={handleSaveAll}
-              isSaving={formState.isSubmitting || accessSaving}
-              isSaveDisabled={!formState.isDirty && !isAccessDirty}
-            />
-            <div className="entity-page-header__tabs">
-              <TabNav
-                tabs={tabItems}
-                activeTab={activeTab}
-                onChange={handleTabChange}
+        <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 overflow-x-hidden">
+          <header className="entity-page-header">
+            <div className="entity-page-header__inner">
+              <EntityHeader
+                name={entity.name}
+                canEdit={canEdit}
+                isEditing={isEditing}
+                onToggleEdit={handleEditToggle}
+                onSave={handleSaveAll}
+                isSaving={formState.isSubmitting || accessSaving}
+                isSaveDisabled={!formState.isDirty && !isAccessDirty}
               />
+              <div className="entity-page-header__tabs flex flex-wrap gap-2 mt-4">
+                <TabNav
+                  tabs={tabItems}
+                  activeTab={activeTab}
+                  onChange={handleTabChange}
+                />
+              </div>
             </div>
-          </div>
-        </header>
+          </header>
 
-        {/* --- MAIN SHELL --- */}
-        <div className="entity-detail-shell">
-          <div className="entity-detail-body">
+          {/* --- MAIN SHELL --- */}
+          <div className="entity-detail-shell">
+            <div className="entity-detail-body">
             {/* DOSSIER TAB */}
             <div
               className="entity-tab-panel"
@@ -2015,6 +2016,7 @@ export default function EntityDetailPage() {
                 viewData={viewData}
               />
             )}
+            </div>
           </div>
         </div>
       </EntityPageLayout>
