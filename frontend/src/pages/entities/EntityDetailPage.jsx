@@ -196,10 +196,57 @@ export default function EntityDetailPage() {
   const isMobile = useIsMobile()
 
   const [entity, setEntity] = useState(null)
+  
+  // Debug: Track entity state changes
+  useEffect(() => {
+    console.log('🔍 [entity] state changed:', {
+      entityId: entity?.id,
+      entityName: entity?.name,
+      hasEntity: !!entity,
+      permissions: entity?.permissions,
+      permissionsCanEdit: entity?.permissions?.canEdit,
+      worldCreatedBy: entity?.world?.created_by,
+      entityCreatedBy: entity?.created_by,
+    })
+  }, [entity?.id, entity?.permissions, entity?.world?.created_by, entity?.created_by])
+  
   const handleEntityPayloadUpdate = useCallback((nextEntity) => {
     const normalized = resolveEntityResponse(nextEntity)
     if (normalized) {
-      setEntity(normalized)
+      console.log('🔍 [handleEntityPayloadUpdate] updating entity:', {
+        entityId: normalized?.id,
+        entityName: normalized?.name,
+        permissions: normalized?.permissions,
+        hasPermissions: !!normalized?.permissions,
+        permissionsCanEdit: normalized?.permissions?.canEdit,
+        worldCreatedBy: normalized?.world?.created_by,
+        entityCreatedBy: normalized?.created_by,
+      })
+      
+      // Preserve existing permissions if the update doesn't include them
+      // This prevents canEdit from flipping to false after save
+      setEntity((prevEntity) => {
+        if (!prevEntity) return normalized
+        
+        // If the new entity doesn't have permissions but the old one did, preserve them
+        if (!normalized.permissions && prevEntity.permissions) {
+          console.log('🔍 [handleEntityPayloadUpdate] preserving permissions from previous entity')
+          return {
+            ...normalized,
+            permissions: prevEntity.permissions,
+          }
+        }
+        
+        // If the new entity has permissions, use them (they might be updated)
+        if (normalized.permissions) {
+          return normalized
+        }
+        
+        // Otherwise, use the normalized entity as-is
+        return normalized
+      })
+    } else {
+      console.warn('🔍 [handleEntityPayloadUpdate] normalized entity is null/undefined')
     }
   }, [])
   const [loading, setLoading] = useState(true)
@@ -547,15 +594,47 @@ export default function EntityDetailPage() {
   )
 
   const canEdit = useMemo(() => {
-    if (entity?.permissions && typeof entity.permissions.canEdit === 'boolean') {
-      return entity.permissions.canEdit
-    }
-    if (!entity || !user) return false
-    if (user.role === 'system_admin') return true
-    if (entity.world?.created_by && entity.world.created_by === user.id) return true
-    if (entity.created_by && entity.created_by === user.id) return true
-    return false
+    const result = (() => {
+      // First check explicit permissions if they exist
+      if (entity?.permissions && typeof entity.permissions.canEdit === 'boolean') {
+        return entity.permissions.canEdit
+      }
+      
+      // Fall back to other checks if permissions are not provided
+      if (!entity || !user) return false
+      if (user.role === 'system_admin') return true
+      if (entity.world?.created_by && entity.world.created_by === user.id) return true
+      if (entity.created_by && entity.created_by === user.id) return true
+      
+      // If we had permissions before but they're missing now, preserve the last known value
+      // This prevents canEdit from flipping to false when save response doesn't include permissions
+      return false
+    })()
+    
+    console.log('🔍 [canEdit] computed:', {
+      result,
+      hasEntity: !!entity,
+      hasUser: !!user,
+      entityId: entity?.id,
+      userRole: user?.role,
+      permissionsCanEdit: entity?.permissions?.canEdit,
+      worldCreatedBy: entity?.world?.created_by,
+      entityCreatedBy: entity?.created_by,
+      userId: user?.id,
+    })
+    
+    return result
   }, [entity, user])
+
+  // Debug: Track isEditing changes (moved here after canEdit is defined)
+  useEffect(() => {
+    console.log('🔍 [isEditing] changed:', {
+      isEditing,
+      entityId: entity?.id,
+      canEdit,
+      stack: new Error().stack.split('\n').slice(1, 4).join('\n'),
+    })
+  }, [isEditing, entity?.id, canEdit])
 
   const secrets = useMemo(
     () => (Array.isArray(entity?.secrets) ? entity.secrets : []),
@@ -800,9 +879,36 @@ export default function EntityDetailPage() {
 
   useRecordHistory(historyRecord)
 
+  // Track previous entity ID to detect navigation vs updates
+  const prevEntityIdRef = useRef(null)
+  // Track when we've just saved to reset form state
+  const justSavedRef = useRef(false)
+  // Track if we're currently saving to prevent exiting edit mode during save
+  const isSavingRef = useRef(false)
+
   useEffect(() => {
-    setIsEditing(false)
-  }, [entity?.id])
+    const currentId = entity?.id
+    const prevId = prevEntityIdRef.current
+    
+    console.log('🔍 [entityIdEffect] entity ID changed:', {
+      currentId,
+      prevId,
+      isSaving: isSavingRef.current,
+      isEditing,
+      willExitEditMode: currentId !== prevId && prevId !== null && !isSavingRef.current,
+    })
+    
+    // Only exit edit mode if entity ID actually changed (navigation to different entity)
+    // This prevents exiting edit mode when the same entity is updated after save
+    // Also don't exit if we're currently saving (to prevent race conditions)
+    if (currentId !== prevId && prevId !== null && !isSavingRef.current) {
+      console.log('🔍 [entityIdEffect] EXITING EDIT MODE due to entity ID change')
+      setIsEditing(false)
+      justSavedRef.current = false
+    }
+    
+    prevEntityIdRef.current = currentId
+  }, [entity?.id, isEditing])
 
   const createdAtValue = entity?.createdAt || entity?.created_at
   const updatedAtValue = entity?.updatedAt || entity?.updated_at
@@ -856,6 +962,62 @@ export default function EntityDetailPage() {
       metadata: metadataInitialValues,
     }
   }, [entity, entityWorldId, createdAtValue, updatedAtValue, metadataInitialValues])
+
+  // Reset form baseline after successful save when entity updates
+  // This ensures hasUnsavedChanges becomes false by resetting the form's baseline state
+  useEffect(() => {
+    if (!isEditing || !entity || !editInitialData) return
+    if (!formRef.current?.reset) return
+    if (!justSavedRef.current) return
+
+    console.log('🔍 [formReset] starting:', {
+      entityId: entity?.id,
+      isEditing,
+      hasFormRef: !!formRef.current,
+      hasEditInitialData: !!editInitialData,
+      justSaved: justSavedRef.current,
+    })
+
+    // Reset form baseline to match the saved entity data
+    // This updates the form's initialSignature to match currentSignature, clearing isDirty
+    // Use a small delay to ensure entity state has fully updated and editInitialData is current
+    const timeoutId = setTimeout(() => {
+      if (formRef.current?.reset && editInitialData) {
+        console.log('🔍 [formReset] executing reset:', {
+          entityId: entity?.id,
+          editInitialDataKeys: Object.keys(editInitialData),
+          currentFormIsDirty: formRef.current?.isDirty?.(),
+        })
+        // Reset the form with the updated entity data
+        // This sets the baseline state to match the current editor state
+        formRef.current.reset(editInitialData)
+        
+        // Force a check of the form's dirty state after reset
+        // The form's onStateChange should be called, but we'll verify
+        const isDirtyAfterReset = formRef.current?.isDirty?.()
+        console.log('🔍 [formReset] reset completed, isDirty after reset:', isDirtyAfterReset)
+        
+        // If the form still reports as dirty after reset, there might be a timing issue
+        // Force an update by calling onStateChange if available
+        if (isDirtyAfterReset && formRef.current) {
+          console.warn('🔍 [formReset] form still reports dirty after reset, forcing state update')
+          // The form's internal state should update, but we'll give it a moment
+          setTimeout(() => {
+            const stillDirty = formRef.current?.isDirty?.()
+            console.log('🔍 [formReset] isDirty after delay:', stillDirty)
+          }, 50)
+        }
+      } else {
+        console.warn('🔍 [formReset] reset skipped - missing ref or data:', {
+          hasFormRef: !!formRef.current,
+          hasEditInitialData: !!editInitialData,
+        })
+      }
+      justSavedRef.current = false
+    }, 150)
+
+    return () => clearTimeout(timeoutId)
+  }, [isEditing, entity, editInitialData])
 
   const entityImageDataUrl = useMemo(() => {
     if (!entity) return ''
@@ -1210,26 +1372,94 @@ export default function EntityDetailPage() {
   }, [entity?.name])
 
   const handleSaveAll = useCallback(async () => {
-    if (!canEdit) return false
+    console.log('🔍 [handleSaveAll] starting:', {
+      canEdit,
+      isEditing,
+      formStateIsDirty: formState.isDirty,
+      isAccessDirty,
+      entityId: entity?.id,
+    })
 
+    if (!canEdit) {
+      console.warn('🔍 [handleSaveAll] aborted - canEdit is false')
+      return false
+    }
+
+    isSavingRef.current = true
     let success = true
+    let accessSaved = false
 
-    if (formState.isDirty && formRef.current?.submit) {
-      const result = await formRef.current.submit()
-      if (result === false) {
-        success = false
+    try {
+      // Save form changes if dirty
+      if (formState.isDirty && formRef.current?.submit) {
+        console.log('🔍 [handleSaveAll] saving form changes')
+        const result = await formRef.current.submit()
+        if (result === false) {
+          console.warn('🔍 [handleSaveAll] form save failed')
+          success = false
+        } else {
+          console.log('🔍 [handleSaveAll] form save successful')
+        }
+        // Form save updates entity via handleUpdate, which sets justSavedRef.current = true
+        // The form reset effect will then reset the baseline state
       }
-    }
 
-    if (success && isAccessDirty) {
-      const accessResult = await handleAccessSave()
-      if (!accessResult) {
-        success = false
+      // Save access changes if dirty
+      if (success && isAccessDirty) {
+        console.log('🔍 [handleSaveAll] saving access changes')
+        const accessResult = await handleAccessSave()
+        if (!accessResult) {
+          console.warn('🔍 [handleSaveAll] access save failed')
+          success = false
+        } else {
+          console.log('🔍 [handleSaveAll] access save successful')
+          accessSaved = true
+        }
       }
-    }
 
-    return success
-  }, [canEdit, formState.isDirty, isAccessDirty, handleAccessSave])
+      // After access save, reload entity to sync accessDefaults and clear isAccessDirty
+      // This ensures the baseline state for access settings matches the saved state
+      if (success && accessSaved && entity?.id) {
+        console.log('🔍 [handleSaveAll] reloading entity after access save')
+        try {
+          const response = await getEntity(entity.id)
+          const data = resolveEntityResponse(response)
+          if (data) {
+            console.log('🔍 [handleSaveAll] entity reloaded:', {
+              entityId: data?.id,
+              permissions: data?.permissions,
+            })
+            handleEntityPayloadUpdate(data)
+            // The entity reload will update accessDefaults in useEntityAccess hook
+            // which will cause isAccessDirty to become false
+          }
+        } catch (err) {
+          console.error('❌ Failed to reload entity after access save', err)
+          // Don't fail the save operation if reload fails
+        }
+      }
+
+      // After successful save, the baseline state should be reset:
+      // - Form baseline: reset via formRef.current.reset() in the useEffect (triggered by justSavedRef)
+      // - Access baseline: updated via entity reload which updates accessDefaults
+      // - hasUnsavedChanges will become false once both formState.isDirty and isAccessDirty are false
+
+      console.log('🔍 [handleSaveAll] completed:', {
+        success,
+        accessSaved,
+        justSavedRef: justSavedRef.current,
+        isSaving: isSavingRef.current,
+      })
+
+      return success
+    } finally {
+      // Use a small delay to ensure entity state has updated before clearing the flag
+      setTimeout(() => {
+        console.log('🔍 [handleSaveAll] clearing isSavingRef')
+        isSavingRef.current = false
+      }, 200)
+    }
+  }, [canEdit, formState.isDirty, isAccessDirty, handleAccessSave, entity?.id, handleEntityPayloadUpdate, isEditing])
 
   const proceedPendingAction = useCallback(() => {
     const action = pendingActionRef.current
@@ -1243,24 +1473,54 @@ export default function EntityDetailPage() {
       const saved = await handleSaveAll()
       if (saved) {
         setUnsavedDialogOpen(false)
-        proceedPendingAction()
+        // Only proceed with the pending action if it's not an exit-edit action
+        // For exit-edit actions, the proceed function already handles saving and exiting
+        const action = pendingActionRef.current
+        if (action?.type !== 'exit-edit') {
+          proceedPendingAction()
+        } else {
+          // For exit-edit, the proceed function already saved, so just exit
+          setPendingAction(null)
+          action?.proceed?.()
+        }
       }
     } finally {
       setUnsavedDialogSaving(false)
     }
-  }, [handleSaveAll, proceedPendingAction, setUnsavedDialogOpen, setUnsavedDialogSaving])
-
-  const exitEditMode = useCallback(() => {
-    setIsEditing(false)
-    setActiveTab('dossier')
-  }, [setActiveTab])
+  }, [handleSaveAll, proceedPendingAction])
 
   const resetPendingChanges = useCallback(() => {
     formRef.current?.reset?.(editInitialData || {})
     resetAccessSettings()
   }, [editInitialData, resetAccessSettings])
 
-  const hasUnsavedChanges = isEditing && (formState.isDirty || isAccessDirty)
+  // Compute hasUnsavedChanges by comparing current editor state to baseline state
+  // This will automatically become false when:
+  // - formState.isDirty becomes false (after form baseline reset via formRef.current.reset())
+  // - isAccessDirty becomes false (after access baseline reset via entity reload updating accessDefaults)
+  // Using useMemo ensures it recalculates when any dependency changes
+  const hasUnsavedChanges = useMemo(() => {
+    const result = isEditing && (formState.isDirty || isAccessDirty)
+    console.log('🔍 [hasUnsavedChanges] computed:', {
+      result,
+      isEditing,
+      formStateIsDirty: formState.isDirty,
+      isAccessDirty,
+    })
+    return result
+  }, [isEditing, formState.isDirty, isAccessDirty])
+
+  // exitEditMode moved here after hasUnsavedChanges is defined
+  const exitEditMode = useCallback(() => {
+    console.log('🔍 [exitEditMode] called:', {
+      entityId: entity?.id,
+      canEdit,
+      hasUnsavedChanges,
+      stack: new Error().stack.split('\n').slice(1, 5).join('\n'),
+    })
+    setIsEditing(false)
+    setActiveTab('dossier')
+  }, [setActiveTab, entity?.id, canEdit, hasUnsavedChanges])
 
   const requestNavigation = useCallback(
     (target) => {
@@ -1414,8 +1674,12 @@ export default function EntityDetailPage() {
       setPendingAction({
         type: 'exit-edit',
         label: 'view mode',
-        proceed: () => {
-          exitEditMode()
+        proceed: async () => {
+          // Save changes before exiting edit mode
+          const saved = await handleSaveAll()
+          if (saved) {
+            exitEditMode()
+          }
         },
         discard: () => {
           resetPendingChanges()
@@ -1427,11 +1691,17 @@ export default function EntityDetailPage() {
     }
 
     exitEditMode()
-  }, [canEdit, exitEditMode, hasUnsavedChanges, isEditing, resetPendingChanges])
+  }, [canEdit, exitEditMode, hasUnsavedChanges, isEditing, resetPendingChanges, handleSaveAll])
 
   const handleUpdate = useCallback(
     async (values) => {
       if (!entity?.id) return false
+
+      console.log('🔍 [handleUpdate] starting save:', {
+        entityId: entity.id,
+        valuesKeys: Object.keys(values || {}),
+        isEditing,
+      })
 
       setFormError('')
 
@@ -1452,15 +1722,29 @@ export default function EntityDetailPage() {
           throw new Error('Failed to update entity')
         }
 
+        console.log('🔍 [handleUpdate] save successful, updating entity state:', {
+          entityId: updated?.id,
+          updatedPermissions: updated?.permissions,
+        })
+
+        // Update entity state first
         handleEntityPayloadUpdate(updated)
+        
+        // Mark that we've just saved so the form can be reset after entity updates
+        // This ensures the baseline state is reset to match the saved data
+        justSavedRef.current = true
+        
+        console.log('🔍 [handleUpdate] marked justSavedRef = true')
+        
         return { message: 'Entity updated successfully.' }
       } catch (err) {
         console.error('❌ Failed to update entity', err)
         setFormError(err.message || 'Failed to update entity')
+        justSavedRef.current = false
         return false
       }
     },
-    [entity?.id, entity?.visibility, handleEntityPayloadUpdate],
+    [entity?.id, entity?.visibility, handleEntityPayloadUpdate, isEditing],
   )
 
   const handleFormStateChange = useCallback((nextState) => {
@@ -1477,9 +1761,16 @@ export default function EntityDetailPage() {
         return prev
       }
 
+      console.log('🔍 [formState] changed:', {
+        prev,
+        next,
+        entityId: entity?.id,
+        isEditing,
+      })
+
       return next
     })
-  }, [])
+  }, [entity?.id, isEditing])
 
   const handleTabChange = useCallback(
     (nextTab) => {
@@ -1670,6 +1961,16 @@ export default function EntityDetailPage() {
               isSaving={formState.isSubmitting || accessSaving}
               isSaveDisabled={!formState.isDirty && !isAccessDirty}
             />
+            {/* Debug: Log EntityHeader render */}
+            {console.log('🔍 [EntityHeader] render:', {
+              canEdit,
+              isEditing,
+              entityId: entity?.id,
+              entityName: entity?.name,
+              hasUnsavedChanges,
+              formStateIsDirty: formState.isDirty,
+              isAccessDirty,
+            }) || null}
             <div className="entity-page-header__tabs">
               <TabNav
                 tabs={tabItems}
