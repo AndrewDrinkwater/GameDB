@@ -356,13 +356,29 @@ export default function BulkAccessAuditPage() {
                         )}
                         {renderDiffRow(
                           'Read campaigns',
-                          formatAudience(change.old_read_campaign_ids),
-                          formatAudience(change.entity?.read_campaign_ids),
+                          formatAudience(
+                            change.old_read_campaign_names !== undefined
+                              ? change.old_read_campaign_names
+                              : change.old_read_campaign_ids,
+                          ),
+                          formatAudience(
+                            change.entity?.read_campaign_names !== undefined
+                              ? change.entity.read_campaign_names
+                              : change.entity?.read_campaign_ids,
+                          ),
                         )}
                         {renderDiffRow(
                           'Read users',
-                          formatAudience(change.old_read_user_ids),
-                          formatAudience(change.entity?.read_user_ids),
+                          formatAudience(
+                            change.old_read_user_names !== undefined
+                              ? change.old_read_user_names
+                              : change.old_read_user_ids,
+                          ),
+                          formatAudience(
+                            change.entity?.read_user_names !== undefined
+                              ? change.entity.read_user_names
+                              : change.entity?.read_user_ids,
+                          ),
                         )}
                         {renderDiffRow(
                           'Read characters',
@@ -371,13 +387,29 @@ export default function BulkAccessAuditPage() {
                         )}
                         {renderDiffRow(
                           'Write campaigns',
-                          formatAudience(change.old_write_campaign_ids),
-                          formatAudience(change.entity?.write_campaign_ids),
+                          formatAudience(
+                            change.old_write_campaign_names !== undefined
+                              ? change.old_write_campaign_names
+                              : change.old_write_campaign_ids,
+                          ),
+                          formatAudience(
+                            change.entity?.write_campaign_names !== undefined
+                              ? change.entity.write_campaign_names
+                              : change.entity?.write_campaign_ids,
+                          ),
                         )}
                         {renderDiffRow(
                           'Write users',
-                          formatAudience(change.old_write_user_ids),
-                          formatAudience(change.entity?.write_user_ids),
+                          formatAudience(
+                            change.old_write_user_names !== undefined
+                              ? change.old_write_user_names
+                              : change.old_write_user_ids,
+                          ),
+                          formatAudience(
+                            change.entity?.write_user_names !== undefined
+                              ? change.entity.write_user_names
+                              : change.entity?.write_user_ids,
+                          ),
                         )}
                       </div>
                     </div>
