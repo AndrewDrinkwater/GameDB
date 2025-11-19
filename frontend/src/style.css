@@ -3576,12 +3576,22 @@ body.theme-dark .entity-secret-form .help-text {
 .entity-secret-share-grid {
   display: grid;
   gap: 1.5rem;
+  grid-template-columns: 1fr;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 640px) {
   .entity-secret-share-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+.entity-secret-share-grid .form-group {
+  min-width: 0;
+}
+
+.entity-secret-share-grid .list-collector {
+  width: 100%;
+  min-width: 0;
 }
 
 .entity-secret-actions {
