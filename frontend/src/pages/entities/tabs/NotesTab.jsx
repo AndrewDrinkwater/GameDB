@@ -21,28 +21,28 @@ const SHARE_LABELS = {
   private: 'Private',
   companions: 'Shared with companions',
   dm: 'Shared with DM',
-  party: 'Shared with party',
+  party: 'Share with Party',
 }
 
 const SHARE_OPTIONS_PLAYER = [
   {
     value: 'private',
-    label: 'Private (only you and the DM can see this note)',
+    label: 'Private',
   },
   {
     value: 'companions',
-    label: 'My Companions (all players in this campaign)',
+    label: 'My Companions',
   },
 ]
 
 const SHARE_OPTIONS_DM = [
   {
     value: 'private',
-    label: 'Private (only you can see this note)',
+    label: 'Private',
   },
   {
     value: 'party',
-    label: 'Share with Party (all players in this campaign)',
+    label: 'Share with Party',
   },
 ]
 
@@ -63,7 +63,6 @@ const formatTimestamp = (value) => {
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
-        second: '2-digit',
       })
     } catch (err) {
       console.warn('Unable to format Date object', err, value)
@@ -85,7 +84,6 @@ const formatTimestamp = (value) => {
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
-        second: '2-digit',
       })
     } catch (err) {
       console.warn('Unable to parse date value', err, value)
@@ -865,68 +863,78 @@ export default function NotesTab({
     }
   }, [activeSubTab, canShowForm, drawerOpen, closeDrawer])
 
+  const campaignName = selectedCampaign?.name || ''
+
+  // Helper to get note title for display
+  const getNoteTitle = useCallback((note) => {
+    const authorName = resolveAuthorLabel(note)
+    const characterName = note?.character?.name || ''
+    if (characterName) {
+      return `${authorName} (as ${characterName})`
+    }
+    return authorName
+  }, [])
+
+  // Helper to get visibility tag
+  const getVisibilityTag = useCallback((note) => {
+    const share = String(note?.shareType ?? note?.share_type ?? 'private')
+    return SHARE_LABELS[share] || 'Private'
+  }, [])
+
   return (
-    <div className="entity-notes">
-      <section className="entity-card entity-notes-feed">
-        <header className="entity-notes-feed-header">
-          <div className="entity-notes-feed-title">
-            <h2>{activeSubTab === 'notes' ? 'Notes' : '@Mentions'}</h2>
-            {selectedCampaign?.name ? (
-              <p className="entity-notes-context">
-                Campaign: <strong>{selectedCampaign.name}</strong>
-              </p>
+    <>
+      {/* 2. Notes Card Container: bg-white border border-neutral-200 rounded-xl shadow-sm p-6 mb-6 w-full */}
+      {/* Card sits directly inside entity-detail-shell (which provides max-w-5xl mx-auto px-6 pt-8) */}
+      <div className="entity-notes-card-strict">
+          {/* 3. Header Row: flex items-center justify-between mb-4 */}
+          <div className="entity-notes-header-row">
+            <h2 className="entity-notes-title">Notes</h2>
+            {activeSubTab === 'notes' && canShowForm ? (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={openDrawer}
+                disabled={creating}
+              >
+                + Create note
+              </button>
             ) : null}
           </div>
-          {activeSubTab === 'notes' && canShowForm ? (
+
+          {/* 4. Campaign Line: text-sm text-neutral-600 mb-4 */}
+          {selectedCampaign?.name ? (
+            <p className="entity-notes-campaign-line">Campaign: {campaignName}</p>
+          ) : null}
+
+          {/* 5. Tab Toggle: flex items-center gap-2 mb-4 */}
+          <div className="entity-notes-tabs-row">
             <button
               type="button"
-              className="primary entity-notes-create-button"
-              onClick={openDrawer}
-              disabled={creating}
+              className={`entity-notes-strict-tab-button${
+                activeSubTab === 'notes' ? ' active' : ''
+              }`}
+              onClick={() => setActiveSubTab('notes')}
             >
-              <Plus size={16} /> Create note
+              Notes
             </button>
-          ) : null}
-        </header>
-
-        <div
-          className="entity-notes-subnav"
-          role="tablist"
-          aria-label="Entity notes views"
-        >
-          <button
-            type="button"
-            role="tab"
-            className={`entity-notes-subnav-button${
-              activeSubTab === 'notes' ? ' active' : ''
-            }`}
-            onClick={() => setActiveSubTab('notes')}
-            aria-selected={activeSubTab === 'notes'}
-          >
-            Notes
-          </button>
-          <button
-            type="button"
-            role="tab"
-            className={`entity-notes-subnav-button${
-              activeSubTab === 'mentions' ? ' active' : ''
-            }`}
-            onClick={() => setActiveSubTab('mentions')}
-            aria-selected={activeSubTab === 'mentions'}
-          >
-            @Mentions
-            {totalMentionsCount > 0 ? (
-              <span className="entity-notes-subnav-count">{totalMentionsCount}</span>
-            ) : null}
-          </button>
-        </div>
+            <button
+              type="button"
+              className={`entity-notes-strict-tab-button${
+                activeSubTab === 'mentions' ? ' active' : ''
+              }`}
+              onClick={() => setActiveSubTab('mentions')}
+            >
+              @Mentions
+            </button>
+          </div>
 
         {activeSubTab === 'notes' ? (
           <>
-            <div className="entity-notes-filter-bar">
-              <label htmlFor="entity-notes-author-filter">Show notes from</label>
+            {/* 6. Filter Row: flex items-center gap-4 mb-4 */}
+            <div className="entity-notes-strict-filter">
+              <span className="entity-notes-strict-filter-label">Show notes from</span>
               <select
-                id="entity-notes-author-filter"
+                className="entity-notes-strict-filter-select"
                 value={selectedAuthor}
                 onChange={(event) => setSelectedAuthor(event.target.value)}
                 disabled={filterDisabled}
@@ -937,163 +945,48 @@ export default function NotesTab({
                   </option>
                 ))}
               </select>
-              <span className="entity-notes-filter-count">
-                {filteredNotes.length} {filteredNotes.length === 1 ? 'note' : 'notes'}
-              </span>
             </div>
 
-            {!selectedCampaignId ? (
-              <div className="entity-notes-alert info">
-                <AlertCircle size={16} />
-                <p>Select a campaign to add and view notes for this entity.</p>
-              </div>
-            ) : null}
-
-            {selectedCampaignId && !campaignMatchesEntityWorld ? (
-              <div className="entity-notes-alert warning">
-                <AlertCircle size={16} />
-                <p>
-                  The selected campaign belongs to a different world. Switch to a
-                  campaign within this entity&apos;s world to create notes.
-                </p>
-              </div>
-            ) : null}
-
-            {selectedCampaignId && campaignMatchesEntityWorld && !canCreateNote ? (
-              <div className="entity-notes-alert info">
-                <AlertCircle size={16} />
-                <p>Only Dungeon Masters and players in this campaign can add notes.</p>
-              </div>
-            ) : null}
-
+            {/* Error states */}
             {error ? (
-              <div className="entity-notes-alert error">
+              <div className="entity-notes-strict-alert error">
                 <AlertCircle size={16} />
-                {error === 'CAMPAIGN_CONTEXT_ACCESS_DENIED' ? (
-                  <div>
-                    <p style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                      Access Restricted by Campaign Context
-                    </p>
-                    <p style={{ marginBottom: '0.5rem' }}>
-                      You don't have access to view notes for this entity with your current campaign context selected.
-                    </p>
-                    <p>
-                      Please change your campaign context using the selector in the header, or clear your campaign context to view notes from all campaigns you have access to.
-                    </p>
-                  </div>
-                ) : (
-                  <p>{error}</p>
-                )}
+                <p>{error}</p>
               </div>
             ) : null}
 
             {loading ? (
-              <div className="entity-notes-loading">
+              <div className="entity-notes-strict-loading">
                 <Loader2 className="spin" size={20} />
                 <span>Loading notes…</span>
               </div>
             ) : null}
 
+            {/* 7. Empty State: text-sm text-neutral-500 */}
             {!loading && filteredNotes.length === 0 ? (
-              <p className="entity-notes-empty">
-                {sortedNotes.length === 0
-                  ? 'No notes yet. Be the first to add one!'
-                  : 'No notes from this person yet.'}
-              </p>
+              <p className="entity-notes-strict-empty">No notes yet.</p>
             ) : null}
 
-            <div className="entity-notes-list" role="list">
-              {filteredNotes.map((note) => {
-                // Try multiple possible date field names and formats
-                const createdAtValue =
-                  note?.createdAt ??
-                  note?.created_at ??
-                  note?.timestamp ??
-                  null
-                
-                // Debug: log if timestamp is missing (remove after debugging)
-                if (!createdAtValue && process.env.NODE_ENV === 'development') {
-                  console.debug('Note missing timestamp:', note?.id, note)
-                }
-                
-                // formatTimestamp can handle both Date objects and date strings
-                const formattedTimestamp = formatTimestamp(createdAtValue)
-                
-                // For the ISO timestamp attribute, try to create a proper Date object
-                let isoTimestamp = undefined
-                if (createdAtValue) {
-                  try {
-                    const date = new Date(createdAtValue)
-                    if (!Number.isNaN(date.getTime())) {
-                      isoTimestamp = date.toISOString()
-                    }
-                  } catch (err) {
-                    // If date parsing fails, use the raw value if it's a string
-                    if (typeof createdAtValue === 'string') {
-                      isoTimestamp = createdAtValue
-                    }
-                  }
-                }
-                
-                const share = String(note?.shareType ?? note?.share_type ?? 'private')
-                const authorName = resolveAuthorLabel(note)
-                const characterName = note?.character?.name || ''
-                const isEditing = editingNoteId === note?.id
-                const canEdit = isNoteAuthor(note)
-                const noteCharacterId = note?.characterId ?? note?.character_id ?? ''
+            {/* 8. Note items */}
+            {!loading && filteredNotes.length > 0 ? (
+              <div className="entity-notes-strict-list">
+                {filteredNotes.map((note) => {
+                  const createdAtValue =
+                    note?.createdAt ?? note?.created_at ?? note?.timestamp ?? null
+                  const formattedTimestamp = formatTimestamp(createdAtValue)
+                  const share = String(note?.shareType ?? note?.share_type ?? 'private')
+                  const isEditing = editingNoteId === note?.id
+                  const canEdit = isNoteAuthor(note)
+                  const noteCharacterId = note?.characterId ?? note?.character_id ?? ''
 
-                return (
-                  <article key={note?.id} className="entity-note-card" role="listitem">
-                    <header>
-                      <div className="entity-note-meta">
-                        <span className="entity-note-author">{authorName}</span>
-                        {characterName ? (
-                          <span className="entity-note-character">as {characterName}</span>
-                        ) : null}
-                        <span className={shareBadgeClass(share)}>
-                          {SHARE_LABELS[share] || 'Private'}
-                        </span>
-                      </div>
-                      <div className="entity-note-header-actions">
-                        <time
-                          className="entity-note-timestamp"
-                          dateTime={isoTimestamp}
-                          title={formattedTimestamp || (createdAtValue ? String(createdAtValue) : undefined)}
-                        >
-                          {formattedTimestamp || (createdAtValue ? 'Invalid date' : '—')}
-                        </time>
-                        {canEdit && !isEditing ? (
-                          <div className="entity-note-action-buttons">
-                            <button
-                              type="button"
-                              className="entity-note-edit-button"
-                              onClick={() => handleStartEdit(note)}
-                              title="Edit note"
-                              aria-label="Edit note"
-                            >
-                              <Edit2 size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              className="entity-note-delete-button"
-                              onClick={() => handleDeleteClick(note)}
-                              title="Delete note"
-                              aria-label="Delete note"
-                              disabled={deletingNoteId === note.id}
-                            >
-                              {deletingNoteId === note.id ? (
-                                <Loader2 className="spin" size={14} />
-                              ) : (
-                                <Trash2 size={14} />
-                              )}
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
-                    </header>
-                    {isEditing ? (
-                      <div className="entity-note-edit-form">
-                        <div className="entity-note-editor-field">
+                  return (
+                    <div
+                      key={note?.id}
+                      className="entity-notes-strict-note-item"
+                    >
+                      {isEditing ? (
+                        /* 9. Edit mode panel */
+                        <div className="entity-notes-strict-edit-panel">
                           <MentionsInputWrapper
                             value={editNoteContent}
                             onChange={handleEditNoteContentChange}
@@ -1101,7 +994,7 @@ export default function NotesTab({
                             placeholder={ENTITY_NOTE_PLACEHOLDER}
                             className="entity-note-mentions"
                             inputProps={{
-                              className: 'entity-note-textarea',
+                              className: 'entity-notes-strict-textarea',
                               'aria-label': 'Edit note content',
                               rows: 5,
                               required: true,
@@ -1115,130 +1008,143 @@ export default function NotesTab({
                               appendSpaceOnAdd
                             />
                           </MentionsInputWrapper>
-                        </div>
 
-                        <fieldset className="entity-notes-share">
-                          <legend>Share with</legend>
-                          {shareOptions.map((option) => (
-                            <label key={option.value} className="entity-notes-share-option">
-                              <input
-                                type="radio"
-                                name={`entity-note-share-edit-${note.id}`}
-                                value={option.value}
-                                checked={editShareType === option.value}
-                                onChange={() => setEditShareType(option.value)}
-                                disabled={updating}
-                              />
-                              <span>{option.label}</span>
-                            </label>
-                          ))}
-                        </fieldset>
+                          <p className="entity-notes-strict-share-label">Share with</p>
 
-                        {showCharacterPicker && noteCharacterId ? (
-                          <div className="entity-notes-character">
-                            <label htmlFor={`entity-note-character-edit-${note.id}`}>
-                              Character
-                            </label>
-                            <select
-                              id={`entity-note-character-edit-${note.id}`}
-                              value={editCharacterId || noteCharacterId}
-                              onChange={(event) => setEditCharacterId(event.target.value)}
-                              disabled={charactersLoading || characterLocked || updating}
+                          <div className="entity-notes-strict-share-options">
+                            {shareOptions.map((option) => (
+                              <label
+                                key={option.value}
+                                className="entity-notes-strict-share-option"
+                              >
+                                <input
+                                  type="radio"
+                                  name={`entity-note-share-edit-${note.id}`}
+                                  value={option.value}
+                                  checked={editShareType === option.value}
+                                  onChange={() => setEditShareType(option.value)}
+                                  disabled={updating}
+                                />
+                                {option.value === 'private' ? 'Private' : option.value === 'party' ? 'Share with Party' : option.label}
+                              </label>
+                            ))}
+                          </div>
+
+                          {formError ? (
+                            <div className="entity-notes-strict-alert error">
+                              <AlertCircle size={16} />
+                              <p>{formError}</p>
+                            </div>
+                          ) : null}
+
+                          <div className="entity-notes-strict-edit-actions">
+                            <button
+                              type="button"
+                              className="btn-primary"
+                              onClick={() => handleSaveEdit(note)}
+                              disabled={updating || !editNoteContent.trim()}
                             >
-                              <option value="" disabled>
-                                {charactersLoading ? 'Loading characters…' : 'Select character'}
-                              </option>
-                              {characters.map((character) => (
-                                <option key={character.id} value={character.id}>
-                                  {character.name}
-                                </option>
-                              ))}
-                            </select>
+                              {updating ? (
+                                <>
+                                  <Loader2 className="spin" size={16} /> Saving…
+                                </>
+                              ) : (
+                                'Save'
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              onClick={handleCancelEdit}
+                              disabled={updating}
+                            >
+                              Cancel
+                            </button>
                           </div>
-                        ) : null}
-
-                        {formError ? (
-                          <div className="entity-notes-alert error">
-                            <AlertCircle size={16} />
-                            <p>{formError}</p>
-                          </div>
-                        ) : null}
-
-                        <div className="entity-notes-actions">
-                          <button
-                            type="button"
-                            className="primary"
-                            onClick={() => handleSaveEdit(note)}
-                            disabled={updating || !editNoteContent.trim()}
-                          >
-                            {updating ? (
-                              <>
-                                <Loader2 className="spin" size={16} /> Saving…
-                              </>
-                            ) : (
-                              <>
-                                <Check size={16} /> Save
-                              </>
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            className="entity-note-cancel-button"
-                            onClick={handleCancelEdit}
-                            disabled={updating}
-                          >
-                            <X size={16} /> Cancel
-                          </button>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="entity-note-body">{renderNoteBody(note)}</div>
-                    )}
-                  </article>
-                )
-              })}
-            </div>
+                      ) : (
+                        <>
+                          {/* 8. Note Item Structure (READ MODE) */}
+                          <div className="entity-notes-strict-note-header">
+                            <div className="entity-notes-strict-note-title-row">
+                              <span className="entity-notes-strict-note-title">
+                                {getNoteTitle(note)}
+                              </span>
+                              <span className="entity-notes-strict-note-visibility">
+                                {getVisibilityTag(note)}
+                              </span>
+                            </div>
+                            <span className="entity-notes-strict-note-timestamp">
+                              {formattedTimestamp || '—'}
+                            </span>
+                          </div>
+
+                          <p className="entity-notes-strict-note-body">{renderNoteBody(note)}</p>
+
+                          {canEdit ? (
+                            <div className="entity-notes-strict-note-actions">
+                              <button
+                                type="button"
+                                className="entity-notes-strict-edit-button"
+                                onClick={() => handleStartEdit(note)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="entity-notes-strict-delete-button"
+                                onClick={() => handleDeleteClick(note)}
+                                disabled={deletingNoteId === note.id}
+                              >
+                                {deletingNoteId === note.id ? (
+                                  <Loader2 className="spin" size={14} />
+                                ) : (
+                                  'Delete'
+                                )}
+                              </button>
+                            </div>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : null}
           </>
         ) : (
-          <div className="entity-notes-mentions">
-            <div className="entity-notes-mentions-header">
-              <div
-                className="entity-notes-mention-toggle"
-                role="tablist"
-                aria-label="Mention sources"
-              >
+          /* 10. @Mentions tab - same structure */
+          <div className="entity-notes-strict-mentions">
+              <div className="entity-notes-strict-mentions-header">
+              <div className="entity-notes-strict-mention-toggle">
                 <button
                   type="button"
-                  role="tab"
-                  className={`entity-notes-mention-toggle-button${
+                  className={`entity-notes-strict-mention-toggle-button${
                     mentionSource === 'entity' ? ' active' : ''
                   }`}
                   onClick={() => setMentionSource('entity')}
-                  aria-selected={mentionSource === 'entity'}
                 >
                   Entity Notes
                   {mentionEntityLoaded ? (
-                    <span className="entity-notes-mention-count">{mentionEntityCount}</span>
+                    <span className="entity-notes-strict-mention-count">{mentionEntityCount}</span>
                   ) : null}
                 </button>
                 <button
                   type="button"
-                  role="tab"
-                  className={`entity-notes-mention-toggle-button${
+                  className={`entity-notes-strict-mention-toggle-button${
                     mentionSource === 'session' ? ' active' : ''
                   }`}
                   onClick={() => setMentionSource('session')}
-                  aria-selected={mentionSource === 'session'}
                 >
                   Session Notes
                   {mentionSessionLoaded ? (
-                    <span className="entity-notes-mention-count">{mentionSessionCount}</span>
+                    <span className="entity-notes-strict-mention-count">{mentionSessionCount}</span>
                   ) : null}
                 </button>
               </div>
               <button
                 type="button"
-                className="entity-notes-refresh-button"
+                className="btn-secondary"
                 onClick={handleMentionsRefresh}
                 disabled={mentionRefreshDisabled}
               >
@@ -1252,44 +1158,27 @@ export default function NotesTab({
               </button>
             </div>
 
-            {!selectedCampaignId ? (
-              <div className="entity-notes-alert info">
-                <AlertCircle size={16} />
-                <p>Select a campaign to view mentions for this entity.</p>
-              </div>
-            ) : null}
-
-            {selectedCampaignId && !campaignMatchesEntityWorld ? (
-              <div className="entity-notes-alert warning">
-                <AlertCircle size={16} />
-                <p>
-                  The selected campaign belongs to a different world. Switch to a
-                  campaign within this entity&apos;s world to view mentions.
-                </p>
-              </div>
-            ) : null}
-
-            {selectedCampaignId && campaignMatchesEntityWorld ? (
-              mentionSource === 'entity' ? (
-                <>
-                  {mentionEntityError ? (
-                    <div className="entity-notes-alert error">
-                      <AlertCircle size={16} />
-                      <p>{mentionEntityError}</p>
-                    </div>
-                  ) : null}
-                  {mentionEntityLoading ? (
-                    <div className="entity-notes-loading">
-                      <Loader2 className="spin" size={20} />
-                      <span>Loading mentions…</span>
-                    </div>
-                  ) : null}
-                  {!mentionEntityLoading && mentionEntityLoaded && mentionEntityCount === 0 ? (
-                    <p className="entity-notes-empty">
-                      This entity hasn&apos;t been mentioned in other entity notes yet.
-                    </p>
-                  ) : null}
-                  <div className="entity-notes-list" role="list">
+            {mentionSource === 'entity' ? (
+              <>
+                {mentionEntityError ? (
+                  <div className="entity-notes-strict-alert error">
+                    <AlertCircle size={16} />
+                    <p>{mentionEntityError}</p>
+                  </div>
+                ) : null}
+                {mentionEntityLoading ? (
+                  <div className="entity-notes-strict-loading">
+                    <Loader2 className="spin" size={20} />
+                    <span>Loading mentions…</span>
+                  </div>
+                ) : null}
+                {!mentionEntityLoading && mentionEntityLoaded && mentionEntityCount === 0 ? (
+                  <p className="entity-notes-strict-empty">
+                    This entity hasn&apos;t been mentioned in other entity notes yet.
+                  </p>
+                ) : null}
+                {!mentionEntityLoading && mentionEntityLoaded && mentionEntityCount > 0 ? (
+                  <div className="entity-notes-strict-list">
                     {mentionEntityNotes.map((note, index) => {
                       const rawKey =
                         note?.id ??
@@ -1301,8 +1190,6 @@ export default function NotesTab({
                       const createdAtDate = createdAtValue ? new Date(createdAtValue) : null
                       const formattedTimestamp = formatTimestamp(createdAtDate)
                       const share = String(note?.shareType ?? note?.share_type ?? 'private')
-                      const authorName = resolveAuthorLabel(note)
-                      const characterName = note?.character?.name || ''
                       const isoTimestamp =
                         createdAtDate && !Number.isNaN(createdAtDate.getTime())
                           ? createdAtDate.toISOString()
@@ -1313,66 +1200,51 @@ export default function NotesTab({
                         note?.entity?.id ?? note?.entityId ?? note?.entity_id ?? null
 
                       return (
-                        <article
+                        <div
                           key={`entity-mention-${noteKey}`}
-                          className="entity-note-card entity-mention-note"
-                          role="listitem"
+                          className="entity-notes-strict-note-item"
                         >
-                          <header>
-                            <div className="entity-note-meta">
-                              <span className="entity-note-author">{authorName}</span>
-                              {characterName ? (
-                                <span className="entity-note-character">as {characterName}</span>
-                              ) : null}
-                              <span className={shareBadgeClass(share)}>
-                                {SHARE_LABELS[share] || 'Private'}
+                          <div className="entity-notes-strict-note-header">
+                            <div className="entity-notes-strict-note-title-row">
+                              <span className="entity-notes-strict-note-title">
+                                {getNoteTitle(note)}
+                              </span>
+                              <span className="entity-notes-strict-note-visibility">
+                                {getVisibilityTag(note)}
                               </span>
                             </div>
-                            <time
-                              className="entity-note-timestamp"
-                              dateTime={isoTimestamp}
-                              title={formattedTimestamp || undefined}
-                            >
+                            <span className="entity-notes-strict-note-timestamp">
                               {formattedTimestamp || '—'}
-                            </time>
-                          </header>
-                          <div className="entity-mention-note-context">
-                            <span>
-                              Note for <strong>{noteEntityName}</strong>
                             </span>
-                            {noteEntityId ? (
-                              <EntityInfoPreview
-                                entityId={noteEntityId}
-                                entityName={noteEntityName}
-                              />
-                            ) : null}
                           </div>
-                          <div className="entity-note-body">{renderNoteBody(note)}</div>
-                        </article>
+                          <p className="entity-notes-strict-note-body">{renderNoteBody(note)}</p>
+                        </div>
                       )
                     })}
                   </div>
-                </>
-              ) : (
-                <>
-                  {mentionSessionError ? (
-                    <div className="entity-notes-alert error">
-                      <AlertCircle size={16} />
-                      <p>{mentionSessionError}</p>
-                    </div>
-                  ) : null}
-                  {mentionSessionLoading ? (
-                    <div className="entity-notes-loading">
-                      <Loader2 className="spin" size={20} />
-                      <span>Loading session mentions…</span>
-                    </div>
-                  ) : null}
-                  {!mentionSessionLoading && mentionSessionLoaded && mentionSessionCount === 0 ? (
-                    <p className="entity-notes-empty">
-                      This entity hasn&apos;t been mentioned in session notes yet.
-                    </p>
-                  ) : null}
-                  <div className="entity-session-note-list" role="list">
+                ) : null}
+              </>
+            ) : (
+              <>
+                {mentionSessionError ? (
+                  <div className="entity-notes-strict-alert error">
+                    <AlertCircle size={16} />
+                    <p>{mentionSessionError}</p>
+                  </div>
+                ) : null}
+                {mentionSessionLoading ? (
+                  <div className="entity-notes-strict-loading">
+                    <Loader2 className="spin" size={20} />
+                    <span>Loading session mentions…</span>
+                  </div>
+                ) : null}
+                {!mentionSessionLoading && mentionSessionLoaded && mentionSessionCount === 0 ? (
+                  <p className="entity-notes-strict-empty">
+                    This entity hasn&apos;t been mentioned in session notes yet.
+                  </p>
+                ) : null}
+                {!mentionSessionLoading && mentionSessionLoaded && mentionSessionCount > 0 ? (
+                  <div className="entity-notes-strict-list">
                     {mentionSessionNotes.map((note, index) => {
                       const rawKey =
                         note?.id ??
@@ -1393,65 +1265,46 @@ export default function NotesTab({
                         note?.created_at
                       const timestampDate = timestampValue ? new Date(timestampValue) : null
                       const formattedTimestamp = formatTimestamp(timestampDate)
-                      const isoTimestamp =
-                        timestampDate && !Number.isNaN(timestampDate.getTime())
-                          ? timestampDate.toISOString()
-                          : undefined
                       const summaryText =
                         preview || 'This session note does not include any text.'
 
                       return (
-                        <article
+                        <div
                           key={`session-mention-${noteKey}`}
-                          className={`entity-session-note${expanded ? ' expanded' : ''}`}
-                          role="listitem"
+                          className="entity-notes-strict-note-item"
                         >
-                          <header className="entity-session-note-header">
-                            <div className="entity-session-note-meta">
-                              <span className="entity-session-note-title">{sessionTitle}</span>
-                              <div className="entity-session-note-details">
-                                {sessionDate ? (
-                                  <span className="entity-session-note-date">{sessionDate}</span>
-                                ) : null}
-                                <span className="entity-session-note-author">by {authorName}</span>
-                              </div>
+                          <div className="entity-notes-strict-note-header">
+                            <div className="entity-notes-strict-note-title-row">
+                              <span className="entity-notes-strict-note-title">{sessionTitle}</span>
                             </div>
-                            <div className="entity-session-note-actions">
-                              {formattedTimestamp ? (
-                                <time
-                                  className="entity-session-note-timestamp"
-                                  dateTime={isoTimestamp}
-                                  title={formattedTimestamp}
-                                >
-                                  {formattedTimestamp}
-                                </time>
-                              ) : null}
-                              <button
-                                type="button"
-                                className="entity-session-note-toggle"
-                                onClick={() => handleSessionNoteToggle(noteKey)}
-                                aria-expanded={expanded}
-                              >
-                                {expanded ? 'Hide note' : 'View note'}
-                              </button>
-                            </div>
-                          </header>
+                            <span className="entity-notes-strict-note-timestamp">
+                              {formattedTimestamp || '—'}
+                            </span>
+                          </div>
                           {!expanded ? (
-                            <p className="entity-session-note-summary">{summaryText}</p>
-                          ) : null}
-                          {expanded ? (
-                            <div className="entity-session-note-body">{renderNoteBody(note)}</div>
-                          ) : null}
-                        </article>
+                            <p className="entity-notes-strict-note-body">{summaryText}</p>
+                          ) : (
+                            <p className="entity-notes-strict-note-body">{renderNoteBody(note)}</p>
+                          )}
+                          <div className="entity-notes-strict-note-actions">
+                            <button
+                              type="button"
+                              className="entity-notes-strict-action-button"
+                              onClick={() => handleSessionNoteToggle(noteKey)}
+                            >
+                              {expanded ? 'Hide note' : 'View note'}
+                            </button>
+                          </div>
+                        </div>
                       )
                     })}
                   </div>
-                </>
-              )
-            ) : null}
+                ) : null}
+              </>
+            )}
           </div>
         )}
-      </section>
+      </div>
 
       <DrawerPanel
         isOpen={drawerOpen && canShowForm}
@@ -1571,7 +1424,7 @@ export default function NotesTab({
           </form>
         </div>
       </DrawerPanel>
-    </div>
+    </>
   )
 }
 

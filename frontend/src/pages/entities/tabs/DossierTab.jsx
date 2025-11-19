@@ -42,7 +42,7 @@ export default function DossierTab({
 
     return (
       <div
-        className="entity-field-grid"
+        className={`entity-field-grid ${columnCount > 1 ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : ''}`}
         style={{ '--entity-field-columns': columnCount }}
       >
         {fields.map((field, index) => {
@@ -101,7 +101,7 @@ export default function DossierTab({
 
     return (
       <>
-        <section className="entity-card entity-dossier-header-card">
+        <section className="entity-card entity-dossier-header-card bg-white rounded-lg border p-4 sm:p-6 w-full">
           <div className="entity-dossier-header">
             <div className="entity-dossier-header-content">
               {summarySection?.title ? (
@@ -110,16 +110,11 @@ export default function DossierTab({
               {renderSectionFields(summarySection, 'dossier-summary')}
               {descriptionSection ? (
                 <div className="entity-dossier-description">
-                  {descriptionSection?.title ? (
-                    <h3 className="entity-card-subtitle">
-                      {descriptionSection.title}
-                    </h3>
-                  ) : null}
                   {renderSectionFields(descriptionSection, 'dossier-description')}
                 </div>
               ) : null}
             </div>
-            <div className="entity-dossier-header-image">
+            <div className="entity-dossier-header-image sm:ml-6 sm:w-64 w-full mt-4 sm:mt-0">
               <img src={featuredImageSrc} alt={`${entityName} artwork`} loading="lazy" />
             </div>
           </div>
@@ -137,7 +132,7 @@ export default function DossierTab({
   return (
     <div className="entity-tab-content">
       {formError && (
-        <section className="entity-card">
+        <section className="entity-card bg-white rounded-lg border p-4 sm:p-6 w-full">
           <div className="alert error" role="alert">
             {formError}
           </div>
@@ -145,7 +140,7 @@ export default function DossierTab({
       )}
 
       {isEditing && canEdit ? (
-        <section className="entity-card entity-card--form entity-edit-form-wrapper">
+        <section className="entity-card entity-card--form entity-edit-form-wrapper bg-white rounded-lg border p-4 sm:p-6 w-full">
           <div className="entity-edit-form-container">
             <div className="entity-edit-form-content">
               <FormRenderer
@@ -160,7 +155,7 @@ export default function DossierTab({
               />
             </div>
             {showImageManager ? (
-              <div className="entity-edit-form-image">
+              <div className="entity-edit-form-image sm:ml-6 sm:w-64 w-full mt-4 sm:mt-0">
                 {imageSection}
               </div>
             ) : null}

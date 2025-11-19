@@ -350,7 +350,7 @@ function FormRenderer(
       {sections.map((section, i) => (
         <div className="form-section" key={i}>
           {section.title ? <h3>{section.title}</h3> : null}
-          <div className={`form-grid cols-${section.columns || 1}`}>
+          <div className={`form-grid cols-${section.columns || 1} ${(section.columns || 1) > 1 ? 'grid grid-cols-1 sm:grid-cols-2 gap-4' : ''}`}>
             {(section.fields || []).map((field, idx) => {
               if (!field || typeof field !== 'object') {
                 console.warn('⚠️ Skipping invalid field in schema:', field)

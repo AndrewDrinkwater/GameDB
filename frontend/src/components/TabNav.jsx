@@ -10,7 +10,7 @@ export default function TabNav({ tabs = [], activeTab, onChange }) {
   }
 
   return (
-    <nav className="tab-nav" role="tablist">
+    <nav className="tab-nav flex flex-wrap gap-2" role="tablist">
       {tabs.map((tab) => {
         const { id, label } = tab
         const isActive = id === activeTab
@@ -20,7 +20,7 @@ export default function TabNav({ tabs = [], activeTab, onChange }) {
             type="button"
             role="tab"
             aria-selected={isActive}
-            className={`tab-nav-button ${isActive ? 'is-active' : ''}`}
+            className={`tab-nav-button whitespace-nowrap px-3 py-2 ${isActive ? 'is-active' : ''}`}
             onClick={() => handleSelect(id)}
           >
             {label}

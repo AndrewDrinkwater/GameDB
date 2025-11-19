@@ -396,11 +396,12 @@ export default function SecretsTab({
           onClose={handleCloseForm}
           title={drawerTitle}
           description={drawerDescription}
+          size="lg"
           footerActions={
-            <>
+            <div className="flex justify-end gap-3">
               <button
                 type="button"
-                className="btn secondary"
+                className="border border-neutral-300 bg-white px-4 py-2 rounded-md text-sm hover:bg-neutral-100 text-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleCloseForm}
                 disabled={saving}
               >
@@ -408,18 +409,20 @@ export default function SecretsTab({
               </button>
               <button
                 type="submit"
-                className="btn submit"
+                className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 form={formId}
                 disabled={saving}
               >
                 {saving ? submitButtonBusyLabel : submitButtonLabel}
               </button>
-            </>
+            </div>
           }
         >
           <form id={formId} className="entity-secret-form-body" onSubmit={handleSubmit}>
             <div className="form-group">
-              <label htmlFor="entity-secret-summary">Summary</label>
+              <label htmlFor="entity-secret-summary" className="text-sm font-medium text-neutral-700">
+                Summary
+              </label>
               <input
                 id="entity-secret-summary"
                 type="text"
@@ -428,11 +431,14 @@ export default function SecretsTab({
                 placeholder="Short label for this secret (optional)"
                 disabled={saving}
                 data-autofocus="true"
+                className="w-full border rounded-md px-3 py-2 text-sm"
               />
             </div>
 
             <div className="form-group">
-              <label htmlFor="entity-secret-description">Description</label>
+              <label htmlFor="entity-secret-description" className="text-sm font-medium text-neutral-700">
+                Description
+              </label>
               <textarea
                 id="entity-secret-description"
                 value={description}
@@ -441,12 +447,15 @@ export default function SecretsTab({
                 placeholder="Detail the secret information..."
                 disabled={saving}
                 required
+                className="w-full border rounded-md px-3 py-2 text-sm min-h-[120px]"
               />
             </div>
 
             <div className="entity-secret-share-grid">
               <div className="form-group">
-                <label htmlFor="entity-secret-campaigns">Share with campaigns</label>
+                <label htmlFor="entity-secret-campaigns" className="text-sm font-medium text-neutral-700">
+                  Share with campaigns
+                </label>
                 <ListCollector
                   inputId="entity-secret-campaigns"
                   selected={selectedCampaigns}
@@ -467,7 +476,9 @@ export default function SecretsTab({
               </div>
 
               <div className="form-group">
-                <label htmlFor="entity-secret-users">Share with players</label>
+                <label htmlFor="entity-secret-users" className="text-sm font-medium text-neutral-700">
+                  Share with players
+                </label>
                 <ListCollector
                   inputId="entity-secret-users"
                   selected={selectedUsers}
