@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { User, Menu, LogOut, Moon, Sun, Clock, Layers, X } from 'lucide-react'
+import { User, Menu, LogOut, Moon, Sun, Clock, Layers, X, Lock } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
 import { useTheme } from '../context/ThemeContext.jsx'
@@ -400,6 +400,10 @@ export default function HeaderBar({ onMenuToggle }) {
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             {theme === 'dark' ? 'Light mode' : 'Dark mode'}
           </button>
+          <Link to="/security" className="dropdown-action" onClick={() => setDropdownOpen(false)}>
+            <Lock size={16} />
+            Security
+          </Link>
           <button className="dropdown-action logout" onClick={logout}>
             <LogOut size={16} />
             Logout
