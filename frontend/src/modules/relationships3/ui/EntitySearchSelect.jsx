@@ -27,6 +27,7 @@ export default function EntitySearchSelect({
   const [error, setError] = useState('')
   const containerRef = useRef(null)
   const debounceRef = useRef(null)
+  const onResolvedRef = useRef(onResolved)
 
   const allowedTypeIdsMemo = useMemo(
     () => [...allowedTypeIds],
@@ -227,9 +228,15 @@ export default function EntitySearchSelect({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Keep onResolved ref up to date
   useEffect(() => {
-    onResolved?.(selectedEntity || null)
-  }, [selectedEntity, onResolved])
+    onResolvedRef.current = onResolved
+  }, [onResolved])
+
+  // Call onResolved when selectedEntity changes, but don't include onResolved in deps
+  useEffect(() => {
+    onResolvedRef.current?.(selectedEntity || null)
+  }, [selectedEntity])
 
   const filteredStaticOptions = useMemo(() => {
     if (!normalisedStaticOptions.length) return []
