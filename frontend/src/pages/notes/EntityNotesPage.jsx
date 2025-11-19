@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext.jsx'
 import { fetchCampaignEntityNotes } from '../../api/campaigns.js'
 import { updateEntityNote, deleteEntityNote, searchEntities } from '../../api/entities.js'
 import { fetchCharacters } from '../../api/characters.js'
+import { getEntityTypes } from '../../api/entityTypes.js'
 import TaggedNoteContent from '../../components/notes/TaggedNoteContent.jsx'
 import MentionsInputWrapper from '../../components/notes/MentionsInputWrapper.jsx'
 import { buildNoteSegments, cleanEntityName } from '../../utils/noteMentions.js'
@@ -103,12 +104,42 @@ const resolveEntityName = (note) => {
   return 'Unnamed entity'
 }
 
+const resolveEntityTypeId = (note) => {
+  const candidates = [
+    note?.entity?.entityTypeId,
+    note?.entity?.entity_type_id,
+    note?.entity?.entityType?.id,
+    note?.entity?.entityType?.entity_type_id,
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    return String(candidate)
+  }
+
+  return ''
+}
+
+const resolveEntityTypeName = (note, entityTypesMap = new Map()) => {
+  // First try to get name from note entity type (if backend includes it)
+  if (note?.entity?.entityType?.name) return note.entity.entityType.name
+  
+  // Then try to get name from entity types map
+  const entityTypeId = resolveEntityTypeId(note)
+  if (entityTypeId && entityTypesMap.has(entityTypeId)) {
+    return entityTypesMap.get(entityTypeId)
+  }
+  
+  return ''
+}
+
 export default function EntityNotesPage() {
   const { selectedCampaign, selectedCampaignId } = useCampaignContext()
   const { user } = useAuth()
   const [notesState, setNotesState] = useState({ items: [], loading: false, error: '' })
   const [entityFilter, setEntityFilter] = useState('')
   const [authorFilter, setAuthorFilter] = useState('')
+  const [entityTypeFilter, setEntityTypeFilter] = useState('')
   const [editingNoteId, setEditingNoteId] = useState(null)
   const [editNoteContent, setEditNoteContent] = useState('')
   const [editShareType, setEditShareType] = useState('private')
@@ -119,6 +150,8 @@ export default function EntityNotesPage() {
   const [characters, setCharacters] = useState([])
   const [charactersLoading, setCharactersLoading] = useState(false)
   const [charactersError, setCharactersError] = useState('')
+  const [entityTypes, setEntityTypes] = useState([])
+  const [entityTypesLoading, setEntityTypesLoading] = useState(false)
 
   const loadNotes = useCallback(async () => {
     if (!selectedCampaignId) return
@@ -156,6 +189,7 @@ export default function EntityNotesPage() {
   useEffect(() => {
     setEntityFilter('')
     setAuthorFilter('')
+    setEntityTypeFilter('')
     setEditingNoteId(null)
     setEditNoteContent('')
     setEditShareType('private')
@@ -183,6 +217,63 @@ export default function EntityNotesPage() {
   }, [membershipRole, user?.role])
 
   const isCampaignPlayer = useMemo(() => membershipRole === 'player', [membershipRole])
+
+  // Get world ID from campaign
+  const resolvedWorldId = useMemo(() => {
+    if (selectedCampaign?.world?.id) return selectedCampaign.world.id
+    if (selectedCampaign?.world_id) return selectedCampaign.world_id
+    return ''
+  }, [selectedCampaign])
+
+  // Load entity types
+  useEffect(() => {
+    let cancelled = false
+
+    if (!resolvedWorldId) {
+      setEntityTypes([])
+      setEntityTypesLoading(false)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const loadEntityTypes = async () => {
+      setEntityTypesLoading(true)
+      try {
+        const response = await getEntityTypes({ worldId: resolvedWorldId })
+        if (cancelled) return
+
+        const source = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response)
+          ? response
+          : []
+
+        const mapped = source
+          .map((entityType) => ({
+            id: entityType?.id ? String(entityType.id) : '',
+            name: entityType?.name || 'Unnamed type',
+          }))
+          .filter((entry) => entry.id)
+
+        setEntityTypes(mapped)
+      } catch (err) {
+        if (cancelled) return
+        console.error('Failed to load entity types', err)
+        setEntityTypes([])
+      } finally {
+        if (!cancelled) {
+          setEntityTypesLoading(false)
+        }
+      }
+    }
+
+    loadEntityTypes()
+
+    return () => {
+      cancelled = true
+    }
+  }, [resolvedWorldId])
 
   const shareOptions = useMemo(
     () => (isCampaignDm ? SHARE_OPTIONS_DM : SHARE_OPTIONS_PLAYER),
@@ -552,16 +643,45 @@ export default function EntityNotesPage() {
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
   }, [sortedNotes])
 
+  // Create a map of entity type IDs to names
+  const entityTypesMap = useMemo(() => {
+    const map = new Map()
+    entityTypes.forEach((entityType) => {
+      if (entityType.id) {
+        map.set(entityType.id, entityType.name)
+      }
+    })
+    return map
+  }, [entityTypes])
+
+  const entityTypeOptions = useMemo(() => {
+    const entries = new Map()
+    sortedNotes.forEach((note) => {
+      const entityTypeId = resolveEntityTypeId(note)
+      if (!entityTypeId) return
+      const entityTypeName = resolveEntityTypeName(note, entityTypesMap) || `Type ${entityTypeId.slice(0, 8)}`
+      if (!entries.has(entityTypeId)) {
+        entries.set(entityTypeId, entityTypeName)
+      }
+    })
+
+    return Array.from(entries.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+  }, [sortedNotes, entityTypesMap])
+
   const filteredNotes = useMemo(() => {
     return sortedNotes.filter((note) => {
       const entityId = resolveEntityId(note)
       const authorId = resolveAuthorId(note)
+      const entityTypeId = resolveEntityTypeId(note)
 
       if (entityFilter && entityId !== entityFilter) return false
       if (authorFilter && authorId !== authorFilter) return false
+      if (entityTypeFilter && entityTypeId !== entityTypeFilter) return false
       return true
     })
-  }, [sortedNotes, entityFilter, authorFilter])
+  }, [sortedNotes, entityFilter, authorFilter, entityTypeFilter])
 
   // Handle "My notes" filter
   const handleMyNotesFilter = useCallback(() => {
@@ -591,7 +711,7 @@ export default function EntityNotesPage() {
   const campaignName = selectedCampaign?.name ?? ''
   const notesCount = filteredNotes.length
   const totalNotes = sortedNotes.length
-  const hasFilters = Boolean(entityFilter || authorFilter)
+  const hasFilters = Boolean(entityFilter || authorFilter || entityTypeFilter)
 
   if (!selectedCampaignId) {
     return (
@@ -670,12 +790,30 @@ export default function EntityNotesPage() {
           </select>
         </div>
 
+        <div className="notes-filter-group">
+          <label htmlFor="entity-type-filter">Entity type</label>
+          <select
+            id="entity-type-filter"
+            value={entityTypeFilter}
+            onChange={(event) => setEntityTypeFilter(event.target.value)}
+            disabled={notesState.loading || entityTypeOptions.length === 0}
+          >
+            <option value="">All entity types</option>
+            {entityTypeOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <button
           type="button"
           className="notes-action-button"
           onClick={() => {
             setEntityFilter('')
             setAuthorFilter('')
+            setEntityTypeFilter('')
           }}
           disabled={!hasFilters}
         >
