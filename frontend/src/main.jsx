@@ -37,6 +37,7 @@ import { AuthProvider } from './context/AuthContext.jsx'
 import { CampaignProvider } from './context/CampaignContext.jsx'
 import { FeatureFlagProvider } from './context/FeatureFlagContext.jsx'
 import { ThemeProvider } from './context/ThemeContext.jsx'
+import { NotificationProvider } from './context/NotificationContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -44,7 +45,9 @@ createRoot(document.getElementById('root')).render(
       <FeatureFlagProvider>
         <AuthProvider>
           <CampaignProvider>
-            <App />
+            <NotificationProvider>
+              <App />
+            </NotificationProvider>
           </CampaignProvider>
         </AuthProvider>
       </FeatureFlagProvider>

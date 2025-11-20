@@ -30,6 +30,12 @@ import {
 } from '../controllers/entityNoteController.js'
 import { listEntityMentionSessionNotes } from '../controllers/sessionNoteController.js'
 import { uploadEntityImage, deleteEntityImage } from '../controllers/entityImageController.js'
+import {
+  followEntity,
+  unfollowEntity,
+  checkFollowStatus,
+  getFollowedEntities,
+} from '../controllers/entityFollowController.js'
 
 const router = Router()
 
@@ -48,6 +54,12 @@ const upload = multer({ storage })
 router.use(authenticate)
 
 router.get('/unassigned', requireRole('system_admin'), listUnassignedEntities)
+
+// Entity follow routes (before /:id routes to avoid conflicts)
+router.get('/followed', getFollowedEntities)
+router.post('/:id/follow', followEntity)
+router.delete('/:id/follow', unfollowEntity)
+router.get('/:id/follow-status', checkFollowStatus)
 
 // -------------------------------------------------------------
 // POST /api/entities/upload → Upload a file + save metadata

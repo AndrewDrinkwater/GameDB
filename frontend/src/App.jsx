@@ -32,6 +32,8 @@ import BulkAccessToolPage from './pages/access/BulkAccessToolPage.jsx'
 import BulkAccessAuditPage from './pages/access/BulkAccessAuditPage.jsx'
 import CollectionsManagerPage from './pages/access/CollectionsManagerPage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
+import NotificationListPage from './pages/notifications/NotificationListPage.jsx'
+import FollowedEntitiesPage from './pages/entities/FollowedEntitiesPage.jsx'
 
 const router = createBrowserRouter(
   createRoutesFromElements(
@@ -71,6 +73,7 @@ const router = createBrowserRouter(
         {/* Entity routes */}
         <Route path="entities" element={<EntityList />} />
         <Route path="entities/bulk-upload" element={<BulkUploadPage />} />
+        <Route path="entities/followed" element={<FollowedEntitiesPage />} />
         <Route
           path="entities/:entityId/relationship-viewer"
           element={<RelationshipViewerPage />}
@@ -115,6 +118,9 @@ const router = createBrowserRouter(
 
         {/* Security route */}
         <Route path="security" element={<SettingsPage />} />
+
+        {/* Notifications route */}
+        <Route path="notifications" element={<NotificationListPage />} />
       </Route>
 
       {/* Fallback: redirect anything unknown */}

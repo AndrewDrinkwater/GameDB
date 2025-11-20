@@ -1,4 +1,7 @@
+import EntityFollowButton from './EntityFollowButton.jsx'
+
 export default function EntityHeader({
+  entityId,
   name,
   canEdit,
   isEditing,
@@ -26,8 +29,9 @@ export default function EntityHeader({
       <div className="entity-header-center">
         <h1>{title}</h1>
       </div>
-      {canEdit ? (
-        <div className="entity-header-right">
+      <div className="entity-header-right">
+        {entityId && <EntityFollowButton entityId={entityId} />}
+        {canEdit ? (
           <div className="entity-header-actions">
             {isEditing && typeof onSave === 'function' ? (
               <button
@@ -52,8 +56,8 @@ export default function EntityHeader({
               <span className="edit-mode-toggle-text">Edit</span>
             </button>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   )
 }

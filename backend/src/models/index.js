@@ -26,6 +26,8 @@ import UploadedFileModel from './uploadedFile.js' // ✅ new model import
 import BulkUpdateRunModel from './bulkUpdateRun.js'
 import BulkUpdateChangeModel from './bulkUpdateChange.js'
 import EntityCollectionModel from './entityCollection.js'
+import EntityFollowModel from './entityFollow.js'
+import NotificationModel from './notification.js'
 
 // Create Sequelize instance
 export const sequelize = new Sequelize(process.env.DATABASE_URL, {
@@ -57,6 +59,8 @@ export const UploadedFile = UploadedFileModel(sequelize, DataTypes) // ✅ new m
 export const BulkUpdateRun = BulkUpdateRunModel(sequelize, DataTypes)
 export const BulkUpdateChange = BulkUpdateChangeModel(sequelize, DataTypes)
 export const EntityCollection = EntityCollectionModel(sequelize, DataTypes)
+export const EntityFollow = EntityFollowModel(sequelize, DataTypes)
+export const Notification = NotificationModel(sequelize, DataTypes)
 
 // --- Associations ---
 if (User.associate)
@@ -110,6 +114,8 @@ if (BulkUpdateRun.associate)
 if (BulkUpdateChange.associate)
   BulkUpdateChange.associate({ BulkUpdateRun, Entity })
 if (EntityCollection.associate) EntityCollection.associate({ World, User })
+if (EntityFollow.associate) EntityFollow.associate({ User, Entity, Campaign })
+if (Notification.associate) Notification.associate({ User, Campaign })
 
 // --- Init DB ---
 export async function initDB() {
@@ -144,4 +150,6 @@ export default {
   EntityCollection,
   EntityTypeFieldLayout,
   EntityTypeFieldRule,
+  EntityFollow,
+  Notification,
 }
