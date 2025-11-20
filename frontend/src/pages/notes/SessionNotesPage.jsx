@@ -27,12 +27,24 @@ import { searchEntities } from '../../api/entities.js'
 import TaggedNoteContent from '../../components/notes/TaggedNoteContent.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { buildNoteSegments, cleanEntityName } from '../../utils/noteMentions.js'
+import { ENTITY_CREATION_SCOPES } from '../../utils/worldCreationScopes.js'
+import DrawerPanel from '../../components/DrawerPanel.jsx'
+import EntityForm from '../entities/EntityForm.jsx'
 import './NotesPage.css'
 
 const AUTOSAVE_DELAY_MS = 2500
 const emptyArray = Object.freeze([])
 
 const SESSION_NOTE_PLACEHOLDER = 'Use @ to tag entities mentioned in this session.'
+
+const createDrawerFooterState = (mode = 'create') => ({
+  mode,
+  submitLabel: mode === 'edit' ? 'Save Changes' : 'Create Entity',
+  submitDisabled: false,
+  cancelDisabled: false,
+  accessButtonVisible: false,
+  accessButtonDisabled: false,
+})
 
 const normaliseSessionNote = (note) => {
   if (!note) {
@@ -129,6 +141,12 @@ export default function SessionNotesPage() {
   const lastSavedRef = useRef(null)
   const savingRef = useRef(false)
   const justCreatedNoteRef = useRef('')
+  const [entityDrawerOpen, setEntityDrawerOpen] = useState(false)
+  const [entityFormUiState, setEntityFormUiState] = useState(() =>
+    createDrawerFooterState('create'),
+  )
+  const [entityFormView, setEntityFormView] = useState('details')
+  const entityFormIdRef = useRef(`entity-form-${Math.random().toString(36).slice(2)}`)
 
   const resolvedWorldId = useMemo(() => {
     if (selectedCampaign?.world?.id) return selectedCampaign.world.id
@@ -149,6 +167,21 @@ export default function SessionNotesPage() {
     if (user?.role === 'system_admin') return true
     return membershipRole === 'dm'
   }, [membershipRole, user])
+
+  const canShowCreateEntityButton = useMemo(() => {
+    // Show if user is DM
+    if (user?.role === 'system_admin' || membershipRole === 'dm') {
+      return true
+    }
+    
+    // Show if user is a player AND world allows all players to create entities
+    if (membershipRole === 'player') {
+      const entityCreationScope = selectedCampaign?.world?.entity_creation_scope ?? ''
+      return entityCreationScope === ENTITY_CREATION_SCOPES.ALL_PLAYERS
+    }
+    
+    return false
+  }, [membershipRole, user, selectedCampaign])
 
   const loadNotes = useCallback(async () => {
     if (!selectedCampaignId) return
@@ -527,6 +560,35 @@ export default function SessionNotesPage() {
     }
   }, [selectedCampaignId])
 
+  const openEntityDrawer = useCallback(() => {
+    if (!resolvedWorldId) return
+    setEntityFormUiState(createDrawerFooterState('create'))
+    setEntityFormView('details')
+    setEntityDrawerOpen(true)
+  }, [resolvedWorldId])
+
+  const closeEntityDrawer = useCallback(() => {
+    setEntityDrawerOpen(false)
+    setEntityFormUiState(createDrawerFooterState('create'))
+    setEntityFormView('details')
+  }, [])
+
+  const handleEntityFormStateChange = useCallback((nextState) => {
+    if (!nextState) return
+    setEntityFormUiState((prev) => ({
+      ...prev,
+      ...nextState,
+    }))
+  }, [])
+
+  const handleEntityFormSaved = useCallback(
+    async (mode) => {
+      closeEntityDrawer()
+      // Optionally reload notes or show a success message
+    },
+    [closeEntityDrawer],
+  )
+
   const campaignName = selectedCampaign?.name ?? ''
   const notesCount = sortedNotes.length
   const autosaveLabel = useMemo(() => {
@@ -574,13 +636,6 @@ export default function SessionNotesPage() {
             @mention key entities, and keep everyone aligned with auto-saving notes.
           </p>
         </div>
-        <button
-          type="button"
-          className="btn submit"
-          title="Create a new entity"
-        >
-          <Plus size={18} /> Add Entity
-        </button>
       </div>
 
       <div className="session-notes-meta">
@@ -634,7 +689,7 @@ export default function SessionNotesPage() {
             disabled={creating || notesState.loading}
           >
             {creating ? <Loader2 size={16} className="spinner" /> : <Plus size={16} />}
-            <span>{creating ? 'Creating…' : '+ New Session'}</span>
+            <span>{creating ? 'Creating…' : 'New Session'}</span>
           </button>
 
           <div className="session-notes-list-container">
@@ -698,7 +753,6 @@ export default function SessionNotesPage() {
               <header className="session-note-header">
                 <div className="session-note-heading">
                   <h2>{editorState.sessionTitle || 'Session note'}</h2>
-                  <span>{editorDateLabel}</span>
                 </div>
                 <div className="session-note-toolbar">
                   {canDeleteNotes ? (
@@ -720,6 +774,16 @@ export default function SessionNotesPage() {
                     {isEditing ? <Eye size={16} /> : <Edit3 size={16} />}
                     <span>{isEditing ? 'View note' : 'Edit note'}</span>
                   </button>
+                  {isEditing && canShowCreateEntityButton ? (
+                    <button
+                      type="button"
+                      className="session-note-action primary"
+                      onClick={openEntityDrawer}
+                    >
+                      <Plus size={16} />
+                      <span>Create Entity</span>
+                    </button>
+                  ) : null}
                 </div>
               </header>
 
@@ -732,39 +796,27 @@ export default function SessionNotesPage() {
 
               {isEditing ? (
                 <div className="session-note-form">
-                  <div className="session-note-fields">
-                    <div className="session-note-summary">
-                      <div className="session-note-summary-primary">
-                        <span className="session-note-summary-title">
-                          {editorState.sessionTitle || 'Session note'}
-                        </span>
-                        <span className="session-note-summary-date">{editorDateLabel}</span>
-                      </div>
-                      {editorUpdatedLabel ? (
-                        <span className="session-note-summary-updated">
-                          Updated {editorUpdatedLabel}
-                        </span>
-                      ) : null}
+                  <div className="session-note-fields session-note-fields-row">
+                    <div className="session-note-field">
+                      <label htmlFor="session-note-title">Title</label>
+                      <input
+                        id="session-note-title"
+                        type="text"
+                        value={editorState.sessionTitle || ''}
+                        onChange={(event) => handleFieldChange('sessionTitle', event.target.value)}
+                        placeholder="The mystery of the Violet Spire"
+                      />
                     </div>
-                    <label htmlFor="session-note-date">Session date</label>
-                    <input
-                      id="session-note-date"
-                      type="date"
-                      value={editorState.sessionDate || ''}
-                      onChange={(event) => handleFieldChange('sessionDate', event.target.value)}
-                      max="9999-12-31"
-                    />
-                  </div>
-
-                  <div className="session-note-fields">
-                    <label htmlFor="session-note-title">Title</label>
-                    <input
-                      id="session-note-title"
-                      type="text"
-                      value={editorState.sessionTitle || ''}
-                      onChange={(event) => handleFieldChange('sessionTitle', event.target.value)}
-                      placeholder="The mystery of the Violet Spire"
-                    />
+                    <div className="session-note-field">
+                      <label htmlFor="session-note-date">Session date</label>
+                      <input
+                        id="session-note-date"
+                        type="date"
+                        value={editorState.sessionDate || ''}
+                        onChange={(event) => handleFieldChange('sessionDate', event.target.value)}
+                        max="9999-12-31"
+                      />
+                    </div>
                   </div>
 
                   <div className="session-note-fields">
@@ -867,6 +919,58 @@ export default function SessionNotesPage() {
           )}
         </section>
       </div>
+
+      <DrawerPanel
+        isOpen={entityDrawerOpen}
+        onClose={closeEntityDrawer}
+        title="Create Entity"
+        width={420}
+        footerActions={
+          <>
+            <button
+              type="button"
+              className="btn cancel"
+              onClick={closeEntityDrawer}
+              disabled={entityFormUiState.cancelDisabled}
+            >
+              Cancel
+            </button>
+            {entityFormUiState.accessButtonVisible && (
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() =>
+                  setEntityFormView((prev) => (prev === 'access' ? 'details' : 'access'))
+                }
+                disabled={entityFormUiState.accessButtonDisabled}
+              >
+                {entityFormView === 'access' ? 'Details' : 'Access'}
+              </button>
+            )}
+            <button
+              type="submit"
+              className="btn submit"
+              form={entityFormIdRef.current}
+              disabled={entityFormUiState.submitDisabled}
+            >
+              {entityFormUiState.submitLabel}
+            </button>
+          </>
+        }
+      >
+        <EntityForm
+          worldId={resolvedWorldId}
+          entityId={null}
+          onCancel={closeEntityDrawer}
+          onSaved={handleEntityFormSaved}
+          formId={entityFormIdRef.current}
+          onStateChange={handleEntityFormStateChange}
+          hideActions
+          activeView={entityFormView}
+          onViewChange={setEntityFormView}
+          defaultCampaignId={selectedCampaignId || ''}
+        />
+      </DrawerPanel>
     </div>
   )
 }
