@@ -3,6 +3,7 @@ import { EntityListPreference, EntityType, EntityTypeField } from '../models/ind
 const CORE_COLUMNS = [
   { key: 'name', label: 'Name', description: 'Entity name' },
   { key: 'type', label: 'Type', description: 'Entity type' },
+  { key: 'importance', label: 'Importance', description: 'Campaign importance' },
   { key: 'visibility', label: 'Visibility', description: 'Current visibility' },
   { key: 'createdAt', label: 'Created', description: 'Creation date' },
   { key: 'description', label: 'Description', description: 'Entity description' },
