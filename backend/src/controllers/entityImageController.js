@@ -108,7 +108,8 @@ export const uploadEntityImage = async (req, res) => {
     })
 
     await entity.reload({ include: ENTITY_INCLUDE })
-    const payload = await buildEntityPayload(entity)
+    const campaignId = req.campaignContextId || null
+    const payload = await buildEntityPayload(entity, null, campaignId)
 
     res.json({ success: true, data: payload })
   } catch (error) {

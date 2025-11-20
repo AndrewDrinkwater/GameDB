@@ -108,6 +108,13 @@ export default (sequelize, DataTypes) => {
         onDelete: 'CASCADE',
       })
     }
+    if (models.EntityCampaignImportance) {
+      Entity.hasMany(models.EntityCampaignImportance, {
+        foreignKey: 'entity_id',
+        as: 'campaignImportances',
+        onDelete: 'CASCADE',
+      })
+    }
     if (models.EntityRelationship) {
       Entity.hasMany(models.EntityRelationship, {
         foreignKey: 'from_entity',

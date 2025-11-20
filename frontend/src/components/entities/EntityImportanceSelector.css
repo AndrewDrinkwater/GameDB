@@ -1,0 +1,95 @@
+.entity-importance-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.entity-importance-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.entity-importance-buttons {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.entity-importance-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: #ffffff;
+  color: #64748b;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 150ms ease;
+  white-space: nowrap;
+}
+
+.entity-importance-button:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: rgba(148, 163, 184, 0.5);
+  transform: translateY(-1px);
+}
+
+.entity-importance-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.entity-importance-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.entity-importance-button.selected {
+  background: var(--importance-color, #6b7280);
+  color: #ffffff;
+  border-color: var(--importance-color, #6b7280);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.entity-importance-button.selected:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.entity-importance-button svg {
+  flex-shrink: 0;
+}
+
+.entity-importance-button-label {
+  white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .entity-importance-selector {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .entity-importance-buttons {
+    flex-wrap: wrap;
+  }
+
+  .entity-importance-button {
+    flex: 1;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .entity-importance-button-label {
+    display: none;
+  }
+}
+

@@ -35,29 +35,33 @@ export async function up(queryInterface, Sequelize) {
     },
   })
 
-  // Create unique constraint on (user_id, entity_id, campaign_id)
-  await queryInterface.addConstraint('entity_follows', {
-    fields: ['user_id', 'entity_id', 'campaign_id'],
-    type: 'unique',
-    name: 'unique_user_entity_campaign_follow',
-  })
+  // Add unique constraint on (user_id, entity_id, campaign_id)
+  await queryInterface.sequelize.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'unique_user_entity_campaign_follow'
+      ) THEN
+        ALTER TABLE "entity_follows"
+        ADD CONSTRAINT "unique_user_entity_campaign_follow"
+        UNIQUE ("user_id", "entity_id", "campaign_id");
+      END IF;
+    END $$;
+  `)
 
-  // Create indexes for efficient queries
-  await queryInterface.addIndex('entity_follows', ['user_id'], {
-    name: 'idx_entity_follows_user_id',
-  })
-
-  await queryInterface.addIndex('entity_follows', ['entity_id'], {
-    name: 'idx_entity_follows_entity_id',
-  })
-
-  await queryInterface.addIndex('entity_follows', ['campaign_id'], {
-    name: 'idx_entity_follows_campaign_id',
-  })
-
-  await queryInterface.addIndex('entity_follows', ['user_id', 'campaign_id'], {
-    name: 'idx_entity_follows_user_campaign',
-  })
+  // Ensure indexes exist without failing if they were created previously
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "idx_entity_follows_user_id" ON "entity_follows" ("user_id")'
+  )
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "idx_entity_follows_entity_id" ON "entity_follows" ("entity_id")'
+  )
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "idx_entity_follows_campaign_id" ON "entity_follows" ("campaign_id")'
+  )
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "idx_entity_follows_user_campaign" ON "entity_follows" ("user_id", "campaign_id")'
+  )
 }
 
 export async function down(queryInterface, Sequelize) {

@@ -1,14 +1,17 @@
 import EntityFollowButton from './EntityFollowButton.jsx'
+import EntityImportanceSelector from './EntityImportanceSelector.jsx'
 
 export default function EntityHeader({
   entityId,
   name,
+  importance,
   canEdit,
   isEditing,
   onToggleEdit,
   onSave,
   isSaving = false,
   isSaveDisabled = false,
+  onImportanceUpdate,
 }) {
   const title = name || 'Untitled entity'
 
@@ -24,10 +27,23 @@ export default function EntityHeader({
     }
   }
 
+  const handleImportanceUpdate = (newImportance) => {
+    if (typeof onImportanceUpdate === 'function') {
+      onImportanceUpdate(newImportance)
+    }
+  }
+
   return (
     <div className="entity-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-2" role="banner">
       <div className="entity-header-center">
         <h1>{title}</h1>
+        {entityId && (
+          <EntityImportanceSelector
+            entityId={entityId}
+            importance={importance}
+            onUpdate={handleImportanceUpdate}
+          />
+        )}
       </div>
       <div className="entity-header-right">
         {entityId && <EntityFollowButton entityId={entityId} />}

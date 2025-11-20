@@ -1890,12 +1890,16 @@ export default function EntityDetailPage() {
               <EntityHeader
                 entityId={id}
                 name={entity.name}
+                importance={entity.importance}
                 canEdit={canEdit}
                 isEditing={isEditing}
                 onToggleEdit={handleEditToggle}
                 onSave={handleSaveAll}
                 isSaving={formState.isSubmitting || accessSaving}
                 isSaveDisabled={!formState.isDirty && !isAccessDirty}
+                onImportanceUpdate={(newImportance) => {
+                  setEntity((prev) => (prev ? { ...prev, importance: newImportance } : null))
+                }}
               />
               <div className="entity-page-header__tabs flex flex-wrap gap-2 mt-4">
                 <TabNav

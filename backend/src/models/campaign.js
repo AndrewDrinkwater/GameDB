@@ -38,6 +38,14 @@ export default (sequelize, DataTypes) => {
         as: 'sessionNotes',
       })
     }
+
+    if (models.EntityCampaignImportance) {
+      Campaign.hasMany(models.EntityCampaignImportance, {
+        foreignKey: 'campaign_id',
+        as: 'entityImportances',
+        onDelete: 'CASCADE',
+      })
+    }
   }
 
   return Campaign
