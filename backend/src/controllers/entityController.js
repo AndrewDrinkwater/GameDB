@@ -1151,7 +1151,7 @@ export const listWorldEntities = async (req, res) => {
     let importanceFiltered = filteredEntities
     const importanceFilter = req.query?.importance
     if (campaignId && importanceFilter) {
-      const validImportanceValues = ['critical', 'important', 'mundane']
+      const validImportanceValues = ['critical', 'important', 'medium']
       const filterValues = Array.isArray(importanceFilter)
         ? importanceFilter.filter((v) => v === null || v === 'null' || validImportanceValues.includes(v))
         : importanceFilter === null || importanceFilter === 'null' || validImportanceValues.includes(importanceFilter)
@@ -2204,11 +2204,11 @@ export const updateEntityImportance = async (req, res) => {
     }
 
     // Validate importance value
-    const validImportanceValues = ['critical', 'important', 'mundane', null]
+    const validImportanceValues = ['critical', 'important', 'medium', null]
     if (importance !== null && importance !== undefined && !validImportanceValues.includes(importance)) {
       return res.status(400).json({
         success: false,
-        message: 'importance must be one of: critical, important, mundane, or null',
+        message: 'importance must be one of: critical, important, medium, or null',
       })
     }
 

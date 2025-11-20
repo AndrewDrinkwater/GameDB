@@ -16,7 +16,7 @@ export default (sequelize, DataTypes) => {
         allowNull: false,
       },
       importance: {
-        type: DataTypes.ENUM('critical', 'important', 'mundane'),
+        type: DataTypes.ENUM('critical', 'important', 'medium'),
         allowNull: true,
       },
     },

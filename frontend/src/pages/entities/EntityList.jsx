@@ -1030,7 +1030,7 @@ export default function EntityList() {
         const importanceIcons = {
           critical: '🔴',
           important: '🟠',
-          mundane: '⚪',
+          medium: '⚪',
         }
         return (
           <span className="entity-link-with-preview">
@@ -1080,12 +1080,12 @@ export default function EntityList() {
         const importanceLabels = {
           critical: 'Critical',
           important: 'Important',
-          mundane: 'Mundane',
+          medium: 'Medium',
         }
         const importanceColors = {
           critical: '#dc2626',
           important: '#ea580c',
-          mundane: '#6b7280',
+          medium: '#6b7280',
         }
         return (
           <span
@@ -1262,7 +1262,7 @@ export default function EntityList() {
           />
           {selectedCampaignId && (
             <div className="entities-importance-filters">
-              {['critical', 'important', 'mundane'].map((level) => {
+              {['critical', 'important', 'medium'].map((level) => {
                 const isSelected = selectedImportanceFilters.includes(level)
                 return (
                   <button
