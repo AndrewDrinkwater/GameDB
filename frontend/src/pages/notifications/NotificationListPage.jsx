@@ -4,6 +4,7 @@ import { Check, CheckCheck, Filter } from 'lucide-react'
 import { useNotifications } from '../../hooks/useNotifications.js'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import { fetchNotifications, markAllNotificationsRead } from '../../api/notifications.js'
+import CampaignContextSwitchDialog from '../../components/CampaignContextSwitchDialog.jsx'
 import './NotificationListPage.css'
 
 const NOTIFICATION_TYPES = [
@@ -51,7 +52,7 @@ const formatTimeAgo = (date) => {
 
 export default function NotificationListPage() {
   const { notifications: contextNotifications, markRead, markAllRead: markAllReadContext, refresh } = useNotifications()
-  const { selectedCampaignId, campaigns } = useCampaignContext()
+  const { selectedCampaignId, campaigns, setSelectedCampaignId } = useCampaignContext()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [allNotifications, setAllNotifications] = useState([])
@@ -60,6 +61,7 @@ export default function NotificationListPage() {
   const [readFilter, setReadFilter] = useState('') // '' = all, 'unread', 'read'
   const [typeFilter, setTypeFilter] = useState('')
   const [campaignFilter, setCampaignFilter] = useState(selectedCampaignId || '')
+  const [contextSwitchDialog, setContextSwitchDialog] = useState({ open: false, notification: null })
 
   const loadNotifications = async (pageNum = 1, append = false) => {
     setLoading(true)
@@ -130,11 +132,7 @@ export default function NotificationListPage() {
     }
   }
 
-  const handleNotificationClick = async (notification) => {
-    if (!notification.read) {
-      await handleMarkRead(notification)
-    }
-
+  const performNavigation = (notification) => {
     // Navigate to action URL if available
     if (notification.actionUrl) {
       navigate(notification.actionUrl)
@@ -143,14 +141,55 @@ export default function NotificationListPage() {
       const { type, metadata = {} } = notification
       if (type === 'entity_comment' || type === 'entity_mention_entity_note') {
         const entityId = metadata.entity_id || metadata.related_entity_id
+        const campaignId = notification.campaignId || notification.campaign?.id || campaignFilter
         if (entityId) {
-          navigate(`/entities/${entityId}${campaignFilter ? `?campaignId=${campaignFilter}` : ''}#notes`)
+          navigate(`/entities/${entityId}${campaignId ? `?campaignId=${campaignId}` : ''}#notes`)
         }
       } else if (type === 'session_note_added' || type === 'entity_mention_session_note') {
-        const campaignId = metadata.target_id || campaignFilter
+        const campaignId = notification.campaignId || notification.campaign?.id || metadata.target_id || campaignFilter
         navigate(`/notes/session${campaignId ? `?campaignId=${campaignId}` : ''}`)
       }
     }
+  }
+
+  const handleNotificationClick = async (notification) => {
+    if (!notification.read) {
+      await handleMarkRead(notification)
+    }
+
+    // Check if notification is for a different campaign context
+    const notificationCampaignId = notification.campaignId || notification.campaign?.id || ''
+    const currentCampaignId = selectedCampaignId || ''
+    
+    // If notification has a campaign and it's different from current context, prompt to switch
+    if (notificationCampaignId && notificationCampaignId !== currentCampaignId) {
+      setContextSwitchDialog({ open: true, notification })
+      return
+    }
+
+    // Otherwise, proceed with navigation
+    performNavigation(notification)
+  }
+
+  const handleSwitchCampaignContext = () => {
+    const { notification } = contextSwitchDialog
+    if (!notification) return
+
+    const notificationCampaignId = notification.campaignId || notification.campaign?.id || ''
+    if (notificationCampaignId) {
+      setSelectedCampaignId(notificationCampaignId)
+    }
+    
+    setContextSwitchDialog({ open: false, notification: null })
+    
+    // Small delay to allow context to update, then navigate
+    setTimeout(() => {
+      performNavigation(notification)
+    }, 100)
+  }
+
+  const handleCancelContextSwitch = () => {
+    setContextSwitchDialog({ open: false, notification: null })
   }
 
   const unreadCount = allNotifications.filter((n) => !n.read).length
@@ -293,6 +332,13 @@ export default function NotificationListPage() {
           </div>
         )}
       </div>
+
+      <CampaignContextSwitchDialog
+        open={contextSwitchDialog.open}
+        campaignName={contextSwitchDialog.notification?.campaign?.name || ''}
+        onSwitch={handleSwitchCampaignContext}
+        onCancel={handleCancelContextSwitch}
+      />
     </div>
   )
 }

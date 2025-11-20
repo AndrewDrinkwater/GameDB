@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { Bell, BellRing, Check, ChevronRight } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useNotifications } from '../../hooks/useNotifications.js'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
+import CampaignContextSwitchDialog from '../CampaignContextSwitchDialog.jsx'
 import './NotificationWidget.css'
 
 const formatTimeAgo = (date) => {
@@ -42,9 +43,11 @@ const getNotificationMessage = (notification) => {
 
 export default function NotificationWidget() {
   const { notifications, unreadCount, loading, markRead } = useNotifications()
-  const { selectedCampaignId } = useCampaignContext()
+  const { selectedCampaignId, setSelectedCampaignId } = useCampaignContext()
+  const navigate = useNavigate()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef(null)
+  const [contextSwitchDialog, setContextSwitchDialog] = useState({ open: false, notification: null })
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -67,6 +70,31 @@ export default function NotificationWidget() {
     .filter((n) => !n.read)
     .slice(0, 5)
 
+  const performNavigation = (notification) => {
+    setDropdownOpen(false)
+    
+    // Navigate to action URL if available
+    if (notification.actionUrl) {
+      navigate(notification.actionUrl)
+    } else {
+      // Fallback navigation based on type
+      const { type, metadata = {} } = notification
+      if (type === 'entity_comment' || type === 'entity_mention_entity_note') {
+        const entityId = metadata.entity_id || metadata.related_entity_id
+        const campaignId = notification.campaignId || notification.campaign?.id || selectedCampaignId
+        if (entityId) {
+          navigate(`/entities/${entityId}${campaignId ? `?campaignId=${campaignId}` : ''}#notes`)
+        }
+      } else if (type === 'session_note_added' || type === 'entity_mention_session_note') {
+        const campaignId = notification.campaignId || notification.campaign?.id || metadata.target_id || selectedCampaignId
+        navigate(`/notes/session${campaignId ? `?campaignId=${campaignId}` : ''}`)
+      } else {
+        // Default: navigate to notifications page
+        navigate('/notifications')
+      }
+    }
+  }
+
   const handleNotificationClick = async (notification) => {
     if (!notification.read) {
       try {
@@ -75,7 +103,40 @@ export default function NotificationWidget() {
         console.error('Failed to mark notification read', err)
       }
     }
-    setDropdownOpen(false)
+
+    // Check if notification is for a different campaign context
+    const notificationCampaignId = notification.campaignId || notification.campaign?.id || ''
+    const currentCampaignId = selectedCampaignId || ''
+    
+    // If notification has a campaign and it's different from current context, prompt to switch
+    if (notificationCampaignId && notificationCampaignId !== currentCampaignId) {
+      setContextSwitchDialog({ open: true, notification })
+      return
+    }
+
+    // Otherwise, proceed with navigation
+    performNavigation(notification)
+  }
+
+  const handleSwitchCampaignContext = () => {
+    const { notification } = contextSwitchDialog
+    if (!notification) return
+
+    const notificationCampaignId = notification.campaignId || notification.campaign?.id || ''
+    if (notificationCampaignId) {
+      setSelectedCampaignId(notificationCampaignId)
+    }
+    
+    setContextSwitchDialog({ open: false, notification: null })
+    
+    // Small delay to allow context to update, then navigate
+    setTimeout(() => {
+      performNavigation(notification)
+    }, 100)
+  }
+
+  const handleCancelContextSwitch = () => {
+    setContextSwitchDialog({ open: false, notification: null })
   }
 
   const hasNotifications = recentNotifications.length > 0
@@ -140,6 +201,13 @@ export default function NotificationWidget() {
           </div>
         </div>
       )}
+
+      <CampaignContextSwitchDialog
+        open={contextSwitchDialog.open}
+        campaignName={contextSwitchDialog.notification?.campaign?.name || ''}
+        onSwitch={handleSwitchCampaignContext}
+        onCancel={handleCancelContextSwitch}
+      />
     </div>
   )
 }
