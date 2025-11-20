@@ -574,6 +574,13 @@ export default function SessionNotesPage() {
             @mention key entities, and keep everyone aligned with auto-saving notes.
           </p>
         </div>
+        <button
+          type="button"
+          className="btn submit"
+          title="Create a new entity"
+        >
+          <Plus size={18} /> Add Entity
+        </button>
       </div>
 
       <div className="session-notes-meta">
