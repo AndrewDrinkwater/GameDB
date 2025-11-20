@@ -932,6 +932,37 @@ export default function EntityList() {
     [getEntityTypeLabel],
   )
 
+  // Helper function to extract entity ID from reference field values
+  const extractReferenceId = useCallback((value) => {
+    if (value === null || value === undefined || value === '') return null
+    
+    // If it's already a string, return it (assuming it's an ID)
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      return trimmed.length > 0 ? trimmed : null
+    }
+    
+    // If it's an object, try to extract the id property
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      const id = value.id ?? value.value ?? value.key ?? value.slug ?? value.uuid ?? null
+      if (id !== null && id !== undefined) {
+        return String(id).trim()
+      }
+      return null
+    }
+    
+    // If it's an array, extract the first valid ID
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const extracted = extractReferenceId(item)
+        if (extracted) return extracted
+      }
+      return null
+    }
+    
+    return null
+  }, [])
+
   const explorerColumns = useMemo(() => {
     const entries = []
     availableColumnMap.forEach((column) => {
@@ -940,15 +971,30 @@ export default function EntityList() {
           ? column.dataType || column.data_type || 'string'
           : column.dataType
       const resolvedType = metadataType || (column.key === 'createdAt' ? 'date' : 'string')
+      const isReference = resolvedType === 'reference' || 
+        (column.dataType && String(column.dataType).toLowerCase() === 'reference') ||
+        (column.data_type && String(column.data_type).toLowerCase() === 'reference')
+      
+      // Create accessor that extracts ID for reference fields
+      const accessor = (entity) => {
+        const value = resolveEntityValue(entity, column.key)
+        // For reference fields, extract the ID for filtering purposes
+        if (isReference) {
+          const extractedId = extractReferenceId(value)
+          return extractedId !== null ? extractedId : value
+        }
+        return value
+      }
+      
       entries.push({
         key: column.key,
         label: column.label || column.name || column.key,
         dataType: resolvedType,
-        accessor: (entity) => resolveEntityValue(entity, column.key),
+        accessor,
       })
     })
     return entries
-  }, [availableColumnMap, resolveEntityValue])
+  }, [availableColumnMap, resolveEntityValue, extractReferenceId])
 
   const explorerColumnMap = useMemo(
     () => new Map(explorerColumns.map((column) => [column.key, column])),

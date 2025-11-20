@@ -1068,7 +1068,11 @@ export default function EntityForm({
         )
       }
       case 'reference': {
-        const referenceTypeId = field.referenceTypeId ?? field.reference_type_id ?? null
+        // Extract referenceTypeId from various possible locations and ensure it's a valid string
+        const referenceTypeIdRaw = field.referenceTypeId ?? field.reference_type_id ?? null
+        const referenceTypeId = referenceTypeIdRaw
+          ? String(referenceTypeIdRaw).trim()
+          : null
         const placeholderName = field.referenceTypeName || 'entities'
         const placeholderLabel =
           typeof placeholderName === 'string' && placeholderName.trim()
@@ -1202,7 +1206,7 @@ export default function EntityForm({
               <EntitySearchSelect
                 worldId={worldId}
                 value={controlValue}
-                allowedTypeIds={referenceTypeId ? [referenceTypeId] : []}
+                allowedTypeIds={referenceTypeId && referenceTypeId.length > 0 ? [referenceTypeId] : []}
                 placeholder={`Search ${placeholderLabel.toLowerCase()}...`}
                 disabled={controlDisabled}
                 staticOptions={staticOptions}

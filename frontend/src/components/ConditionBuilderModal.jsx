@@ -310,11 +310,15 @@ export default function ConditionBuilderModal({
                     // Reference searchable dropdown
                     if (shouldShowDropdown && isReference) {
                       // Get referenceTypeId from various possible locations
-                      const referenceTypeId =
+                      const referenceTypeIdRaw =
                         column.referenceTypeId ||
                         column.reference_type_id ||
                         column.referenceType?.id ||
                         null
+                      // Ensure referenceTypeId is a valid string (not empty, null, or undefined)
+                      const referenceTypeId = referenceTypeIdRaw
+                        ? String(referenceTypeIdRaw).trim()
+                        : null
                       const referenceTypeName =
                         column.referenceTypeName ||
                         column.reference_type_name ||
@@ -322,9 +326,10 @@ export default function ConditionBuilderModal({
                         'entities'
                       const currentValue = condition.value
                       
-                      // Ensure referenceTypeId is a string for EntitySearchSelect
-                      const allowedTypeIds = referenceTypeId
-                        ? [String(referenceTypeId)]
+                      // Ensure allowedTypeIds is always an array of strings
+                      // Only include referenceTypeId if it's a valid non-empty string
+                      const allowedTypeIds = referenceTypeId && referenceTypeId.length > 0
+                        ? [referenceTypeId]
                         : []
                       
                       // EntitySearchSelect can accept either a string ID or an entity object
