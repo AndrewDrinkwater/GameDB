@@ -732,39 +732,27 @@ export default function SessionNotesPage() {
 
               {isEditing ? (
                 <div className="session-note-form">
-                  <div className="session-note-fields">
-                    <div className="session-note-summary">
-                      <div className="session-note-summary-primary">
-                        <span className="session-note-summary-title">
-                          {editorState.sessionTitle || 'Session note'}
-                        </span>
-                        <span className="session-note-summary-date">{editorDateLabel}</span>
-                      </div>
-                      {editorUpdatedLabel ? (
-                        <span className="session-note-summary-updated">
-                          Updated {editorUpdatedLabel}
-                        </span>
-                      ) : null}
+                  <div className="session-note-fields session-note-fields-row">
+                    <div className="session-note-field">
+                      <label htmlFor="session-note-title">Title</label>
+                      <input
+                        id="session-note-title"
+                        type="text"
+                        value={editorState.sessionTitle || ''}
+                        onChange={(event) => handleFieldChange('sessionTitle', event.target.value)}
+                        placeholder="The mystery of the Violet Spire"
+                      />
                     </div>
-                    <label htmlFor="session-note-date">Session date</label>
-                    <input
-                      id="session-note-date"
-                      type="date"
-                      value={editorState.sessionDate || ''}
-                      onChange={(event) => handleFieldChange('sessionDate', event.target.value)}
-                      max="9999-12-31"
-                    />
-                  </div>
-
-                  <div className="session-note-fields">
-                    <label htmlFor="session-note-title">Title</label>
-                    <input
-                      id="session-note-title"
-                      type="text"
-                      value={editorState.sessionTitle || ''}
-                      onChange={(event) => handleFieldChange('sessionTitle', event.target.value)}
-                      placeholder="The mystery of the Violet Spire"
-                    />
+                    <div className="session-note-field">
+                      <label htmlFor="session-note-date">Session date</label>
+                      <input
+                        id="session-note-date"
+                        type="date"
+                        value={editorState.sessionDate || ''}
+                        onChange={(event) => handleFieldChange('sessionDate', event.target.value)}
+                        max="9999-12-31"
+                      />
+                    </div>
                   </div>
 
                   <div className="session-note-fields">

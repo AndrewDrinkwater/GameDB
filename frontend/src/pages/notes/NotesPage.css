@@ -632,6 +632,19 @@
   gap: 0.45rem;
 }
 
+.session-note-fields-row {
+  flex-direction: row;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.session-note-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
 .session-note-fields label {
   font-weight: 600;
   color: #1e293b;
@@ -823,6 +836,11 @@
     grid-column: 1;
     max-height: none;
     min-height: auto;
+  }
+
+  .session-note-fields-row {
+    flex-direction: column;
+    gap: 0.45rem;
   }
 }
 
