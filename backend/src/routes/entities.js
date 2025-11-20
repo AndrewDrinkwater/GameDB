@@ -12,6 +12,7 @@ import {
   deleteEntity,
   getEntityById,
   getEntitySecrets,
+  globalSearch,
   searchEntities,
   updateEntitySecret,
   updateEntity,
@@ -501,6 +502,7 @@ router.post('/import/:entityTypeId', upload.single('file'), async (req, res) => 
 router.get('/:id/graph', getEntityGraph)
 router.post('/', createEntity)
 router.get('/search', searchEntities)
+router.get('/global-search', globalSearch)
 router.get('/:id', getEntityById)
 router.patch('/:id', updateEntity)
 router.delete('/:id', deleteEntity)

@@ -31,6 +31,8 @@
   flex: 1;
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 1rem;
 }
 
 .header-end {
@@ -80,7 +82,8 @@
 
 .menu-btn,
 .history-btn,
-.context-btn {
+.context-btn,
+.search-btn {
   background: none;
   border: none;
   color: inherit;
@@ -95,7 +98,8 @@
 
 .menu-btn.menu-btn-text,
 .history-btn.history-btn-text,
-.context-btn.context-btn-text {
+.context-btn.context-btn-text,
+.search-btn.search-btn-text {
   background: rgba(148, 163, 184, 0.18);
   border: 1px solid rgba(148, 163, 184, 0.45);
   border-radius: 999px;
@@ -110,14 +114,17 @@
 .history-btn.history-btn-text:hover,
 .history-btn.history-btn-text:focus-visible,
 .context-btn.context-btn-text:hover,
-.context-btn.context-btn-text:focus-visible {
+.context-btn.context-btn-text:focus-visible,
+.search-btn.search-btn-text:hover,
+.search-btn.search-btn-text:focus-visible {
   background: rgba(148, 163, 184, 0.28);
   border-color: rgba(148, 163, 184, 0.75);
 }
 
 .menu-btn.menu-btn-icon,
 .history-btn.history-btn-icon,
-.context-btn.context-btn-icon {
+.context-btn.context-btn-icon,
+.search-btn.search-btn-icon {
   padding: 0.35rem;
   border-radius: 999px;
   background: none;
@@ -126,9 +133,19 @@
 
 .menu-btn.menu-btn-icon:focus-visible,
 .history-btn.history-btn-icon:focus-visible,
-.context-btn.context-btn-icon:focus-visible {
+.context-btn.context-btn-icon:focus-visible,
+.search-btn.search-btn-icon:focus-visible {
   outline: 2px solid rgba(148, 163, 184, 0.75);
   outline-offset: 2px;
+}
+
+.menu-btn.disabled,
+.history-btn.disabled,
+.context-btn.disabled,
+.search-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .user-icon {

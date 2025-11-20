@@ -2,10 +2,13 @@ import { Op } from 'sequelize'
 import {
   Campaign,
   Entity,
+  EntityNote,
+  EntityRelationship,
   EntitySecret,
   EntitySecretPermission,
   EntityType,
   EntityTypeField,
+  SessionNote,
   User,
   UserCampaignRole,
   World,
@@ -1247,6 +1250,484 @@ export const searchEntities = async (req, res) => {
       pagination: { total: count, limit, offset, hasMore },
     })
   } catch (error) {
+    return res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+export const globalSearch = async (req, res) => {
+  try {
+    applyRelBuilderHeader(res)
+    const { user } = req
+    const { q = '', campaignId, worldId, limit: rawLimit, offset: rawOffset } = req.query
+
+    const trimmedQuery = typeof q === 'string' ? q.trim().toLowerCase() : ''
+    if (!trimmedQuery) {
+      return res.json({
+        success: true,
+        data: { entities: [], sessionNotes: [] },
+        pagination: { total: 0, limit: 20, offset: 0, hasMore: false },
+      })
+    }
+
+    const limit = clampNumber(rawLimit, { min: 1, max: 100, fallback: 20 })
+    const offset = clampNumber(rawOffset, { min: 0, fallback: 0 })
+
+    const results = {
+      entities: [],
+      sessionNotes: [],
+    }
+
+    // Search entities if worldId is provided
+    if (worldId) {
+      const world = await World.findByPk(worldId)
+      if (!world) {
+        return res.status(404).json({ success: false, message: 'World not found' })
+      }
+
+      const access = req.worldAccess ?? (await checkWorldAccess(world.id, user))
+      // Allow search if user has any form of access (hasAccess, isOwner, isAdmin)
+      // Also allow if they have campaign context (they might have access through campaign)
+      const hasAnyAccess = access.hasAccess || access.isOwner || access.isAdmin
+      
+      // If no direct world access, check if they have campaign access to this world
+      let hasCampaignAccess = false
+      if (!hasAnyAccess && campaignId) {
+        const { ensureCampaignAccess } = await import('../controllers/sessionNoteController.js')
+        const campaignAccess = await ensureCampaignAccess(campaignId, user)
+        if (!campaignAccess.error && campaignAccess.campaign?.world_id === worldId) {
+          hasCampaignAccess = true
+        }
+      }
+      
+      if (!hasAnyAccess && !hasCampaignAccess) {
+        return res.status(403).json({ success: false, message: 'Forbidden' })
+      }
+
+      const readContext = await buildEntityReadContext({
+        worldId: world.id,
+        user,
+        worldAccess: access,
+        campaignContextId: req.campaignContextId || campaignId,
+      })
+
+      const isPrivilegedView = Boolean(readContext?.isOwner || readContext?.isAdmin)
+      const allowPersonalAccess = Boolean(user?.id && !readContext?.suppressPersonalAccess)
+
+      // Base where clause for entities
+      const entityWhere = { world_id: world.id }
+
+      if (!isPrivilegedView) {
+        const visibilityClauses = [{ visibility: { [Op.in]: PUBLIC_VISIBILITY } }]
+        if (allowPersonalAccess) {
+          visibilityClauses.push({ created_by: user.id })
+        }
+        if (visibilityClauses.length > 1) {
+          entityWhere[Op.or] = visibilityClauses
+        } else {
+          entityWhere[Op.and] = [...(entityWhere[Op.and] ?? []), visibilityClauses[0]]
+        }
+      }
+
+      const readAccessWhere = buildReadableEntitiesWhereClause(readContext)
+      if (readAccessWhere) {
+        if (entityWhere[Op.and]) {
+          entityWhere[Op.and].push(readAccessWhere)
+        } else {
+          entityWhere[Op.and] = [readAccessWhere]
+        }
+      }
+
+      // Search pattern
+      const pattern = `%${trimmedQuery}%`
+      const dialect = Entity.sequelize?.getDialect?.() || ''
+      const likeOp = dialect === 'postgres' ? Op.iLike : Op.like
+
+      // Find entities matching name (highest priority)
+      const nameMatches = await Entity.findAll({
+        where: {
+          ...entityWhere,
+          name: { [likeOp]: pattern },
+        },
+        include: [{ model: EntityType, as: 'entityType', attributes: ['id', 'name'] }],
+        limit: 100,
+      })
+
+      // Find entities matching description
+      const descriptionMatches = await Entity.findAll({
+        where: {
+          ...entityWhere,
+          description: { [likeOp]: pattern },
+          id: { [Op.notIn]: nameMatches.map((e) => e.id) },
+        },
+        include: [{ model: EntityType, as: 'entityType', attributes: ['id', 'name'] }],
+        limit: 100,
+      })
+
+      // Find entities with matching notes
+      const noteMatches = await EntityNote.findAll({
+        where: {
+          content: { [likeOp]: pattern },
+        },
+        include: [
+          {
+            model: Entity,
+            as: 'entity',
+            where: entityWhere,
+            include: [{ model: EntityType, as: 'entityType', attributes: ['id', 'name'] }],
+          },
+        ],
+        limit: 100,
+      })
+
+      const noteEntityIds = new Set(noteMatches.map((n) => n.entity_id))
+      const alreadyFoundIds = new Set([
+        ...nameMatches.map((e) => e.id),
+        ...descriptionMatches.map((e) => e.id),
+      ])
+
+      // Find entities with matching mentions in notes
+      // Get all entity notes with mentions and filter in memory
+      const allEntityNotesWithMentions = await EntityNote.findAll({
+        where: {
+          [Op.and]: [
+            sequelize.where(
+              sequelize.fn('jsonb_array_length', sequelize.col('mentions')),
+              { [Op.gt]: 0 },
+            ),
+          ],
+        },
+        include: [
+          {
+            model: Entity,
+            as: 'entity',
+            where: entityWhere,
+            include: [{ model: EntityType, as: 'entityType', attributes: ['id', 'name'] }],
+          },
+        ],
+        limit: 500,
+      })
+
+      const mentionEntityIds = new Set()
+      allEntityNotesWithMentions.forEach((note) => {
+        const mentions = note.mentions || []
+        mentions.forEach((mention) => {
+          const mentionName = (mention.name || '').toLowerCase()
+          if (mentionName.includes(trimmedQuery)) {
+            if (note.entity_id && !alreadyFoundIds.has(note.entity_id) && !noteEntityIds.has(note.entity_id)) {
+              mentionEntityIds.add(note.entity_id)
+            }
+          }
+        })
+      })
+
+      // Find entities with matching relationships
+      // Get all relationships and filter context in memory
+      const allRelationships = await EntityRelationship.findAll({
+        include: [
+          {
+            model: Entity,
+            as: 'from',
+            where: entityWhere,
+            include: [{ model: EntityType, as: 'entityType', attributes: ['id', 'name'] }],
+            required: true,
+          },
+          {
+            model: Entity,
+            as: 'to',
+            where: entityWhere,
+            include: [{ model: EntityType, as: 'entityType', attributes: ['id', 'name'] }],
+            required: true,
+          },
+        ],
+        limit: 500,
+      })
+
+      const relationshipEntityIds = new Set()
+      allRelationships.forEach((rel) => {
+        const context = rel.context || {}
+        const contextStr = JSON.stringify(context).toLowerCase()
+        if (contextStr.includes(trimmedQuery)) {
+          if (rel.from_entity && !alreadyFoundIds.has(rel.from_entity) && !noteEntityIds.has(rel.from_entity)) {
+            relationshipEntityIds.add(rel.from_entity)
+          }
+          if (rel.to_entity && !alreadyFoundIds.has(rel.to_entity) && !noteEntityIds.has(rel.to_entity)) {
+            relationshipEntityIds.add(rel.to_entity)
+          }
+        }
+      })
+
+      // Combine and deduplicate results with match type
+      const entityMap = new Map()
+
+      // Add name matches (priority 1)
+      nameMatches.forEach((entity) => {
+        const plain = entity.get({ plain: true })
+        const type = plain.entityType || {}
+        entityMap.set(plain.id, {
+          id: plain.id,
+          name: plain.name,
+          typeId: type.id ?? plain.entity_type_id ?? null,
+          typeName: type.name ?? plain.entity_type_name ?? null,
+          image_data: plain.image_data ?? null,
+          image_mime_type: plain.image_mime_type ?? null,
+          matchType: 'name',
+          priority: 1,
+        })
+      })
+
+      // Add description matches (priority 2)
+      descriptionMatches.forEach((entity) => {
+        if (!entityMap.has(entity.id)) {
+          const plain = entity.get({ plain: true })
+          const type = plain.entityType || {}
+          entityMap.set(plain.id, {
+            id: plain.id,
+            name: plain.name,
+            typeId: type.id ?? plain.entity_type_id ?? null,
+            typeName: type.name ?? plain.entity_type_name ?? null,
+            image_data: plain.image_data ?? null,
+            image_mime_type: plain.image_mime_type ?? null,
+            matchType: 'description',
+            priority: 2,
+          })
+        }
+      })
+
+      // Add note matches (priority 3)
+      noteMatches.forEach((note) => {
+        const entity = note.entity
+        if (entity && !entityMap.has(entity.id)) {
+          const plain = entity.get({ plain: true })
+          const type = plain.entityType || {}
+          entityMap.set(plain.id, {
+            id: plain.id,
+            name: plain.name,
+            typeId: type.id ?? plain.entity_type_id ?? null,
+            typeName: type.name ?? plain.entity_type_name ?? null,
+            image_data: plain.image_data ?? null,
+            image_mime_type: plain.image_mime_type ?? null,
+            matchType: 'notes',
+            priority: 3,
+          })
+        }
+      })
+
+      // Add mention matches (priority 4)
+      if (mentionEntityIds.size > 0) {
+        const mentionEntities = await Entity.findAll({
+          where: {
+            id: { [Op.in]: Array.from(mentionEntityIds) },
+            ...entityWhere,
+          },
+          include: [{ model: EntityType, as: 'entityType', attributes: ['id', 'name'] }],
+        })
+
+        mentionEntities.forEach((entity) => {
+          if (!entityMap.has(entity.id)) {
+            const plain = entity.get({ plain: true })
+            const type = plain.entityType || {}
+            entityMap.set(plain.id, {
+              id: plain.id,
+              name: plain.name,
+              typeId: type.id ?? plain.entity_type_id ?? null,
+              typeName: type.name ?? plain.entity_type_name ?? null,
+              image_data: plain.image_data ?? null,
+              image_mime_type: plain.image_mime_type ?? null,
+              matchType: 'mentions',
+              priority: 4,
+            })
+          }
+        })
+      }
+
+      // Add relationship matches (priority 5)
+      if (relationshipEntityIds.size > 0) {
+        const relationshipEntities = await Entity.findAll({
+          where: {
+            id: { [Op.in]: Array.from(relationshipEntityIds) },
+            ...entityWhere,
+          },
+          include: [{ model: EntityType, as: 'entityType', attributes: ['id', 'name'] }],
+        })
+
+        relationshipEntities.forEach((entity) => {
+          if (!entityMap.has(entity.id)) {
+            const plain = entity.get({ plain: true })
+            const type = plain.entityType || {}
+            entityMap.set(plain.id, {
+              id: plain.id,
+              name: plain.name,
+              typeId: type.id ?? plain.entity_type_id ?? null,
+              typeName: type.name ?? plain.entity_type_name ?? null,
+              image_data: plain.image_data ?? null,
+              image_mime_type: plain.image_mime_type ?? null,
+              matchType: 'relationships',
+              priority: 5,
+            })
+          }
+        })
+      }
+
+      // Sort by priority and convert to array
+      results.entities = Array.from(entityMap.values())
+        .sort((a, b) => a.priority - b.priority)
+        .slice(offset, offset + limit)
+    }
+
+    // Search session notes if campaignId is provided
+    if (campaignId) {
+      const { ensureCampaignAccess } = await import('../controllers/sessionNoteController.js')
+      const access = await ensureCampaignAccess(campaignId, user)
+      
+      if (access.error) {
+        return res.status(access.error.status).json({
+          success: false,
+          message: access.error.message,
+        })
+      }
+
+      const campaign = access.campaign
+
+      const pattern = `%${trimmedQuery}%`
+      const dialect = SessionNote.sequelize?.getDialect?.() || ''
+      const likeOp = dialect === 'postgres' ? Op.iLike : Op.like
+
+      // Search session notes by title
+      const titleMatches = await SessionNote.findAll({
+        where: {
+          campaign_id: campaignId,
+          session_title: { [likeOp]: pattern },
+        },
+        include: [
+          { model: User, as: 'author', attributes: ['id', 'username', 'email'] },
+          { model: User, as: 'lastEditor', attributes: ['id', 'username', 'email'] },
+        ],
+        limit: 50,
+        order: [['session_date', 'DESC']],
+      })
+
+      // Search session notes by content
+      const contentMatches = await SessionNote.findAll({
+        where: {
+          campaign_id: campaignId,
+          content: { [likeOp]: pattern },
+          id: { [Op.notIn]: titleMatches.map((n) => n.id) },
+        },
+        include: [
+          { model: User, as: 'author', attributes: ['id', 'username', 'email'] },
+          { model: User, as: 'lastEditor', attributes: ['id', 'username', 'email'] },
+        ],
+        limit: 50,
+        order: [['session_date', 'DESC']],
+      })
+
+      // Search session notes by mentions
+      // Get all session notes with mentions and filter in memory
+      const allSessionNotes = await SessionNote.findAll({
+        where: {
+          campaign_id: campaignId,
+          [Op.and]: [
+            sequelize.where(
+              sequelize.fn('jsonb_array_length', sequelize.col('mentions')),
+              { [Op.gt]: 0 },
+            ),
+          ],
+        },
+        include: [
+          { model: User, as: 'author', attributes: ['id', 'username', 'email'] },
+          { model: User, as: 'lastEditor', attributes: ['id', 'username', 'email'] },
+        ],
+        limit: 500,
+      })
+
+      const noteMap = new Map()
+
+      // Add title matches (priority 1)
+      titleMatches.forEach((note) => {
+        const plain = note.get({ plain: true })
+        noteMap.set(plain.id, {
+          id: plain.id,
+          session_title: plain.session_title,
+          session_date: plain.session_date,
+          content: plain.content,
+          mentions: plain.mentions || [],
+          author: plain.author,
+          lastEditor: plain.lastEditor,
+          matchType: 'title',
+          priority: 1,
+        })
+      })
+
+      // Add content matches (priority 2)
+      contentMatches.forEach((note) => {
+        if (!noteMap.has(note.id)) {
+          const plain = note.get({ plain: true })
+          noteMap.set(plain.id, {
+            id: plain.id,
+            session_title: plain.session_title,
+            session_date: plain.session_date,
+            content: plain.content,
+            mentions: plain.mentions || [],
+            author: plain.author,
+            lastEditor: plain.lastEditor,
+            matchType: 'content',
+            priority: 2,
+          })
+        }
+      })
+
+      // Add mention matches (priority 3)
+      allSessionNotes.forEach((note) => {
+        if (!noteMap.has(note.id)) {
+          const mentions = note.mentions || []
+          const hasMatchingMention = mentions.some((mention) => {
+            const mentionName = (mention.name || '').toLowerCase()
+            return mentionName.includes(trimmedQuery)
+          })
+          if (hasMatchingMention) {
+            const plain = note.get({ plain: true })
+            noteMap.set(plain.id, {
+              id: plain.id,
+              session_title: plain.session_title,
+              session_date: plain.session_date,
+              content: plain.content,
+              mentions: plain.mentions || [],
+              author: plain.author,
+              lastEditor: plain.lastEditor,
+              matchType: 'mentions',
+              priority: 3,
+            })
+          }
+        }
+      })
+
+      results.sessionNotes = Array.from(noteMap.values())
+        .sort((a, b) => {
+          // Sort by priority first, then by date
+          if (a.priority !== b.priority) {
+            return a.priority - b.priority
+          }
+          return new Date(b.session_date) - new Date(a.session_date)
+        })
+        .slice(offset, offset + limit)
+    }
+
+    const totalEntities = results.entities.length
+    const totalSessionNotes = results.sessionNotes.length
+    const total = totalEntities + totalSessionNotes
+
+    return res.json({
+      success: true,
+      data: results,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: total > offset + limit,
+      },
+    })
+  } catch (error) {
+    console.error('❌ Global search failed:', error)
     return res.status(500).json({ success: false, message: error.message })
   }
 }
