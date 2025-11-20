@@ -6,6 +6,7 @@ import ListCollector from '../../components/ListCollector.jsx'
 import TabNav from '../../components/TabNav.jsx'
 import DrawerPanel from '../../components/DrawerPanel.jsx'
 import EntityHeader from '../../components/entities/EntityHeader.jsx'
+import EntityImportanceSelector from '../../components/entities/EntityImportanceSelector.jsx'
 import EntityPageLayout from '../../components/entities/EntityPageLayout.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import EntityImageCard from '../../components/entities/EntityImageCard.jsx'
@@ -1897,12 +1898,21 @@ export default function EntityDetailPage() {
                 isSaving={formState.isSubmitting || accessSaving}
                 isSaveDisabled={!formState.isDirty && !isAccessDirty}
               />
-              <div className="entity-page-header__tabs flex flex-wrap gap-2 mt-4">
+              <div className="entity-page-header__tabs flex flex-wrap items-center justify-between gap-4 mt-4">
                 <TabNav
                   tabs={tabItems}
                   activeTab={activeTab}
                   onChange={handleTabChange}
                 />
+                {id && (
+                  <EntityImportanceSelector
+                    entityId={id}
+                    importance={entity.importance}
+                    onUpdate={(newImportance) => {
+                      setEntity((prev) => (prev ? { ...prev, importance: newImportance } : null))
+                    }}
+                  />
+                )}
               </div>
             </div>
           </header>

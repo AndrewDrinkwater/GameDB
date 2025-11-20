@@ -2,6 +2,7 @@ import { Op } from 'sequelize'
 import {
   Campaign,
   Entity,
+  EntityCampaignImportance,
   EntityNote,
   EntityRelationship,
   EntitySecret,
@@ -513,23 +514,58 @@ const getEntityTypeFieldsCached = async (entityTypeId) => {
   return fields
 }
 
-const mapEntitiesWithDisplayMetadata = async (entities) => {
+const mapEntitiesWithDisplayMetadata = async (entities, campaignId = null) => {
   if (!Array.isArray(entities) || entities.length === 0) {
     return []
   }
 
   const labelCache = new Map()
 
+  // Fetch all importance records in one query if campaign context exists
+  let importanceMap = new Map()
+  if (campaignId) {
+    const entityIds = entities
+      .map((e) => {
+        const plain = e?.get ? e.get({ plain: true }) : e
+        return plain?.id
+      })
+      .filter(Boolean)
+    
+    if (entityIds.length > 0) {
+      const importanceRecords = await EntityCampaignImportance.findAll({
+        where: {
+          entity_id: { [Op.in]: entityIds },
+          campaign_id: campaignId,
+        },
+      })
+      importanceRecords.forEach((record) => {
+        importanceMap.set(record.entity_id, record.importance)
+      })
+    }
+  }
+
   const mapped = await Promise.all(
     entities.map(async (entity) => {
       const plain = entity?.get ? entity.get({ plain: true }) : entity
       if (!plain?.entity_type_id) {
+        // Add importance even if no entity_type_id
+        if (campaignId) {
+          plain.importance = importanceMap.get(plain.id) || null
+        } else {
+          plain.importance = null
+        }
         return plain
       }
 
       try {
         const fields = await getEntityTypeFieldsCached(plain.entity_type_id)
         if (!fields.length) {
+          // Add importance even if no fields
+          if (campaignId) {
+            plain.importance = importanceMap.get(plain.id) || null
+          } else {
+            plain.importance = null
+          }
           return plain
         }
 
@@ -539,9 +575,24 @@ const mapEntitiesWithDisplayMetadata = async (entities) => {
           labelCache,
         )
 
-        return { ...plain, metadata: metadataWithDisplayValues }
+        const result = { ...plain, metadata: metadataWithDisplayValues }
+        
+        // Add importance
+        if (campaignId) {
+          result.importance = importanceMap.get(plain.id) || null
+        } else {
+          result.importance = null
+        }
+        
+        return result
       } catch (err) {
         console.warn('⚠️ Failed to enrich entity metadata for display', err)
+        // Add importance even on error
+        if (campaignId) {
+          plain.importance = importanceMap.get(plain.id) || null
+        } else {
+          plain.importance = null
+        }
         return plain
       }
     }),
@@ -763,7 +814,7 @@ const resolveReferenceDisplayValue = (value) => {
   return null
 }
 
-export const buildEntityPayload = async (entityInstance, fieldsCache) => {
+export const buildEntityPayload = async (entityInstance, fieldsCache, campaignId = null) => {
   const plain = entityInstance.get({ plain: true })
 
   if (plain.creator) {
@@ -822,6 +873,19 @@ export const buildEntityPayload = async (entityInstance, fieldsCache) => {
       visible_by_default: isVisibleByDefault,
     }
   })
+
+  // Add importance if campaign context exists
+  if (campaignId) {
+    const importanceRecord = await EntityCampaignImportance.findOne({
+      where: {
+        entity_id: plain.id,
+        campaign_id: campaignId,
+      },
+    })
+    plain.importance = importanceRecord?.importance || null
+  } else {
+    plain.importance = null
+  }
 
   return plain
 }
@@ -1020,7 +1084,7 @@ export const createEntityResponse = async ({
     ],
   })
 
-  const payload = await buildEntityPayload(fullEntity, fields)
+  const payload = await buildEntityPayload(fullEntity, fields, campaignContextId)
 
   return { status: 201, body: { success: true, data: payload } }
 }
@@ -1081,7 +1145,58 @@ export const listWorldEntities = async (req, res) => {
       return res.json({ success: true, data: [] })
     }
 
-    const payload = await mapEntitiesWithDisplayMetadata(filteredEntities)
+    const campaignId = req.campaignContextId || null
+    
+    // Filter by importance if requested and campaign context exists
+    let importanceFiltered = filteredEntities
+    const importanceFilter = req.query?.importance
+    if (campaignId && importanceFilter) {
+      const validImportanceValues = ['critical', 'important', 'mundane']
+      const filterValues = Array.isArray(importanceFilter)
+        ? importanceFilter.filter((v) => v === null || v === 'null' || validImportanceValues.includes(v))
+        : importanceFilter === null || importanceFilter === 'null' || validImportanceValues.includes(importanceFilter)
+          ? [importanceFilter]
+          : []
+      
+      if (filterValues.length > 0) {
+        const entityIds = filteredEntities.map((e) => e.id)
+        const hasNullFilter = filterValues.some((v) => v === null || v === 'null')
+        const nonNullValues = filterValues.filter((v) => v !== null && v !== 'null')
+        
+        if (nonNullValues.length > 0) {
+          const importanceRecords = await EntityCampaignImportance.findAll({
+            where: {
+              entity_id: { [Op.in]: entityIds },
+              campaign_id: campaignId,
+              importance: { [Op.in]: nonNullValues },
+            },
+          })
+          const importantEntityIds = new Set(importanceRecords.map((r) => r.entity_id))
+          
+          if (hasNullFilter) {
+            // Include entities with specified importance OR entities without importance set
+            importanceFiltered = filteredEntities.filter(
+              (e) => importantEntityIds.has(e.id) || !importantEntityIds.has(e.id)
+            )
+          } else {
+            // Only include entities with specified importance
+            importanceFiltered = filteredEntities.filter((e) => importantEntityIds.has(e.id))
+          }
+        } else if (hasNullFilter) {
+          // Filter for entities without importance only
+          const importanceRecords = await EntityCampaignImportance.findAll({
+            where: {
+              entity_id: { [Op.in]: entityIds },
+              campaign_id: campaignId,
+            },
+          })
+          const importantEntityIds = new Set(importanceRecords.map((r) => r.entity_id))
+          importanceFiltered = filteredEntities.filter((e) => !importantEntityIds.has(e.id))
+        }
+      }
+    }
+    
+    const payload = await mapEntitiesWithDisplayMetadata(importanceFiltered, campaignId)
 
     res.json({ success: true, data: payload })
   } catch (error) {
@@ -1108,7 +1223,8 @@ export const listUnassignedEntities = async (req, res) => {
       return res.json({ success: true, data: [] })
     }
 
-    const payload = await mapEntitiesWithDisplayMetadata(entities)
+    // Unassigned entities don't have campaign context
+    const payload = await mapEntitiesWithDisplayMetadata(entities, null)
 
     res.json({ success: true, data: payload })
   } catch (error) {
@@ -1956,7 +2072,8 @@ export const updateEntity = async (req, res) => {
       ],
     })
 
-    const payload = await buildEntityPayload(entity, fields)
+    const campaignId = req.campaignContextId || null
+    const payload = await buildEntityPayload(entity, fields, campaignId)
 
     res.json({ success: true, data: payload })
   } catch (error) {
@@ -2047,7 +2164,8 @@ export const getEntityById = async (req, res) => {
       isAdmin: access.isAdmin,
     })
 
-    const payload = await buildEntityPayload(entity)
+    const campaignId = req.campaignContextId || null
+    const payload = await buildEntityPayload(entity, null, campaignId)
     payload.secrets = secrets.map((secret) =>
       formatSecretRecord(secret, canManageSecrets)
     )
@@ -2064,6 +2182,111 @@ export const getEntityById = async (req, res) => {
       isCreator,
       hasAccess: access.hasAccess,
     }
+
+    res.json({ success: true, data: payload })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+export const updateEntityImportance = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { importance } = req.body
+    const { user } = req
+    const campaignId = req.campaignContextId
+
+    if (!campaignId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Campaign context is required to set entity importance',
+      })
+    }
+
+    // Validate importance value
+    const validImportanceValues = ['critical', 'important', 'mundane', null]
+    if (importance !== null && importance !== undefined && !validImportanceValues.includes(importance)) {
+      return res.status(400).json({
+        success: false,
+        message: 'importance must be one of: critical, important, mundane, or null',
+      })
+    }
+
+    const entity = await Entity.findByPk(id, {
+      include: [
+        { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
+        { model: World, as: 'world', attributes: ['id', 'name', 'created_by'] },
+      ],
+    })
+
+    if (!entity) {
+      return res.status(404).json({ success: false, message: 'Entity not found' })
+    }
+
+    const access = await checkWorldAccess(entity.world_id, user)
+
+    if (!access.world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    const readContext = await buildEntityReadContext({
+      worldId: entity.world_id,
+      user,
+      worldAccess: access,
+      campaignContextId: campaignId,
+    })
+
+    if (!canUserWriteEntity(entity, readContext)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    // Verify campaign exists and user has access
+    const campaign = await Campaign.findByPk(campaignId)
+    if (!campaign) {
+      return res.status(404).json({ success: false, message: 'Campaign not found' })
+    }
+
+    if (campaign.world_id !== entity.world_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Campaign does not belong to the same world as the entity',
+      })
+    }
+
+    // Upsert importance record
+    const [importanceRecord, created] = await EntityCampaignImportance.findOrCreate({
+      where: {
+        entity_id: id,
+        campaign_id: campaignId,
+      },
+      defaults: {
+        entity_id: id,
+        campaign_id: campaignId,
+        importance: importance || null,
+      },
+    })
+
+    if (!created) {
+      if (importance === null || importance === undefined) {
+        // Delete the record if setting to null
+        await importanceRecord.destroy()
+      } else {
+        // Update existing record
+        await importanceRecord.update({ importance })
+      }
+    }
+
+    // Reload entity and return updated payload
+    await entity.reload({
+      include: [
+        { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
+        { model: World, as: 'world', attributes: ['id', 'name', 'created_by'] },
+        { association: 'creator', attributes: ['id', 'username', 'email'] },
+      ],
+    })
+
+    const fields = await getEntityTypeFieldsCached(entity.entity_type_id)
+    const payload = await buildEntityPayload(entity, fields, campaignId)
 
     res.json({ success: true, data: payload })
   } catch (error) {

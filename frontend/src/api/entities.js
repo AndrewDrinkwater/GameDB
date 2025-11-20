@@ -19,7 +19,23 @@ export const getWorldEntities = (worldId, params = {}) => {
     return Promise.reject(new Error('worldId is required to load entities'))
   }
 
-  const queryString = buildCharacterContextQuery(params)
+  const searchParams = new URLSearchParams()
+  const characterQuery = buildCharacterContextQuery(params)
+  if (characterQuery) {
+    searchParams.set('viewAsCharacterId', new URLSearchParams(characterQuery).get('viewAsCharacterId'))
+  }
+  
+  // Add importance filter if provided
+  if (params.importance !== undefined && params.importance !== null) {
+    const importanceValues = Array.isArray(params.importance) ? params.importance : [params.importance]
+    importanceValues.forEach((value) => {
+      if (value !== null && value !== undefined) {
+        searchParams.append('importance[]', value)
+      }
+    })
+  }
+  
+  const queryString = searchParams.toString()
   const suffix = queryString ? `?${queryString}` : ''
   return api.get(`/worlds/${worldId}/entities${suffix}`)
 }
@@ -89,6 +105,9 @@ export const globalSearch = ({ query, campaignId, worldId, limit = 20, offset = 
 export const createEntity = (data) => api.post('/entities', data)
 
 export const updateEntity = (id, data) => api.patch(`/entities/${id}`, data)
+
+export const updateEntityImportance = (id, importance) =>
+  api.patch(`/entities/${id}/importance`, { importance })
 
 export const deleteEntity = (id) => api.delete(`/entities/${id}`)
 

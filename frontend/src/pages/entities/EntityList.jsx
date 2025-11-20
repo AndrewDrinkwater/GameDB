@@ -43,6 +43,7 @@ const MOBILE_COLUMN_KEYS = ['name', 'description']
 const DEFAULT_CORE_COLUMN_OPTIONS = [
   { key: 'name', label: 'Name', type: 'core' },
   { key: 'type', label: 'Type', type: 'core' },
+  { key: 'importance', label: 'Importance', type: 'core' },
   { key: 'visibility', label: 'Visibility', type: 'core' },
   { key: 'createdAt', label: 'Created', type: 'core' },
   { key: 'description', label: 'Description', type: 'core' },
@@ -243,6 +244,7 @@ export default function EntityList() {
     y: 0,
   })
   const [viewingUnassigned, setViewingUnassigned] = useState(false)
+  const [selectedImportanceFilters, setSelectedImportanceFilters] = useState([])
 
   const currentSearch = searchParams.toString()
 
@@ -398,6 +400,7 @@ export default function EntityList() {
       try {
         const response = await getWorldEntities(worldToFetch, {
           viewAsCharacterId: viewAsId,
+          importance: selectedImportanceFilters.length > 0 ? selectedImportanceFilters : undefined,
         })
         const list = Array.isArray(response)
           ? response
@@ -435,7 +438,7 @@ export default function EntityList() {
     }
 
     loadEntities(worldId, { viewAsCharacterId })
-  }, [worldId, token, viewingUnassigned, loadEntities, contextKey, viewAsCharacterId])
+  }, [worldId, token, viewingUnassigned, loadEntities, contextKey, viewAsCharacterId, selectedImportanceFilters])
 
   useEffect(() => {
     if (viewingUnassigned) {
@@ -605,13 +608,27 @@ export default function EntityList() {
   }, [selectedFilter, token, sessionReady])
 
   const filteredEntities = useMemo(() => {
-    if (!selectedFilter) return entities
-    return entities.filter((entity) => {
-      const typeId =
-        entity.entity_type_id || entity.entityType?.id || entity.entity_type?.id || ''
-      return typeId === selectedFilter
-    })
-  }, [entities, selectedFilter])
+    let filtered = entities
+
+    // Filter by entity type
+    if (selectedFilter) {
+      filtered = filtered.filter((entity) => {
+        const typeId =
+          entity.entity_type_id || entity.entityType?.id || entity.entity_type?.id || ''
+        return typeId === selectedFilter
+      })
+    }
+
+    // Filter by importance (client-side filtering as backup, server-side is primary)
+    if (selectedImportanceFilters.length > 0 && selectedCampaignId) {
+      filtered = filtered.filter((entity) => {
+        const entityImportance = entity.importance || null
+        return selectedImportanceFilters.includes(entityImportance)
+      })
+    }
+
+    return filtered
+  }, [entities, selectedFilter, selectedImportanceFilters, selectedCampaignId])
 
   const activeTypeName = useMemo(() => {
     if (!selectedFilter) return ''
@@ -1009,8 +1026,22 @@ export default function EntityList() {
 
     switch (column.key) {
       case 'name':
+        const importance = selectedCampaignId ? entity.importance : null
+        const importanceIcons = {
+          critical: '🔴',
+          important: '🟠',
+          mundane: '⚪',
+        }
         return (
           <span className="entity-link-with-preview">
+            {importance && (
+              <span
+                className="entity-importance-indicator"
+                title={`Importance: ${importance}`}
+              >
+                {importanceIcons[importance] || '•'}
+              </span>
+            )}
             <Link
               to={`/entities/${entity.id}`}
               state={{
@@ -1042,6 +1073,29 @@ export default function EntityList() {
         return formatDate(entity.createdAt || entity.created_at)
       case 'description':
         return entity.description ? entity.description : '—'
+      case 'importance': {
+        if (!selectedCampaignId) return '—'
+        const importance = entity.importance
+        if (!importance) return '—'
+        const importanceLabels = {
+          critical: 'Critical',
+          important: 'Important',
+          mundane: 'Mundane',
+        }
+        const importanceColors = {
+          critical: '#dc2626',
+          important: '#ea580c',
+          mundane: '#6b7280',
+        }
+        return (
+          <span
+            className="importance-badge"
+            style={{ '--importance-color': importanceColors[importance] }}
+          >
+            {importanceLabels[importance] || importance}
+          </span>
+        )
+      }
       default: {
         if (column.key.startsWith('metadata.')) {
           const key = column.key.replace(/^metadata\./, '')
@@ -1206,6 +1260,40 @@ export default function EntityList() {
             placeholder="Search entities..."
             ariaLabel="Search entities"
           />
+          {selectedCampaignId && (
+            <div className="entities-importance-filters">
+              {['critical', 'important', 'mundane'].map((level) => {
+                const isSelected = selectedImportanceFilters.includes(level)
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    className={`btn secondary compact importance-filter importance-${level}${isSelected ? ' is-active' : ''}`}
+                    onClick={() => {
+                      setSelectedImportanceFilters((prev) =>
+                        isSelected
+                          ? prev.filter((f) => f !== level)
+                          : [...prev, level]
+                      )
+                    }}
+                    title={`Filter by ${level} importance`}
+                  >
+                    {level.charAt(0).toUpperCase() + level.slice(1)}
+                  </button>
+                )
+              })}
+              {selectedImportanceFilters.length > 0 && (
+                <button
+                  type="button"
+                  className="btn secondary compact importance-filter-clear"
+                  onClick={() => setSelectedImportanceFilters([])}
+                  title="Clear importance filters"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          )}
           <button
             type="button"
             className={`btn secondary compact${dataExplorer.filterActive ? ' is-active' : ''}`}

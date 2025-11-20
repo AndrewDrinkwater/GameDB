@@ -5340,6 +5340,59 @@ body.theme-dark .card-placeholder {
   flex-wrap: wrap;
 }
 
+.entities-importance-filters {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.importance-filter {
+  font-size: 0.8125rem;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: all 150ms ease;
+}
+
+.importance-filter.importance-critical.is-active {
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #dc2626;
+}
+
+.importance-filter.importance-important.is-active {
+  background: #ea580c;
+  color: #ffffff;
+  border-color: #ea580c;
+}
+
+.importance-filter.importance-mundane.is-active {
+  background: #6b7280;
+  color: #ffffff;
+  border-color: #6b7280;
+}
+
+.importance-filter-clear {
+  padding: 6px 8px;
+  min-width: auto;
+}
+
+.entity-importance-indicator {
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 0.875rem;
+  vertical-align: middle;
+}
+
+.importance-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--importance-color, #6b7280);
+  color: #ffffff;
+}
+
 .entities-header h1 {
   margin: 0;
   font-size: 1.6rem;

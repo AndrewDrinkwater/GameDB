@@ -16,6 +16,7 @@ import {
   searchEntities,
   updateEntitySecret,
   updateEntity,
+  updateEntityImportance,
   listUnassignedEntities,
   resolveEntityCreationAccess,
 } from '../controllers/entityController.js'
@@ -504,6 +505,7 @@ router.post('/', createEntity)
 router.get('/search', searchEntities)
 router.get('/global-search', globalSearch)
 router.get('/:id', getEntityById)
+router.patch('/:id/importance', updateEntityImportance)
 router.patch('/:id', updateEntity)
 router.delete('/:id', deleteEntity)
 router.get('/:id/secrets', getEntitySecrets)

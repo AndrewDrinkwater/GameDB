@@ -61,34 +61,28 @@ export async function up(queryInterface, Sequelize) {
     },
   })
 
-  // Create indexes for efficient queries
-  await queryInterface.addIndex('notifications', ['user_id'], {
-    name: 'idx_notifications_user_id',
-  })
-
-  await queryInterface.addIndex('notifications', ['read'], {
-    name: 'idx_notifications_read',
-  })
-
-  await queryInterface.addIndex('notifications', ['created_at'], {
-    name: 'idx_notifications_created_at',
-  })
-
-  await queryInterface.addIndex('notifications', ['campaign_id'], {
-    name: 'idx_notifications_campaign_id',
-  })
-
-  await queryInterface.addIndex('notifications', ['type'], {
-    name: 'idx_notifications_type',
-  })
-
-  await queryInterface.addIndex('notifications', ['user_id', 'read'], {
-    name: 'idx_notifications_user_read',
-  })
-
-  await queryInterface.addIndex('notifications', ['user_id', 'campaign_id'], {
-    name: 'idx_notifications_user_campaign',
-  })
+  // Ensure indexes exist without failing if they were created previously
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "idx_notifications_user_id" ON "notifications" ("user_id")'
+  )
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "idx_notifications_read" ON "notifications" ("read")'
+  )
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "idx_notifications_created_at" ON "notifications" ("created_at")'
+  )
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "idx_notifications_campaign_id" ON "notifications" ("campaign_id")'
+  )
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "idx_notifications_type" ON "notifications" ("type")'
+  )
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "idx_notifications_user_read" ON "notifications" ("user_id", "read")'
+  )
+  await queryInterface.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "idx_notifications_user_campaign" ON "notifications" ("user_id", "campaign_id")'
+  )
 }
 
 export async function down(queryInterface, Sequelize) {

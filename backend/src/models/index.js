@@ -13,6 +13,7 @@ import EntityTypeModel from './entityType.js'
 import EntitySecretModel from './entitySecret.js'
 import EntitySecretPermissionModel from './entitySecretPermission.js'
 import EntityNoteModel from './entityNote.js'
+import EntityCampaignImportanceModel from './entityCampaignImportance.js'
 import SessionNoteModel from './sessionNote.js'
 import EntityRelationshipTypeModel from './entityRelationshipType.js'
 import EntityRelationshipModel from './entityRelationship.js'
@@ -45,6 +46,7 @@ export const Entity = EntityModel(sequelize, DataTypes)
 export const EntitySecret = EntitySecretModel(sequelize, DataTypes)
 export const EntitySecretPermission = EntitySecretPermissionModel(sequelize, DataTypes)
 export const EntityNote = EntityNoteModel(sequelize, DataTypes)
+export const EntityCampaignImportance = EntityCampaignImportanceModel(sequelize, DataTypes)
 export const SessionNote = SessionNoteModel(sequelize, DataTypes)
 export const EntityRelationshipType = EntityRelationshipTypeModel(sequelize, DataTypes)
 export const EntityRelationship = EntityRelationshipModel(sequelize, DataTypes)
@@ -86,6 +88,8 @@ if (EntitySecretPermission.associate)
   EntitySecretPermission.associate({ EntitySecret, User, Campaign })
 if (EntityNote.associate)
   EntityNote.associate({ Entity, User, Character, Campaign })
+if (EntityCampaignImportance.associate)
+  EntityCampaignImportance.associate({ Entity, Campaign })
 if (SessionNote.associate) SessionNote.associate({ Campaign, User })
 if (EntityRelationshipType.associate)
   EntityRelationshipType.associate({
@@ -138,6 +142,7 @@ export default {
   EntitySecret,
   EntitySecretPermission,
   EntityNote,
+  EntityCampaignImportance,
   SessionNote,
   EntityRelationshipType,
   EntityRelationship,
