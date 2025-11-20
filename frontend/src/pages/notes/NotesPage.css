@@ -1102,7 +1102,7 @@
 }
 
 body.theme-dark .notes-page {
-  color: #e2e8f0;
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .notes-title p,
@@ -1111,80 +1111,80 @@ body.theme-dark .note-entity-meta span,
 body.theme-dark .note-details,
 body.theme-dark .notes-helper,
 body.theme-dark .notes-empty {
-  color: #cbd5f5;
+  color: var(--color-text-secondary);
 }
 
 body.theme-dark .notes-filter-group label {
-  color: #cbd5f5;
+  color: var(--color-text-secondary);
 }
 
 body.theme-dark .notes-meta strong {
-  color: #f8fafc;
+  color: var(--color-text-inverse);
 }
 
 body.theme-dark .notes-empty strong {
-  color: #e2e8f0;
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .notes-action-button {
-  background: #1e3a8a;
-  border-color: rgba(148, 163, 184, 0.25);
+  background: var(--color-btn-primary);
+  border-color: var(--color-border-subtle);
 }
 
 body.theme-dark .notes-filter-group select,
 body.theme-dark .notes-filter-group input {
-  background: rgba(15, 23, 42, 0.85);
-  border-color: rgba(148, 163, 184, 0.35);
-  color: #e2e8f0;
+  background: var(--color-bg-surface);
+  border-color: var(--color-border-subtle);
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .note-card {
-  background: rgba(15, 23, 42, 0.85);
-  border-color: rgba(148, 163, 184, 0.2);
-  box-shadow: 0 18px 36px rgba(2, 6, 23, 0.45);
+  background: var(--color-bg-surface);
+  border-color: var(--color-border-subtle);
+  box-shadow: var(--shadow-xl);
 }
 
 body.theme-dark .note-content {
-  color: #e2e8f0;
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .notes-error {
-  background: rgba(248, 113, 113, 0.16);
-  color: #fecaca;
-  border-color: rgba(239, 68, 68, 0.45);
+  background: var(--color-error-light);
+  color: var(--color-error-hover);
+  border-color: var(--color-error);
 }
 
 body.theme-dark .session-notes-autosave {
-  background: rgba(148, 163, 184, 0.18);
-  color: #e2e8f0;
+  background: var(--color-bg-surface-hover);
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .session-notes-autosave.status-saving {
-  background: rgba(99, 102, 241, 0.22);
-  color: #c7d2fe;
+  background: var(--color-accent-secondary);
+  color: var(--color-accent-secondary-hover);
 }
 
 body.theme-dark .session-notes-autosave.status-saved {
-  background: rgba(34, 197, 94, 0.18);
-  color: #bbf7d0;
+  background: var(--color-success-light);
+  color: var(--color-success);
 }
 
 body.theme-dark .session-notes-autosave.status-error {
-  background: rgba(239, 68, 68, 0.22);
-  color: #fecaca;
+  background: var(--color-error-light);
+  color: var(--color-error-hover);
 }
 
 body.theme-dark .session-notes-sidebar,
 body.theme-dark .session-notes-panel {
-  background: rgba(15, 23, 42, 0.85);
-  border-color: rgba(148, 163, 184, 0.25);
-  box-shadow: 0 18px 36px rgba(2, 6, 23, 0.55);
+  background: var(--color-bg-surface);
+  border-color: var(--color-border-subtle);
+  box-shadow: var(--shadow-xl);
 }
 
 body.theme-dark .session-notes-search {
-  background: rgba(30, 41, 59, 0.9);
-  border-color: rgba(148, 163, 184, 0.35);
-  color: #cbd5f5;
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border-subtle);
+  color: var(--color-text-secondary);
 }
 
 body.theme-dark .session-notes-search input {
@@ -1192,112 +1192,112 @@ body.theme-dark .session-notes-search input {
 }
 
 body.theme-dark .session-notes-loading {
-  color: #cbd5f5;
+  color: var(--color-text-secondary);
 }
 
 body.theme-dark .session-notes-item-button {
-  background: rgba(15, 23, 42, 0.6);
-  color: #e2e8f0;
+  background: var(--color-bg-header);
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .session-notes-new-button {
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
-  border-color: rgba(79, 70, 229, 0.6);
-  color: #fff;
-  box-shadow: 0 4px 12px -4px rgba(79, 70, 229, 0.5);
+  background: linear-gradient(135deg, var(--color-accent-secondary), var(--color-accent-secondary-hover));
+  border-color: var(--color-border-default);
+  color: var(--color-text-inverse);
+  box-shadow: var(--shadow-md);
 }
 
 body.theme-dark .session-notes-new-button:hover:not(:disabled) {
-  background: linear-gradient(135deg, #4338ca, #6d28d9);
-  border-color: rgba(79, 70, 229, 0.7);
-  box-shadow: 0 6px 16px -4px rgba(79, 70, 229, 0.6);
+  background: linear-gradient(135deg, var(--color-accent-secondary-hover), var(--color-accent-secondary));
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-lg);
 }
 
 body.theme-dark .session-notes-item-button:hover {
-  background: rgba(59, 130, 246, 0.25);
-  border-color: rgba(148, 163, 184, 0.45);
+  background: var(--color-accent-primary-light);
+  border-color: var(--color-border-default);
 }
 
 body.theme-dark .session-notes-item.active .session-notes-item-button {
-  background: rgba(59, 130, 246, 0.32);
-  color: #cbd5f5;
+  background: var(--color-accent-primary);
+  color: var(--color-text-inverse);
 }
 
 body.theme-dark .session-note-card-date {
-  color: #cbd5f5;
+  color: var(--color-text-secondary);
 }
 
 body.theme-dark .session-note-heading h2 {
-  color: #e2e8f0;
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .session-note-heading span,
 body.theme-dark .session-note-view-meta,
 body.theme-dark .session-note-meta {
-  color: #cbd5f5;
+  color: var(--color-text-secondary);
 }
 
 body.theme-dark .session-note-view {
-  color: #e2e8f0;
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .session-note-view-empty {
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 
 body.theme-dark .session-note-action {
-  background: rgba(30, 41, 59, 0.85);
-  border-color: rgba(148, 163, 184, 0.35);
-  color: #e2e8f0;
+  background: var(--color-bg-surface);
+  border-color: var(--color-border-subtle);
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .session-note-action.primary {
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
-  color: #fff;
-  border-color: rgba(79, 70, 229, 0.6);
-  box-shadow: 0 4px 12px -4px rgba(79, 70, 229, 0.5);
+  background: linear-gradient(135deg, var(--color-accent-secondary), var(--color-accent-secondary-hover));
+  color: var(--color-text-inverse);
+  border-color: var(--color-border-default);
+  box-shadow: var(--shadow-md);
 }
 
 body.theme-dark .session-note-action.danger {
-  background: rgba(248, 113, 113, 0.25);
-  color: #fecaca;
-  border-color: rgba(248, 113, 113, 0.45);
+  background: var(--color-btn-danger);
+  color: var(--color-btn-danger-text);
+  border-color: var(--color-error);
 }
 
 body.theme-dark .session-note-error {
-  background: rgba(248, 113, 113, 0.22);
-  color: #fecaca;
-  border-color: rgba(248, 113, 113, 0.45);
+  background: var(--color-error-light);
+  color: var(--color-error-hover);
+  border-color: var(--color-error);
 }
 
 body.theme-dark .session-note-fields label {
-  color: #e2e8f0;
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .session-note-fields input,
 body.theme-dark .session-note-fields textarea {
-  background: rgba(15, 23, 42, 0.9);
-  border-color: rgba(148, 163, 184, 0.35);
-  color: #e2e8f0;
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border-subtle);
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .session-note-editor-field {
-  background: rgba(15, 23, 42, 0.9);
-  border-color: rgba(148, 163, 184, 0.4);
-  box-shadow: inset 0 1px 3px rgba(2, 6, 23, 0.85);
-  color: #e2e8f0;
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border-subtle);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .session-note-textarea {
   background: transparent;
-  color: #e2e8f0;
-  caret-color: #e2e8f0;
+  color: var(--color-text-primary);
+  caret-color: var(--color-text-primary);
 }
 
 body.theme-dark .session-note-mentions__control,
 body.theme-dark .session-note-mentions__input,
 body.theme-dark .session-note-mentions__highlighter {
-  color: #e2e8f0;
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .session-note-mentions__input {
@@ -1305,53 +1305,54 @@ body.theme-dark .session-note-mentions__input {
 }
 
 body.theme-dark .session-note-mentions__highlighter {
-  color: rgba(226, 232, 240, 0.9);
+  color: var(--color-text-primary);
+  opacity: 0.9;
 }
 
 body.theme-dark .session-note-textarea::placeholder {
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 
 body.theme-dark .session-note-summary {
-  background: rgba(148, 163, 184, 0.1);
-  border-color: rgba(148, 163, 184, 0.35);
+  background: var(--color-bg-surface-hover);
+  border-color: var(--color-border-subtle);
 }
 
 body.theme-dark .session-note-summary-title {
-  color: #e2e8f0;
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .session-note-summary-date,
 body.theme-dark .session-note-summary-updated {
-  color: #cbd5f5;
+  color: var(--color-text-secondary);
 }
 
 body.theme-dark .session-note-mentions__suggestions {
-  background: rgba(15, 23, 42, 0.95);
-  border-color: rgba(148, 163, 184, 0.35);
-  box-shadow: 0 12px 24px -18px rgba(8, 15, 30, 0.75);
+  background: var(--color-bg-overlay);
+  border-color: var(--color-border-subtle);
+  box-shadow: var(--shadow-xl);
 }
 
 body.theme-dark .session-note-mentions__suggestions__item {
-  border-color: rgba(148, 163, 184, 0.2);
+  border-color: var(--color-border-subtle);
 }
 
 body.theme-dark .session-note-mentions__suggestions__item--focused {
-  background: rgba(99, 102, 241, 0.22);
-  color: #c7d2fe;
+  background: var(--color-accent-secondary);
+  color: var(--color-accent-secondary-hover);
 }
 
 body.theme-dark .session-note-preview h3,
 body.theme-dark .session-note-preview-content {
-  color: #e2e8f0;
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .session-note-mention {
-  background: rgba(99, 102, 241, 0.24);
-  color: #c7d2fe;
+  background: var(--color-accent-secondary);
+  color: var(--color-accent-secondary-hover);
 }
 
 body.theme-dark .session-note-mentions .mention {
-  background: rgba(99, 102, 241, 0.24);
-  color: #c7d2fe;
+  background: var(--color-accent-secondary);
+  color: var(--color-accent-secondary-hover);
 }

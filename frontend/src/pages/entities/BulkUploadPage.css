@@ -177,44 +177,44 @@ body.theme-dark .bulk-upload-page {
 }
 
 body.theme-dark .bulk-upload-page__status {
-  background: rgba(34, 197, 94, 0.18);
-  color: #86efac;
-  border-color: rgba(34, 197, 94, 0.35);
+  background: var(--color-success-light);
+  color: var(--color-success);
+  border-color: var(--color-success);
 }
 
 body.theme-dark .bulk-upload-page__status--error {
-  background: rgba(248, 113, 113, 0.18);
-  color: #fecaca;
-  border-color: rgba(248, 113, 113, 0.45);
+  background: var(--color-error-light);
+  color: var(--color-error-hover);
+  border-color: var(--color-error);
 }
 
 body.theme-dark .entity-type-select {
-  background: rgba(15, 23, 42, 0.85);
-  border-color: rgba(148, 163, 184, 0.35);
-  color: #f8fafc;
-  box-shadow: inset 0 1px 2px rgba(2, 6, 23, 0.6);
+  background: var(--color-bg-surface);
+  border-color: var(--color-border-subtle);
+  color: var(--color-text-primary);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 body.theme-dark .secondary-action {
-  background: rgba(99, 102, 241, 0.24);
-  color: var(--bulk-upload-accent-strong);
-  box-shadow: 0 12px 24px -20px rgba(99, 102, 241, 0.75);
+  background: var(--color-accent-secondary);
+  color: var(--color-accent-secondary-hover);
+  box-shadow: var(--shadow-md);
 }
 
 body.theme-dark .file-input label {
-  background: rgba(15, 23, 42, 0.85);
-  border-color: rgba(99, 102, 241, 0.45);
-  color: #e2e8f0;
+  background: var(--color-bg-surface);
+  border-color: var(--color-accent-secondary);
+  color: var(--color-text-primary);
 }
 
 body.theme-dark .file-input label:hover {
-  background: rgba(99, 102, 241, 0.24);
-  border-color: rgba(129, 140, 248, 0.65);
+  background: var(--color-accent-secondary);
+  border-color: var(--color-accent-secondary-hover);
 }
 
 body.theme-dark .selected-file-banner {
-  background: rgba(99, 102, 241, 0.24);
-  color: #c7d2fe;
+  background: var(--color-accent-secondary);
+  color: var(--color-accent-secondary-hover);
 }
 
 @media (min-width: 1024px) {
