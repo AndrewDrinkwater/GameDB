@@ -1110,14 +1110,6 @@ export default function EntityList() {
         }
         return (
           <span className="entity-link-with-preview">
-            {importance && (
-              <span
-                className="entity-importance-indicator"
-                title={`Importance: ${importance}`}
-              >
-                {importanceIcons[importance] || '•'}
-              </span>
-            )}
             <Link
               to={`/entities/${entity.id}`}
               state={{
@@ -1132,6 +1124,14 @@ export default function EntityList() {
             {entity.id ? (
               <EntityInfoPreview entityId={entity.id} entityName={entity.name || 'entity'} />
             ) : null}
+            {importance && (
+              <span
+                className="entity-importance-indicator"
+                title={`Importance: ${importance}`}
+              >
+                {importanceIcons[importance] || '•'}
+              </span>
+            )}
           </span>
         )
       case 'type':
@@ -1299,23 +1299,31 @@ export default function EntityList() {
   return (
     <section className={pageClassName}>
       <div className="entities-header">
-        <div>
-          <h1>Entities</h1>
-          {viewingUnassigned ? (
-            <p className="entities-subtitle">
-              Showing entities without a world assignment.
-            </p>
-          ) : hasWorldContext ? (
-            <p className="entities-subtitle">{entitySubtitle}</p>
-          ) : (
-            <p className="entities-subtitle">
-              Select a campaign or world you own to choose a world context.
-            </p>
-          )}
-          {/* Filter chip removed for streamlined type-specific lists */}
-        </div>
-        <div className="entities-controls">
-          {isSystemAdmin && (
+        <div className="entities-header-top">
+          <div className="entities-header-left">
+            <h1>Entities</h1>
+            {viewingUnassigned ? (
+              <p className="entities-subtitle">
+                Showing entities without a world assignment.
+              </p>
+            ) : hasWorldContext ? (
+              <p className="entities-subtitle">{entitySubtitle}</p>
+            ) : (
+              <p className="entities-subtitle">
+                Select a campaign or world you own to choose a world context.
+              </p>
+            )}
+            {/* Filter chip removed for streamlined type-specific lists */}
+          </div>
+        <div className="entities-header-controls-row">
+          <SearchBar
+            value={dataExplorer.searchTerm}
+            onChange={dataExplorer.setSearchTerm}
+            placeholder="Search entities..."
+            ariaLabel="Search entities"
+          />
+          <div className="entities-controls">
+            {isSystemAdmin && (
             <button
               type="button"
               className={`btn secondary compact${viewingUnassigned ? ' is-active' : ''}`}
@@ -1330,12 +1338,6 @@ export default function EntityList() {
               No World
             </button>
           )}
-          <SearchBar
-            value={dataExplorer.searchTerm}
-            onChange={dataExplorer.setSearchTerm}
-            placeholder="Search entities..."
-            ariaLabel="Search entities"
-          />
           {selectedCampaignId && (
             <div className="entities-importance-filters">
               {['critical', 'important', 'medium'].map((level) => {
@@ -1370,23 +1372,33 @@ export default function EntityList() {
               )}
             </div>
           )}
-          <button
-            type="button"
-            className={`btn secondary compact${dataExplorer.filterActive ? ' is-active' : ''}`}
-            onClick={() => setFilterModalOpen(true)}
-          >
-            <Filter size={16} /> Filters
-          </button>
+          <div className="entities-filters-refresh-group">
+            <button
+              type="button"
+              className={`btn secondary compact${dataExplorer.filterActive ? ' is-active' : ''}`}
+              onClick={() => setFilterModalOpen(true)}
+            >
+              <Filter size={16} /> Filters
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              title="Refresh entities"
+              onClick={handleRefresh}
+              disabled={loadingEntities || (!viewingUnassigned && !worldId)}
+            >
+              <RotateCcw size={16} />
+            </button>
+          </div>
           {!isMobile && filterActive && (
             <div className="entities-column-menu-wrapper">
               <button
                 type="button"
-                className="btn secondary"
+                className="btn secondary compact"
                 aria-haspopup="dialog"
                 onClick={handleOpenColumnMenu}
               >
-                <SlidersHorizontal size={16} />
-                <span className="btn-label">Columns</span>
+                <SlidersHorizontal size={16} /> Columns
               </button>
               {columnMenuOpen && (
                 <div
@@ -1586,15 +1598,7 @@ export default function EntityList() {
               )}
             </div>
           )}
-          <button
-            type="button"
-            className="icon-btn"
-            title="Refresh entities"
-            onClick={handleRefresh}
-            disabled={loadingEntities || (!viewingUnassigned && !worldId)}
-          >
-            <RotateCcw size={16} />
-          </button>
+          </div>
           <button
             type="button"
             className="btn submit"
@@ -1603,6 +1607,7 @@ export default function EntityList() {
           >
             <Plus size={18} /> Add Entity
           </button>
+        </div>
         </div>
       </div>
 
