@@ -47,7 +47,7 @@ const findCampaignMembership = async (campaignId, userId) => {
   return membership.get({ plain: true })
 }
 
-const ensureCampaignAccess = async (campaignId, user) => {
+export const ensureCampaignAccess = async (campaignId, user) => {
   const resolvedCampaignId = normaliseId(campaignId)
   if (!resolvedCampaignId) {
     return {

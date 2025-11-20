@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { User, Menu, LogOut, Moon, Sun, Clock, Layers, X, Lock } from 'lucide-react'
+import { User, Menu, LogOut, Moon, Sun, Clock, Layers, X, Lock, Search } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
 import { useTheme } from '../context/ThemeContext.jsx'
@@ -8,6 +8,7 @@ import useIsMobile from '../hooks/useIsMobile.js'
 import { fetchCharacters } from '../api/characters.js'
 import HistoryTab from './history/HistoryTab.jsx'
 import NotificationWidget from './notifications/NotificationWidget.jsx'
+import GlobalSearch from './GlobalSearch.jsx'
 
 export default function HeaderBar({ onMenuToggle }) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -57,6 +58,7 @@ export default function HeaderBar({ onMenuToggle }) {
   const [viewAsError, setViewAsError] = useState('')
   const [contextPanelOpen, setContextPanelOpen] = useState(false)
   const [historyPanelOpen, setHistoryPanelOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const membershipRole = useMemo(() => {
     if (!selectedCampaign || !user) return ''
@@ -352,6 +354,21 @@ export default function HeaderBar({ onMenuToggle }) {
     </button>
   )
 
+  const hasContext = Boolean(selectedCampaignId || selectedWorldId)
+  
+  const searchButton = (
+    <button
+      type="button"
+      className={`search-btn ${isMobile ? 'search-btn-icon' : 'search-btn-text'} ${!hasContext ? 'disabled' : ''}`}
+      onClick={() => hasContext && setSearchOpen(true)}
+      aria-label={isMobile ? 'Open search' : undefined}
+      title={isMobile ? (hasContext ? 'Open search' : 'Select a campaign or world to search') : undefined}
+      disabled={!hasContext}
+    >
+      {isMobile ? <Search size={20} /> : 'Search'}
+    </button>
+  )
+
   return (
     <header className="app-header">
       <div className="header-start">
@@ -364,6 +381,7 @@ export default function HeaderBar({ onMenuToggle }) {
             </h1>
             {menuButton}
             {contextButton}
+            {searchButton}
             {historyButton}
           </>
         ) : (
@@ -379,7 +397,12 @@ export default function HeaderBar({ onMenuToggle }) {
         )}
       </div>
 
-      {!isMobile && <div className="header-center">{contextSelectors}</div>}
+      {!isMobile && (
+        <div className="header-center">
+          {contextSelectors}
+          {(selectedCampaignId || selectedWorldId) && <GlobalSearch isMobile={false} />}
+        </div>
+      )}
 
       <div className="header-end">
         <NotificationWidget />
@@ -436,6 +459,9 @@ export default function HeaderBar({ onMenuToggle }) {
         </div>
       )}
       <HistoryTab isOpen={historyPanelOpen} onClose={() => setHistoryPanelOpen(false)} />
+      {isMobile && searchOpen && (
+        <GlobalSearch isMobile={true} onClose={() => setSearchOpen(false)} />
+      )}
     </header>
   )
 }

@@ -59,6 +59,33 @@ export const searchEntities = ({ worldId, query, typeIds = [], limit = 20, offse
   return api.get(`/entities/search${queryString ? `?${queryString}` : ''}`)
 }
 
+export const globalSearch = ({ query, campaignId, worldId, limit = 20, offset = 0 }) => {
+  const params = new URLSearchParams()
+
+  if (query) {
+    params.set('q', query)
+  }
+
+  if (campaignId) {
+    params.set('campaignId', campaignId)
+  }
+
+  if (worldId) {
+    params.set('worldId', worldId)
+  }
+
+  if (limit !== undefined && limit !== null) {
+    params.set('limit', limit)
+  }
+
+  if (offset !== undefined && offset !== null) {
+    params.set('offset', offset)
+  }
+
+  const queryString = params.toString()
+  return api.get(`/entities/global-search${queryString ? `?${queryString}` : ''}`)
+}
+
 export const createEntity = (data) => api.post('/entities', data)
 
 export const updateEntity = (id, data) => api.patch(`/entities/${id}`, data)
