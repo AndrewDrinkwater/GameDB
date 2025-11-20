@@ -536,6 +536,10 @@ export default function EntityList() {
             label: column.label || column.name || column.key.replace(/^metadata\./, ''),
             dataType: column.dataType || column.data_type || '',
             required: Boolean(column.required),
+            options: column.options || column.choices || {},
+            referenceTypeId: column.referenceTypeId || column.reference_type_id || null,
+            referenceTypeName: column.referenceTypeName || column.reference_type_name || '',
+            referenceFilter: column.referenceFilter || column.reference_filter || column.referenceFilterJson || {},
           }))
           .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
 
@@ -928,6 +932,37 @@ export default function EntityList() {
     [getEntityTypeLabel],
   )
 
+  // Helper function to extract entity ID from reference field values
+  const extractReferenceId = useCallback((value) => {
+    if (value === null || value === undefined || value === '') return null
+    
+    // If it's already a string, return it (assuming it's an ID)
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      return trimmed.length > 0 ? trimmed : null
+    }
+    
+    // If it's an object, try to extract the id property
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      const id = value.id ?? value.value ?? value.key ?? value.slug ?? value.uuid ?? null
+      if (id !== null && id !== undefined) {
+        return String(id).trim()
+      }
+      return null
+    }
+    
+    // If it's an array, extract the first valid ID
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const extracted = extractReferenceId(item)
+        if (extracted) return extracted
+      }
+      return null
+    }
+    
+    return null
+  }, [])
+
   const explorerColumns = useMemo(() => {
     const entries = []
     availableColumnMap.forEach((column) => {
@@ -936,15 +971,30 @@ export default function EntityList() {
           ? column.dataType || column.data_type || 'string'
           : column.dataType
       const resolvedType = metadataType || (column.key === 'createdAt' ? 'date' : 'string')
+      const isReference = resolvedType === 'reference' || 
+        (column.dataType && String(column.dataType).toLowerCase() === 'reference') ||
+        (column.data_type && String(column.data_type).toLowerCase() === 'reference')
+      
+      // Create accessor that extracts ID for reference fields
+      const accessor = (entity) => {
+        const value = resolveEntityValue(entity, column.key)
+        // For reference fields, extract the ID for filtering purposes
+        if (isReference) {
+          const extractedId = extractReferenceId(value)
+          return extractedId !== null ? extractedId : value
+        }
+        return value
+      }
+      
       entries.push({
         key: column.key,
         label: column.label || column.name || column.key,
         dataType: resolvedType,
-        accessor: (entity) => resolveEntityValue(entity, column.key),
+        accessor,
       })
     })
     return entries
-  }, [availableColumnMap, resolveEntityValue])
+  }, [availableColumnMap, resolveEntityValue, extractReferenceId])
 
   const explorerColumnMap = useMemo(
     () => new Map(explorerColumns.map((column) => [column.key, column])),
@@ -989,15 +1039,41 @@ export default function EntityList() {
     [availableColumnMap, dataExplorer.groupBy, formatDate],
   )
 
-  const filterFields = useMemo(
-    () =>
-      explorerColumns.map((column) => ({
+  const filterFields = useMemo(() => {
+    return explorerColumns.map((column) => {
+      const columnInfo = availableColumnMap.get(column.key)
+      // Get original dataType before normalization - check data_type from API first
+      const originalDataType = columnInfo?.data_type || columnInfo?.dataType || column.dataType
+      
+      const baseField = {
         key: column.key,
         label: explorerColumnMap.get(column.key)?.label || column.label || column.key,
-        dataType: column.dataType,
-      })),
-    [explorerColumns, explorerColumnMap],
-  )
+        dataType: column.dataType, // Normalized dataType for operator selection
+        originalDataType, // Original dataType for field type detection
+      }
+
+      // Add enum options if available
+      if (columnInfo?.options) {
+        baseField.options = columnInfo.options
+      }
+
+      // Add reference field information if available
+      const referenceTypeId = columnInfo?.referenceTypeId || columnInfo?.reference_type_id
+      if (referenceTypeId) {
+        baseField.referenceTypeId = referenceTypeId
+      }
+      const referenceTypeName = columnInfo?.referenceTypeName || columnInfo?.referenceType?.name
+      if (referenceTypeName) {
+        baseField.referenceTypeName = referenceTypeName
+      }
+      const referenceFilter = columnInfo?.referenceFilter || columnInfo?.reference_filter
+      if (referenceFilter) {
+        baseField.referenceFilter = referenceFilter
+      }
+
+      return baseField
+    })
+  }, [explorerColumns, explorerColumnMap, availableColumnMap])
 
   const handleHeaderClick = (columnKey) => {
     if (!columnKey) return
@@ -1030,7 +1106,7 @@ export default function EntityList() {
         const importanceIcons = {
           critical: '🔴',
           important: '🟠',
-          mundane: '⚪',
+          medium: '⚪',
         }
         return (
           <span className="entity-link-with-preview">
@@ -1080,12 +1156,12 @@ export default function EntityList() {
         const importanceLabels = {
           critical: 'Critical',
           important: 'Important',
-          mundane: 'Mundane',
+          medium: 'Medium',
         }
         const importanceColors = {
           critical: '#dc2626',
           important: '#ea580c',
-          mundane: '#6b7280',
+          medium: '#6b7280',
         }
         return (
           <span
@@ -1262,7 +1338,7 @@ export default function EntityList() {
           />
           {selectedCampaignId && (
             <div className="entities-importance-filters">
-              {['critical', 'important', 'mundane'].map((level) => {
+              {['critical', 'important', 'medium'].map((level) => {
                 const isSelected = selectedImportanceFilters.includes(level)
                 return (
                   <button
@@ -1751,6 +1827,7 @@ export default function EntityList() {
         onClose={() => setFilterModalOpen(false)}
         fields={filterFields}
         value={dataExplorer.filters}
+        worldId={worldId}
         onApply={(config) => {
           dataExplorer.setFilters(config)
           setFilterModalOpen(false)

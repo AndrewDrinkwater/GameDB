@@ -110,11 +110,15 @@ const mapFieldToSchemaField = (field) => {
     case 'date':
       return { ...base, type: 'text' }
     case 'reference': {
-      const referenceTypeId =
+      // Extract referenceTypeId from various possible locations and ensure it's a valid string
+      const referenceTypeIdRaw =
         field.referenceTypeId ??
         field.reference_type_id ??
         field.referenceType?.id ??
         null
+      const referenceTypeId = referenceTypeIdRaw
+        ? String(referenceTypeIdRaw).trim()
+        : null
       const referenceTypeName =
         field.referenceTypeName ??
         field.reference_type_name ??

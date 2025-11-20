@@ -7,7 +7,7 @@ import './EntityImportanceSelector.css'
 const IMPORTANCE_OPTIONS = [
   { value: 'critical', label: 'Critical', icon: AlertCircle, color: '#dc2626' },
   { value: 'important', label: 'Important', icon: Info, color: '#ea580c' },
-  { value: 'mundane', label: 'Mundane', icon: Minus, color: '#6b7280' },
+  { value: 'medium', label: 'Medium', icon: Minus, color: '#6b7280' },
   { value: null, label: 'None', icon: X, color: '#9ca3af' },
 ]
 

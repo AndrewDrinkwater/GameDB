@@ -97,6 +97,42 @@ const toDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
+/**
+ * Extracts entity ID from a reference field value.
+ * Handles both string IDs and objects with id properties.
+ * @param {any} value - The reference field value (string ID, object with id, or array)
+ * @returns {string|null} - The extracted ID as a string, or null if not found
+ */
+const extractReferenceId = (value) => {
+  if (value === null || value === undefined || value === '') return null
+  
+  // If it's already a string, return it (assuming it's an ID)
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+  
+  // If it's an object, try to extract the id property
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    const id = value.id ?? value.value ?? value.key ?? value.slug ?? value.uuid ?? null
+    if (id !== null && id !== undefined) {
+      return String(id).trim()
+    }
+    return null
+  }
+  
+  // If it's an array, extract the first valid ID
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const extracted = extractReferenceId(item)
+      if (extracted) return extracted
+    }
+    return null
+  }
+  
+  return null
+}
+
 const normaliseForSearch = (value) => {
   if (value === null || value === undefined) return ''
   if (typeof value === 'string') return value.toLowerCase()
@@ -164,8 +200,34 @@ export const compareValues = (a, b, dataType = 'string') => {
 export const evaluateCondition = (value, condition, dataType = 'string') => {
   const { operator, value: targetValue } = condition
   const normalised = normaliseDataType(dataType)
+  
+  // Check if this is a reference field - check original dataType before normalization
+  // since 'reference' normalizes to 'string'
+  const isReference = dataType && String(dataType).toLowerCase() === 'reference'
 
   const evaluateSingle = (candidate) => {
+    // Handle reference fields specially - extract IDs before comparison
+    if (isReference) {
+      const candidateId = extractReferenceId(candidate)
+      const targetId = extractReferenceId(targetValue) || String(targetValue ?? '').trim()
+      const candidateIdStr = candidateId ? String(candidateId).toLowerCase() : ''
+      const targetIdStr = targetId ? String(targetId).toLowerCase() : ''
+      
+      switch (operator) {
+        case 'equals':
+          return candidateIdStr === targetIdStr && candidateIdStr.length > 0
+        case 'not_equals':
+          return candidateIdStr !== targetIdStr || candidateIdStr.length === 0
+        case 'contains':
+          return candidateIdStr.includes(targetIdStr)
+        case 'not_contains':
+          return !candidateIdStr.includes(targetIdStr)
+        default:
+          // For other operators, fall through to string comparison
+          break
+      }
+    }
+    
     if (normalised === 'number') {
       const left = toNumber(candidate)
       const right = toNumber(targetValue)
