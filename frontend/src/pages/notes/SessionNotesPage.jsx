@@ -689,7 +689,7 @@ export default function SessionNotesPage() {
             disabled={creating || notesState.loading}
           >
             {creating ? <Loader2 size={16} className="spinner" /> : <Plus size={16} />}
-            <span>{creating ? 'Creating…' : '+ New Session'}</span>
+            <span>{creating ? 'Creating…' : 'New Session'}</span>
           </button>
 
           <div className="session-notes-list-container">
@@ -753,7 +753,6 @@ export default function SessionNotesPage() {
               <header className="session-note-header">
                 <div className="session-note-heading">
                   <h2>{editorState.sessionTitle || 'Session note'}</h2>
-                  <span>{editorDateLabel}</span>
                 </div>
                 <div className="session-note-toolbar">
                   {canDeleteNotes ? (
@@ -778,7 +777,7 @@ export default function SessionNotesPage() {
                   {isEditing && canShowCreateEntityButton ? (
                     <button
                       type="button"
-                      className="session-note-action"
+                      className="session-note-action primary"
                       onClick={openEntityDrawer}
                     >
                       <Plus size={16} />

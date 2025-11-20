@@ -1010,7 +1010,6 @@ export default function EntityNotesPage() {
                     <header className="note-card-header">
                       <div className="note-entity-meta">
                         <h2>{entityName}</h2>
-                        <span>Entity ID: {entityId}</span>
                       </div>
                       <div className="note-tags">
                         <span className={`note-tag share-${shareType}`}>

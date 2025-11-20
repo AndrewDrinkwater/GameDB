@@ -388,16 +388,20 @@
 .session-notes-new-button {
   justify-content: center;
   gap: 0.5rem;
-  background: #1e293b;
-  color: #f8fafc;
-  border-color: rgba(15, 23, 42, 0.45);
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #fff;
+  border-color: rgba(79, 70, 229, 0.5);
   font-weight: 600;
+  box-shadow: 0 4px 12px -4px rgba(79, 70, 229, 0.4);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
 
 .session-notes-new-button:hover:not(:disabled) {
-  background: #334155;
-  color: #f8fafc;
-  border-color: rgba(15, 23, 42, 0.6);
+  background: linear-gradient(135deg, #4338ca, #6d28d9);
+  color: #fff;
+  border-color: rgba(79, 70, 229, 0.6);
+  box-shadow: 0 6px 16px -4px rgba(79, 70, 229, 0.5);
+  transform: translateY(-1px);
 }
 
 .session-notes-new-button:disabled {
@@ -494,9 +498,10 @@
 }
 
 .session-note-action.primary {
-  background: #1e293b;
-  color: #f8fafc;
-  border-color: rgba(15, 23, 42, 0.45);
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #fff;
+  border-color: rgba(79, 70, 229, 0.5);
+  box-shadow: 0 4px 12px -4px rgba(79, 70, 229, 0.4);
 }
 
 .session-note-action.danger {
@@ -512,8 +517,10 @@
 }
 
 .session-note-action.primary:hover:not(:disabled) {
-  background: #334155;
-  color: #f8fafc;
+  background: linear-gradient(135deg, #4338ca, #6d28d9);
+  color: #fff;
+  box-shadow: 0 6px 16px -4px rgba(79, 70, 229, 0.5);
+  transform: translateY(-1px);
 }
 
 .session-note-action.danger:hover:not(:disabled) {
@@ -1194,14 +1201,16 @@ body.theme-dark .session-notes-item-button {
 }
 
 body.theme-dark .session-notes-new-button {
-  background: rgba(51, 65, 85, 0.95);
-  border-color: rgba(148, 163, 184, 0.45);
-  color: #f8fafc;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  border-color: rgba(79, 70, 229, 0.6);
+  color: #fff;
+  box-shadow: 0 4px 12px -4px rgba(79, 70, 229, 0.5);
 }
 
 body.theme-dark .session-notes-new-button:hover:not(:disabled) {
-  background: rgba(71, 85, 105, 0.95);
-  border-color: rgba(148, 163, 184, 0.6);
+  background: linear-gradient(135deg, #4338ca, #6d28d9);
+  border-color: rgba(79, 70, 229, 0.7);
+  box-shadow: 0 6px 16px -4px rgba(79, 70, 229, 0.6);
 }
 
 body.theme-dark .session-notes-item-button:hover {
@@ -1243,8 +1252,10 @@ body.theme-dark .session-note-action {
 }
 
 body.theme-dark .session-note-action.primary {
-  background: #0f172a;
-  border-color: rgba(148, 163, 184, 0.5);
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  color: #fff;
+  border-color: rgba(79, 70, 229, 0.6);
+  box-shadow: 0 4px 12px -4px rgba(79, 70, 229, 0.5);
 }
 
 body.theme-dark .session-note-action.danger {
