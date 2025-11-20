@@ -185,18 +185,14 @@ export default function EntitySearchSelect({
         try {
           setLoading(true)
           setError('')
-          
           const res = await searchEntities({
             worldId,
             query: term,
             typeIds: allowedTypeIdsMemo,
             limit: 20,
           })
-          
           const data = Array.isArray(res?.data) ? res.data : res
-          const resultsArray = Array.isArray(data) ? data : []
-          
-          setResults(resultsArray)
+          setResults(Array.isArray(data) ? data : [])
         } catch (err) {
           console.error('Entity search failed', err)
           setResults([])

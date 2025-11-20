@@ -345,19 +345,8 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
 
   const label = field.label || key
   const type = (field.type || 'text').toLowerCase()
-  // Extract referenceTypeId from various possible locations and ensure it's a valid string
-  // Check multiple possible property names and nested structures
-  const referenceTypeIdRaw =
-    field.referenceTypeId ??
-    field.reference_type_id ??
-    field.referenceType?.id ??
-    (field.referenceType && typeof field.referenceType === 'object' ? field.referenceType.id : null) ??
-    null
-  const referenceTypeId = referenceTypeIdRaw
-    ? String(referenceTypeIdRaw).trim()
-    : null
-  // Only use referenceTypeId if it's a non-empty string (valid UUID)
-  const validReferenceTypeId = referenceTypeId && referenceTypeId.length > 0 ? referenceTypeId : null
+  const referenceTypeId =
+    field.referenceTypeId ?? field.reference_type_id ?? field.referenceType?.id ?? null
   const referenceTypeName =
     field.referenceTypeName ?? field.reference_type_name ?? field.referenceType?.name ?? ''
   const rawValue = key.includes('.')
@@ -597,7 +586,7 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
         ? referenceTypeName.trim()
         : 'entities'
     const hasStaticOptions = staticReferenceOptions.length > 0
-    const canSearch = Boolean(validReferenceTypeId && worldId)
+    const canSearch = Boolean(referenceTypeId && worldId)
     const controlDisabled = !canSearch && !hasStaticOptions
 
     if (isReadOnly) {
@@ -709,15 +698,13 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
         ? { id: referenceValue, name: referenceState.selectedLabel }
         : referenceValue
 
-    const allowedTypeIdsForSearch = validReferenceTypeId ? [validReferenceTypeId] : []
-
     return (
       <div className="form-group">
         <label>{label}</label>
         <EntitySearchSelect
           worldId={worldId}
           value={controlValue}
-          allowedTypeIds={allowedTypeIdsForSearch}
+          allowedTypeIds={referenceTypeId ? [referenceTypeId] : []}
           disabled={controlDisabled}
           placeholder={`Search ${placeholderName.toLowerCase()}...`}
           staticOptions={staticReferenceOptions}
@@ -725,10 +712,10 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
           onResolved={handleReferenceResolved}
           required={Boolean(field.required)}
         />
-        {!validReferenceTypeId && (
+        {!referenceTypeId && (
           <p className="help-text warning">Reference type configuration is missing.</p>
         )}
-        {validReferenceTypeId && !worldId && (
+        {referenceTypeId && !worldId && (
           <p className="help-text warning">Select a world to search for entities.</p>
         )}
         {renderHelpText(false)}

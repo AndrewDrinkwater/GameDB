@@ -1292,50 +1292,7 @@ export const searchEntities = async (req, res) => {
     const limit = clampNumber(rawLimit, { min: 1, max: 100, fallback: 20 })
     const offset = clampNumber(rawOffset, { min: 0, fallback: 0 })
     const trimmedQuery = typeof q === 'string' ? q.trim() : ''
-    
-    // Handle typeIds query parameter - Express may parse array params differently
-    // Check for both typeIds and typeIds[] (URL encoded as typeIds%5B%5D)
-    // typeIds can come as: array, object with numeric keys, or single value
-    let typeIdsArray = []
-    const rawTypeIds = req.query.typeIds ?? req.query['typeIds[]'] ?? null
-    
-    if (rawTypeIds) {
-      if (Array.isArray(rawTypeIds)) {
-        typeIdsArray = rawTypeIds
-      } else if (typeof rawTypeIds === 'object') {
-        // Express sometimes parses typeIds[] as an object with numeric keys
-        typeIdsArray = Object.values(rawTypeIds)
-      } else {
-        typeIdsArray = [rawTypeIds]
-      }
-    }
-    
-    const resolvedTypeIds = normaliseIdList(typeIdsArray)
-    
-    // Build WHERE clause using Op.and array structure
-    // This ensures all conditions are properly combined, including the type filter
-    const conditions = [
-      { world_id: world.id }
-    ]
-    
-    // CRITICAL: Add entity_type_id filter directly to conditions array when typeIds are provided
-    // This ensures it's always included in the main WHERE block and cannot be overridden
-    if (Array.isArray(resolvedTypeIds) && resolvedTypeIds.length > 0) {
-      conditions.push({ entity_type_id: { [Op.in]: resolvedTypeIds } })
-    }
-    
-    // Add name filter if query is provided
-    if (trimmedQuery) {
-      const pattern = `%${trimmedQuery}%`
-      const dialect = Entity.sequelize?.getDialect?.() || ''
-      if (dialect === 'postgres') {
-        conditions.push({ name: { [Op.iLike]: pattern } })
-      } else {
-        conditions.push({ name: { [Op.like]: pattern } })
-      }
-    }
-    
-    // Add visibility and access conditions
+    const where = { world_id: world.id }
     const isPrivilegedView = Boolean(readContext?.isOwner || readContext?.isAdmin)
     const allowPersonalAccess = Boolean(user?.id && !readContext?.suppressPersonalAccess)
 
@@ -1347,22 +1304,35 @@ export const searchEntities = async (req, res) => {
       }
 
       if (visibilityClauses.length > 1) {
-        conditions.push({ [Op.or]: visibilityClauses })
+        where[Op.or] = visibilityClauses
       } else {
-        conditions.push(visibilityClauses[0])
+        where[Op.and] = [...(where[Op.and] ?? []), visibilityClauses[0]]
       }
     }
 
     const readAccessWhere = buildReadableEntitiesWhereClause(readContext)
     if (readAccessWhere) {
-      // Skip if readAccessWhere is { id: null } which would match nothing
-      if (!(readAccessWhere.id === null && Object.keys(readAccessWhere).length === 1)) {
-        conditions.push(readAccessWhere)
+      if (where[Op.and]) {
+        where[Op.and].push(readAccessWhere)
+      } else {
+        where[Op.and] = [readAccessWhere]
       }
     }
-    
-    // Build final where clause - always use Op.and to ensure proper structure
-    const where = conditions.length > 1 ? { [Op.and]: conditions } : conditions[0]
+
+    if (trimmedQuery) {
+      const pattern = `%${trimmedQuery}%`
+      const dialect = Entity.sequelize?.getDialect?.() || ''
+      if (dialect === 'postgres') {
+        where.name = { [Op.iLike]: pattern }
+      } else {
+        where.name = { [Op.like]: pattern }
+      }
+    }
+
+    const resolvedTypeIds = normaliseIdList(typeIds)
+    if (resolvedTypeIds.length) {
+      where.entity_type_id = { [Op.in]: resolvedTypeIds }
+    }
 
     const { rows, count } = await Entity.findAndCountAll({
       where,
@@ -1375,21 +1345,7 @@ export const searchEntities = async (req, res) => {
       offset,
     })
 
-    // Post-query filter: Ensure type filtering is enforced
-    // This acts as a safety net to guarantee correct results regardless of WHERE clause complexity
-    let filteredRows = rows
-    let filteredCount = count
-    if (resolvedTypeIds.length > 0) {
-      filteredRows = rows.filter((entity) => {
-        const plain = entity.get({ plain: true })
-        const entityTypeId = plain.entity_type_id ?? plain.entityType?.id ?? null
-        const matches = entityTypeId && resolvedTypeIds.some((tid) => String(tid) === String(entityTypeId))
-        return matches
-      })
-      filteredCount = filteredRows.length
-    }
-
-    const payload = filteredRows.map((entity) => {
+    const payload = rows.map((entity) => {
       const plain = entity.get({ plain: true })
       const type = plain.entityType || {}
       return {
@@ -1402,12 +1358,12 @@ export const searchEntities = async (req, res) => {
       }
     })
 
-    const hasMore = offset + payload.length < filteredCount
+    const hasMore = offset + rows.length < count
 
     return res.json({
       success: true,
       data: payload,
-      pagination: { total: filteredCount, limit, offset, hasMore },
+      pagination: { total: count, limit, offset, hasMore },
     })
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message })

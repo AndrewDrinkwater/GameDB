@@ -56,13 +56,12 @@ export const searchEntities = ({ worldId, query, typeIds = [], limit = 20, offse
   }
 
   const resolvedTypeIds = Array.isArray(typeIds) ? typeIds : [typeIds]
-  const filteredTypeIds = resolvedTypeIds
+  resolvedTypeIds
     .map((value) => (value === undefined || value === null ? '' : String(value).trim()))
     .filter(Boolean)
-  
-  filteredTypeIds.forEach((value) => {
-    params.append('typeIds[]', value)
-  })
+    .forEach((value) => {
+      params.append('typeIds[]', value)
+    })
 
   if (limit !== undefined && limit !== null) {
     params.set('limit', limit)
