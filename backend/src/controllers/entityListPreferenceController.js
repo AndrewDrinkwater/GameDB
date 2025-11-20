@@ -20,7 +20,15 @@ const buildMetadataColumns = (fields = []) =>
     name: field.name,
     label: field.label || field.name,
     dataType: field.data_type,
+    data_type: field.data_type,
     required: field.required,
+    options: field.options || {},
+    referenceTypeId: field.reference_type_id || null,
+    reference_type_id: field.reference_type_id || null,
+    referenceTypeName: field.referenceType?.name || null,
+    referenceType: field.referenceType ? { name: field.referenceType.name } : null,
+    referenceFilter: field.reference_filter || {},
+    reference_filter: field.reference_filter || {},
   }))
 
 const sanitiseColumnList = (columns, allowedKeys, fallback) => {
@@ -61,6 +69,14 @@ export const getEntityTypeListColumns = async (req, res) => {
     const fields = await EntityTypeField.findAll({
       where: { entity_type_id: id },
       order: FIELD_ORDER,
+      include: [
+        {
+          model: EntityType,
+          as: 'referenceType',
+          attributes: ['id', 'name'],
+          required: false,
+        },
+      ],
     })
 
     const metadataColumns = buildMetadataColumns(fields)
@@ -130,6 +146,14 @@ export const updateEntityTypeListColumns = async (req, res) => {
     const fields = await EntityTypeField.findAll({
       where: { entity_type_id: id },
       order: FIELD_ORDER,
+      include: [
+        {
+          model: EntityType,
+          as: 'referenceType',
+          attributes: ['id', 'name'],
+          required: false,
+        },
+      ],
     })
 
     const metadataColumns = buildMetadataColumns(fields)

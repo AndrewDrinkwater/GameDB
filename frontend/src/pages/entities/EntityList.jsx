@@ -536,6 +536,10 @@ export default function EntityList() {
             label: column.label || column.name || column.key.replace(/^metadata\./, ''),
             dataType: column.dataType || column.data_type || '',
             required: Boolean(column.required),
+            options: column.options || column.choices || {},
+            referenceTypeId: column.referenceTypeId || column.reference_type_id || null,
+            referenceTypeName: column.referenceTypeName || column.reference_type_name || '',
+            referenceFilter: column.referenceFilter || column.reference_filter || column.referenceFilterJson || {},
           }))
           .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
 
@@ -989,15 +993,41 @@ export default function EntityList() {
     [availableColumnMap, dataExplorer.groupBy, formatDate],
   )
 
-  const filterFields = useMemo(
-    () =>
-      explorerColumns.map((column) => ({
+  const filterFields = useMemo(() => {
+    return explorerColumns.map((column) => {
+      const columnInfo = availableColumnMap.get(column.key)
+      // Get original dataType before normalization - check data_type from API first
+      const originalDataType = columnInfo?.data_type || columnInfo?.dataType || column.dataType
+      
+      const baseField = {
         key: column.key,
         label: explorerColumnMap.get(column.key)?.label || column.label || column.key,
-        dataType: column.dataType,
-      })),
-    [explorerColumns, explorerColumnMap],
-  )
+        dataType: column.dataType, // Normalized dataType for operator selection
+        originalDataType, // Original dataType for field type detection
+      }
+
+      // Add enum options if available
+      if (columnInfo?.options) {
+        baseField.options = columnInfo.options
+      }
+
+      // Add reference field information if available
+      const referenceTypeId = columnInfo?.referenceTypeId || columnInfo?.reference_type_id
+      if (referenceTypeId) {
+        baseField.referenceTypeId = referenceTypeId
+      }
+      const referenceTypeName = columnInfo?.referenceTypeName || columnInfo?.referenceType?.name
+      if (referenceTypeName) {
+        baseField.referenceTypeName = referenceTypeName
+      }
+      const referenceFilter = columnInfo?.referenceFilter || columnInfo?.reference_filter
+      if (referenceFilter) {
+        baseField.referenceFilter = referenceFilter
+      }
+
+      return baseField
+    })
+  }, [explorerColumns, explorerColumnMap, availableColumnMap])
 
   const handleHeaderClick = (columnKey) => {
     if (!columnKey) return
@@ -1751,6 +1781,7 @@ export default function EntityList() {
         onClose={() => setFilterModalOpen(false)}
         fields={filterFields}
         value={dataExplorer.filters}
+        worldId={worldId}
         onApply={(config) => {
           dataExplorer.setFilters(config)
           setFilterModalOpen(false)
