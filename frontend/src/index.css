@@ -1,53 +1,185 @@
 /* === GLOBAL STYLES === */
+
+/* === CSS CUSTOM PROPERTIES - LIGHT THEME === */
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
   color-scheme: light;
-  color: #0f172a;
-  background-color: #f8fafc;
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Background Colors - Light Theme */
+  --color-bg-base: #f8fafc;
+  --color-bg-elevated: #ffffff;
+  --color-bg-overlay: rgba(255, 255, 255, 0.95);
+  --color-bg-header: #1e293b;
+  --color-bg-sidebar: #0f172a;
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-hover: #f1f5f9;
+  --color-bg-surface-active: #e2e8f0;
+
+  /* Text Colors - Light Theme */
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+  --color-text-disabled: #94a3b8;
+  --color-text-inverse: #f8fafc;
+  --color-text-on-header: #ffffff;
+
+  /* Border Colors - Light Theme */
+  --color-border-default: #e2e8f0;
+  --color-border-subtle: rgba(15, 23, 42, 0.08);
+  --color-border-strong: #cbd5e1;
+  --color-border-focus: #2563eb;
+
+  /* Accent Colors - Light Theme */
+  --color-accent-primary: #2563eb;
+  --color-accent-primary-hover: #1d4ed8;
+  --color-accent-primary-light: #dbeafe;
+  --color-accent-secondary: #6366f1;
+  --color-accent-secondary-hover: #4f46e5;
+  --color-success: #16a34a;
+  --color-success-light: rgba(16, 185, 129, 0.12);
+  --color-warning: #f59e0b;
+  --color-warning-light: rgba(251, 191, 36, 0.16);
+  --color-error: #dc2626;
+  --color-error-light: rgba(248, 113, 113, 0.16);
+  --color-error-hover: #b91c1c;
+
+  /* Interactive States - Light Theme */
+  --color-link: #2563eb;
+  --color-link-hover: #1d4ed8;
+  --color-focus-ring: #93c5fd;
+  --color-focus-ring-offset: #ffffff;
+
+  /* Button Colors - Light Theme */
+  --color-btn-default: #1e293b;
+  --color-btn-default-hover: #334155;
+  --color-btn-default-text: #f8fafc;
+  --color-btn-secondary: #e2e8f0;
+  --color-btn-secondary-hover: #cbd5e1;
+  --color-btn-secondary-text: #1e293b;
+  --color-btn-ghost: transparent;
+  --color-btn-ghost-hover: rgba(148, 163, 184, 0.12);
+  --color-btn-ghost-text: #2563eb;
+  --color-btn-primary: #2563eb;
+  --color-btn-primary-hover: #1d4ed8;
+  --color-btn-primary-text: #ffffff;
+  --color-btn-danger: #dc2626;
+  --color-btn-danger-hover: #b91c1c;
+  --color-btn-danger-text: #ffffff;
+
+  /* Shadow Colors - Light Theme */
+  --shadow-sm: 0 2px 4px rgba(15, 23, 42, 0.12);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.15);
+  --shadow-lg: 0 18px 32px rgba(15, 23, 42, 0.12);
+  --shadow-xl: 0 24px 48px rgba(15, 23, 42, 0.15);
+
+  /* Set default theme values */
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-base);
+}
+
+/* === CSS CUSTOM PROPERTIES - DARK THEME === */
+[data-theme="dark"],
+body.theme-dark {
+  color-scheme: dark;
+
+  /* Background Colors - Dark Theme (slightly warm) */
+  --color-bg-base: #0f1419;
+  --color-bg-elevated: #1a1f2e;
+  --color-bg-overlay: rgba(15, 20, 25, 0.95);
+  --color-bg-header: #0f172a;
+  --color-bg-sidebar: #020817;
+  --color-bg-surface: #1f2937;
+  --color-bg-surface-hover: #293548;
+  --color-bg-surface-active: #334155;
+
+  /* Text Colors - Dark Theme */
+  --color-text-primary: #e2e8f0;
+  --color-text-secondary: #cbd5e1;
+  --color-text-muted: #94a3b8;
+  --color-text-disabled: #64748b;
+  --color-text-inverse: #0f172a;
+  --color-text-on-header: #e2e8f0;
+
+  /* Border Colors - Dark Theme */
+  --color-border-default: #334155;
+  --color-border-subtle: rgba(148, 163, 184, 0.2);
+  --color-border-strong: #475569;
+  --color-border-focus: #60a5fa;
+
+  /* Accent Colors - Dark Theme */
+  --color-accent-primary: #60a5fa;
+  --color-accent-primary-hover: #93c5fd;
+  --color-accent-primary-light: rgba(59, 130, 246, 0.25);
+  --color-accent-secondary: #818cf8;
+  --color-accent-secondary-hover: #a5b4fc;
+  --color-success: #34d399;
+  --color-success-light: rgba(34, 197, 94, 0.18);
+  --color-warning: #fbbf24;
+  --color-warning-light: rgba(251, 191, 36, 0.16);
+  --color-error: #f87171;
+  --color-error-light: rgba(248, 113, 113, 0.22);
+  --color-error-hover: #fca5a5;
+
+  /* Interactive States - Dark Theme */
+  --color-link: #60a5fa;
+  --color-link-hover: #93c5fd;
+  --color-focus-ring: #60a5fa;
+  --color-focus-ring-offset: #0f1419;
+
+  /* Button Colors - Dark Theme */
+  --color-btn-default: #334155;
+  --color-btn-default-hover: #475569;
+  --color-btn-default-text: #e2e8f0;
+  --color-btn-secondary: rgba(30, 41, 59, 0.85);
+  --color-btn-secondary-hover: rgba(51, 65, 85, 0.85);
+  --color-btn-secondary-text: #e2e8f0;
+  --color-btn-ghost: transparent;
+  --color-btn-ghost-hover: rgba(148, 163, 184, 0.15);
+  --color-btn-ghost-text: #c7d2fe;
+  --color-btn-primary: #2563eb;
+  --color-btn-primary-hover: #3b82f6;
+  --color-btn-primary-text: #ffffff;
+  --color-btn-danger: rgba(248, 113, 113, 0.25);
+  --color-btn-danger-hover: rgba(248, 113, 113, 0.35);
+  --color-btn-danger-text: #fecaca;
+
+  /* Shadow Colors - Dark Theme */
+  --shadow-sm: 0 2px 4px rgba(2, 6, 23, 0.4);
+  --shadow-md: 0 4px 12px rgba(2, 6, 23, 0.5);
+  --shadow-lg: 0 18px 32px rgba(2, 6, 23, 0.55);
+  --shadow-xl: 0 24px 48px rgba(2, 6, 23, 0.6);
 }
 
 a {
   font-weight: 500;
-  color: #2563eb;
+  color: var(--color-link);
   text-decoration: none;
+  transition: color 0.2s ease;
 }
 a:hover {
-  color: #1d4ed8;
+  color: var(--color-link-hover);
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
   display: block;
-}
-
-body.theme-dark {
-  background: #0b1120;
-  color: #e2e8f0;
-  color-scheme: dark;
-}
-
-body.theme-dark a {
-  color: #60a5fa;
-}
-body.theme-dark a:hover {
-  color: #93c5fd;
 }
 
 h1, h2, h3, h4, h5 {
   margin: 0;
   font-weight: 600;
+  color: var(--color-text-primary);
 }
 
 button {
@@ -57,38 +189,22 @@ button {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1e293b;
-  color: inherit;
+  background-color: var(--color-btn-default);
+  color: var(--color-btn-default-text);
   cursor: pointer;
   transition: background-color 0.25s, border-color 0.25s, color 0.25s;
 }
 button:hover {
-  background-color: #334155;
+  background-color: var(--color-btn-default-hover);
 }
 button:focus,
 button:focus-visible {
-  outline: 3px solid #93c5fd;
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
-
-body.theme-dark button {
-  background-color: #334155;
-  color: inherit;
-}
-body.theme-dark button:hover {
-  background-color: #475569;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f8fafc;
-    background-color: #0f172a;
-  }
-  button {
-    background-color: #334155;
-  }
-  button:hover {
-    background-color: #475569;
-  }
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ---- Lucide visibility fix ---- */
