@@ -698,6 +698,13 @@
   color: inherit;
 }
 
+.session-note-save-button {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
 .session-note-textarea {
   resize: vertical;
   min-height: 220px;
@@ -816,8 +823,8 @@
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.1rem 0.4rem;
-  margin: 0 0.15rem;
+  padding: 0.02rem 0.4rem;
+  margin: 0.05rem 0.15rem;
   border-radius: 999px;
   background: rgba(59, 130, 246, 0.16);
   color: #1d4ed8;

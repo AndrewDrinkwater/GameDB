@@ -18,6 +18,12 @@ const normaliseId = (value) => {
   return str || null
 }
 
+// Simple in-memory cache to track last notification time per note
+const lastNotificationCache = new Map()
+
+// Minimum time between notifications for the same note (5 minutes)
+const NOTIFICATION_DEBOUNCE_MS = 5 * 60 * 1000
+
 /**
  * Generic notification creation function
  * @param {string} userId - User to notify
@@ -272,6 +278,7 @@ export const notifySessionNoteAdded = async (sessionNote, campaignId) => {
 
     const sessionTitle = sessionNote.session_title || sessionNote.sessionTitle || 'Session note'
     const sessionDate = sessionNote.session_date || sessionNote.sessionDate || ''
+    const campaignName = campaign.name || 'Campaign'
 
     // Create notifications for all campaign members (excluding the author)
     const notificationPromises = campaign.members
@@ -285,6 +292,8 @@ export const notifySessionNoteAdded = async (sessionNote, campaignId) => {
           session_note_id: noteId,
           session_title: sessionTitle,
           session_date: sessionDate,
+          campaign_id: campaignId,
+          campaign_name: campaignName,
           author_id: authorId,
           author_name: authorName,
           target_id: campaignId,
@@ -306,6 +315,94 @@ export const notifySessionNoteAdded = async (sessionNote, campaignId) => {
     await Promise.all(notificationPromises)
   } catch (err) {
     console.error('❌ Failed to notify session note added', err)
+  }
+}
+
+/**
+ * Notify all campaign members when session note is updated
+ * @param {object} sessionNote - SessionNote record
+ * @param {string} campaignId - Campaign ID
+ */
+export const notifySessionNoteUpdated = async (sessionNote, campaignId) => {
+  if (!sessionNote || !campaignId) return
+
+  const editorId = normaliseId(sessionNote.updated_by || sessionNote.updatedBy || sessionNote.created_by || sessionNote.createdBy)
+  const noteId = normaliseId(sessionNote.id)
+
+  // Check cache for recent notification
+  const cacheKey = `session_note_${noteId}`
+  const lastNotified = lastNotificationCache.get(cacheKey)
+  const now = Date.now()
+
+  if (lastNotified && (now - lastNotified) < NOTIFICATION_DEBOUNCE_MS) {
+    // Too soon since last notification, skip to prevent spam
+    return
+  }
+
+  try {
+    // Get campaign with members
+    const campaign = await Campaign.findByPk(campaignId, {
+      include: [
+        {
+          model: UserCampaignRole,
+          as: 'members',
+          attributes: ['user_id', 'role'],
+          include: [{ model: User, as: 'user', attributes: ['id', 'username', 'email'] }],
+        },
+      ],
+    })
+
+    if (!campaign || !Array.isArray(campaign.members)) return
+
+    // Get editor name
+    let editorName = 'Unknown'
+    if (editorId) {
+      const editor = await User.findByPk(editorId)
+      editorName = editor?.username || editor?.email || 'Unknown'
+    }
+
+    const sessionTitle = sessionNote.session_title || sessionNote.sessionTitle || 'Session note'
+    const sessionDate = sessionNote.session_date || sessionNote.sessionDate || ''
+    const campaignName = campaign.name || 'Campaign'
+
+    // Create notifications for all campaign members (excluding the editor)
+    const notificationPromises = campaign.members
+      .map((member) => {
+        const memberUserId = normaliseId(
+          member.user_id || member.userId || member.user?.id,
+        )
+        if (!memberUserId || memberUserId === editorId) return null
+
+        const metadata = {
+          session_note_id: noteId,
+          session_title: sessionTitle,
+          session_date: sessionDate,
+          campaign_id: campaignId,
+          campaign_name: campaignName,
+          author_id: editorId,
+          author_name: editorName,
+          target_id: campaignId,
+          target_type: 'campaign',
+        }
+
+        const actionUrl = `/notes/session?campaignId=${campaignId}`
+
+        return createNotification(
+          memberUserId,
+          'session_note_updated',
+          metadata,
+          campaignId,
+          actionUrl,
+        )
+      })
+      .filter(Boolean)
+
+    await Promise.all(notificationPromises)
+
+    // Update cache after successful notification
+    lastNotificationCache.set(cacheKey, now)
+  } catch (err) {
+    console.error('❌ Failed to notify session note updated', err)
   }
 }
 

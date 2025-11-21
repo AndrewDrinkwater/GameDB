@@ -35,7 +35,9 @@ const getNotificationMessage = (notification) => {
     case 'entity_mention_session_note':
       return `${metadata.author_name || 'Someone'} mentioned ${metadata.related_entity_name || 'an entity'} in a session note`
     case 'session_note_added':
-      return `${metadata.author_name || 'Someone'} added a session note`
+      return `${metadata.author_name || 'Someone'} created a session note${metadata.campaign_name ? ` for ${metadata.campaign_name}` : ''}`
+    case 'session_note_updated':
+      return `${metadata.author_name || 'Someone'} updated a session note${metadata.campaign_name ? ` for ${metadata.campaign_name}` : ''}`
     default:
       return 'New notification'
   }
@@ -85,7 +87,7 @@ export default function NotificationWidget() {
         if (entityId) {
           navigate(`/entities/${entityId}${campaignId ? `?campaignId=${campaignId}` : ''}#notes`)
         }
-      } else if (type === 'session_note_added' || type === 'entity_mention_session_note') {
+      } else if (type === 'session_note_added' || type === 'session_note_updated' || type === 'entity_mention_session_note') {
         const campaignId = notification.campaignId || notification.campaign?.id || metadata.target_id || selectedCampaignId
         navigate(`/notes/session${campaignId ? `?campaignId=${campaignId}` : ''}`)
       } else {

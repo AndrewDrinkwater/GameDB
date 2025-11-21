@@ -14,6 +14,7 @@ import { checkWorldAccess } from '../middleware/worldAccess.js'
 import { buildEntityReadContext, canUserReadEntity } from '../utils/entityAccess.js'
 import {
   notifySessionNoteAdded,
+  notifySessionNoteUpdated,
   notifyEntityMentions,
 } from '../utils/notificationService.js'
 
@@ -458,6 +459,31 @@ export const updateCampaignSessionNote = async (req, res) => {
         { model: User, as: 'lastEditor', attributes: ['id', 'username', 'email', 'role'] },
       ],
     })
+
+    // Trigger notifications asynchronously (don't block response)
+    ;(async () => {
+      try {
+        const mentions = extractMentions(content)
+
+        // Notify all campaign members when session note is updated
+        await notifySessionNoteUpdated(note, access.campaign.id)
+
+        // Notify mentioned entity followers
+        if (mentions && Array.isArray(mentions) && mentions.length > 0) {
+          await notifyEntityMentions(
+            content,
+            mentions,
+            access.campaign.id,
+            'session_note',
+            note.id,
+            access.userId,
+          )
+        }
+      } catch (notificationErr) {
+        console.error('❌ Failed to send notifications for session note update', notificationErr)
+        // Don't fail the request if notifications fail
+      }
+    })()
 
     return res.json({ success: true, data: formatSessionNoteRecord(note) })
   } catch (err) {
