@@ -27,6 +27,7 @@ import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import useDataExplorer from '../../hooks/useDataExplorer.js'
 import useIsMobile from '../../hooks/useIsMobile.js'
 import { ENTITY_CREATION_SCOPES } from '../../utils/worldCreationScopes.js'
+import { extractReferenceEntityId, extractReferenceEntityName } from '../../utils/metadataFieldUtils.js'
 
 const VISIBILITY_BADGES = {
   visible: 'badge-visible',
@@ -1109,7 +1110,7 @@ export default function EntityList() {
           medium: '⚪',
         }
         return (
-          <span className="entity-link-with-preview">
+          <>
             <Link
               to={`/entities/${entity.id}`}
               state={{
@@ -1122,17 +1123,23 @@ export default function EntityList() {
               {entity.name}
             </Link>
             {entity.id ? (
-              <EntityInfoPreview entityId={entity.id} entityName={entity.name || 'entity'} />
+              <>
+                {'\u00A0'}
+                <EntityInfoPreview entityId={entity.id} entityName={entity.name || 'entity'} />
+              </>
             ) : null}
             {importance && (
-              <span
-                className="entity-importance-indicator"
-                title={`Importance: ${importance}`}
-              >
-                {importanceIcons[importance] || '•'}
-              </span>
+              <>
+                {'\u00A0'}
+                <span
+                  className="entity-importance-indicator"
+                  title={`Importance: ${importance}`}
+                >
+                  {importanceIcons[importance] || '•'}
+                </span>
+              </>
             )}
-          </span>
+          </>
         )
       case 'type':
         return getEntityTypeLabel(entity)
@@ -1175,7 +1182,33 @@ export default function EntityList() {
       default: {
         if (column.key.startsWith('metadata.')) {
           const key = column.key.replace(/^metadata\./, '')
-          return formatMetadataValue(metadata?.[key], column)
+          const value = metadata?.[key]
+          const formatted = formatMetadataValue(value, column)
+          
+          // Check if this is a reference type column
+          const dataType = column?.dataType || column?.data_type || ''
+          const isReference = dataType === 'reference' || looksLikeReferenceValue(value)
+          
+          if (isReference && value !== null && value !== undefined) {
+            const referenceEntityId = extractReferenceEntityId(value)
+            const referenceEntityName = extractReferenceEntityName(value) || formatted || 'entity'
+            
+            if (referenceEntityId) {
+              // Use inline display so icon wraps with text when name spans multiple lines
+              return (
+                <>
+                  {formatted}
+                  {'\u00A0'}
+                  <EntityInfoPreview
+                    entityId={referenceEntityId}
+                    entityName={referenceEntityName}
+                  />
+                </>
+              )
+            }
+          }
+          
+          return formatted
         }
         return '—'
       }

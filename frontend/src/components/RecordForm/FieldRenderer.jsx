@@ -3,6 +3,8 @@ import ListCollector from '../ListCollector.jsx'
 import { normaliseListCollectorOption } from '../listCollectorUtils.js'
 import { getAuthToken } from '../../utils/authHelpers.js'
 import EntitySearchSelect from '../../modules/relationships3/ui/EntitySearchSelect.jsx'
+import EntityInfoPreview from '../entities/EntityInfoPreview.jsx'
+import { extractReferenceEntityId, extractReferenceEntityName } from '../../utils/metadataFieldUtils.js'
 
 export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) {
   const key = field.key || field.name || field.field || ''
@@ -605,15 +607,29 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
         displayFallback = referenceValue
       }
 
+      // Extract entity ID and name from the reference value for the Info icon
+      const referenceEntityId = extractReferenceEntityId(rawValue || field.value || referenceValue)
+      const referenceEntityName = extractReferenceEntityName(rawValue || field.value) || displayFallback || referenceValue
+
       return (
         <div className={`form-group ${isReadOnly ? 'readonly' : ''}`}>
           <label>{label}</label>
-          <input
-            type="text"
-            value={formattedValue(displayFallback)}
-            disabled
-            className="readonly-control"
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <input
+              type="text"
+              value={formattedValue(displayFallback)}
+              disabled
+              className="readonly-control"
+              style={{ flex: 1 }}
+            />
+            {referenceEntityId && (
+              <EntityInfoPreview
+                entityId={referenceEntityId}
+                entityName={referenceEntityName}
+                className="entity-info-trigger--inline"
+              />
+            )}
+          </div>
           {renderHelpText(false)}
         </div>
       )
