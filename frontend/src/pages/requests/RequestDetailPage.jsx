@@ -128,7 +128,7 @@ export default function RequestDetailPage() {
     }
   }
 
-  const canAddNote = request && (isAdmin || String(request.createdBy) === String(user?.id))
+  const canAddNote = request && (isAdmin || String(request.createdBy) === String(user?.id) || String(request.testerId) === String(user?.id))
 
   if (loading) {
     return <div className="request-detail-page__loading">Loading request...</div>

@@ -1,9 +1,11 @@
 .request-list-page {
-  max-width: 1400px;
+  max-width: min(1400px, calc(100vw - 4rem));
   margin: 0 auto;
   padding: 2rem;
   background: linear-gradient(to bottom, #f8fafc 0%, #ffffff 100%);
   min-height: 100vh;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .request-list-page__header {
@@ -216,5 +218,77 @@
   font-size: 0.9375rem;
   font-weight: 600;
   color: #64748b;
+}
+
+/* Dark mode styles */
+body.theme-dark .request-list-page {
+  background: linear-gradient(to bottom, #0f172a 0%, #1e293b 100%);
+}
+
+body.theme-dark .request-list-page__subtitle {
+  color: #94a3b8;
+}
+
+body.theme-dark .request-list-page__header {
+  border-bottom-color: var(--color-border-default, #334155);
+}
+
+body.theme-dark .request-list-page__filters {
+  background: var(--color-bg-surface, #1e293b);
+  border-color: var(--color-border-default, #334155);
+}
+
+body.theme-dark .request-list-page__filter-group label {
+  color: var(--color-text-secondary, #cbd5e1);
+}
+
+body.theme-dark .request-list-page__filter-select {
+  background: rgba(15, 23, 42, 0.5);
+  border-color: var(--color-border-default, #334155);
+  color: var(--color-text-primary, #f1f5f9);
+}
+
+body.theme-dark .request-list-page__filter-select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+body.theme-dark .request-list-page__clear-filters {
+  background: rgba(148, 163, 184, 0.15);
+  border-color: var(--color-border-default, #334155);
+  color: var(--color-text-secondary, #cbd5e1);
+}
+
+body.theme-dark .request-list-page__clear-filters:hover {
+  background: rgba(148, 163, 184, 0.25);
+  border-color: #475569;
+}
+
+body.theme-dark .request-list-page__loading,
+body.theme-dark .request-list-page__empty {
+  color: #94a3b8;
+}
+
+body.theme-dark .request-list-page__empty p {
+  color: var(--color-text-secondary, #cbd5e1);
+}
+
+body.theme-dark .request-list-page__pagination {
+  border-top-color: var(--color-border-default, #334155);
+}
+
+body.theme-dark .request-list-page__pagination-button {
+  background: var(--color-bg-surface, #1e293b);
+  border-color: var(--color-border-default, #334155);
+  color: var(--color-text-secondary, #cbd5e1);
+}
+
+body.theme-dark .request-list-page__pagination-button:disabled {
+  background: rgba(15, 23, 42, 0.5);
+  color: #64748b;
+}
+
+body.theme-dark .request-list-page__pagination-info {
+  color: #94a3b8;
 }
 

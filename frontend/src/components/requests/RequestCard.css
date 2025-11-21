@@ -97,3 +97,34 @@
   gap: 0.25rem;
 }
 
+/* Dark mode styles */
+body.theme-dark .request-card {
+  background: var(--color-bg-surface, #1e293b);
+  border-color: var(--color-border-default, #334155);
+}
+
+body.theme-dark .request-card:hover {
+  border-color: #667eea;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+}
+
+body.theme-dark .request-card__type {
+  color: #94a3b8;
+}
+
+body.theme-dark .request-card__type-icon {
+  color: #60a5fa;
+}
+
+body.theme-dark .request-card__title {
+  color: var(--color-text-primary, #f1f5f9);
+}
+
+body.theme-dark .request-card__description {
+  color: var(--color-text-secondary, #cbd5e1);
+}
+
+body.theme-dark .request-card__footer {
+  color: #94a3b8;
+}
+

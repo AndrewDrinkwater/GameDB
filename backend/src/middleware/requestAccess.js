@@ -56,6 +56,7 @@ export const canEditRequest = (user) => {
 /**
  * Check if user can add a note to a request
  * - Request creator can add notes
+ * - Testers can add notes
  * - Admins can add notes
  */
 export const canAddNote = async (requestId, userId, userRole = null) => {
@@ -68,12 +69,22 @@ export const canAddNote = async (requestId, userId, userRole = null) => {
     }
 
     const request = await Request.findByPk(requestId, {
-      attributes: ['id', 'created_by'],
+      attributes: ['id', 'created_by', 'tester_id'],
     })
 
     if (!request) return false
 
-    return String(request.created_by) === String(userId)
+    // Check if user is the creator
+    if (String(request.created_by) === String(userId)) {
+      return true
+    }
+
+    // Check if user is the tester
+    if (request.tester_id && String(request.tester_id) === String(userId)) {
+      return true
+    }
+
+    return false
   } catch (err) {
     console.error('❌ Failed to check note add access', err)
     return false
