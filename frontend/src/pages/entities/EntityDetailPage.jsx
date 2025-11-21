@@ -37,11 +37,11 @@ import {
 import { sortFieldsByOrder } from '../../utils/fieldLayout.js'
 import { extractListResponse } from '../../utils/apiUtils.js'
 import {
-  formatDateTimeValue as formatDateTime,
   buildMetadataDisplayMap,
   buildMetadataInitialMap,
   buildMetadataViewMap,
 } from '../../utils/metadataFieldUtils.js'
+import { formatDateTime } from '../../utils/dateUtils.js'
 
 // tabs
 import DossierTab from './tabs/DossierTab.jsx'

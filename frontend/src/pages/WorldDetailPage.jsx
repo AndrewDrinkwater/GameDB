@@ -7,6 +7,7 @@ import RecordView from '../components/RecordForm/RecordView'
 import editSchema from '../components/RecordForm/formSchemas/world.edit.json'
 import viewSchema from '../components/RecordForm/formSchemas/world.view.json'
 import { getEntityCreationScopeLabel } from '../utils/worldCreationScopes.js'
+import { formatDateTime } from '../utils/dateUtils'
 
 export default function WorldDetailPage() {
   const { id } = useParams()
@@ -95,13 +96,6 @@ export default function WorldDetailPage() {
   const viewData = useMemo(() => {
     if (!world) return null
 
-    const formatDate = (value) => {
-      if (!value) return '—'
-      const date = new Date(value)
-      if (Number.isNaN(date.getTime())) return String(value)
-      return date.toLocaleString()
-    }
-
     const status = world.status || ''
     const statusLabel =
       status.length > 0
@@ -125,8 +119,8 @@ export default function WorldDetailPage() {
       entityCreationScopeLabel,
       description: world.description || '—',
       ownerName,
-      createdAt: formatDate(world.createdAt),
-      updatedAt: formatDate(world.updatedAt),
+      createdAt: formatDateTime(world.createdAt),
+      updatedAt: formatDateTime(world.updatedAt),
     }
   }, [world])
 

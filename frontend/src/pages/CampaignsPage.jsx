@@ -14,6 +14,7 @@ import CampaignMembersManager from '../components/CampaignMembersManager'
 import newSchema from '../components/RecordForm/formSchemas/campaign.new.json'
 import baseEditSchema from '../components/RecordForm/formSchemas/campaign.edit.json'
 import viewSchemaDefinition from '../components/RecordForm/formSchemas/campaign.view.json'
+import { formatDateTime } from '../utils/dateUtils'
 
 export default function CampaignsPage({ scope = 'all' }) {
   const navigate = useNavigate()
@@ -384,6 +385,8 @@ export default function CampaignsPage({ scope = 'all' }) {
     return {
       ...selectedCampaign,
       statusLabel,
+      createdAt: formatDateTime(selectedCampaign.createdAt),
+      updatedAt: formatDateTime(selectedCampaign.updatedAt),
     }
   }, [selectedCampaign])
 
