@@ -20,16 +20,3 @@ Write-Host "==== Zipping backend ===="
 cd ../backend
 Remove-Item ../$ZipName -ErrorAction Ignore
 & "C:\Program Files\7-Zip\7z.exe" a ../$ZipName *
-
-Write-Host "==== Uploading to S3 and deploying ===="
-cd ..
-aws s3 cp $ZipName s3://$Bucket/$ZipName
-
-aws elasticbeanstalk create-application-version `
-  --application-name $AppName `
-  --version-label $VersionLabel `
-  --source-bundle S3Bucket=$Bucket,S3Key=$ZipName
-
-aws elasticbeanstalk update-environment `
-  --environment-name $EnvName `
-  --version-label $VersionLabel
