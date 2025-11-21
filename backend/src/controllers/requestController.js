@@ -53,6 +53,7 @@ export const createRequest = async (req, res) => {
       include: [
         { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
         { model: User, as: 'assignee', attributes: ['id', 'username', 'email'], required: false },
+        { model: User, as: 'tester', attributes: ['id', 'username', 'email'], required: false },
       ],
     })
 
@@ -84,6 +85,14 @@ export const createRequest = async (req, res) => {
               email: plain.assignee.email,
             }
           : null,
+        testerId: plain.tester_id,
+        tester: plain.tester
+          ? {
+              id: plain.tester.id,
+              username: plain.tester.username,
+              email: plain.tester.email,
+            }
+          : null,
         createdAt: plain.created_at,
         updatedAt: plain.updated_at,
       },
@@ -112,9 +121,12 @@ export const listRequests = async (req, res) => {
 
     const where = {}
 
-    // Non-admins only see their own requests
+    // Non-admins only see their own requests or requests assigned to them as tester
     if (!isAdmin) {
-      where.created_by = userId
+      where[Op.or] = [
+        { created_by: userId },
+        { tester_id: userId }
+      ]
     }
 
     // Filters
@@ -124,7 +136,7 @@ export const listRequests = async (req, res) => {
     }
 
     const status = req.query?.status
-    if (status && ['open', 'in_progress', 'resolved', 'closed', 'backlog'].includes(status)) {
+    if (status && ['open', 'in_progress', 'testing', 'resolved', 'closed', 'backlog'].includes(status)) {
       where.status = status
     }
 
@@ -143,6 +155,7 @@ export const listRequests = async (req, res) => {
       include: [
         { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
         { model: User, as: 'assignee', attributes: ['id', 'username', 'email'], required: false },
+        { model: User, as: 'tester', attributes: ['id', 'username', 'email'], required: false },
       ],
       order: [['created_at', 'DESC']],
       limit,
@@ -173,6 +186,14 @@ export const listRequests = async (req, res) => {
               id: plain.assignee.id,
               username: plain.assignee.username,
               email: plain.assignee.email,
+            }
+          : null,
+        testerId: plain.tester_id,
+        tester: plain.tester
+          ? {
+              id: plain.tester.id,
+              username: plain.tester.username,
+              email: plain.tester.email,
             }
           : null,
         createdAt: plain.created_at,
@@ -212,7 +233,7 @@ export const getRequest = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Request ID is required' })
     }
 
-    const canView = await canViewRequest(requestId, userId)
+    const canView = await canViewRequest(requestId, userId, req.user?.role)
     if (!canView) {
       return res.status(403).json({ success: false, message: 'Access denied' })
     }
@@ -221,6 +242,7 @@ export const getRequest = async (req, res) => {
       include: [
         { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
         { model: User, as: 'assignee', attributes: ['id', 'username', 'email'], required: false },
+        { model: User, as: 'tester', attributes: ['id', 'username', 'email'], required: false },
       ],
     })
 
@@ -254,6 +276,14 @@ export const getRequest = async (req, res) => {
               id: plain.assignee.id,
               username: plain.assignee.username,
               email: plain.assignee.email,
+            }
+          : null,
+        testerId: plain.tester_id,
+        tester: plain.tester
+          ? {
+              id: plain.tester.id,
+              username: plain.tester.username,
+              email: plain.tester.email,
             }
           : null,
         createdAt: plain.created_at,
@@ -291,20 +321,25 @@ export const updateRequest = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Request not found' })
     }
 
-    const { status, assigned_to, assignedTo, priority, is_in_backlog, isInBacklog } = req.body
+    const { status, assigned_to, assignedTo, tester_id, testerId, priority, is_in_backlog, isInBacklog } = req.body
 
     const oldStatus = request.status
     const oldAssignedTo = request.assigned_to
 
     const updateData = {}
 
-    if (status && ['open', 'in_progress', 'resolved', 'closed', 'backlog'].includes(status)) {
+    if (status && ['open', 'in_progress', 'testing', 'resolved', 'closed', 'backlog'].includes(status)) {
       updateData.status = status
     }
 
     const assignedToValue = normaliseId(assigned_to || assignedTo)
     if (assignedToValue !== undefined) {
       updateData.assigned_to = assignedToValue
+    }
+
+    const testerIdValue = normaliseId(tester_id || testerId)
+    if (testerIdValue !== undefined) {
+      updateData.tester_id = testerIdValue
     }
 
     if (priority !== undefined) {
@@ -342,6 +377,7 @@ export const updateRequest = async (req, res) => {
       include: [
         { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
         { model: User, as: 'assignee', attributes: ['id', 'username', 'email'], required: false },
+        { model: User, as: 'tester', attributes: ['id', 'username', 'email'], required: false },
       ],
     })
 
@@ -371,6 +407,14 @@ export const updateRequest = async (req, res) => {
               id: plain.assignee.id,
               username: plain.assignee.username,
               email: plain.assignee.email,
+            }
+          : null,
+        testerId: plain.tester_id,
+        tester: plain.tester
+          ? {
+              id: plain.tester.id,
+              username: plain.tester.username,
+              email: plain.tester.email,
             }
           : null,
         createdAt: plain.created_at,

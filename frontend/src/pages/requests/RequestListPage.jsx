@@ -115,6 +115,7 @@ export default function RequestListPage() {
             <option value="">All</option>
             <option value="open">Open</option>
             <option value="in_progress">In Progress</option>
+            <option value="testing">Testing</option>
             <option value="resolved">Resolved</option>
             <option value="closed">Closed</option>
             <option value="backlog">Backlog</option>

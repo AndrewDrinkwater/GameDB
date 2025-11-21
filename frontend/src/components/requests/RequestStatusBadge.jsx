@@ -3,6 +3,7 @@ import './RequestStatusBadge.css'
 const STATUS_COLORS = {
   open: 'blue',
   in_progress: 'orange',
+  testing: 'yellow',
   resolved: 'green',
   closed: 'gray',
   backlog: 'purple',

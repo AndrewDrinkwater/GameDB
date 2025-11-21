@@ -26,7 +26,7 @@ export const createNote = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Request ID is required' })
     }
 
-    const canAdd = await canAddNote(requestId, userId)
+    const canAdd = await canAddNote(requestId, userId, req.user?.role)
     if (!canAdd) {
       return res.status(403).json({ success: false, message: 'Access denied' })
     }
@@ -102,7 +102,7 @@ export const listNotes = async (req, res) => {
     }
 
     // Check if user can view the request (which implies they can view notes)
-    const canView = await canViewRequest(requestId, userId)
+    const canView = await canViewRequest(requestId, userId, req.user?.role)
     if (!canView) {
       return res.status(403).json({ success: false, message: 'Access denied' })
     }

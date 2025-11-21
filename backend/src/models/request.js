@@ -20,7 +20,7 @@ export default (sequelize, DataTypes) => {
         allowNull: false,
       },
       status: {
-        type: DataTypes.ENUM('open', 'in_progress', 'resolved', 'closed', 'backlog'),
+        type: DataTypes.ENUM('open', 'in_progress', 'testing', 'resolved', 'closed', 'backlog'),
         allowNull: false,
         defaultValue: 'open',
       },
@@ -29,6 +29,10 @@ export default (sequelize, DataTypes) => {
         allowNull: false,
       },
       assigned_to: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
+      tester_id: {
         type: DataTypes.UUID,
         allowNull: true,
       },
@@ -52,6 +56,7 @@ export default (sequelize, DataTypes) => {
   Request.associate = (models) => {
     Request.belongsTo(models.User, { foreignKey: 'created_by', as: 'creator' })
     Request.belongsTo(models.User, { foreignKey: 'assigned_to', as: 'assignee' })
+    Request.belongsTo(models.User, { foreignKey: 'tester_id', as: 'tester' })
     Request.hasMany(models.RequestNote, { foreignKey: 'request_id', as: 'notes' })
   }
 

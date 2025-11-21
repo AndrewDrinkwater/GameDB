@@ -33,3 +33,8 @@
   color: #581c87;
 }
 
+.request-status-badge--yellow {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+

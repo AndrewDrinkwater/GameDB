@@ -12,21 +12,34 @@ const normaliseId = (value) => {
  * Check if user can view a request
  * - Admins can view all requests
  * - Users can view their own requests
+ * - Testers can view requests assigned to them
  */
-export const canViewRequest = async (requestId, userId) => {
+export const canViewRequest = async (requestId, userId, userRole = null) => {
   if (!requestId || !userId) return false
 
   try {
+    // Check if user is admin first
+    if (userRole === 'system_admin') {
+      return true
+    }
+
     const request = await Request.findByPk(requestId, {
-      attributes: ['id', 'created_by'],
+      attributes: ['id', 'created_by', 'tester_id'],
     })
 
     if (!request) return false
 
-    const user = { id: userId, role: null } // We'll get role from req.user in controllers
-    if (isSystemAdmin(user)) return true
+    // Check if user is the creator
+    if (String(request.created_by) === String(userId)) {
+      return true
+    }
 
-    return String(request.created_by) === String(userId)
+    // Check if user is the tester
+    if (request.tester_id && String(request.tester_id) === String(userId)) {
+      return true
+    }
+
+    return false
   } catch (err) {
     console.error('❌ Failed to check request view access', err)
     return false
@@ -45,18 +58,20 @@ export const canEditRequest = (user) => {
  * - Request creator can add notes
  * - Admins can add notes
  */
-export const canAddNote = async (requestId, userId) => {
+export const canAddNote = async (requestId, userId, userRole = null) => {
   if (!requestId || !userId) return false
 
   try {
+    // Check if user is admin first
+    if (userRole === 'system_admin') {
+      return true
+    }
+
     const request = await Request.findByPk(requestId, {
       attributes: ['id', 'created_by'],
     })
 
     if (!request) return false
-
-    const user = { id: userId, role: null } // We'll get role from req.user in controllers
-    if (isSystemAdmin(user)) return true
 
     return String(request.created_by) === String(userId)
   } catch (err) {
@@ -80,7 +95,7 @@ export const requireRequestViewAccess = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Request ID is required' })
     }
 
-    const canView = await canViewRequest(requestId, userId)
+    const canView = await canViewRequest(requestId, userId, req.user?.role)
     if (!canView) {
       return res.status(403).json({ success: false, message: 'Access denied' })
     }
@@ -117,7 +132,7 @@ export const requireNoteAddAccess = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Request ID is required' })
     }
 
-    const canAdd = await canAddNote(requestId, userId)
+    const canAdd = await canAddNote(requestId, userId, req.user?.role)
     if (!canAdd) {
       return res.status(403).json({ success: false, message: 'Access denied' })
     }

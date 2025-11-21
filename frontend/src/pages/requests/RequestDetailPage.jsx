@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Bug, Sparkles, Trash2, User } from 'lucide-react'
+import { ArrowLeft, Bug, Sparkles, Trash2, User, Settings, ChevronDown } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { getRequest, updateRequest, deleteRequest } from '../../api/requests.js'
 import { fetchRequestNotes } from '../../api/requestNotes.js'
+import { fetchUsers } from '../../api/users.js'
 import RequestStatusBadge from '../../components/requests/RequestStatusBadge.jsx'
 import RequestNotes from '../../components/requests/RequestNotes.jsx'
 import './RequestDetailPage.css'
@@ -16,10 +17,13 @@ export default function RequestDetailPage() {
   const [request, setRequest] = useState(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [users, setUsers] = useState([])
+  const [loadingUsers, setLoadingUsers] = useState(false)
   const [showAdminControls, setShowAdminControls] = useState(false)
   const [adminForm, setAdminForm] = useState({
     status: '',
     assignedTo: '',
+    testerId: '',
     priority: '',
     isInBacklog: false,
   })
@@ -34,6 +38,7 @@ export default function RequestDetailPage() {
         setAdminForm({
           status: data.status || '',
           assignedTo: data.assignedTo || '',
+          testerId: data.testerId || '',
           priority: data.priority || '',
           isInBacklog: data.isInBacklog || false,
         })
@@ -55,6 +60,24 @@ export default function RequestDetailPage() {
     }
   }, [id])
 
+  useEffect(() => {
+    if (isAdmin && showAdminControls) {
+      loadUsers()
+    }
+  }, [isAdmin, showAdminControls])
+
+  const loadUsers = async () => {
+    setLoadingUsers(true)
+    try {
+      const response = await fetchUsers()
+      setUsers(Array.isArray(response?.data) ? response.data : [])
+    } catch (err) {
+      console.error('Failed to load users', err)
+    } finally {
+      setLoadingUsers(false)
+    }
+  }
+
   const handleAdminUpdate = async () => {
     setSaving(true)
     try {
@@ -64,6 +87,9 @@ export default function RequestDetailPage() {
       }
       if (adminForm.assignedTo !== request.assignedTo) {
         updateData.assignedTo = adminForm.assignedTo || null
+      }
+      if (adminForm.testerId !== request.testerId) {
+        updateData.testerId = adminForm.testerId || null
       }
       if (adminForm.priority !== request.priority) {
         updateData.priority = adminForm.priority || null
@@ -171,6 +197,12 @@ export default function RequestDetailPage() {
                   <dd>{request.assignee.username}</dd>
                 </div>
               )}
+              {request.tester && (
+                <div className="request-detail-page__detail-row">
+                  <dt>Tester:</dt>
+                  <dd>{request.tester.username}</dd>
+                </div>
+              )}
               {request.updatedAt !== request.createdAt && (
                 <div className="request-detail-page__detail-row">
                   <dt>Last updated:</dt>
@@ -186,9 +218,15 @@ export default function RequestDetailPage() {
                 <h2>Admin Controls</h2>
                 <button
                   onClick={() => setShowAdminControls(!showAdminControls)}
-                  className="request-detail-page__admin-toggle"
+                  className={`request-detail-page__admin-toggle ${showAdminControls ? 'request-detail-page__admin-toggle--active' : ''}`}
+                  type="button"
                 >
-                  {showAdminControls ? 'Hide' : 'Show'} Controls
+                  <Settings size={18} />
+                  <span>{showAdminControls ? 'Hide Controls' : 'Show Controls'}</span>
+                  <ChevronDown 
+                    size={16} 
+                    className={`request-detail-page__admin-toggle-icon ${showAdminControls ? 'request-detail-page__admin-toggle-icon--rotated' : ''}`}
+                  />
                 </button>
               </div>
 
@@ -203,9 +241,27 @@ export default function RequestDetailPage() {
                     >
                       <option value="open">Open</option>
                       <option value="in_progress">In Progress</option>
+                      <option value="testing">Testing</option>
                       <option value="resolved">Resolved</option>
                       <option value="closed">Closed</option>
                       <option value="backlog">Backlog</option>
+                    </select>
+                  </div>
+
+                  <div className="request-detail-page__admin-field">
+                    <label>Tester:</label>
+                    <select
+                      value={adminForm.testerId}
+                      onChange={(e) => setAdminForm((prev) => ({ ...prev, testerId: e.target.value }))}
+                      className="request-detail-page__admin-select"
+                      disabled={loadingUsers}
+                    >
+                      <option value="">None</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.username} {u.email ? `(${u.email})` : ''}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
