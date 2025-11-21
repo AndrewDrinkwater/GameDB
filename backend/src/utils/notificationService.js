@@ -278,6 +278,7 @@ export const notifySessionNoteAdded = async (sessionNote, campaignId) => {
 
     const sessionTitle = sessionNote.session_title || sessionNote.sessionTitle || 'Session note'
     const sessionDate = sessionNote.session_date || sessionNote.sessionDate || ''
+    const campaignName = campaign.name || 'Campaign'
 
     // Create notifications for all campaign members (excluding the author)
     const notificationPromises = campaign.members
@@ -291,6 +292,8 @@ export const notifySessionNoteAdded = async (sessionNote, campaignId) => {
           session_note_id: noteId,
           session_title: sessionTitle,
           session_date: sessionDate,
+          campaign_id: campaignId,
+          campaign_name: campaignName,
           author_id: authorId,
           author_name: authorName,
           target_id: campaignId,
@@ -360,6 +363,7 @@ export const notifySessionNoteUpdated = async (sessionNote, campaignId) => {
 
     const sessionTitle = sessionNote.session_title || sessionNote.sessionTitle || 'Session note'
     const sessionDate = sessionNote.session_date || sessionNote.sessionDate || ''
+    const campaignName = campaign.name || 'Campaign'
 
     // Create notifications for all campaign members (excluding the editor)
     const notificationPromises = campaign.members
@@ -373,6 +377,8 @@ export const notifySessionNoteUpdated = async (sessionNote, campaignId) => {
           session_note_id: noteId,
           session_title: sessionTitle,
           session_date: sessionDate,
+          campaign_id: campaignId,
+          campaign_name: campaignName,
           author_id: editorId,
           author_name: editorName,
           target_id: campaignId,
