@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Mention } from 'react-mentions'
+import { Link } from 'react-router-dom'
 import { AlertCircle, Filter, RotateCcw, Loader2, Edit2, Trash2 } from 'lucide-react'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
@@ -9,6 +10,7 @@ import { fetchCharacters } from '../../api/characters.js'
 import { getEntityTypes } from '../../api/entityTypes.js'
 import TaggedNoteContent from '../../components/notes/TaggedNoteContent.jsx'
 import MentionsInputWrapper from '../../components/notes/MentionsInputWrapper.jsx'
+import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import { buildNoteSegments, cleanEntityName } from '../../utils/noteMentions.js'
 import './NotesPage.css'
 
@@ -1009,7 +1011,21 @@ export default function EntityNotesPage() {
                   <>
                     <header className="note-card-header">
                       <div className="note-entity-meta">
-                        <h2>{entityName}</h2>
+                        <h2>
+                          {entityId ? (
+                            <span className="entity-link-with-preview">
+                              <Link
+                                to={`/entities/${entityId}`}
+                                className="entity-name-link"
+                              >
+                                {entityName}
+                              </Link>
+                              <EntityInfoPreview entityId={entityId} entityName={entityName} />
+                            </span>
+                          ) : (
+                            entityName
+                          )}
+                        </h2>
                       </div>
                       <div className="note-tags">
                         <span className={`note-tag share-${shareType}`}>
