@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Info } from 'lucide-react'
 import PropTypes from '../../utils/propTypes.js'
 import { getEntity } from '../../api/entities.js'
@@ -14,10 +15,25 @@ export default function EntityInfoPreview({ entityId, entityName = 'entity', cla
   const [error, setError] = useState('')
   const [fieldOrder, setFieldOrder] = useState([])
   const [fieldRules, setFieldRules] = useState([])
+  const portalContainerRef = useRef(null)
   const drawerEntityId = useMemo(() => {
     if (entityId === null || entityId === undefined) return null
     return String(entityId)
   }, [entityId])
+
+  // Create portal container for drawer to ensure it's positioned relative to viewport
+  useEffect(() => {
+    if (!portalContainerRef.current) {
+      portalContainerRef.current = document.createElement('div')
+      document.body.appendChild(portalContainerRef.current)
+    }
+    return () => {
+      if (portalContainerRef.current && portalContainerRef.current.parentNode) {
+        portalContainerRef.current.parentNode.removeChild(portalContainerRef.current)
+        portalContainerRef.current = null
+      }
+    }
+  }, [])
 
   const handleClose = useCallback(() => {
     setOpen(false)
@@ -165,6 +181,19 @@ export default function EntityInfoPreview({ entityId, entityName = 'entity', cla
     }
   }, [open, handleClose])
 
+  const drawerContent = open && portalContainerRef.current ? (
+    <EntityInfoDrawer
+      entityId={drawerEntityId}
+      entity={previewEntity}
+      isLoading={loading}
+      error={error}
+      fallbackName={entityName}
+      onClose={handleClose}
+      fieldOrder={fieldOrder}
+      fieldRules={fieldRules}
+    />
+  ) : null
+
   return (
     <>
       <button
@@ -175,18 +204,7 @@ export default function EntityInfoPreview({ entityId, entityName = 'entity', cla
       >
         <Info size={16} aria-hidden="true" />
       </button>
-      {open && (
-        <EntityInfoDrawer
-          entityId={drawerEntityId}
-          entity={previewEntity}
-          isLoading={loading}
-          error={error}
-          fallbackName={entityName}
-          onClose={handleClose}
-          fieldOrder={fieldOrder}
-          fieldRules={fieldRules}
-        />
-      )}
+      {portalContainerRef.current && createPortal(drawerContent, portalContainerRef.current)}
     </>
   )
 }

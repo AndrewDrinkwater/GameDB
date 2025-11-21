@@ -614,20 +614,33 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
       return (
         <div className={`form-group ${isReadOnly ? 'readonly' : ''}`}>
           <label>{label}</label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
             <input
               type="text"
               value={formattedValue(displayFallback)}
               disabled
               className="readonly-control"
-              style={{ flex: 1 }}
+              style={{
+                paddingRight: referenceEntityId ? '2.5rem' : '0.8rem',
+                width: '100%',
+              }}
             />
             {referenceEntityId && (
-              <EntityInfoPreview
-                entityId={referenceEntityId}
-                entityName={referenceEntityName}
-                className="entity-info-trigger--inline"
-              />
+              <div
+                style={{
+                  position: 'absolute',
+                  right: '0.5rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  zIndex: 1,
+                }}
+              >
+                <EntityInfoPreview
+                  entityId={referenceEntityId}
+                  entityName={referenceEntityName}
+                  className="entity-info-trigger--field-button"
+                />
+              </div>
             )}
           </div>
           {renderHelpText(false)}

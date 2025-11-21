@@ -6816,6 +6816,22 @@ body.theme-dark .reference-field-info-btn:focus-visible {
   color: #334155;
 }
 
+.entity-info-trigger--field-button {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.4rem;
+  color: #64748b;
+  transition: all 0.15s ease;
+}
+
+.entity-info-trigger--field-button:hover,
+.entity-info-trigger--field-button:focus-visible {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  color: #334155;
+}
+
 .relationship-phrase {
   font-weight: 500;
   color: #111827; /* Tailwind gray-900 */
