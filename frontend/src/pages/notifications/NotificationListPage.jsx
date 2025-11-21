@@ -14,6 +14,9 @@ const NOTIFICATION_TYPES = [
   { value: 'entity_mention_session_note', label: 'Entity mentions (sessions)' },
   { value: 'session_note_added', label: 'Session notes' },
   { value: 'session_note_updated', label: 'Session notes' },
+  { value: 'request_note_added', label: 'Feature/Bug notes' },
+  { value: 'request_status_changed', label: 'Feature/Bug status' },
+  { value: 'request_assigned', label: 'Feature/Bug assignments' },
 ]
 
 const getNotificationMessage = (notification) => {
@@ -30,6 +33,12 @@ const getNotificationMessage = (notification) => {
       return `${metadata.author_name || 'Someone'} created a session note${metadata.campaign_name ? ` for ${metadata.campaign_name}` : ''}: ${metadata.session_title || 'Untitled'}`
     case 'session_note_updated':
       return `${metadata.author_name || 'Someone'} updated a session note${metadata.campaign_name ? ` for ${metadata.campaign_name}` : ''}: ${metadata.session_title || 'Untitled'}`
+    case 'request_note_added':
+      return `${metadata.author_name || 'Someone'} added a note to "${metadata.request_title || 'a feature/bug'}"`
+    case 'request_status_changed':
+      return `Status changed for "${metadata.request_title || 'a feature/bug'}"`
+    case 'request_assigned':
+      return `You were assigned to "${metadata.request_title || 'a feature/bug'}"`
     default:
       return 'New notification'
   }
@@ -151,6 +160,13 @@ export default function NotificationListPage() {
       } else if (type === 'session_note_added' || type === 'session_note_updated' || type === 'entity_mention_session_note') {
         const campaignId = notification.campaignId || notification.campaign?.id || metadata.target_id || campaignFilter
         navigate(`/notes/session${campaignId ? `?campaignId=${campaignId}` : ''}`)
+      } else if (type === 'request_note_added' || type === 'request_status_changed' || type === 'request_assigned') {
+        const requestId = metadata.request_id || metadata.requestId
+        if (requestId) {
+          navigate(`/requests/${requestId}`)
+        } else {
+          navigate('/requests')
+        }
       }
     }
   }

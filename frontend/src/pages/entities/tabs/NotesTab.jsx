@@ -689,42 +689,22 @@ export default function NotesTab({
       return
     }
 
-    if (mentionSource !== 'entity') {
-      return
+    // Load entity mentions when mentions tab is opened
+    if (!mentionEntityNotesState.loading && !mentionEntityNotesState.loaded) {
+      loadEntityMentionNotes()
     }
 
-    if (mentionEntityNotesState.loading || mentionEntityNotesState.loaded) {
-      return
+    // Load session mentions when mentions tab is opened
+    if (!mentionSessionNotesState.loading && !mentionSessionNotesState.loaded) {
+      loadSessionMentionNotes()
     }
-
-    loadEntityMentionNotes()
   }, [
     activeSubTab,
-    mentionSource,
     mentionEntityNotesState.loading,
     mentionEntityNotesState.loaded,
-    loadEntityMentionNotes,
-  ])
-
-  useEffect(() => {
-    if (activeSubTab !== 'mentions') {
-      return
-    }
-
-    if (mentionSource !== 'session') {
-      return
-    }
-
-    if (mentionSessionNotesState.loading || mentionSessionNotesState.loaded) {
-      return
-    }
-
-    loadSessionMentionNotes()
-  }, [
-    activeSubTab,
-    mentionSource,
     mentionSessionNotesState.loading,
     mentionSessionNotesState.loaded,
+    loadEntityMentionNotes,
     loadSessionMentionNotes,
   ])
 

@@ -34,6 +34,9 @@ import CollectionsManagerPage from './pages/access/CollectionsManagerPage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
 import NotificationListPage from './pages/notifications/NotificationListPage.jsx'
 import FollowedEntitiesPage from './pages/entities/FollowedEntitiesPage.jsx'
+import RequestListPage from './pages/requests/RequestListPage.jsx'
+import RequestDetailPage from './pages/requests/RequestDetailPage.jsx'
+import CreateRequestPage from './pages/requests/CreateRequestPage.jsx'
 
 const router = createBrowserRouter(
   createRoutesFromElements(
@@ -121,6 +124,13 @@ const router = createBrowserRouter(
 
         {/* Notifications route */}
         <Route path="notifications" element={<NotificationListPage />} />
+
+        {/* Requests routes */}
+        <Route path="requests">
+          <Route index element={<RequestListPage />} />
+          <Route path="new" element={<CreateRequestPage />} />
+          <Route path=":id" element={<RequestDetailPage />} />
+        </Route>
       </Route>
 
       {/* Fallback: redirect anything unknown */}
