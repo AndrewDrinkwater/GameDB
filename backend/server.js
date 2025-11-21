@@ -12,7 +12,8 @@ const app = express()
 // ✅ Proper CORS configuration for authenticated frontend
 const allowedOrigins = [
   'http://localhost:5173',
-  'https://your-production-domain.com', // add your deployed frontend if needed
+  'https://your-production-domain.com',
+  'http://gamedb.eu-west-2.elasticbeanstalk.com', // add your deployed frontend if needed
 ]
 
 const CAMPAIGN_CONTEXT_HEADER = 'X-Campaign-Context-Id'
