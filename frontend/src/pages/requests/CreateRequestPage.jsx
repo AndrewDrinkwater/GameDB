@@ -72,9 +72,9 @@ export default function CreateRequestPage() {
       <div className="create-request-page__header">
         <button onClick={() => navigate('/requests')} className="create-request-page__back">
           <ArrowLeft size={20} />
-          Back to Requests
+          Back to Feature/Bugs
         </button>
-        <h1>Create Request</h1>
+        <h1>Create Feature/Bug Request</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="create-request-form">
@@ -177,7 +177,7 @@ export default function CreateRequestPage() {
             className="create-request-form__submit"
             disabled={loading}
           >
-            {loading ? 'Creating...' : 'Create Request'}
+            {loading ? 'Creating...' : 'Submit Request'}
           </button>
         </div>
       </form>

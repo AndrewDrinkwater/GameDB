@@ -507,7 +507,7 @@ export default function Sidebar({
           className={isActive('/requests') ? 'active' : ''}
         >
           <FileText size={16} className="nav-icon" />
-          <span>Requests</span>
+          <span>Feature/Bugs</span>
         </Link>
 
         {/* --- Admin Users --- */}

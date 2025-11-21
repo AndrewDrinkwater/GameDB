@@ -72,10 +72,15 @@ export default function RequestListPage() {
     <div className="request-list-page">
       <div className="request-list-page__header">
         <div>
-          <h1>Requests</h1>
-          <p className="request-list-page__subtitle">
-            {isAdmin ? 'All bug reports and feature requests' : 'Your bug reports and feature requests'}
-          </p>
+          <h1>Feature/Bugs</h1>
+          <div className="request-list-page__subtitle-wrapper">
+            <p className="request-list-page__subtitle">
+              {isAdmin ? 'All bug reports and feature requests' : 'Your bug reports and feature requests'}
+            </p>
+            {isAdmin && (
+              <span className="request-list-page__admin-badge">Admin View</span>
+            )}
+          </div>
         </div>
         <Link to="/requests/new" className="request-list-page__create-button">
           <Plus size={20} />

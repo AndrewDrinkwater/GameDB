@@ -117,7 +117,7 @@ export default function RequestDetailPage() {
       <div className="request-detail-page__header">
         <Link to="/requests" className="request-detail-page__back">
           <ArrowLeft size={20} />
-          Back to Requests
+          Back to Feature/Bugs
         </Link>
         <div className="request-detail-page__title-section">
           <div className="request-detail-page__type-badge">
