@@ -845,6 +845,22 @@ export default function SessionNotesPage() {
                       </MentionsInputWrapper>
                     </div>
 
+                    <div className="session-note-save-button">
+                      <button
+                        type="button"
+                        className="session-note-action primary"
+                        onClick={handleManualSave}
+                        disabled={savingState.status === 'saving' || !hasUnsavedChanges}
+                      >
+                        {savingState.status === 'saving' ? (
+                          <Loader2 size={16} className="spinner" />
+                        ) : (
+                          <Save size={16} />
+                        )}
+                        <span>{savingState.status === 'saving' ? 'Saving…' : 'Save now'}</span>
+                      </button>
+                    </div>
+
                     {editorPreviewSegments.length > 0 ? (
                       <div className="session-note-preview" aria-live="polite">
                         <h3>Preview</h3>
@@ -861,19 +877,6 @@ export default function SessionNotesPage() {
                   </div>
 
                   <div className="session-note-actions">
-                    <button
-                      type="button"
-                      className="session-note-action primary"
-                      onClick={handleManualSave}
-                      disabled={savingState.status === 'saving' || !hasUnsavedChanges}
-                    >
-                      {savingState.status === 'saving' ? (
-                        <Loader2 size={16} className="spinner" />
-                      ) : (
-                        <Save size={16} />
-                      )}
-                      <span>{savingState.status === 'saving' ? 'Saving…' : 'Save now'}</span>
-                    </button>
                     {editorState.author?.username ? (
                       <span className="session-note-meta">
                         Created by {editorState.author.username}
