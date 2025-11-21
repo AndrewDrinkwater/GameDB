@@ -29,6 +29,8 @@ import BulkUpdateChangeModel from './bulkUpdateChange.js'
 import EntityCollectionModel from './entityCollection.js'
 import EntityFollowModel from './entityFollow.js'
 import NotificationModel from './notification.js'
+import RequestModel from './request.js'
+import RequestNoteModel from './requestNote.js'
 
 // Create Sequelize instance
 export const sequelize = new Sequelize(process.env.DATABASE_URL, {
@@ -63,6 +65,8 @@ export const BulkUpdateChange = BulkUpdateChangeModel(sequelize, DataTypes)
 export const EntityCollection = EntityCollectionModel(sequelize, DataTypes)
 export const EntityFollow = EntityFollowModel(sequelize, DataTypes)
 export const Notification = NotificationModel(sequelize, DataTypes)
+export const Request = RequestModel(sequelize, DataTypes)
+export const RequestNote = RequestNoteModel(sequelize, DataTypes)
 
 // --- Associations ---
 if (User.associate)
@@ -120,6 +124,8 @@ if (BulkUpdateChange.associate)
 if (EntityCollection.associate) EntityCollection.associate({ World, User })
 if (EntityFollow.associate) EntityFollow.associate({ User, Entity, Campaign })
 if (Notification.associate) Notification.associate({ User, Campaign })
+if (Request.associate) Request.associate({ User, RequestNote })
+if (RequestNote.associate) RequestNote.associate({ Request, User })
 
 // --- Init DB ---
 export async function initDB() {
@@ -157,4 +163,6 @@ export default {
   EntityTypeFieldRule,
   EntityFollow,
   Notification,
+  Request,
+  RequestNote,
 }

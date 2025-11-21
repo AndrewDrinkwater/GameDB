@@ -1,0 +1,35 @@
+.request-status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.request-status-badge--blue {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.request-status-badge--orange {
+  background-color: #fed7aa;
+  color: #9a3412;
+}
+
+.request-status-badge--green {
+  background-color: #bbf7d0;
+  color: #14532d;
+}
+
+.request-status-badge--gray {
+  background-color: #e5e7eb;
+  color: #374151;
+}
+
+.request-status-badge--purple {
+  background-color: #e9d5ff;
+  color: #581c87;
+}
+

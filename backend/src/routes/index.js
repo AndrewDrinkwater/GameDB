@@ -18,6 +18,7 @@ import userRoutes from './userRoutes.js' // ✅ add this
 import entityRelationshipTypeRoutes from './entityRelationshipTypeRoutes.js'
 import accessRoutes from './accessRoutes.js'
 import notificationRoutes from './notificationRoutes.js'
+import requestRoutes from './requestRoutes.js'
 
 const router = Router()
 
@@ -38,5 +39,6 @@ router.use('/entity-relationship-types', entityRelationshipTypeRoutes)
 router.use('/users', userRoutes) // ✅ add this
 router.use('/access', accessRoutes)
 router.use('/notifications', notificationRoutes)
+router.use('/requests', requestRoutes)
 
 export default router

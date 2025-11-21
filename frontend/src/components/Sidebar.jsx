@@ -501,6 +501,15 @@ export default function Sidebar({
           </div>
         </div>
 
+        {/* --- Requests --- */}
+        <Link
+          to="/requests"
+          className={isActive('/requests') ? 'active' : ''}
+        >
+          <FileText size={16} className="nav-icon" />
+          <span>Requests</span>
+        </Link>
+
         {/* --- Admin Users --- */}
         {user?.role === 'system_admin' && (
           <Link

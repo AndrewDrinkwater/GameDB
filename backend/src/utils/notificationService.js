@@ -5,6 +5,7 @@ import {
   User,
   Campaign,
   UserCampaignRole,
+  Request,
 } from '../models/index.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
 import {
@@ -403,6 +404,146 @@ export const notifySessionNoteUpdated = async (sessionNote, campaignId) => {
     lastNotificationCache.set(cacheKey, now)
   } catch (err) {
     console.error('❌ Failed to notify session note updated', err)
+  }
+}
+
+/**
+ * Notify request creator when request status changes
+ * @param {object} request - Request record
+ * @param {string} oldStatus - Previous status
+ */
+export const notifyRequestStatusChange = async (request, oldStatus) => {
+  if (!request) return
+
+  const requestId = normaliseId(request.id || request.request_id)
+  const creatorId = normaliseId(request.created_by || request.createdBy)
+  if (!requestId || !creatorId) return
+
+  try {
+    // Get request details if needed
+    const requestData = request.id
+      ? request
+      : await Request.findByPk(requestId, {
+          include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'email'] }],
+        })
+
+    if (!requestData) return
+
+    const requestTitle = requestData.title || 'Request'
+    const newStatus = requestData.status || 'unknown'
+    const creator = requestData.creator || requestData.creator_data
+
+    const metadata = {
+      request_id: requestId,
+      request_title: requestTitle,
+      old_status: oldStatus,
+      new_status: newStatus,
+      target_id: requestId,
+      target_type: 'request',
+    }
+
+    const actionUrl = `/requests/${requestId}`
+
+    await createNotification(creatorId, 'request_status_changed', metadata, null, actionUrl)
+  } catch (err) {
+    console.error('❌ Failed to notify request status change', err)
+  }
+}
+
+/**
+ * Notify request creator when a note is added to their request
+ * @param {object} requestNote - RequestNote record
+ * @param {string} requestId - Request ID
+ */
+export const notifyRequestNoteAdded = async (requestNote, requestId) => {
+  if (!requestNote || !requestId) return
+
+  const noteId = normaliseId(requestNote.id || requestNote.note_id)
+  const authorId = normaliseId(requestNote.created_by || requestNote.createdBy)
+  if (!noteId || !authorId) return
+
+  try {
+    // Get request to find creator
+    const request = await Request.findByPk(requestId, {
+      include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'email'] }],
+    })
+
+    if (!request) return
+
+    const creatorId = normaliseId(request.created_by)
+    if (!creatorId || creatorId === authorId) {
+      // Don't notify if creator is the one adding the note
+      return
+    }
+
+    const requestTitle = request.title || 'Request'
+    const author = requestNote.author || requestNote.author_data
+    const authorName = author?.username || author?.email || 'Unknown'
+
+    const metadata = {
+      request_id: requestId,
+      request_title: requestTitle,
+      request_note_id: noteId,
+      author_id: authorId,
+      author_name: authorName,
+      target_id: requestId,
+      target_type: 'request',
+    }
+
+    const actionUrl = `/requests/${requestId}`
+
+    await createNotification(creatorId, 'request_note_added', metadata, null, actionUrl)
+  } catch (err) {
+    console.error('❌ Failed to notify request note added', err)
+  }
+}
+
+/**
+ * Notify user when they are assigned to a request
+ * @param {object} request - Request record
+ * @param {string} oldAssignedTo - Previous assignee ID
+ */
+export const notifyRequestAssigned = async (request, oldAssignedTo) => {
+  if (!request) return
+
+  const requestId = normaliseId(request.id || request.request_id)
+  const newAssignedTo = normaliseId(request.assigned_to || request.assignedTo)
+  if (!requestId || !newAssignedTo) return
+
+  // Don't notify if assignment didn't change or was removed
+  if (newAssignedTo === oldAssignedTo) return
+
+  try {
+    // Get request details
+    const requestData = request.id
+      ? request
+      : await Request.findByPk(requestId, {
+          include: [
+            { model: User, as: 'creator', attributes: ['id', 'username', 'email'] },
+            { model: User, as: 'assignee', attributes: ['id', 'username', 'email'], required: false },
+          ],
+        })
+
+    if (!requestData) return
+
+    const requestTitle = requestData.title || 'Request'
+    const creator = requestData.creator || requestData.creator_data
+    const creatorName = creator?.username || creator?.email || 'Unknown'
+
+    const metadata = {
+      request_id: requestId,
+      request_title: requestTitle,
+      creator_id: normaliseId(requestData.created_by),
+      creator_name: creatorName,
+      target_id: requestId,
+      target_type: 'request',
+    }
+
+    const actionUrl = `/requests/${requestId}`
+
+    await createNotification(newAssignedTo, 'request_assigned', metadata, null, actionUrl)
+  } catch (err) {
+    console.error('❌ Failed to notify request assigned', err)
   }
 }
 

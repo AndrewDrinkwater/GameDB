@@ -1,0 +1,241 @@
+.request-detail-page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.request-detail-page__loading {
+  padding: 4rem;
+  text-align: center;
+  color: #6b7280;
+}
+
+.request-detail-page__header {
+  margin-bottom: 2rem;
+}
+
+.request-detail-page__back {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  color: #3b82f6;
+  text-decoration: none;
+  font-size: 0.875rem;
+  transition: color 0.2s;
+}
+
+.request-detail-page__back:hover {
+  color: #2563eb;
+}
+
+.request-detail-page__title-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.request-detail-page__type-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #eff6ff;
+  color: #1e40af;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  width: fit-content;
+}
+
+.request-detail-page__type-icon {
+  color: #3b82f6;
+}
+
+.request-detail-page__title-section h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.request-detail-page__meta {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.request-detail-page__priority {
+  padding: 0.25rem 0.75rem;
+  background: #f3f4f6;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.request-detail-page__backlog-badge {
+  padding: 0.25rem 0.75rem;
+  background: #e9d5ff;
+  color: #581c87;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.request-detail-page__content {
+  background: white;
+  padding: 2rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+}
+
+.request-detail-page__section {
+  margin-bottom: 2rem;
+}
+
+.request-detail-page__section:last-child {
+  margin-bottom: 0;
+}
+
+.request-detail-page__section h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 1rem 0;
+  color: #111827;
+}
+
+.request-detail-page__description {
+  line-height: 1.8;
+  color: #374151;
+}
+
+.request-detail-page__description p {
+  margin: 0 0 1rem 0;
+}
+
+.request-detail-page__description p:last-child {
+  margin-bottom: 0;
+}
+
+.request-detail-page__details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem 1.5rem;
+}
+
+.request-detail-page__detail-row {
+  display: contents;
+}
+
+.request-detail-page__detail-row dt {
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.request-detail-page__detail-row dd {
+  margin: 0;
+  color: #111827;
+}
+
+.request-detail-page__admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.request-detail-page__admin-toggle {
+  padding: 0.5rem 1rem;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.request-detail-page__admin-toggle:hover {
+  background: #e5e7eb;
+}
+
+.request-detail-page__admin-form {
+  padding: 1.5rem;
+  background: #f9fafb;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+}
+
+.request-detail-page__admin-field {
+  margin-bottom: 1rem;
+}
+
+.request-detail-page__admin-field:last-of-type {
+  margin-bottom: 1.5rem;
+}
+
+.request-detail-page__admin-field label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.request-detail-page__admin-field input[type="checkbox"] {
+  margin-right: 0.5rem;
+}
+
+.request-detail-page__admin-select {
+  width: 100%;
+  max-width: 300px;
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  background: white;
+}
+
+.request-detail-page__admin-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.request-detail-page__admin-save {
+  padding: 0.75rem 1.5rem;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.request-detail-page__admin-save:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.request-detail-page__admin-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.request-detail-page__admin-delete {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.request-detail-page__admin-delete:hover {
+  background: #dc2626;
+}
+
