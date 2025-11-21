@@ -7452,6 +7452,52 @@ body.theme-dark .entity-notes-strict-delete-button:hover {
   background: #7f1d1d; /* hover:bg-red-900 */
 }
 
+body.theme-dark .entity-notes-strict-tab-button {
+  background: var(--color-bg-surface-hover);
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
+}
+
+body.theme-dark .entity-notes-strict-tab-button:hover {
+  background: var(--color-bg-surface-active);
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
+}
+
+body.theme-dark .entity-notes-strict-tab-button.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+body.theme-dark .entity-notes-strict-mention-toggle-button {
+  background: var(--color-bg-surface-hover);
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
+}
+
+body.theme-dark .entity-notes-strict-mention-toggle-button:hover {
+  background: var(--color-bg-surface-active);
+  border-color: var(--color-border-default);
+  color: var(--color-text-primary);
+}
+
+body.theme-dark .entity-notes-strict-mention-toggle-button.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+body.theme-dark .entity-notes-strict-mention-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: var(--color-text-primary);
+}
+
+body.theme-dark .entity-notes-strict-mention-toggle-button.active .entity-notes-strict-mention-count {
+  background: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+
 /* === RELATIONSHIPS TAB UTILITY CLASSES === */
 /* Tailwind-style utility classes for RelationshipsTab */
 .max-w-5xl {
