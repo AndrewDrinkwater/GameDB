@@ -3,6 +3,8 @@ import ListCollector from '../ListCollector.jsx'
 import { normaliseListCollectorOption } from '../listCollectorUtils.js'
 import { getAuthToken } from '../../utils/authHelpers.js'
 import EntitySearchSelect from '../../modules/relationships3/ui/EntitySearchSelect.jsx'
+import EntityInfoPreview from '../entities/EntityInfoPreview.jsx'
+import { extractReferenceEntityId, extractReferenceEntityName } from '../../utils/metadataFieldUtils.js'
 
 export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) {
   const key = field.key || field.name || field.field || ''
@@ -605,15 +607,42 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
         displayFallback = referenceValue
       }
 
+      // Extract entity ID and name from the reference value for the Info icon
+      const referenceEntityId = extractReferenceEntityId(rawValue || field.value || referenceValue)
+      const referenceEntityName = extractReferenceEntityName(rawValue || field.value) || displayFallback || referenceValue
+
       return (
         <div className={`form-group ${isReadOnly ? 'readonly' : ''}`}>
           <label>{label}</label>
-          <input
-            type="text"
-            value={formattedValue(displayFallback)}
-            disabled
-            className="readonly-control"
-          />
+          <div style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
+            <input
+              type="text"
+              value={formattedValue(displayFallback)}
+              disabled
+              className="readonly-control"
+              style={{
+                paddingRight: referenceEntityId ? '2.5rem' : '0.8rem',
+                width: '100%',
+              }}
+            />
+            {referenceEntityId && (
+              <div
+                style={{
+                  position: 'absolute',
+                  right: '0.5rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  zIndex: 1,
+                }}
+              >
+                <EntityInfoPreview
+                  entityId={referenceEntityId}
+                  entityName={referenceEntityName}
+                  className="entity-info-trigger--field-button"
+                />
+              </div>
+            )}
+          </div>
           {renderHelpText(false)}
         </div>
       )

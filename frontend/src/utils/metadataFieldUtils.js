@@ -163,3 +163,90 @@ export const buildMetadataDisplayMap = (fields = []) => {
     return acc
   }, {})
 }
+
+/**
+ * Extracts entity ID from a reference field value.
+ * Handles strings, numbers, objects with ID properties, and arrays.
+ * @param {any} value - The reference field value
+ * @returns {string|null} - The extracted entity ID, or null if not found
+ */
+export const extractReferenceEntityId = (value) => {
+  if (value === null || value === undefined || value === '') return null
+
+  // If it's a string or number, treat it as an ID
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+  if (typeof value === 'number' || typeof value === 'bigint') {
+    return String(value)
+  }
+
+  // If it's an object, try to extract the id property
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    const id =
+      value.id ??
+      value.value ??
+      value.entity_id ??
+      value.entityId ??
+      value.key ??
+      value.slug ??
+      value.uuid ??
+      null
+    if (id !== null && id !== undefined) {
+      const idStr = String(id).trim()
+      return idStr.length > 0 ? idStr : null
+    }
+    return null
+  }
+
+  // If it's an array, extract the first valid ID
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const extracted = extractReferenceEntityId(item)
+      if (extracted) return extracted
+    }
+    return null
+  }
+
+  return null
+}
+
+/**
+ * Extracts entity name/label from a reference field value.
+ * @param {any} value - The reference field value
+ * @returns {string|null} - The extracted entity name/label, or null if not found
+ */
+export const extractReferenceEntityName = (value) => {
+  if (value === null || value === undefined) return null
+
+  // If it's an object, try to extract label/name properties
+  if (typeof value === 'object' && !Array.isArray(value)) {
+    const label =
+      value.displayValue ??
+      value.display ??
+      value.label ??
+      value.name ??
+      value.title ??
+      value.displayName ??
+      value.text ??
+      null
+
+    if (label !== null && label !== undefined) {
+      const labelStr = String(label).trim()
+      return labelStr.length > 0 ? labelStr : null
+    }
+    return null
+  }
+
+  // If it's an array, extract the first valid label
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const extracted = extractReferenceEntityName(item)
+      if (extracted) return extracted
+    }
+    return null
+  }
+
+  return null
+}
