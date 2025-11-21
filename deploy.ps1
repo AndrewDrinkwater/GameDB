@@ -3,7 +3,7 @@
 # --- SETTINGS ---
 $AppName = "GameDB"
 $EnvName = "GameDB-env"
-$Bucket = "elasticbeanstalk-eu-west-2-xxxxx"  # Replace with your actual EB S3 bucket
+$Bucket = "elasticbeanstalk-eu-west-2-xxxxx"  # replace with your EB bucket
 $ZipName = "gamedb-deploy.zip"
 $VersionLabel = "v$(Get-Date -Format yyyyMMddHHmmss)"
 
@@ -16,7 +16,18 @@ Write-Host "==== Copying dist to backend ===="
 Remove-Item ../backend/dist -Recurse -Force -ErrorAction Ignore
 Copy-Item -Recurse dist ../backend/dist
 
-Write-Host "==== Zipping backend ===="
+Write-Host "==== Zipping backend (excluding .env) ===="
 cd ../backend
 Remove-Item ../$ZipName -ErrorAction Ignore
-& "C:\Program Files\7-Zip\7z.exe" a ../$ZipName *
+
+# IMPORTANT:
+# - "." includes hidden files (.ebignore)
+# - quoted -xr! patterns prevent PowerShell escaping
+# - .env and .env.* are excluded
+# - node_modules, uploads, dist excluded from backend
+& "C:\Program Files\7-Zip\7z.exe" a ../$ZipName "." `
+  "-xr!.env" `
+  "-xr!.env.*" `
+  "-xr!node_modules" `
+  "-xr!uploads" `
+  "-xr!dist"
