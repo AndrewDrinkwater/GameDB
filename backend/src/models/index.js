@@ -139,10 +139,12 @@ if (RequestNote.associate) RequestNote.associate({ Request, User })
 // --- Init DB ---
 export async function initDB() {
   try {
+    console.log('Attempting database connection...')
     await sequelize.authenticate()
-    console.log('✅ Database connected')
+    console.log('✅ Database connection successful - sequelize.authenticate() succeeded')
   } catch (err) {
-    console.error('❌ DB connection failed:', err.message)
+    console.error('❌ Database connection failed - sequelize.authenticate() failed:', err.message)
+    throw err // Re-throw to allow start() to handle the error
   }
 }
 
