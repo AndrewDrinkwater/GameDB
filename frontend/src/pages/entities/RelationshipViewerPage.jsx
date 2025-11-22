@@ -2372,10 +2372,10 @@ export default function RelationshipViewerPage() {
   if (!nodes.length) return <p className="p-4">No relationships found for this entity.</p>
 
   return (
-    <div className="flex flex-col" style={{ width: '100%', height: '100%', margin: 'calc(-1 * var(--content-padding, 1rem))', marginBottom: 0, marginTop: 'calc(-1 * var(--content-padding, 1rem))' }}>
-      <header className="flex items-center justify-between p-4 border-b bg-white shadow-sm flex-shrink-0 gap-4" style={{ width: '100%', boxSizing: 'border-box' }}>
-        <h1 className="text-2xl font-bold text-gray-800 flex-shrink-0">Relationship Explorer</h1>
-        <div className="flex-shrink-0 relationship-toolbar-inline">
+    <div className="flex flex-col" style={{ width: '100%', height: '100%', minWidth: 0 }}>
+      <header className="flex items-center justify-between p-4 border-b bg-white shadow-sm flex-shrink-0 gap-4" style={{ boxSizing: 'border-box', width: '100%', minHeight: 'auto', maxHeight: 'none' }}>
+        <h1 className="text-2xl font-bold text-gray-800 flex-shrink-0 whitespace-nowrap">Relationship Explorer</h1>
+        <div className="flex-shrink-0 relationship-toolbar-inline" style={{ flexShrink: 0 }}>
           <RelationshipToolbar
             onRefocus={handleRefocusView}
             onZoomToFit={handleZoomToFit}
@@ -2388,7 +2388,7 @@ export default function RelationshipViewerPage() {
       </header>
 
       {/* IMPORTANT: This wrapper ensures React Flow receives explicit dimensions. Removing it breaks the canvas. */}
-      <div className="flex-1 min-h-0 relative bg-slate-100" style={{ width: '100%', height: '100%' }}>
+      <div className="flex-1 min-h-0 relative bg-slate-100" style={{ width: '100%' }}>
         <div className="w-full h-full relative" style={{ width: '100%', height: '100%' }}>
           {/* IMPORTANT: Do not remove the wrapper above or the canvas will disappear. */}
           <ReactFlow
