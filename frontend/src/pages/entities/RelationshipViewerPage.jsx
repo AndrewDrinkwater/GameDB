@@ -243,6 +243,8 @@ export default function RelationshipViewerPage() {
   const [boardEntities, setBoardEntities] = useState({})
   const [reactFlowInstance, setReactFlowInstance] = useState(null)
   const [relationshipDepth, setRelationshipDepth] = useState(1)
+  const canvasWrapperRef = useRef(null)
+  const canvasInnerRef = useRef(null)
   const [selectedEntityInfoId, setSelectedEntityInfoId] = useState(null)
   const [selectedEntityInfo, setSelectedEntityInfo] = useState(null)
   const [selectedEntityInfoError, setSelectedEntityInfoError] = useState(null)
@@ -2367,30 +2369,43 @@ export default function RelationshipViewerPage() {
     setRelationshipDepth((current) => Math.max(1, current - 1))
   }, [])
 
+  // Ensure React Flow container has explicit dimensions
+  useEffect(() => {
+    if (!canvasWrapperRef.current || !canvasInnerRef.current) return
+
+    const updateDimensions = () => {
+      const wrapper = canvasWrapperRef.current
+      const inner = canvasInnerRef.current
+      if (!wrapper || !inner) return
+      const rect = wrapper.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        inner.style.width = `${rect.width}px`
+        inner.style.height = `${rect.height}px`
+      }
+    }
+
+    // Initial update with a small delay to ensure layout is calculated
+    const timeoutId = setTimeout(updateDimensions, 0)
+
+    // Update on resize
+    const resizeObserver = new ResizeObserver(updateDimensions)
+    resizeObserver.observe(canvasWrapperRef.current)
+
+    return () => {
+      clearTimeout(timeoutId)
+      resizeObserver.disconnect()
+    }
+  }, [])
+
   if (loading) return <p className="p-4">Loading graph...</p>
   if (error) return <p className="p-4 text-red-500">Error: {error}</p>
   if (!nodes.length) return <p className="p-4">No relationships found for this entity.</p>
 
   return (
-    <div className="flex flex-col" style={{ width: '100%', height: '100%', minWidth: 0 }}>
-      <header className="flex items-center justify-between p-4 border-b bg-white shadow-sm flex-shrink-0 gap-4" style={{ boxSizing: 'border-box', width: '100%', minHeight: 'auto', maxHeight: 'none' }}>
-        <h1 className="text-2xl font-bold text-gray-800 flex-shrink-0 whitespace-nowrap">Relationship Explorer</h1>
-        <div className="flex-shrink-0 relationship-toolbar-inline" style={{ flexShrink: 0 }}>
-          <RelationshipToolbar
-            onRefocus={handleRefocusView}
-            onZoomToFit={handleZoomToFit}
-            onAutoArrange={handleAutoArrange}
-            depth={relationshipDepth}
-            onIncreaseDepth={handleIncreaseDepth}
-            onDecreaseDepth={handleDecreaseDepth}
-          />
-        </div>
-      </header>
-
-      {/* IMPORTANT: This wrapper ensures React Flow receives explicit dimensions. Removing it breaks the canvas. */}
-      <div className="flex-1 min-h-0 relative bg-slate-100" style={{ width: '100%' }}>
-        <div className="w-full h-full relative" style={{ width: '100%', height: '100%' }}>
-          {/* IMPORTANT: Do not remove the wrapper above or the canvas will disappear. */}
+    <div className="relative h-full w-full" style={{ width: '100%', height: '100%' }}>
+      {/* Canvas layer - base layer */}
+      <div ref={canvasWrapperRef} className="absolute inset-0 bg-slate-100" style={{ width: '100%', height: '100%' }}>
+        <div ref={canvasInnerRef} className="absolute inset-0" style={{ width: '100%', height: '100%' }}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -2409,6 +2424,21 @@ export default function RelationshipViewerPage() {
         </div>
       </div>
 
+      {/* Header bar - layered on top of canvas, full width and taller */}
+      <header className="absolute top-0 z-20 bg-white border-b px-6 py-4 flex items-center justify-between relationship-viewer-header" style={{ left: 0, right: 0, width: '100%', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)' }}>
+        <h1 className="text-xl font-bold text-gray-900 tracking-tight">Relationship Explorer</h1>
+        <RelationshipToolbar
+          style={{ compact: true }}
+          onRefocus={handleRefocusView}
+          onZoomToFit={handleZoomToFit}
+          onAutoArrange={handleAutoArrange}
+          depth={relationshipDepth}
+          onIncreaseDepth={handleIncreaseDepth}
+          onDecreaseDepth={handleDecreaseDepth}
+        />
+      </header>
+
+      {/* Entity info drawer */}
       <EntityInfoDrawer
         entityId={selectedEntityInfoId}
         entity={selectedEntityInfo}
