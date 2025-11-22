@@ -11,6 +11,7 @@ import DrawerPanel from '../../../components/DrawerPanel.jsx'
 import LocationForm from '../../locations/LocationForm.jsx'
 import { fetchLocationTypes } from '../../../api/locationTypes.js'
 import useIsMobile from '../../../hooks/useIsMobile.js'
+import { getDirectChildTypeIds } from '../../../utils/locationTypeHierarchy.js'
 
 export default function LocationsTab({ 
   location, 
@@ -168,6 +169,43 @@ export default function LocationsTab({
       ...ancestorIds,
     ].filter(Boolean)
   }, [location?.id, childLocations, ancestorIds])
+
+  // Get direct child type IDs for filtering child location selection
+  // Only show types that are DIRECT children (not grandchildren, etc.)
+  const allowedChildTypeIds = useMemo(() => {
+    if (!location?.location_type_id || !locationTypes || locationTypes.length === 0) {
+      console.log('⚠️ [Child Location Search] Cannot get child types - missing data:', {
+        hasLocation: !!location,
+        locationTypeId: location?.location_type_id,
+        hasLocationTypes: !!locationTypes,
+        locationTypesCount: locationTypes?.length || 0
+      })
+      return []
+    }
+    const currentTypeId = String(location.location_type_id)
+    const currentType = locationTypes.find(t => String(t.id) === currentTypeId)
+    console.log('🔍 [Child Location Search] Current location type:', {
+      id: currentTypeId,
+      name: currentType?.name,
+      locationTypes: locationTypes.map(t => ({
+        id: t.id,
+        name: t.name,
+        parentTypeId: t.parent_type_id || t.parentType?.id
+      }))
+    })
+    
+    // Get only DIRECT child types (not all descendants)
+    const directChildTypeIds = getDirectChildTypeIds(currentTypeId, locationTypes)
+    console.log('✅ [Child Location Search] Direct child type IDs found:', {
+      directChildTypeIds,
+      childTypes: directChildTypeIds.map(id => {
+        const type = locationTypes.find(t => String(t.id) === id)
+        return { id, name: type?.name || 'unknown' }
+      })
+    })
+    
+    return directChildTypeIds
+  }, [location?.location_type_id, locationTypes])
 
   const handleRemoveLocation = useCallback(async (childLocationId) => {
     if (!location?.id || !childLocationId) return
@@ -356,6 +394,7 @@ export default function LocationsTab({
                 onChange={handleLocationSelect}
                 placeholder="Type to search locations..."
                 excludeIds={excludeIds}
+                allowedTypeIds={allowedChildTypeIds}
                 onLocationResolved={(loc) => {
                   if (loc) {
                     setSelectedLocationId(loc.id)

@@ -840,20 +840,25 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     // Use LocationSearchSelect for location references, EntitySearchSelect for entity references
     const SearchComponent = isLocationReference ? LocationSearchSelect : EntitySearchSelect
 
+    // Use allowedTypeIds from field definition if provided, otherwise fall back to referenceTypeId
+    const allowedTypeIds = field.allowedTypeIds && Array.isArray(field.allowedTypeIds) && field.allowedTypeIds.length > 0
+      ? field.allowedTypeIds
+      : (referenceTypeId ? [referenceTypeId] : [])
+
     return (
       <div className="form-group">
         <label>{label}</label>
         <SearchComponent
           worldId={worldId}
           value={controlValue}
-          allowedTypeIds={referenceTypeId ? [referenceTypeId] : []}
+          allowedTypeIds={allowedTypeIds}
           disabled={controlDisabled}
           placeholder={`Search ${placeholderName.toLowerCase()}...`}
           staticOptions={staticReferenceOptions}
           onChange={handleReferenceChange}
           onResolved={handleReferenceResolved}
           required={Boolean(field.required)}
-          minSearchLength={isLocationReference && !referenceTypeId ? 0 : undefined}
+          minSearchLength={isLocationReference && allowedTypeIds.length === 0 ? 0 : undefined}
         />
         {!referenceTypeId && !isLocationReference && (
           <p className="help-text warning">Reference type configuration is missing.</p>

@@ -205,34 +205,112 @@ const LocationSelect = ({
       setError('')
 
       try {
+        console.log('🔍 [LocationSelect] Fetching locations...', {
+          worldId,
+          query,
+          allowedTypeIds: stableAllowedTypeIds,
+          excludeIds: stableExcludeIds
+        })
+        
         const params = {
           worldId,
           includeEntities: 'false',
-          all: 'true', // Request all locations, not just root ones
+          all: 'true', // Request all locations, not just root ones - include locations with parents/children
         }
         
-        if (stableAllowedTypeIds.length > 0) {
-          params.locationTypeId = stableAllowedTypeIds[0] // For now, use first type if multiple
-        }
+        // Don't filter by locationTypeId in the API call - we'll filter client-side to handle multiple types
+        // This ensures we get ALL locations regardless of their parent/child status
 
         const response = await fetchLocations(params)
         if (fetchId !== currentFetchRef.current) return
         
         const allLocations = response?.data || []
+        console.log('🔍 [LocationSelect] Fetched all locations:', {
+          totalCount: allLocations.length,
+          sampleLocations: allLocations.slice(0, 5).map(loc => ({
+            id: loc.id,
+            name: loc.name,
+            typeId: loc.location_type_id || loc.locationType?.id,
+            typeName: loc.locationType?.name,
+            parentId: loc.parent_id || loc.parent?.id
+          }))
+        })
         
         // Filter by search query and exclude IDs
         const queryLower = query.toLowerCase()
         const excludeSet = new Set(stableExcludeIds.map(id => String(id)))
+        const allowedTypeIdSet = stableAllowedTypeIds.length > 0 
+          ? new Set(stableAllowedTypeIds.map(id => String(id)))
+          : null
+        
+        console.log('🔍 [LocationSelect] Filtering locations...', {
+          allowedTypeIds: stableAllowedTypeIds,
+          allowedTypeIdSet: allowedTypeIdSet ? Array.from(allowedTypeIdSet) : null,
+          excludeIds: Array.from(excludeSet),
+          hasAllowedTypes: !!allowedTypeIdSet && allowedTypeIdSet.size > 0
+        })
+        
+        // Group locations by type before filtering for logging
+        const locationsByType = allLocations.reduce((acc, loc) => {
+          const typeId = String(loc.location_type_id || loc.locationType?.id || 'unknown')
+          const typeName = loc.locationType?.name || 'unknown'
+          if (!acc[typeName]) acc[typeName] = { typeId, locations: [] }
+          acc[typeName].locations.push({ id: loc.id, name: loc.name })
+          return acc
+        }, {})
+        console.log('🔍 [LocationSelect] Locations by type before filter:', locationsByType)
+        
         let filtered = allLocations.filter(loc => {
-          if (excludeSet.has(String(loc.id))) return false
-          if (query && !loc.name?.toLowerCase().includes(queryLower)) return false
-          if (stableAllowedTypeIds.length > 0) {
+          if (excludeSet.has(String(loc.id))) {
+            return false
+          }
+          if (query && !loc.name?.toLowerCase().includes(queryLower)) {
+            return false
+          }
+          // Filter by allowed type IDs - include ONLY locations with these types
+          // This should be direct child types only (not grandchildren, etc.)
+          if (allowedTypeIdSet && allowedTypeIdSet.size > 0) {
             const locTypeId = loc.location_type_id || loc.locationType?.id
-            if (!stableAllowedTypeIds.includes(String(locTypeId)) && !stableAllowedTypeIds.includes(locTypeId)) {
+            const locTypeIdStr = locTypeId ? String(locTypeId) : ''
+            const isAllowed = locTypeIdStr && allowedTypeIdSet.has(locTypeIdStr)
+            
+            if (!isAllowed) {
+              console.log('🔍 [LocationSelect] ❌ Excluded location (type not in allowed list):', {
+                name: loc.name,
+                typeId: locTypeIdStr,
+                typeName: loc.locationType?.name,
+                allowedTypeIds: Array.from(allowedTypeIdSet),
+                allowedTypeNames: Array.from(allowedTypeIdSet).map(id => {
+                  // We don't have access to type names here, but we can log the IDs
+                  return id
+                })
+              })
               return false
+            } else {
+              console.log('🔍 [LocationSelect] ✅ Included location (type matches):', {
+                name: loc.name,
+                typeId: locTypeIdStr,
+                typeName: loc.locationType?.name
+              })
             }
+          } else if (allowedTypeIdSet && allowedTypeIdSet.size === 0) {
+            // If allowedTypeIds is empty array, show nothing
+            console.log('🔍 [LocationSelect] ⚠️ No allowed types - filtering out all locations')
+            return false
           }
           return true
+        })
+        
+        console.log('✅ [LocationSelect] After filtering:', {
+          before: allLocations.length,
+          after: filtered.length,
+          filteredLocations: filtered.map(loc => ({
+            id: loc.id,
+            name: loc.name,
+            typeId: loc.location_type_id || loc.locationType?.id,
+            typeName: loc.locationType?.name,
+            parentId: loc.parent_id || loc.parent?.id
+          }))
         })
 
         // Apply pagination

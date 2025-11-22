@@ -22,6 +22,7 @@ import useLocationAccess from '../../hooks/useLocationAccess.js'
 import useIsMobile from '../../hooks/useIsMobile.js'
 import { fetchLocationTypes } from '../../api/locationTypes.js'
 import { getLocationTypeFields } from '../../api/locationTypeFields.js'
+import { getAncestorTypeIds } from '../../utils/locationTypeHierarchy.js'
 import AccessTab from './tabs/AccessTab.jsx'
 import SystemTab from './tabs/SystemTab.jsx'
 import EntitiesTab from './tabs/EntitiesTab.jsx'
@@ -654,6 +655,13 @@ export default function LocationDetailPage() {
           },
         ]
 
+    // Calculate ancestor type IDs for parent_id field to enforce type hierarchy
+    let parentAllowedTypeIds = []
+    if (location?.location_type_id && locationTypes && locationTypes.length > 0) {
+      const currentTypeId = String(location.location_type_id)
+      parentAllowedTypeIds = getAncestorTypeIds(currentTypeId, locationTypes)
+    }
+
     return {
       title: 'Edit Location',
       sections: [
@@ -668,6 +676,7 @@ export default function LocationDetailPage() {
               label: 'Parent Location', 
               type: 'location_reference',
               dataType: 'location_reference',
+              allowedTypeIds: parentAllowedTypeIds,
             },
             {
               key: 'description',
@@ -685,7 +694,7 @@ export default function LocationDetailPage() {
         },
       ],
     }
-  }, [metadataFields, metadataSectionTitle])
+  }, [metadataFields, metadataSectionTitle, location?.location_type_id, locationTypes])
 
   const dossierSchema = useMemo(() => {
     const metadataSectionFields = metadataFields.length > 0
