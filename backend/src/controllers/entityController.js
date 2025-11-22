@@ -2146,11 +2146,17 @@ export const deleteEntity = async (req, res) => {
 
     // Delete related bulk_update_changes records before deleting the entity
     // This is necessary because the foreign key constraint may not have CASCADE delete enabled
-    await BulkUpdateChange.destroy({
-      where: { entity_id: id },
-    })
+    // Use a transaction to ensure both operations succeed or fail together
+    await sequelize.transaction(async (transaction) => {
+      // Delete related bulk_update_changes records first
+      await BulkUpdateChange.destroy({
+        where: { entity_id: id },
+        transaction,
+      })
 
-    await entity.destroy()
+      // Then delete the entity
+      await entity.destroy({ transaction })
+    })
 
     return res.json({ success: true, message: 'Entity deleted' })
   } catch (error) {

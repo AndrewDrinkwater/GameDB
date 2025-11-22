@@ -31,7 +31,6 @@ import {
   buildMetadataViewMap,
 } from '../../utils/metadataFieldUtils.js'
 import { getEntity } from '../../api/entities.js'
-import { fetchLocationById } from '../../api/locations.js'
 
 const buildEnumOptions = (field) => {
   const choices = field?.options?.choices
