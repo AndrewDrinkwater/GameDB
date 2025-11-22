@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import ReactFlow, { Background, Controls, MiniMap, applyEdgeChanges, applyNodeChanges } from 'reactflow'
+import ReactFlow, { 
+  Background, 
+  Controls, 
+  MiniMap, 
+  applyEdgeChanges, 
+  applyNodeChanges,
+  BaseEdge,
+  EdgeLabelRenderer,
+  getSmoothStepPath,
+  useReactFlow
+} from 'reactflow'
 import 'reactflow/dist/style.css'
 import { getEntityGraph, getEntity } from '../../api/entities.js'
 import { getEntityTypeFieldOrder, getEntityTypeFieldRules } from '../../api/entityTypes.js'
@@ -19,8 +29,91 @@ import EntityInfoDrawer from '../../components/relationshipViewer/EntityInfoDraw
 import { resolveEntityResponse } from '../../utils/entityHelpers.js'
 import { extractListResponse } from '../../utils/apiUtils.js'
 
+// Custom edge component that positions label centered above the target (child) entity
+function CustomEdgeWithTargetLabel({ id, source, target, data, markerEnd, style, selected }) {
+  const { getNode } = useReactFlow()
+  const sourceNode = getNode(source)
+  const targetNode = getNode(target)
+
+  if (!sourceNode || !targetNode) {
+    return null
+  }
+
+  // Get node dimensions with fallback defaults
+  const sourceWidth = sourceNode.width ?? 200
+  const sourceHeight = sourceNode.height ?? 80
+  const targetWidth = targetNode.width ?? 200
+  const targetHeight = targetNode.height ?? 80
+
+  // Use positionAbsolute for accurate positioning (accounts for viewport transforms)
+  const sourcePosX = sourceNode.positionAbsolute?.x ?? sourceNode.position?.x ?? 0
+  const sourcePosY = sourceNode.positionAbsolute?.y ?? sourceNode.position?.y ?? 0
+  const targetPosX = targetNode.positionAbsolute?.x ?? targetNode.position?.x ?? 0
+  const targetPosY = targetNode.positionAbsolute?.y ?? targetNode.position?.y ?? 0
+
+  // Calculate center positions for proper edge connection
+  // Handles at Position.Top and Position.Bottom are centered horizontally
+  const sourceX = sourcePosX + sourceWidth / 2
+  const sourceY = sourcePosY + sourceHeight // Bottom center of source node (where bottom handle is)
+  const targetX = targetPosX + targetWidth / 2
+  const targetY = targetPosY // Top center of target node (where top handle is)
+
+  const [edgePath] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    sourcePosition: 'bottom',
+    targetX,
+    targetY,
+    targetPosition: 'top',
+  })
+
+  // Position label centered above the target node
+  // Offset it slightly above the top edge (about 18-20px for visual spacing)
+  const labelOffsetY = -18
+  const labelXPos = targetX // Center horizontally on target node center
+  const labelYPos = targetY + labelOffsetY // Position above target node top
+
+  // Get the label text - prioritize data.relationshipType, then data.label
+  const label = data?.relationshipType || data?.label || 'Related'
+
+  return (
+    <>
+      <BaseEdge
+        id={id}
+        path={edgePath}
+        markerEnd={markerEnd}
+        style={style}
+        selected={selected}
+      />
+      <EdgeLabelRenderer>
+        <div
+          style={{
+            position: 'absolute',
+            transform: `translate(-50%, -50%) translate(${labelXPos}px,${labelYPos}px)`,
+            fontSize: 12,
+            pointerEvents: 'all',
+            background: 'rgba(255, 255, 255, 0.9)',
+            padding: '2px 6px',
+            borderRadius: '4px',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)',
+            whiteSpace: 'nowrap',
+            zIndex: 10,
+          }}
+          className="nodrag nopan"
+        >
+          {label}
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  )
+}
+
+// Memoize nodeTypes and edgeTypes outside component to prevent recreation warnings
 const nodeTypes = { cluster: ClusterNode, entity: EntityNode }
-const edgeTypes = {}
+const edgeTypes = {
+  'smoothstep': CustomEdgeWithTargetLabel,
+}
 
 const DEFAULT_RELATIONSHIP_LABEL = 'Related'
 
@@ -67,8 +160,11 @@ function computeDepthLookup(sourceId, adjacency) {
   depthMap.set(normalizedSource, 0)
   const queue = [normalizedSource]
   const visited = new Set([normalizedSource])
+  const MAX_ITERATIONS = 10000
+  let iterations = 0
 
-  while (queue.length) {
+  while (queue.length && iterations < MAX_ITERATIONS) {
+    iterations += 1
     const currentId = queue.shift()
     if (!currentId) continue
 
@@ -93,6 +189,10 @@ function computeDepthLookup(sourceId, adjacency) {
       visited.add(childId)
       queue.push(childId)
     })
+  }
+
+  if (iterations >= MAX_ITERATIONS) {
+    console.warn(`computeDepthLookup: Reached maximum iteration limit (${MAX_ITERATIONS}), possible circular relationship detected`)
   }
 
   return depthMap
@@ -242,6 +342,8 @@ export default function RelationshipViewerPage() {
   const [boardEntities, setBoardEntities] = useState({})
   const [reactFlowInstance, setReactFlowInstance] = useState(null)
   const [relationshipDepth, setRelationshipDepth] = useState(1)
+  const canvasWrapperRef = useRef(null)
+  const canvasInnerRef = useRef(null)
   const [selectedEntityInfoId, setSelectedEntityInfoId] = useState(null)
   const [selectedEntityInfo, setSelectedEntityInfo] = useState(null)
   const [selectedEntityInfoError, setSelectedEntityInfoError] = useState(null)
@@ -261,6 +363,10 @@ export default function RelationshipViewerPage() {
   const graphAdjacencyRef = useRef(new Map())
   const nodeDepthLookupRef = useRef(new Map())
   const visibilityReevaluationTimeoutRef = useRef(null)
+
+  // Memoize nodeTypes and edgeTypes to prevent React Flow warnings
+  const memoizedNodeTypes = useMemo(() => nodeTypes, [])
+  const memoizedEdgeTypes = useMemo(() => edgeTypes, [])
 
   const applyUserPlacedPositions = useCallback((nodeList) => {
     if (!Array.isArray(nodeList) || !nodeList.length) return nodeList
@@ -771,124 +877,191 @@ export default function RelationshipViewerPage() {
         const queue = validNodesWithDefinitions.map(({ id }) => String(id))
         const visited = new Set()
         const appendedEdgeIds = new Set()
+        const processingQueue = new Set() // Track nodes being processed to detect immediate circular references
+        const maxIterations = 10000 // Safety limit to prevent infinite loops
+        let iterations = 0
 
-        while (queue.length) {
-          const currentId = queue.shift()
-          if (!currentId || visited.has(currentId)) continue
-          visited.add(currentId)
+        // Validate depth lookup is properly initialized
+        if (!(depthLookup instanceof Map)) {
+          console.warn('Depth lookup not properly initialized, skipping relationship extension')
+          return
+        }
 
-          const parentDepth = depthLookup.get(currentId) ?? 0
-          if (
-            relationshipDepthLimit != null &&
-            parentDepth != null &&
-            parentDepth >= relationshipDepthLimit
-          ) {
-            continue
-          }
+        try {
+          while (queue.length && iterations < maxIterations) {
+            iterations += 1
+            const currentId = queue.shift()
+            if (!currentId || visited.has(currentId)) continue
+            
+            // Check for circular reference - if node is already being processed
+            if (processingQueue.has(currentId)) {
+              console.warn(`Circular reference detected for entity ${currentId}, skipping`)
+              continue
+            }
+            
+            visited.add(currentId)
+            processingQueue.add(currentId)
 
-          const outgoingEdges = adjacency.get(currentId)
-          if (!outgoingEdges || !outgoingEdges.length) continue
-
-          outgoingEdges.forEach((edge) => {
-            if (!edge) return
-
-            const childRaw =
-              edge?.childId != null
-                ? edge.childId
-                : edge?.target != null
-                ? edge.target
-                : null
-
-            const childId = childRaw != null ? String(childRaw) : null
-            if (!childId || childId === currentId) return
-
-            const nextDepth = parentDepth + 1
+            // Validate and get parent depth with safety checks
+            const parentDepth = typeof depthLookup.get === 'function'
+              ? (depthLookup.get(currentId) ?? 0)
+              : 0
+            
             if (
               relationshipDepthLimit != null &&
-              Number.isFinite(relationshipDepthLimit) &&
-              nextDepth > relationshipDepthLimit
+              parentDepth != null &&
+              Number.isFinite(parentDepth) &&
+              parentDepth >= relationshipDepthLimit
             ) {
-              return
+              processingQueue.delete(currentId)
+              continue
             }
 
-            if (plannedNodeIds.has(childId)) {
-              assignDepthToEntity(childId, nextDepth)
-              if (breakoutIds.has(childId)) {
-                queue.push(childId)
-              }
-            } else if (!descendantAdditionIds.has(childId)) {
-              let definitionToAdd = null
+            // Validate adjacency map before accessing
+            if (!(adjacency instanceof Map) || typeof adjacency.get !== 'function') {
+              processingQueue.delete(currentId)
+              continue
+            }
 
-              if (suppressedNodes.has(childId)) {
-                const definition = suppressedDefinitions.get(childId)
-                if (!definition) return
+            const outgoingEdges = adjacency.get(currentId)
+            if (!Array.isArray(outgoingEdges) || !outgoingEdges.length) {
+              processingQueue.delete(currentId)
+              continue
+            }
 
-                suppressedNodes.delete(childId)
-                suppressedDefinitions.delete(childId)
-                suppressedMeta.delete(childId)
-                manualReleaseSet.add(childId)
+            outgoingEdges.forEach((edge) => {
+              if (!edge) return
 
-                definitionToAdd = definition
-              } else {
-                const existingDefinition = allNodeDefinitions.get(childId)
-                if (!existingDefinition) return
+              try {
+                const childRaw =
+                  edge?.childId != null
+                    ? edge.childId
+                    : edge?.target != null
+                    ? edge.target
+                    : null
 
-                const fallbackLabel =
-                  existingDefinition?.data?.label ||
-                  existingDefinition?.data?.name ||
-                  `Entity ${childId}`
+                const childId = childRaw != null ? String(childRaw) : null
+                if (!childId || childId === currentId) return
 
-                const normalizedDefinition = {
-                  ...existingDefinition,
-                  id: String(childId),
-                  type: existingDefinition.type || 'entity',
-                  position: existingDefinition.position || { x: 0, y: 0 },
-                  data: {
-                    ...existingDefinition?.data,
-                    label: sanitizeEntityLabel(fallbackLabel, `Entity ${childId}`),
-                    typeName:
-                      existingDefinition?.data?.typeName ||
-                      existingDefinition?.data?.type?.name ||
-                      'Entity',
-                    entityId:
-                      existingDefinition?.data?.entityId != null
-                        ? String(existingDefinition.data.entityId)
-                        : String(childId),
-                    isAdHoc:
-                      existingDefinition?.data?.isAdHoc != null
-                        ? Boolean(existingDefinition.data.isAdHoc)
-                        : true,
-                    isExpandedProtected: Boolean(
-                      existingDefinition?.data?.isExpandedProtected
-                    ),
-                  },
+                const nextDepth = Number.isFinite(parentDepth) ? parentDepth + 1 : 1
+                if (
+                  relationshipDepthLimit != null &&
+                  Number.isFinite(relationshipDepthLimit) &&
+                  nextDepth > relationshipDepthLimit
+                ) {
+                  return
                 }
 
-                definitionToAdd = normalizedDefinition
-              }
+                if (plannedNodeIds.has(childId)) {
+                  assignDepthToEntity(childId, nextDepth)
+                  if (breakoutIds.has(childId) && !visited.has(childId) && !processingQueue.has(childId)) {
+                    queue.push(childId)
+                  }
+                } else if (!descendantAdditionIds.has(childId)) {
+                  let definitionToAdd = null
 
-              if (definitionToAdd) {
-                descendantNodeAdditions.push({
-                  id: childId,
-                  definition: definitionToAdd,
-                })
-                descendantAdditionIds.add(childId)
-                plannedNodeIds.add(childId)
-                breakoutIds.add(childId)
-                queue.push(childId)
+                  if (suppressedNodes.has(childId)) {
+                    // Validate suppressedDefinitions is a Map before accessing
+                    if (!(suppressedDefinitions instanceof Map) || typeof suppressedDefinitions.get !== 'function') {
+                      return
+                    }
+                    const definition = suppressedDefinitions.get(childId)
+                    if (!definition) return
+
+                    suppressedNodes.delete(childId)
+                    suppressedDefinitions.delete(childId)
+                    if (suppressedMeta instanceof Map) {
+                      suppressedMeta.delete(childId)
+                    }
+                    manualReleaseSet.add(childId)
+
+                    definitionToAdd = definition
+                  } else {
+                    // Validate allNodeDefinitions is a Map before accessing
+                    if (!(allNodeDefinitions instanceof Map) || typeof allNodeDefinitions.get !== 'function') {
+                      return
+                    }
+                    const existingDefinition = allNodeDefinitions.get(childId)
+                    if (!existingDefinition) return
+
+                    const fallbackLabel =
+                      existingDefinition?.data?.label ||
+                      existingDefinition?.data?.name ||
+                      `Entity ${childId}`
+
+                    const normalizedDefinition = {
+                      ...existingDefinition,
+                      id: String(childId),
+                      type: existingDefinition.type || 'entity',
+                      position: existingDefinition.position || { x: 0, y: 0 },
+                      data: {
+                        ...(existingDefinition?.data || {}),
+                        label: sanitizeEntityLabel(fallbackLabel, `Entity ${childId}`),
+                        typeName:
+                          existingDefinition?.data?.typeName ||
+                          existingDefinition?.data?.type?.name ||
+                          'Entity',
+                        entityId:
+                          existingDefinition?.data?.entityId != null
+                            ? String(existingDefinition.data.entityId)
+                            : String(childId),
+                        isAdHoc:
+                          existingDefinition?.data?.isAdHoc != null
+                            ? Boolean(existingDefinition.data.isAdHoc)
+                            : true,
+                        isExpandedProtected: Boolean(
+                          existingDefinition?.data?.isExpandedProtected
+                        ),
+                      },
+                    }
+
+                    definitionToAdd = normalizedDefinition
+                  }
+
+                  if (definitionToAdd) {
+                    descendantNodeAdditions.push({
+                      id: childId,
+                      definition: definitionToAdd,
+                    })
+                    descendantAdditionIds.add(childId)
+                    plannedNodeIds.add(childId)
+                    breakoutIds.add(childId)
+                    if (!visited.has(childId) && !processingQueue.has(childId)) {
+                      queue.push(childId)
+                    }
+                    assignDepthToEntity(childId, nextDepth)
+                    allNodeDefinitions.set(childId, definitionToAdd)
+                  }
+                }
+
                 assignDepthToEntity(childId, nextDepth)
-                allNodeDefinitions.set(childId, definitionToAdd)
+
+                // Wrap edge conversion in try-catch to prevent crashes
+                try {
+                  const reactFlowEdge = convertNormalizedEdgeToReactFlow(edge)
+                  if (reactFlowEdge && !appendedEdgeIds.has(reactFlowEdge.id)) {
+                    appendedEdgeIds.add(reactFlowEdge.id)
+                    descendantEdgeAdditions.push(reactFlowEdge)
+                  }
+                } catch (edgeError) {
+                  console.warn(`Failed to convert edge to ReactFlow format:`, edgeError)
+                  // Continue processing other edges
+                }
+              } catch (edgeProcessingError) {
+                console.warn(`Error processing edge for entity ${currentId}:`, edgeProcessingError)
+                // Continue processing other edges
               }
-            }
+            })
 
-            assignDepthToEntity(childId, nextDepth)
+            processingQueue.delete(currentId)
+          }
 
-            const reactFlowEdge = convertNormalizedEdgeToReactFlow(edge)
-            if (reactFlowEdge && !appendedEdgeIds.has(reactFlowEdge.id)) {
-              appendedEdgeIds.add(reactFlowEdge.id)
-              descendantEdgeAdditions.push(reactFlowEdge)
-            }
-          })
+          if (iterations >= maxIterations) {
+            console.warn(`Relationship extension reached maximum iteration limit (${maxIterations}), stopping to prevent infinite loop`)
+          }
+        } catch (traversalError) {
+          console.error('Error during relationship extension traversal:', traversalError)
+          // Continue with what we have so far
         }
 
         if (descendantEdgeAdditions.length) {
@@ -1151,107 +1324,134 @@ export default function RelationshipViewerPage() {
           const parentId = parentIdRaw != null ? String(parentIdRaw) : null
           if (!parentId) return
 
+          // Validate adjacency and depthLookup are Maps before accessing
+          if (!(adjacency instanceof Map) || typeof adjacency.get !== 'function') {
+            return
+          }
+          if (!(depthLookup instanceof Map) || typeof depthLookup.get !== 'function') {
+            return
+          }
+
           const childEdges = adjacency.get(parentId) || []
+          if (!Array.isArray(childEdges)) return
+
           const parentDepth = depthLookup.get(parentId)
           const nextDepth = Number.isFinite(parentDepth) ? parentDepth + 1 : null
 
           childEdges.forEach((edge) => {
             if (!edge) return
 
-            const childRaw =
-              edge?.childId != null
-                ? edge.childId
-                : edge?.target != null
-                ? edge.target
-                : null
-            const childId = childRaw != null ? String(childRaw) : null
-            if (!childId || childId === parentId) return
+            try {
+              const childRaw =
+                edge?.childId != null
+                  ? edge.childId
+                  : edge?.target != null
+                  ? edge.target
+                  : null
+              const childId = childRaw != null ? String(childRaw) : null
+              if (!childId || childId === parentId) return
 
-            if (manualReleaseSet.has(childId)) {
-              return
-            }
+              if (manualReleaseSet.has(childId)) {
+                return
+              }
 
-            const relEdge = convertNormalizedEdgeToReactFlow(edge)
-            if (relEdge && !existingEdgeIds.has(relEdge.id)) {
-              existingEdgeIds.add(relEdge.id)
-              edgesToAdd.push(relEdge)
-            }
+              // Wrap edge conversion in try-catch to prevent crashes
+              try {
+                const relEdge = convertNormalizedEdgeToReactFlow(edge)
+                if (relEdge && !existingEdgeIds.has(relEdge.id)) {
+                  existingEdgeIds.add(relEdge.id)
+                  edgesToAdd.push(relEdge)
+                }
+              } catch (edgeError) {
+                console.warn(`Failed to convert edge to ReactFlow format for parent ${parentId}:`, edgeError)
+                // Continue processing other edges
+              }
 
-            const withinDepth =
-              depthLimit == null || (nextDepth != null && nextDepth <= depthLimit)
-            if (!withinDepth) return
+              const withinDepth =
+                depthLimit == null || (nextDepth != null && nextDepth <= depthLimit)
+              if (!withinDepth) return
 
-            if (!suppressedDefinitionsMap.has(childId)) return
+              // Validate suppressedDefinitionsMap is a Map before accessing
+              if (!(suppressedDefinitionsMap instanceof Map) || typeof suppressedDefinitionsMap.has !== 'function') {
+                return
+              }
 
-            const definition = suppressedDefinitionsMap.get(childId)
-            if (!definition) return
+              if (!suppressedDefinitionsMap.has(childId)) return
 
-            const meta =
-              (suppressedMetaMap && suppressedMetaMap.get(childId)) ||
-              (suppressedNodesMap && suppressedNodesMap.get(childId)) ||
-              null
+              const definition = suppressedDefinitionsMap.get(childId)
+              if (!definition) return
 
-            suppressedDefinitionsMap.delete(childId)
-            if (suppressedNodesMap) {
-              suppressedNodesMap.delete(childId)
-            }
-            if (suppressedMetaMap) {
-              suppressedMetaMap.delete(childId)
-            }
+              const meta =
+                (suppressedMetaMap && suppressedMetaMap.get(childId)) ||
+                (suppressedNodesMap && suppressedNodesMap.get(childId)) ||
+                null
 
-            const wasReleased = manualReleaseSet.has(childId)
-            manualReleaseSet.add(childId)
+              suppressedDefinitionsMap.delete(childId)
+              if (suppressedNodesMap) {
+                suppressedNodesMap.delete(childId)
+              }
+              if (suppressedMetaMap) {
+                suppressedMetaMap.delete(childId)
+              }
 
-            if (nextDepth != null && (!wasReleased || !depthLookup.has(childId))) {
-              assignDepthToEntity(childId, nextDepth)
-            }
+              const wasReleased = manualReleaseSet.has(childId)
+              manualReleaseSet.add(childId)
 
-            const entityMeta = meta?.entity || null
-            const fallbackLabel = sanitizeEntityLabel(
-              definition?.data?.label,
-              sanitizeEntityLabel(
-                definition?.data?.name,
-                `Entity ${childId}`
+              // Validate depthLookup before accessing
+              if (nextDepth != null && (!wasReleased || !(depthLookup instanceof Map) || !depthLookup.has(childId))) {
+                assignDepthToEntity(childId, nextDepth)
+              }
+
+              const entityMeta = meta?.entity || null
+              const fallbackLabel = sanitizeEntityLabel(
+                definition?.data?.label,
+                sanitizeEntityLabel(
+                  definition?.data?.name,
+                  `Entity ${childId}`
+                )
               )
-            )
-            const sanitizedLabel = sanitizeEntityLabel(
-              entityMeta?.name,
-              fallbackLabel
-            )
+              const sanitizedLabel = sanitizeEntityLabel(
+                entityMeta?.name,
+                fallbackLabel
+              )
 
-            const normalizedNode = {
-              ...definition,
-              id: childId,
-              type: 'entity',
-              data: {
-                ...definition?.data,
-                label: sanitizedLabel,
-                typeName:
-                  entityMeta?.typeName ||
-                  definition?.data?.typeName ||
-                  definition?.data?.type?.name ||
-                  'Entity',
-                entityId: childId,
-                isAdHoc: true,
-                onSetTarget: handleSetTargetEntity,
-                onOpenInfo: handleOpenEntityInfo,
-                isExpandedProtected: Boolean(
-                  entityMeta?.isExpandedProtected ??
-                    definition?.data?.isExpandedProtected
-                ),
-              },
-            }
+              const normalizedNode = {
+                ...definition,
+                id: childId,
+                type: 'entity',
+                data: {
+                  ...definition?.data,
+                  label: sanitizedLabel,
+                  typeName:
+                    entityMeta?.typeName ||
+                    definition?.data?.typeName ||
+                    definition?.data?.type?.name ||
+                    'Entity',
+                  entityId: childId,
+                  isAdHoc: true,
+                  onSetTarget: handleSetTargetEntity,
+                  onOpenInfo: handleOpenEntityInfo,
+                  isExpandedProtected: Boolean(
+                    entityMeta?.isExpandedProtected ??
+                      definition?.data?.isExpandedProtected
+                  ),
+                },
+              }
 
-            nodesToAdd.push(normalizedNode)
-            newChildIds.add(childId)
+              nodesToAdd.push(normalizedNode)
+              newChildIds.add(childId)
 
-            if (meta?.clusterId) {
-              boardUpdates.set(childId, {
-                clusterId: String(meta.clusterId),
-                relationshipType: meta?.relationshipType || null,
-                sourceId:
-                  meta?.parentId != null ? String(meta.parentId) : null,
-              })
+              if (meta?.clusterId) {
+                boardUpdates.set(childId, {
+                  clusterId: String(meta.clusterId),
+                  relationshipType: meta?.relationshipType || null,
+                  sourceId:
+                    meta?.parentId != null ? String(meta.parentId) : null,
+                })
+              }
+            } catch (edgeProcessingError) {
+              console.warn(`Error processing edge for parent ${parentId} child ${childId}:`, edgeProcessingError)
+              // Continue processing other edges
             }
           })
         })
@@ -1867,9 +2067,16 @@ export default function RelationshipViewerPage() {
   useEffect(() => {
     if (!entityId) return
     let active = true
+    const abortController = new AbortController()
+    const API_TIMEOUT_MS = 30000 // 30 seconds
+
     async function fetchData() {
       setLoading(true)
       setError(null)
+      
+      const startTime = performance.now()
+      console.log(`[RelationshipViewer] Starting graph fetch for entity ${entityId} at depth ${relationshipDepth}`)
+      
       try {
         const suppressedEntries =
           suppressedNodesRef.current instanceof Map
@@ -1880,7 +2087,19 @@ export default function RelationshipViewerPage() {
         )
         const suppressedIds = new Set(suppressedLookup.keys())
 
-        const graph = await getEntityGraph(entityId, relationshipDepth)
+        // Create timeout promise
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(`Graph fetch timed out after ${API_TIMEOUT_MS / 1000} seconds`))
+          }, API_TIMEOUT_MS)
+        })
+
+        // Race between API call and timeout
+        const graphPromise = getEntityGraph(entityId, relationshipDepth)
+        const graph = await Promise.race([graphPromise, timeoutPromise])
+        
+        const fetchTime = performance.now() - startTime
+        console.log(`[RelationshipViewer] Graph fetch completed in ${fetchTime.toFixed(2)}ms`)
         const graphData = graph ?? {}
 
         let sanitizedEdges = Array.isArray(graphData.edges) ? graphData.edges : []
@@ -1937,18 +2156,32 @@ export default function RelationshipViewerPage() {
           ancestorDepthLimit
         )
 
-        const {
-          nodes: layoutedNodes,
-          edges: layoutedEdges,
-          suppressedNodes: layoutedSuppressedNodes,
-          clusters: layoutedClusters,
-        } = buildReactFlowGraph(
-          { ...graphData, edges: sanitizedEdges },
-          entityId,
-          undefined,
-          { alwaysIncludeIds: forcedAncestorIds }
-        )
-        if (active) {
+        // Break up heavy processing to prevent UI blocking
+        // Use setTimeout to defer processing and allow UI to update
+        const processingStartTime = performance.now()
+        console.log(`[RelationshipViewer] Starting graph processing: ${sanitizedEdges.length} edges`)
+        
+        setTimeout(() => {
+          try {
+            if (!active) return
+          
+            const buildStartTime = performance.now()
+            const {
+              nodes: layoutedNodes,
+              edges: layoutedEdges,
+              suppressedNodes: layoutedSuppressedNodes,
+              clusters: layoutedClusters,
+            } = buildReactFlowGraph(
+              { ...graphData, edges: sanitizedEdges },
+              entityId,
+              undefined,
+              { alwaysIncludeIds: forcedAncestorIds }
+            )
+            
+            const buildTime = performance.now() - buildStartTime
+            console.log(`[RelationshipViewer] buildReactFlowGraph completed in ${buildTime.toFixed(2)}ms: ${layoutedNodes.length} nodes, ${layoutedEdges.length} edges`)
+          
+            if (!active) return
           const decorateNode = (node) => {
             if (!node) return null
             if (node.type === 'cluster') {
@@ -2201,18 +2434,34 @@ export default function RelationshipViewerPage() {
             ? [...layoutedEdges, ...preservedEdges]
             : preservedEdges
 
-          setNodes(applyUserPlacedPositions(mergedNodes))
-          setEdges(mergedEdges)
-        }
+            const processingTime = performance.now() - processingStartTime
+            console.log(`[RelationshipViewer] Total processing completed in ${processingTime.toFixed(2)}ms`)
+            
+            setNodes(applyUserPlacedPositions(mergedNodes))
+            setEdges(mergedEdges)
+            
+            // Set loading to false after processing is complete
+            if (active) setLoading(false)
+          } catch (processingError) {
+            if (active) {
+              console.error('[RelationshipViewer] Error processing graph data:', processingError)
+              setError(processingError.message || 'Failed to process graph data')
+              setLoading(false)
+            }
+          }
+        }, 0)
       } catch (err) {
-        if (active) setError(err.message || 'Failed to load graph')
-      } finally {
-        if (active) setLoading(false)
+        if (active) {
+          console.error('[RelationshipViewer] Error fetching graph:', err)
+          setError(err.message || 'Failed to load graph')
+          setLoading(false)
+        }
       }
     }
     fetchData()
     return () => {
       active = false
+      abortController.abort()
     }
   }, [
     applyUserPlacedPositions,
@@ -2355,11 +2604,43 @@ export default function RelationshipViewerPage() {
   ])
 
   const handleIncreaseDepth = useCallback(() => {
+    // Prevent depth changes while loading to avoid crashes
+    if (loading) return
     setRelationshipDepth((current) => Math.min(3, current + 1))
-  }, [])
+  }, [loading])
 
   const handleDecreaseDepth = useCallback(() => {
+    // Prevent depth changes while loading to avoid crashes
+    if (loading) return
     setRelationshipDepth((current) => Math.max(1, current - 1))
+  }, [loading])
+
+  // Ensure React Flow container has explicit dimensions
+  useEffect(() => {
+    if (!canvasWrapperRef.current || !canvasInnerRef.current) return
+
+    const updateDimensions = () => {
+      const wrapper = canvasWrapperRef.current
+      const inner = canvasInnerRef.current
+      if (!wrapper || !inner) return
+      const rect = wrapper.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        inner.style.width = `${rect.width}px`
+        inner.style.height = `${rect.height}px`
+      }
+    }
+
+    // Initial update with a small delay to ensure layout is calculated
+    const timeoutId = setTimeout(updateDimensions, 0)
+
+    // Update on resize
+    const resizeObserver = new ResizeObserver(updateDimensions)
+    resizeObserver.observe(canvasWrapperRef.current)
+
+    return () => {
+      clearTimeout(timeoutId)
+      resizeObserver.disconnect()
+    }
   }, [])
 
   if (loading) return <p className="p-4">Loading graph...</p>
@@ -2367,13 +2648,33 @@ export default function RelationshipViewerPage() {
   if (!nodes.length) return <p className="p-4">No relationships found for this entity.</p>
 
   return (
-    <div className="flex flex-col h-screen w-full bg-gray-100">
-      <header className="p-4 border-b bg-white shadow-sm">
-        <h1 className="text-2xl font-bold text-gray-800">Relationship Explorer</h1>
-      </header>
+    <div className="relative h-full w-full" style={{ width: '100%', height: '100%' }}>
+      {/* Canvas layer - base layer */}
+      <div ref={canvasWrapperRef} className="absolute inset-0 bg-slate-100" style={{ width: '100%', height: '100%' }}>
+        <div ref={canvasInnerRef} className="absolute inset-0" style={{ width: '100%', height: '100%' }}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeDragStop={handleNodeDragStop}
+            nodeTypes={memoizedNodeTypes}
+            edgeTypes={memoizedEdgeTypes}
+            fitView
+            onInit={setReactFlowInstance}
+          >
+            <MiniMap />
+            <Controls />
+            <Background gap={16} />
+          </ReactFlow>
+        </div>
+      </div>
 
-      <div className="flex-1 min-h-0 flex flex-col bg-slate-100">
+      {/* Header bar - layered on top of canvas, full width and taller */}
+      <header className="absolute top-0 z-20 bg-white border-b px-6 py-4 flex items-center justify-between relationship-viewer-header" style={{ left: 0, right: 0, width: '100%', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)' }}>
+        <h1 className="text-xl font-bold text-gray-900 tracking-tight">Relationship Explorer</h1>
         <RelationshipToolbar
+          style={{ compact: true }}
           onRefocus={handleRefocusView}
           onZoomToFit={handleZoomToFit}
           onAutoArrange={handleAutoArrange}
@@ -2381,30 +2682,9 @@ export default function RelationshipViewerPage() {
           onIncreaseDepth={handleIncreaseDepth}
           onDecreaseDepth={handleDecreaseDepth}
         />
+      </header>
 
-        {/* IMPORTANT: This wrapper ensures React Flow receives explicit dimensions. Removing it breaks the canvas. */}
-        <div className="flex-1 min-h-0 relative">
-          <div className="w-full h-full relative" style={{ height: 'calc(100vh - 80px)' }}>
-            {/* IMPORTANT: Do not remove the wrapper above or the canvas will disappear. */}
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onNodeDragStop={handleNodeDragStop}
-              nodeTypes={nodeTypes}
-              edgeTypes={edgeTypes}
-              fitView
-              onInit={setReactFlowInstance}
-            >
-              <MiniMap />
-              <Controls />
-              <Background gap={16} />
-            </ReactFlow>
-          </div>
-        </div>
-      </div>
-
+      {/* Entity info drawer */}
       <EntityInfoDrawer
         entityId={selectedEntityInfoId}
         entity={selectedEntityInfo}

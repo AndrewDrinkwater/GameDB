@@ -9,9 +9,10 @@ export default function RelationshipToolbar({
   depth,
   onIncreaseDepth,
   onDecreaseDepth,
+  style,
 }) {
   return (
-    <div className="relationship-toolbar" role="toolbar" aria-label="Relationship viewer controls">
+    <div className={`relationship-toolbar ${style?.compact ? 'relationship-toolbar--compact' : ''}`} role="toolbar" aria-label="Relationship viewer controls" style={style}>
       <div className="relationship-toolbar__actions">
         <button
           type="button"
