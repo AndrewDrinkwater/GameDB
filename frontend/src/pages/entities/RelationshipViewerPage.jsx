@@ -19,6 +19,7 @@ import EntityInfoDrawer from '../../components/relationshipViewer/EntityInfoDraw
 import { resolveEntityResponse } from '../../utils/entityHelpers.js'
 import { extractListResponse } from '../../utils/apiUtils.js'
 
+// Memoize nodeTypes and edgeTypes outside component to prevent recreation warnings
 const nodeTypes = { cluster: ClusterNode, entity: EntityNode }
 const edgeTypes = {}
 
@@ -261,6 +262,10 @@ export default function RelationshipViewerPage() {
   const graphAdjacencyRef = useRef(new Map())
   const nodeDepthLookupRef = useRef(new Map())
   const visibilityReevaluationTimeoutRef = useRef(null)
+
+  // Memoize nodeTypes and edgeTypes to prevent React Flow warnings
+  const memoizedNodeTypes = useMemo(() => nodeTypes, [])
+  const memoizedEdgeTypes = useMemo(() => edgeTypes, [])
 
   const applyUserPlacedPositions = useCallback((nodeList) => {
     if (!Array.isArray(nodeList) || !nodeList.length) return nodeList
@@ -2367,41 +2372,40 @@ export default function RelationshipViewerPage() {
   if (!nodes.length) return <p className="p-4">No relationships found for this entity.</p>
 
   return (
-    <div className="flex flex-col h-screen w-full bg-gray-100">
-      <header className="p-4 border-b bg-white shadow-sm">
-        <h1 className="text-2xl font-bold text-gray-800">Relationship Explorer</h1>
+    <div className="flex flex-col" style={{ width: '100%', height: '100%', margin: 'calc(-1 * var(--content-padding, 1rem))', marginBottom: 0, marginTop: 'calc(-1 * var(--content-padding, 1rem))' }}>
+      <header className="flex items-center justify-between p-4 border-b bg-white shadow-sm flex-shrink-0 gap-4" style={{ width: '100%', boxSizing: 'border-box' }}>
+        <h1 className="text-2xl font-bold text-gray-800 flex-shrink-0">Relationship Explorer</h1>
+        <div className="flex-shrink-0 relationship-toolbar-inline">
+          <RelationshipToolbar
+            onRefocus={handleRefocusView}
+            onZoomToFit={handleZoomToFit}
+            onAutoArrange={handleAutoArrange}
+            depth={relationshipDepth}
+            onIncreaseDepth={handleIncreaseDepth}
+            onDecreaseDepth={handleDecreaseDepth}
+          />
+        </div>
       </header>
 
-      <div className="flex-1 min-h-0 flex flex-col bg-slate-100">
-        <RelationshipToolbar
-          onRefocus={handleRefocusView}
-          onZoomToFit={handleZoomToFit}
-          onAutoArrange={handleAutoArrange}
-          depth={relationshipDepth}
-          onIncreaseDepth={handleIncreaseDepth}
-          onDecreaseDepth={handleDecreaseDepth}
-        />
-
-        {/* IMPORTANT: This wrapper ensures React Flow receives explicit dimensions. Removing it breaks the canvas. */}
-        <div className="flex-1 min-h-0 relative">
-          <div className="w-full h-full relative" style={{ height: 'calc(100vh - 80px)' }}>
-            {/* IMPORTANT: Do not remove the wrapper above or the canvas will disappear. */}
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onNodeDragStop={handleNodeDragStop}
-              nodeTypes={nodeTypes}
-              edgeTypes={edgeTypes}
-              fitView
-              onInit={setReactFlowInstance}
-            >
-              <MiniMap />
-              <Controls />
-              <Background gap={16} />
-            </ReactFlow>
-          </div>
+      {/* IMPORTANT: This wrapper ensures React Flow receives explicit dimensions. Removing it breaks the canvas. */}
+      <div className="flex-1 min-h-0 relative bg-slate-100" style={{ width: '100%', height: '100%' }}>
+        <div className="w-full h-full relative" style={{ width: '100%', height: '100%' }}>
+          {/* IMPORTANT: Do not remove the wrapper above or the canvas will disappear. */}
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeDragStop={handleNodeDragStop}
+            nodeTypes={memoizedNodeTypes}
+            edgeTypes={memoizedEdgeTypes}
+            fitView
+            onInit={setReactFlowInstance}
+          >
+            <MiniMap />
+            <Controls />
+            <Background gap={16} />
+          </ReactFlow>
         </div>
       </div>
 

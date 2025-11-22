@@ -166,3 +166,12 @@
 .relationship-toolbar__button:hover svg {
   opacity: 0.9;
 }
+
+/* Inline toolbar variant for header placement */
+.relationship-toolbar-inline .relationship-toolbar {
+  width: auto;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
