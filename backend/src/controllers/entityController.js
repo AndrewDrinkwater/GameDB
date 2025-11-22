@@ -1,5 +1,6 @@
 import { Op } from 'sequelize'
 import {
+  BulkUpdateChange,
   Campaign,
   Entity,
   EntityCampaignImportance,
@@ -9,6 +10,8 @@ import {
   EntitySecretPermission,
   EntityType,
   EntityTypeField,
+  Location,
+  LocationType,
   SessionNote,
   User,
   UserCampaignRole,
@@ -492,13 +495,30 @@ const fetchEntityTypeFields = async (entityTypeId) => {
     include: [
       {
         model: EntityType,
-        as: 'referenceType',
+        as: 'entityReferenceType',
+        attributes: ['id', 'name'],
+        required: false,
+      },
+      {
+        model: LocationType,
+        as: 'locationReferenceType',
         attributes: ['id', 'name'],
         required: false,
       },
     ],
   })
-  return records.map((record) => record.get({ plain: true }))
+  return records.map((record) => {
+    const plain = record.get({ plain: true })
+    // Map both reference types to a single referenceType for backward compatibility
+    const entityRef = plain.entityReferenceType
+    const locationRef = plain.locationReferenceType
+    if (entityRef) {
+      plain.referenceType = entityRef
+    } else if (locationRef) {
+      plain.referenceType = locationRef
+    }
+    return plain
+  })
 }
 
 const entityTypeFieldCache = new Map()
@@ -714,49 +734,107 @@ const applyDisplayValuesToMetadata = async (metadata, fields, labelCache = new M
     return metadata
   }
 
+  // Filter for all reference types: reference, entity_reference, and location_reference
   const referenceFields = Array.isArray(fields)
-    ? fields.filter((field) => (field?.data_type ?? field?.dataType) === 'reference')
+    ? fields.filter((field) => {
+        const dataType = (field?.data_type ?? field?.dataType ?? '').toLowerCase()
+        return dataType === 'reference' || dataType === 'entity_reference' || dataType === 'location_reference'
+      })
     : []
 
   if (!referenceFields.length) {
     return metadata
   }
 
-  const referenceIds = new Set()
+  // Separate entity and location reference IDs
+  const entityReferenceIds = new Set()
+  const locationReferenceIds = new Set()
 
   referenceFields.forEach((field) => {
     const fieldName = field?.name
     if (!fieldName || !(fieldName in metadata)) return
-    collectReferenceIds(metadata[fieldName], referenceIds)
+    
+    const dataType = (field?.data_type ?? field?.dataType ?? '').toLowerCase()
+    const ids = new Set()
+    collectReferenceIds(metadata[fieldName], ids)
+    
+    // Categorize IDs by field type
+    ids.forEach((id) => {
+      if (dataType === 'location_reference') {
+        locationReferenceIds.add(id)
+      } else {
+        // entity_reference or generic reference defaults to entity
+        entityReferenceIds.add(id)
+      }
+    })
   })
-
-  if (!referenceIds.size) {
-    return metadata
-  }
 
   const lookupCache = labelCache instanceof Map ? labelCache : new Map()
-  const missingIds = Array.from(referenceIds).filter((id) => !lookupCache.has(id))
+  const labelMap = {}
 
-  if (missingIds.length) {
-    const records = await Entity.findAll({
-      attributes: ['id', 'name'],
-      where: { id: missingIds },
-    })
+  // Resolve entity references
+  if (entityReferenceIds.size > 0) {
+    const missingEntityIds = Array.from(entityReferenceIds).filter((id) => !lookupCache.has(`entity:${id}`))
 
-    records.forEach((record) => {
-      const plain = record?.get ? record.get({ plain: true }) : record
-      if (!plain?.id) return
-      const rawLabel = plain.name ?? null
-      const label = rawLabel !== null && rawLabel !== undefined ? String(rawLabel).trim() : ''
-      lookupCache.set(String(plain.id), label || null)
+    if (missingEntityIds.length > 0) {
+      const entityRecords = await Entity.findAll({
+        attributes: ['id', 'name'],
+        where: { id: missingEntityIds },
+      })
+
+      entityRecords.forEach((record) => {
+        const plain = record?.get ? record.get({ plain: true }) : record
+        if (!plain?.id) return
+        const rawLabel = plain.name ?? null
+        const label = rawLabel !== null && rawLabel !== undefined ? String(rawLabel).trim() : ''
+        const cacheKey = `entity:${plain.id}`
+        lookupCache.set(cacheKey, label || null)
+        labelMap[String(plain.id)] = label || null
+      })
+    }
+
+    // Use cached values for entities
+    entityReferenceIds.forEach((id) => {
+      const cacheKey = `entity:${id}`
+      if (lookupCache.has(cacheKey)) {
+        labelMap[String(id)] = lookupCache.get(cacheKey)
+      }
     })
   }
 
-  const labelMap = {}
-  referenceIds.forEach((id) => {
-    if (!lookupCache.has(id)) return
-    labelMap[id] = lookupCache.get(id)
-  })
+  // Resolve location references
+  if (locationReferenceIds.size > 0) {
+    const missingLocationIds = Array.from(locationReferenceIds).filter((id) => !lookupCache.has(`location:${id}`))
+
+    if (missingLocationIds.length > 0) {
+      const locationRecords = await Location.findAll({
+        attributes: ['id', 'name'],
+        where: { id: missingLocationIds },
+      })
+
+      locationRecords.forEach((record) => {
+        const plain = record?.get ? record.get({ plain: true }) : record
+        if (!plain?.id) return
+        const rawLabel = plain.name ?? null
+        const label = rawLabel !== null && rawLabel !== undefined ? String(rawLabel).trim() : ''
+        const cacheKey = `location:${plain.id}`
+        lookupCache.set(cacheKey, label || null)
+        labelMap[String(plain.id)] = label || null
+      })
+    }
+
+    // Use cached values for locations
+    locationReferenceIds.forEach((id) => {
+      const cacheKey = `location:${id}`
+      if (lookupCache.has(cacheKey)) {
+        labelMap[String(id)] = lookupCache.get(cacheKey)
+      }
+    })
+  }
+
+  if (Object.keys(labelMap).length === 0) {
+    return metadata
+  }
 
   const enriched = { ...metadata }
 
@@ -846,6 +924,10 @@ export const buildEntityPayload = async (entityInstance, fieldsCache, campaignId
           ? Boolean(field.visibleByDefault)
           : true
 
+    const entityRef = field.entityReferenceType
+    const locationRef = field.locationReferenceType
+    const referenceType = entityRef || locationRef
+    
     return {
       id: field.id,
       name: field.name,
@@ -854,9 +936,9 @@ export const buildEntityPayload = async (entityInstance, fieldsCache, campaignId
       required: field.required,
       options: field.options || {},
       referenceTypeId:
-        field.reference_type_id ?? field.referenceTypeId ?? field.referenceType?.id ?? null,
+        field.reference_type_id ?? field.referenceTypeId ?? referenceType?.id ?? null,
       referenceTypeName:
-        field.reference_type_name ?? field.referenceTypeName ?? field.referenceType?.name ?? '',
+        field.reference_type_name ?? field.referenceTypeName ?? referenceType?.name ?? '',
       referenceFilter:
         field.reference_filter ?? field.referenceFilter ?? field.referenceFilterJson ?? {},
       defaultValue:
@@ -866,7 +948,9 @@ export const buildEntityPayload = async (entityInstance, fieldsCache, campaignId
       sortOrder: field.sort_order,
       value: fieldValue,
       displayValue:
-        (field.data_type ?? field.dataType) === 'reference'
+        (field.data_type ?? field.dataType) === 'reference' ||
+        (field.data_type ?? field.dataType) === 'entity_reference' ||
+        (field.data_type ?? field.dataType) === 'location_reference'
           ? resolveReferenceDisplayValue(fieldValue)
           : null,
       visibleByDefault: isVisibleByDefault,
@@ -1922,6 +2006,7 @@ export const updateEntity = async (req, res) => {
       write_user_ids: writeUserIdsInput,
       image_data: imageDataInput,
       image_mime_type: imageMimeTypeInput,
+      location_id: locationIdInput,
     } = req.body
     const { user } = req
 
@@ -2034,6 +2119,21 @@ export const updateEntity = async (req, res) => {
       updates.write_user_ids = writeUserIds
     }
 
+    if (locationIdInput !== undefined) {
+      const locationId = normaliseId(locationIdInput)
+      if (locationId) {
+        // Validate that the location exists and belongs to the same world
+        const location = await Location.findByPk(locationId)
+        if (!location) {
+          return res.status(404).json({ success: false, message: 'Location not found' })
+        }
+        if (location.world_id !== entity.world_id) {
+          return res.status(400).json({ success: false, message: 'Location does not belong to the same world as the entity' })
+        }
+      }
+      updates.location_id = locationId || null
+    }
+
     if (imageData !== undefined) {
       updates.image_data = imageData
       if (imageData === null && imageMimeType === undefined) {
@@ -2069,6 +2169,7 @@ export const updateEntity = async (req, res) => {
         { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
         { model: World, as: 'world', attributes: ['id', 'name', 'created_by'] },
         { association: 'creator', attributes: ['id', 'username', 'email'] },
+        { model: Location, as: 'location', attributes: ['id', 'name'], required: false },
       ],
     })
 
@@ -2103,7 +2204,19 @@ export const deleteEntity = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    await entity.destroy()
+    // Delete related bulk_update_changes records before deleting the entity
+    // This is necessary because the foreign key constraint may not have CASCADE delete enabled
+    // Use a transaction to ensure both operations succeed or fail together
+    await sequelize.transaction(async (transaction) => {
+      // Delete related bulk_update_changes records first
+      await BulkUpdateChange.destroy({
+        where: { entity_id: id },
+        transaction,
+      })
+
+      // Then delete the entity
+      await entity.destroy({ transaction })
+    })
 
     return res.json({ success: true, message: 'Entity deleted' })
   } catch (error) {
@@ -2121,6 +2234,7 @@ export const getEntityById = async (req, res) => {
         { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
         { model: World, as: 'world', attributes: ['id', 'name'] },
         { association: 'creator', attributes: ['id', 'username', 'email'] },
+        { model: Location, as: 'location', attributes: ['id', 'name'], required: false },
       ],
     })
 

@@ -10,7 +10,7 @@ const DATA_TYPES = [
   { value: 'location_reference', label: 'Location Reference' },
 ]
 
-export default function EntityTypeFieldForm({
+export default function LocationTypeFieldForm({
   initialData = {},
   entityReferenceTypes = [],
   locationReferenceTypes = [],
@@ -62,9 +62,8 @@ export default function EntityTypeFieldForm({
     // Handle migration from old 'reference' type to new types
     let dataType = initialData.data_type || 'text'
     if (dataType === 'reference') {
-      // If it was a reference, check if reference_type_id exists in entity types or location types
-      // Default to entity_reference for backward compatibility
-      dataType = 'entity_reference'
+      // If it was a reference, default to location_reference for backward compatibility
+      dataType = 'location_reference'
     }
 
     setValues({
@@ -139,10 +138,8 @@ export default function EntityTypeFieldForm({
     let referenceFilter = {}
 
     if (isReference) {
-      // Location references can work without a type restriction (allows selecting any location)
-      // Entity references still require a type to be specified
-      if (isEntityReference && !values.reference_type_id) {
-        setLocalError('Reference type is required for entity reference fields.')
+      if (!values.reference_type_id) {
+        setLocalError('Reference type is required for reference fields.')
         return
       }
 
@@ -185,8 +182,7 @@ export default function EntityTypeFieldForm({
     }
 
     if (isReference) {
-      // Allow null/empty reference_type_id for location references (means "all locations")
-      payload.reference_type_id = values.reference_type_id || null
+      payload.reference_type_id = values.reference_type_id
       payload.reference_filter = referenceFilter
     } else {
       payload.reference_type_id = null
@@ -208,33 +204,33 @@ export default function EntityTypeFieldForm({
     <form className="entity-type-field-form" onSubmit={handleSubmit}>
       <div className="form-grid">
         <div className="form-group">
-          <label htmlFor="entity-field-name">Field Name *</label>
+          <label htmlFor="location-field-name">Field Name *</label>
           <input
-            id="entity-field-name"
+            id="location-field-name"
             type="text"
             value={values.name}
             onChange={handleChange('name')}
-            placeholder="e.g. alignment"
+            placeholder="e.g. population"
             disabled={submitting}
           />
         </div>
 
         <div className="form-group">
-          <label htmlFor="entity-field-label">Label *</label>
+          <label htmlFor="location-field-label">Label *</label>
           <input
-            id="entity-field-label"
+            id="location-field-label"
             type="text"
             value={values.label}
             onChange={handleChange('label')}
-            placeholder="e.g. Alignment"
+            placeholder="e.g. Population"
             disabled={submitting}
           />
         </div>
 
         <div className="form-group">
-          <label htmlFor="entity-field-data-type">Data Type *</label>
+          <label htmlFor="location-field-data-type">Data Type *</label>
           <select
-            id="entity-field-data-type"
+            id="location-field-data-type"
             value={values.data_type}
             onChange={handleChange('data_type')}
             disabled={submitting}
@@ -246,34 +242,34 @@ export default function EntityTypeFieldForm({
             ))}
           </select>
           <p className="field-hint">
-            Determines how the value is stored and rendered in entity forms.
+            Determines how the value is stored and rendered in location forms.
           </p>
         </div>
 
         <div className="form-group checkbox-group">
           <div className="checkbox-control">
             <input
-              id="entity-field-required"
+              id="location-field-required"
               type="checkbox"
               checked={values.required}
               onChange={handleChange('required')}
               disabled={submitting}
             />
-            <label htmlFor="entity-field-required">Required</label>
+            <label htmlFor="location-field-required">Required</label>
           </div>
-          <span className="field-hint">Mark as required on entity forms.</span>
+          <span className="field-hint">Mark as required on location forms.</span>
         </div>
 
         <div className="form-group checkbox-group">
           <div className="checkbox-control">
             <input
-              id="entity-field-visible-default"
+              id="location-field-visible-default"
               type="checkbox"
               checked={values.visibleByDefault}
               onChange={handleChange('visibleByDefault')}
               disabled={submitting}
             />
-            <label htmlFor="entity-field-visible-default">Visible by default</label>
+            <label htmlFor="location-field-visible-default">Visible by default</label>
           </div>
           <span className="field-hint">
             Uncheck to hide this field unless a rule explicitly shows it.
@@ -282,12 +278,12 @@ export default function EntityTypeFieldForm({
 
         {isEnum && (
           <div className="form-group form-group-full">
-            <label htmlFor="entity-field-options">Enum Options *</label>
+            <label htmlFor="location-field-options">Enum Options *</label>
             <textarea
-              id="entity-field-options"
+              id="location-field-options"
               value={values.enumChoices}
               onChange={handleChange('enumChoices')}
-              placeholder="Comma separated values, e.g. Lawful Good, Neutral, Chaotic Evil"
+              placeholder="Comma separated values, e.g. Small, Medium, Large"
               rows={3}
               disabled={submitting}
             />
@@ -298,17 +294,17 @@ export default function EntityTypeFieldForm({
         {isReference && (
           <>
             <div className="form-group form-group-full">
-              <label htmlFor="entity-field-reference-type">
-                {isEntityReference ? 'Entity' : 'Location'} Reference Type{isEntityReference ? ' *' : ''}
+              <label htmlFor="location-field-reference-type">
+                {isEntityReference ? 'Entity' : 'Location'} Reference Type *
               </label>
               <select
-                id="entity-field-reference-type"
+                id="location-field-reference-type"
                 value={values.reference_type_id}
                 onChange={handleChange('reference_type_id')}
                 disabled={submitting}
               >
                 <option value="">
-                  {isEntityReference ? 'Select entity type' : 'All locations (no type restriction)'}
+                  Select {isEntityReference ? 'entity' : 'location'} type
                 </option>
                 {(isEntityReference ? entityReferenceTypeOptions : locationReferenceTypeOptions).map((option) => (
                   <option key={option.value} value={option.value}>
@@ -317,19 +313,17 @@ export default function EntityTypeFieldForm({
                 ))}
               </select>
               <p className="field-hint">
-                {isEntityReference
-                  ? 'Choose which entity type this field should reference.'
-                  : 'Choose a specific location type to restrict selection, or leave blank to allow any location.'}
+                Choose which {isEntityReference ? 'entity' : 'location'} type this field should reference.
               </p>
             </div>
 
             <div className="form-group form-group-full">
-              <label htmlFor="entity-field-reference-filter">Reference Filter</label>
+              <label htmlFor="location-field-reference-filter">Reference Filter</label>
               <textarea
-                id="entity-field-reference-filter"
+                id="location-field-reference-filter"
                 value={values.reference_filter}
                 onChange={handleChange('reference_filter')}
-                placeholder={`Optional JSON filter, e.g. {"metadata.subtype": "Town"}`}
+                placeholder={`Optional JSON filter, e.g. {"metadata.size": "Large"}`}
                 rows={4}
                 disabled={submitting}
               />
@@ -361,3 +355,4 @@ export default function EntityTypeFieldForm({
     </form>
   )
 }
+

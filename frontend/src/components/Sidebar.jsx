@@ -11,10 +11,12 @@ import {
   ShieldCheck,
   History,
   Layers,
+  MapPin,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
 import { getWorldEntityTypeUsage } from '../api/entityTypes.js'
+import { getWorldLocationTypeUsage } from '../api/locationTypes.js'
 
 export default function Sidebar({
   open,
@@ -37,14 +39,21 @@ export default function Sidebar({
   const [charactersCollapsed, setCharactersCollapsed] = useState(false)
   const [worldAdminCollapsed, setWorldAdminCollapsed] = useState(false)
   const [entitiesCollapsed, setEntitiesCollapsed] = useState(false)
+  const [locationsCollapsed, setLocationsCollapsed] = useState(false)
   const [notesCollapsed, setNotesCollapsed] = useState(false)
   const [entityTypes, setEntityTypes] = useState([])
   const [loadingEntityTypes, setLoadingEntityTypes] = useState(false)
   const [entityTypeError, setEntityTypeError] = useState('')
+  const [locationTypes, setLocationTypes] = useState([])
+  const [loadingLocationTypes, setLoadingLocationTypes] = useState(false)
+  const [locationTypeError, setLocationTypeError] = useState('')
+  const [otherLocationTypesCollapsed, setOtherLocationTypesCollapsed] = useState(false)
 
   useEffect(() => {
     setEntityTypes([])
     setEntityTypeError('')
+    setLocationTypes([])
+    setLocationTypeError('')
   }, [contextKey])
 
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search])
@@ -159,6 +168,49 @@ export default function Sidebar({
     }
   }, [campaignWorldId, contextKey, viewAsCharacterId])
 
+  // --- Load location types for selected campaign world ---
+  useEffect(() => {
+    let cancelled = false
+
+    if (!campaignWorldId) {
+      setLocationTypes([])
+      setLocationTypeError('')
+      setLoadingLocationTypes(false)
+      return
+    }
+
+    const loadLocationTypes = async () => {
+      setLoadingLocationTypes(true)
+      setLocationTypeError('')
+
+      try {
+        const response = await getWorldLocationTypeUsage(campaignWorldId, {
+          viewAsCharacterId,
+        })
+        const list = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response)
+          ? response
+          : []
+
+        if (!cancelled) setLocationTypes(list)
+      } catch (err) {
+        if (!cancelled) {
+          console.error('❌ Failed to load location types for world', err)
+          setLocationTypes([])
+          setLocationTypeError('Unable to load location types')
+        }
+      } finally {
+        if (!cancelled) setLoadingLocationTypes(false)
+      }
+    }
+
+    loadLocationTypes()
+    return () => {
+      cancelled = true
+    }
+  }, [campaignWorldId, contextKey, viewAsCharacterId])
+
   const isActive = useCallback(
     (path) => {
       if (path === '/') {
@@ -250,6 +302,16 @@ export default function Sidebar({
                 >
                   <Database size={16} className="nav-icon" />
                   <span>All Entities</span>
+                </Link>
+              )}
+
+              {canViewEntityTypes && (
+                <Link
+                  to="/location-types"
+                  className={`nav-entity-link ${isActive('/location-types') ? 'active' : ''}`}
+                >
+                  <MapPin size={16} className="nav-icon" />
+                  <span>Location Admin</span>
                 </Link>
               )}
 
@@ -411,6 +473,98 @@ export default function Sidebar({
 
           </div>
         </div>
+
+        {/* --- Locations --- */}
+        {hasWorldContext && (
+          <div className={`nav-group ${locationsCollapsed ? 'collapsed' : ''}`}>
+            <button
+              type="button"
+              className="nav-heading-btn"
+              onClick={() => setLocationsCollapsed((prev) => !prev)}
+              aria-expanded={!locationsCollapsed}
+              aria-controls="locations-nav"
+            >
+              <span className="nav-heading">Locations</span>
+              <ChevronDown
+                size={14}
+                className={`nav-heading-icon ${locationsCollapsed ? 'collapsed' : ''}`}
+              />
+            </button>
+            <div id="locations-nav" className="nav-sub-links">
+              <Link
+                to="/locations"
+                className={`nav-entity-link ${isActive('/locations') ? 'active' : ''}`}
+              >
+                <MapPin size={16} className="nav-icon" />
+                <span>All Locations</span>
+              </Link>
+
+              {loadingLocationTypes && <span className="nav-helper">Loading location types…</span>}
+              {!loadingLocationTypes && locationTypeError && (
+                <span className="nav-helper error">{locationTypeError}</span>
+              )}
+
+              {!loadingLocationTypes &&
+                !locationTypeError &&
+                locationTypes
+                  .filter((type) => type.focus === true)
+                  .map((type) => (
+                    <Link
+                      key={type.id}
+                      to={`/locations?locationType=${type.id}`}
+                      className={`nav-entity-type ${
+                        location.pathname === '/locations' &&
+                        new URLSearchParams(location.search).get('locationType') === type.id
+                          ? 'active'
+                          : ''
+                      }`}
+                    >
+                      <span className="nav-entity-label">{type.name}</span>
+                      <span className="nav-entity-count">{type.locationCount || 0}</span>
+                    </Link>
+                  ))}
+
+              {!loadingLocationTypes &&
+                !locationTypeError &&
+                locationTypes.filter((type) => type.focus !== true).length > 0 && (
+                  <div className={`nav-group ${otherLocationTypesCollapsed ? 'collapsed' : ''}`}>
+                    <button
+                      type="button"
+                      className="nav-heading-btn"
+                      onClick={() => setOtherLocationTypesCollapsed((prev) => !prev)}
+                      aria-expanded={!otherLocationTypesCollapsed}
+                      aria-controls="other-locations-nav"
+                    >
+                      <span className="nav-heading">Other Types</span>
+                      <ChevronDown
+                        size={14}
+                        className={`nav-heading-icon ${otherLocationTypesCollapsed ? 'collapsed' : ''}`}
+                      />
+                    </button>
+                    <div id="other-locations-nav" className="nav-sub-links">
+                      {locationTypes
+                        .filter((type) => type.focus !== true)
+                        .map((type) => (
+                          <Link
+                            key={type.id}
+                            to={`/locations?locationType=${type.id}`}
+                            className={`nav-entity-type ${
+                              location.pathname === '/locations' &&
+                              new URLSearchParams(location.search).get('locationType') === type.id
+                                ? 'active'
+                                : ''
+                            }`}
+                          >
+                            <span className="nav-entity-label">{type.name}</span>
+                            <span className="nav-entity-count">{type.locationCount || 0}</span>
+                          </Link>
+                        ))}
+                    </div>
+                  </div>
+                )}
+            </div>
+          </div>
+        )}
 
         {/* --- Notes --- */}
         <div className={`nav-group ${notesCollapsed ? 'collapsed' : ''}`}>

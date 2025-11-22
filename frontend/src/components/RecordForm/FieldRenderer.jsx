@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import ListCollector from '../ListCollector.jsx'
 import { normaliseListCollectorOption } from '../listCollectorUtils.js'
 import { getAuthToken } from '../../utils/authHelpers.js'
 import EntitySearchSelect from '../../modules/relationships3/ui/EntitySearchSelect.jsx'
+import LocationSearchSelect from '../../modules/relationships3/ui/LocationSearchSelect.jsx'
 import EntityInfoPreview from '../entities/EntityInfoPreview.jsx'
 import { extractReferenceEntityId, extractReferenceEntityName } from '../../utils/metadataFieldUtils.js'
 
@@ -377,6 +379,9 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
 
   const label = field.label || key
   const type = (field.type || 'text').toLowerCase()
+  // Check dataType first to distinguish location_reference from entity_reference
+  // since type is normalized to 'reference' in EntityDetailPage.jsx
+  const dataType = (field.dataType || field.data_type || type).toLowerCase()
   const referenceTypeId =
     field.referenceTypeId ?? field.reference_type_id ?? field.referenceType?.id ?? null
   const referenceTypeName =
@@ -482,13 +487,35 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     data?.metadata,
   ])
 
+  // Check both type and dataType to properly detect location_reference and entity_reference
+  // since EntityDetailPage.jsx normalizes type to 'reference' but preserves dataType
+  const isReferenceType = 
+    type === 'reference' || 
+    type === 'entity_reference' || 
+    type === 'location_reference' ||
+    dataType === 'entity_reference' ||
+    dataType === 'location_reference' ||
+    dataType === 'reference'
+  const isLocationReference = dataType === 'location_reference' || type === 'location_reference'
+  const isEntityReference = dataType === 'entity_reference' || type === 'entity_reference'
+  
+  // For location_id field, read from data.location_id or data.location
+  // Also check normalisedValue first since it comes from rawValue which reads from data[key]
+  const locationValue = key === 'location_id' || key === 'location'
+    ? (normalisedValue !== undefined && normalisedValue !== null && normalisedValue !== ''
+        ? normalisedValue
+        : (data?.location_id || data?.location?.id || data?.location || ''))
+    : null
+
   const referenceValue =
-    type === 'reference' && normalisedValue !== undefined && normalisedValue !== null
+    isReferenceType && normalisedValue !== undefined && normalisedValue !== null && normalisedValue !== ''
       ? String(normalisedValue)
-      : ''
+      : isLocationReference && locationValue && locationValue !== ''
+        ? String(locationValue)
+        : ''
 
   const staticReferenceOptions = useMemo(() => {
-    if (type !== 'reference') return []
+    if (!isReferenceType) return []
     const choices = field.options?.choices
     if (!Array.isArray(choices)) return []
     return choices
@@ -611,14 +638,16 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     return help
   }
 
-  if (type === 'reference') {
+  if (isReferenceType) {
     const worldId = resolveWorldId()
     const placeholderName =
       typeof referenceTypeName === 'string' && referenceTypeName.trim()
         ? referenceTypeName.trim()
-        : 'entities'
+        : isLocationReference ? 'locations' : 'entities'
     const hasStaticOptions = staticReferenceOptions.length > 0
-    const canSearch = Boolean(referenceTypeId && worldId)
+    // Location references can work without a type restriction (allows selecting any location)
+    // Entity references still require a type to be specified
+    const canSearch = Boolean(worldId && (referenceTypeId || isLocationReference))
     const controlDisabled = !canSearch && !hasStaticOptions
 
     if (isReadOnly) {
@@ -627,50 +656,101 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
           ? readValueByPath(data, field.displayKey)
           : null
 
+      // For location references, check locationName from data or location object
+      // The field key might be 'location', 'location_id', 'parent', or 'parent_id', so check all
+      // When key is 'location' or 'parent', data.location/parent is the ID, and data.locationName/parentName is the display name
+      const locationIdForDisplay = isLocationReference
+        ? (referenceValue || 
+           data?.location_id || 
+           data?.parent_id ||
+           data?.location?.id || 
+           data?.parent?.id ||
+           (key === 'location' && data?.location) ||
+           (key === 'parent' && data?.parent) ||
+           (key === 'parent_id' && data?.parent_id) ||
+           data?.location ||
+           data?.parent ||
+           '')
+        : null
+      const locationNameForDisplay = isLocationReference
+        ? (data?.locationName || 
+           data?.parentName ||
+           data?.location?.name || 
+           data?.parent?.name ||
+           null)
+        : null
+
       let displayFallback =
         displaySource ??
+        (locationNameForDisplay && locationNameForDisplay !== '—' ? locationNameForDisplay : null) ??
         referenceState.selectedLabel ??
         staticReferenceOptions.find((option) => option.value === referenceValue)?.label ??
         ''
 
-      if (!displayFallback && referenceValue) {
+      // Don't fallback to referenceValue for location references if we have an ID but no name
+      // In that case, we should still show "—" rather than the ID
+      if (!displayFallback && referenceValue && !isLocationReference) {
         displayFallback = referenceValue
       }
 
-      // Extract entity ID and name from the reference value for the Info icon
-      const referenceEntityId = extractReferenceEntityId(rawValue || field.value || referenceValue)
-      const referenceEntityName = extractReferenceEntityName(rawValue || field.value) || displayFallback || referenceValue
+      // Extract entity/location ID and name from the reference value for the Info icon
+      const referenceId = isLocationReference 
+        ? (locationIdForDisplay && locationIdForDisplay !== '' && locationIdForDisplay !== '—' ? locationIdForDisplay : null)
+        : extractReferenceEntityId(rawValue || field.value || referenceValue)
+      const referenceName = isLocationReference
+        ? (locationNameForDisplay && locationNameForDisplay !== '—' ? locationNameForDisplay : (displayFallback && displayFallback !== '—' ? displayFallback : null))
+        : (extractReferenceEntityName(rawValue || field.value) || displayFallback || referenceValue)
 
       return (
         <div className={`form-group ${isReadOnly ? 'readonly' : ''}`}>
           <label>{label}</label>
           <div style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
-            <input
-              type="text"
-              value={formattedValue(displayFallback)}
-              disabled
-              className="readonly-control"
-              style={{
-                paddingRight: referenceEntityId ? '2.5rem' : '0.8rem',
-                width: '100%',
-              }}
-            />
-            {referenceEntityId && (
-              <div
+            {isLocationReference && referenceId && referenceId !== '—' ? (
+              <Link
+                to={`/locations/${referenceId}`}
                 style={{
-                  position: 'absolute',
-                  right: '0.5rem',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  zIndex: 1,
+                  display: 'block',
+                  padding: '0.5rem 0.75rem',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px',
+                  textDecoration: 'none',
+                  color: 'inherit',
                 }}
               >
-                <EntityInfoPreview
-                  entityId={referenceEntityId}
-                  entityName={referenceEntityName}
-                  className="entity-info-trigger--field-button"
+                {locationNameForDisplay && locationNameForDisplay !== '—' 
+                  ? locationNameForDisplay 
+                  : (displayFallback && displayFallback !== '—' ? displayFallback : '—')}
+              </Link>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={formattedValue(displayFallback)}
+                  disabled
+                  className="readonly-control"
+                  style={{
+                    paddingRight: referenceId ? '2.5rem' : '0.8rem',
+                    width: '100%',
+                  }}
                 />
-              </div>
+                {referenceId && !isLocationReference && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      right: '0.5rem',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      zIndex: 1,
+                    }}
+                  >
+                    <EntityInfoPreview
+                      entityId={referenceId}
+                      entityName={referenceName}
+                      className="entity-info-trigger--field-button"
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
           {renderHelpText(false)}
@@ -757,10 +837,13 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
         ? { id: referenceValue, name: referenceState.selectedLabel }
         : referenceValue
 
+    // Use LocationSearchSelect for location references, EntitySearchSelect for entity references
+    const SearchComponent = isLocationReference ? LocationSearchSelect : EntitySearchSelect
+
     return (
       <div className="form-group">
         <label>{label}</label>
-        <EntitySearchSelect
+        <SearchComponent
           worldId={worldId}
           value={controlValue}
           allowedTypeIds={referenceTypeId ? [referenceTypeId] : []}
@@ -770,12 +853,13 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
           onChange={handleReferenceChange}
           onResolved={handleReferenceResolved}
           required={Boolean(field.required)}
+          minSearchLength={isLocationReference && !referenceTypeId ? 0 : undefined}
         />
-        {!referenceTypeId && (
+        {!referenceTypeId && !isLocationReference && (
           <p className="help-text warning">Reference type configuration is missing.</p>
         )}
-        {referenceTypeId && !worldId && (
-          <p className="help-text warning">Select a world to search for entities.</p>
+        {!worldId && canSearch && (
+          <p className="help-text warning">Select a world to search for {isLocationReference ? 'locations' : 'entities'}.</p>
         )}
         {renderHelpText(false)}
       </div>

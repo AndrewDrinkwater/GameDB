@@ -1,5 +1,5 @@
 import { Op } from 'sequelize'
-import { Entity, EntityType, World, sequelize } from '../models/index.js'
+import { Entity, EntityListPreference, EntityType, World, sequelize } from '../models/index.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
 import { buildEntityReadContext, buildReadableEntitiesWhereClause } from '../utils/entityAccess.js'
 
@@ -260,7 +260,19 @@ export const deleteEntityType = async (req, res) => {
         .json({ success: false, message: 'Cannot delete an entity type that is in use by existing entities' })
     }
 
-    await entityType.destroy()
+    // Delete related entity_list_preferences records before deleting the entity type
+    // This is necessary because the foreign key constraint may not have CASCADE delete enabled
+    // Use a transaction to ensure both operations succeed or fail together
+    await sequelize.transaction(async (transaction) => {
+      // Delete related entity_list_preferences records first
+      await EntityListPreference.destroy({
+        where: { entity_type_id: id },
+        transaction,
+      })
+
+      // Then delete the entity type
+      await entityType.destroy({ transaction })
+    })
 
     return res.json({ success: true, message: 'Entity type deleted' })
   } catch (error) {

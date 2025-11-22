@@ -18,6 +18,7 @@ import {
   updateEntityTypeFieldOrder,
   updateEntityTypeFieldRule,
 } from '../../api/entityTypes.js'
+import { fetchLocationTypes } from '../../api/locationTypes.js'
 import { extractListResponse } from '../../utils/apiUtils.js'
 import { sortFieldsByOrder } from '../../utils/fieldLayout.js'
 import EntityTypeFieldForm from './EntityTypeFieldForm.jsx'
@@ -30,7 +31,8 @@ const DATA_TYPE_LABELS = {
   boolean: 'Boolean',
   date: 'Date',
   enum: 'Enum',
-  reference: 'Reference',
+  entity_reference: 'Entity Reference',
+  location_reference: 'Location Reference',
 }
 
 const OPERATOR_LABELS = {
@@ -64,7 +66,8 @@ export default function EntityTypeFields() {
   const navigate = useNavigate()
   const { user, token, sessionReady } = useAuth()
   const [entityType, setEntityType] = useState(null)
-  const [referenceTypes, setReferenceTypes] = useState([])
+  const [entityReferenceTypes, setEntityReferenceTypes] = useState([])
+  const [locationReferenceTypes, setLocationReferenceTypes] = useState([])
   const [fields, setFields] = useState([])
   const [loadingType, setLoadingType] = useState(false)
   const [loadingFields, setLoadingFields] = useState(false)
@@ -154,21 +157,32 @@ export default function EntityTypeFields() {
   const loadReferenceTypes = useCallback(async (worldId) => {
     const trimmedWorldId = typeof worldId === 'string' ? worldId.trim() : worldId || ''
     if (!trimmedWorldId) {
-      setReferenceTypes([])
+      setEntityReferenceTypes([])
+      setLocationReferenceTypes([])
       return
     }
 
     try {
-      const response = await getEntityTypes({ worldId: trimmedWorldId })
-      const list = normalizeResponse(response)
-      if (Array.isArray(list)) {
-        setReferenceTypes(list)
-      } else {
-        setReferenceTypes([])
-      }
+      const [entityResponse, locationResponse] = await Promise.all([
+        getEntityTypes({ worldId: trimmedWorldId }).catch((err) => {
+          console.error('❌ Failed to load entity types', err)
+          return null
+        }),
+        fetchLocationTypes({ worldId: trimmedWorldId }).catch((err) => {
+          console.error('❌ Failed to load location types', err)
+          return null
+        }),
+      ])
+
+      const entityList = entityResponse ? normalizeResponse(entityResponse) : []
+      const locationList = locationResponse ? normalizeResponse(locationResponse) : []
+
+      setEntityReferenceTypes(Array.isArray(entityList) ? entityList : [])
+      setLocationReferenceTypes(Array.isArray(locationList) ? locationList : [])
     } catch (err) {
       console.error('❌ Failed to load reference types', err)
-      setReferenceTypes([])
+      setEntityReferenceTypes([])
+      setLocationReferenceTypes([])
     }
   }, [])
 
@@ -231,7 +245,8 @@ export default function EntityTypeFields() {
 
   useEffect(() => {
     if (!entityType) {
-      setReferenceTypes([])
+      setEntityReferenceTypes([])
+      setLocationReferenceTypes([])
       return
     }
     const worldId =
@@ -508,35 +523,19 @@ export default function EntityTypeFields() {
 
   const referenceTypeNameMap = useMemo(() => {
     const map = new Map()
-    referenceTypes.forEach((type) => {
+    entityReferenceTypes.forEach((type) => {
+      if (type?.id) {
+        map.set(type.id, type.name)
+      }
+    })
+    locationReferenceTypes.forEach((type) => {
       if (type?.id) {
         map.set(type.id, type.name)
       }
     })
     return map
-  }, [referenceTypes])
+  }, [entityReferenceTypes, locationReferenceTypes])
 
-  const availableReferenceTypes = useMemo(() => {
-    if (!Array.isArray(referenceTypes) || !referenceTypes.length) {
-      return []
-    }
-
-    if (!entityType?.world_id) {
-      return referenceTypes
-    }
-
-    return referenceTypes.filter((type) => {
-      if (!type) return false
-      if (!entityType.world_id) return true
-
-      const candidateWorldId = type.world_id ?? type.worldId ?? type.world?.id
-      if (candidateWorldId) {
-        return candidateWorldId === entityType.world_id
-      }
-
-      return true
-    })
-  }, [entityType, referenceTypes])
 
   const combinedError = typeError || fieldsError
 
@@ -625,7 +624,7 @@ export default function EntityTypeFields() {
                     <td>{field.name}</td>
                     <td>{field.label || '—'}</td>
                     <td>{dataTypeLabel}</td>
-                    <td>{referenceName || (field.data_type === 'reference' ? '—' : 'N/A')}</td>
+                    <td>{referenceName || ((field.data_type === 'entity_reference' || field.data_type === 'location_reference') ? '—' : 'N/A')}</td>
                     <td>{field.required ? 'Yes' : 'No'}</td>
                     <td>{formatDate(createdAt)}</td>
                     {canManage && (
@@ -931,7 +930,8 @@ export default function EntityTypeFields() {
             <div className="side-panel-content">
               <EntityTypeFieldForm
                 initialData={editingField}
-                referenceTypes={availableReferenceTypes}
+                entityReferenceTypes={entityReferenceTypes}
+                locationReferenceTypes={locationReferenceTypes}
                 onSubmit={handleSave}
                 onCancel={closePanel}
                 submitting={saving}

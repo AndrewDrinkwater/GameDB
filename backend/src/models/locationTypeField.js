@@ -1,13 +1,14 @@
+// src/models/locationTypeField.js
 export default (sequelize, DataTypes) => {
-  const EntityTypeField = sequelize.define(
-    'EntityTypeField',
+  const LocationTypeField = sequelize.define(
+    'LocationTypeField',
     {
       id: {
         type: DataTypes.UUID,
         primaryKey: true,
         defaultValue: DataTypes.UUIDV4,
       },
-      entity_type_id: {
+      location_type_id: {
         type: DataTypes.UUID,
         allowNull: false,
       },
@@ -55,17 +56,20 @@ export default (sequelize, DataTypes) => {
       },
     },
     {
-      tableName: 'entity_type_fields',
+      tableName: 'location_type_fields',
       freezeTableName: true,
       timestamps: false,
     }
   )
 
-  EntityTypeField.associate = (models) => {
-    EntityTypeField.belongsTo(models.EntityType, { foreignKey: 'entity_type_id', as: 'entityType' })
+  LocationTypeField.associate = (models) => {
+    LocationTypeField.belongsTo(models.LocationType, {
+      foreignKey: 'location_type_id',
+      as: 'locationType',
+    })
 
     if (models.EntityType) {
-      EntityTypeField.belongsTo(models.EntityType, {
+      LocationTypeField.belongsTo(models.EntityType, {
         foreignKey: 'reference_type_id',
         as: 'entityReferenceType',
         constraints: false,
@@ -73,7 +77,7 @@ export default (sequelize, DataTypes) => {
     }
 
     if (models.LocationType) {
-      EntityTypeField.belongsTo(models.LocationType, {
+      LocationTypeField.belongsTo(models.LocationType, {
         foreignKey: 'reference_type_id',
         as: 'locationReferenceType',
         constraints: false,
@@ -81,5 +85,6 @@ export default (sequelize, DataTypes) => {
     }
   }
 
-  return EntityTypeField
+  return LocationTypeField
 }
+

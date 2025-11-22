@@ -1,7 +1,7 @@
-// src/models/entity.js
+// src/models/location.js
 export default (sequelize, DataTypes) => {
-  const Entity = sequelize.define(
-    'Entity',
+  const Location = sequelize.define(
+    'Location',
     {
       id: {
         type: DataTypes.UUID,
@@ -16,9 +16,13 @@ export default (sequelize, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
       },
-      entity_type_id: {
+      location_type_id: {
         type: DataTypes.UUID,
         allowNull: false,
+      },
+      parent_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
       },
       name: {
         type: DataTypes.STRING(255),
@@ -28,18 +32,15 @@ export default (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
-      image_data: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-      },
-      image_mime_type: {
-        type: DataTypes.STRING(50),
-        allowNull: true,
-      },
       metadata: {
         type: DataTypes.JSONB,
         allowNull: false,
         defaultValue: {},
+      },
+      coordinates: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        comment: 'Coordinates for map integration (e.g., {x: 100, y: 200})',
       },
       visibility: {
         type: DataTypes.ENUM('hidden', 'visible', 'partial'),
@@ -81,58 +82,39 @@ export default (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: [],
       },
-      location_id: {
-        type: DataTypes.UUID,
-        allowNull: true,
-      },
     },
     {
-      tableName: 'entities',
+      tableName: 'locations',
       underscored: true,
       timestamps: true,
       freezeTableName: true,
     }
   )
 
-  Entity.associate = (models) => {
-    Entity.belongsTo(models.EntityType, { foreignKey: 'entity_type_id', as: 'entityType' })
-    Entity.belongsTo(models.User, { foreignKey: 'created_by', as: 'creator' })
-    Entity.belongsTo(models.World, { foreignKey: 'world_id', as: 'world' })
-    if (models.Location) {
-      Entity.belongsTo(models.Location, { foreignKey: 'location_id', as: 'location' })
-    }
-    if (models.EntitySecret) {
-      Entity.hasMany(models.EntitySecret, {
-        foreignKey: 'entity_id',
-        as: 'secrets',
-        onDelete: 'CASCADE',
-      })
-    }
-    if (models.EntityNote) {
-      Entity.hasMany(models.EntityNote, {
-        foreignKey: 'entity_id',
-        as: 'notes',
-        onDelete: 'CASCADE',
-      })
-    }
-    if (models.EntityCampaignImportance) {
-      Entity.hasMany(models.EntityCampaignImportance, {
-        foreignKey: 'entity_id',
-        as: 'campaignImportances',
-        onDelete: 'CASCADE',
-      })
-    }
-    if (models.EntityRelationship) {
-      Entity.hasMany(models.EntityRelationship, {
-        foreignKey: 'from_entity',
-        as: 'relationshipsFrom',
-      })
-      Entity.hasMany(models.EntityRelationship, {
-        foreignKey: 'to_entity',
-        as: 'relationshipsTo',
+  Location.associate = (models) => {
+    Location.belongsTo(models.World, { foreignKey: 'world_id', as: 'world' })
+    Location.belongsTo(models.User, { foreignKey: 'created_by', as: 'creator' })
+    Location.belongsTo(models.LocationType, {
+      foreignKey: 'location_type_id',
+      as: 'locationType',
+    })
+    Location.belongsTo(models.Location, {
+      foreignKey: 'parent_id',
+      as: 'parent',
+    })
+    Location.hasMany(models.Location, {
+      foreignKey: 'parent_id',
+      as: 'children',
+    })
+
+    if (models.Entity) {
+      Location.hasMany(models.Entity, {
+        foreignKey: 'location_id',
+        as: 'entities',
       })
     }
   }
 
-  return Entity
+  return Location
 }
+
