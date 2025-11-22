@@ -1,10 +1,6 @@
 // src/api/campaigns.js
 import { getAuthToken } from '../utils/authHelpers.js'
-
-// ✅ Base URL with local fallback
-const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api/campaigns`
-  : 'http://localhost:3000/api/campaigns'
+import { API_BASE } from './config.js'
 
 // 🔐 Wait for token if not immediately available (useful after reload)
 async function waitForToken(retries = 5, delay = 200) {
@@ -60,14 +56,14 @@ export async function fetchCampaigns(params = {}) {
   })
 
   const queryString = query.toString()
-  const url = queryString ? `${API_BASE}?${queryString}` : API_BASE
+  const url = queryString ? `${API_BASE}/campaigns?${queryString}` : `${API_BASE}/campaigns`
   const res = await fetch(url, { headers })
   return handleResponse(res, 'fetch campaigns')
 }
 
 export async function createCampaign(payload) {
   const headers = await authHeaders()
-  const res = await fetch(API_BASE, {
+  const res = await fetch(`${API_BASE}/campaigns`, {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
@@ -77,7 +73,7 @@ export async function createCampaign(payload) {
 
 export async function updateCampaign(id, payload) {
   const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/${id}`, {
+  const res = await fetch(`${API_BASE}/campaigns/${id}`, {
     method: 'PUT',
     headers,
     body: JSON.stringify(payload),
@@ -87,7 +83,7 @@ export async function updateCampaign(id, payload) {
 
 export async function removeCampaign(id) {
   const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/${id}`, {
+  const res = await fetch(`${API_BASE}/campaigns/${id}`, {
     method: 'DELETE',
     headers,
   })
@@ -119,7 +115,7 @@ export async function fetchCampaignEntityNotes(campaignId, params = {}) {
   })
 
   const queryString = query.toString()
-  const url = `${API_BASE}/${campaignId}/entity-notes${
+  const url = `${API_BASE}/campaigns/${campaignId}/entity-notes${
     queryString ? `?${queryString}` : ''
   }`
 
@@ -133,7 +129,7 @@ export async function fetchCampaignSessionNotes(campaignId) {
   }
 
   const headers = await authHeaders()
-  const url = `${API_BASE}/${campaignId}/session-notes`
+  const url = `${API_BASE}/campaigns/${campaignId}/session-notes`
   const res = await fetch(url, { headers })
   return handleResponse(res, 'fetch campaign session notes')
 }
@@ -144,7 +140,7 @@ export async function createCampaignSessionNote(campaignId, payload = {}) {
   }
 
   const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/${campaignId}/session-notes`, {
+  const res = await fetch(`${API_BASE}/campaigns/${campaignId}/session-notes`, {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
@@ -163,7 +159,7 @@ export async function updateCampaignSessionNote(campaignId, noteId, payload = {}
   }
 
   const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/${campaignId}/session-notes/${noteId}`, {
+  const res = await fetch(`${API_BASE}/campaigns/${campaignId}/session-notes/${noteId}`, {
     method: 'PUT',
     headers,
     body: JSON.stringify(payload),
@@ -182,7 +178,7 @@ export async function deleteCampaignSessionNote(campaignId, noteId) {
   }
 
   const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/${campaignId}/session-notes/${noteId}`, {
+  const res = await fetch(`${API_BASE}/campaigns/${campaignId}/session-notes/${noteId}`, {
     method: 'DELETE',
     headers,
   })

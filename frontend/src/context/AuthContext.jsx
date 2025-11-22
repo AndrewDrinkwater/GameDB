@@ -1,5 +1,6 @@
 // src/context/AuthContext.jsx
 import { createContext, useContext, useState, useEffect } from 'react'
+import { API_BASE } from '../api/config.js'
 
 const AuthContext = createContext(null)
 
@@ -7,9 +8,6 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(null)
   const [sessionReady, setSessionReady] = useState(false)
-
-  // ✅ Default API base (so reloads always work)
-  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000/api'
 
   // --- Restore session from localStorage
   useEffect(() => {

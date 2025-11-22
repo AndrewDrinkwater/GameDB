@@ -1,11 +1,6 @@
 // src/api/auth.js
 import { getAuthToken } from '../utils/authHelpers.js'
-
-// Always use a single API base
-const API_BASE =
-  (import.meta.env.VITE_API_BASE &&
-    import.meta.env.VITE_API_BASE.replace(/\/$/, '')) ||
-  'http://localhost:3000/api'
+import { API_BASE } from './config.js'
 
 function authHeaders() {
   const token = getAuthToken()

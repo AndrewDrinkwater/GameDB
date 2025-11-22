@@ -1,9 +1,6 @@
 // src/api/characters.js
 import { getAuthToken } from '../utils/authHelpers.js'
-
-const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api/characters`
-  : 'http://localhost:3000/api/characters'
+import { API_BASE } from './config.js'
 
 async function waitForToken(retries = 5, delay = 200) {
   for (let i = 0; i < retries; i++) {
@@ -54,14 +51,14 @@ export async function fetchCharacters(params = {}) {
   })
 
   const queryString = query.toString()
-  const url = queryString ? `${API_BASE}?${queryString}` : API_BASE
+  const url = queryString ? `${API_BASE}/characters?${queryString}` : `${API_BASE}/characters`
   const res = await fetch(url, { headers })
   return handleResponse(res, 'fetch characters')
 }
 
 export async function createCharacter(payload) {
   const headers = await authHeaders()
-  const res = await fetch(API_BASE, {
+  const res = await fetch(`${API_BASE}/characters`, {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
@@ -71,7 +68,7 @@ export async function createCharacter(payload) {
 
 export async function updateCharacter(id, payload) {
   const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/${id}`, {
+  const res = await fetch(`${API_BASE}/characters/${id}`, {
     method: 'PUT',
     headers,
     body: JSON.stringify(payload),
@@ -81,7 +78,7 @@ export async function updateCharacter(id, payload) {
 
 export async function removeCharacter(id) {
   const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/${id}`, {
+  const res = await fetch(`${API_BASE}/characters/${id}`, {
     method: 'DELETE',
     headers,
   })

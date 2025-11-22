@@ -15,8 +15,18 @@ const normaliseEntityCreationScope = (raw) => {
 export const getWorlds = async (req, res) => {
   try {
     let worlds
+    // Check for owned_only parameter (support both snake_case and camelCase)
+    const ownedOnlyParam = req.query.owned_only || req.query.ownedOnly
+    const ownedOnly = ownedOnlyParam === 'true' || ownedOnlyParam === true || ownedOnlyParam === '1'
 
-    if (req.user.role === 'system_admin') {
+    if (ownedOnly) {
+      // When owned_only is requested, return only worlds the user owns
+      // (even for admins, this restricts to their own worlds)
+      worlds = await World.findAll({
+        where: { created_by: req.user.id },
+        include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'role'] }],
+      })
+    } else if (req.user.role === 'system_admin') {
       worlds = await World.findAll({
         include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'role'] }],
       })
