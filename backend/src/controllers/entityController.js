@@ -1,5 +1,6 @@
 import { Op } from 'sequelize'
 import {
+  BulkUpdateChange,
   Campaign,
   Entity,
   EntityCampaignImportance,
@@ -2142,6 +2143,12 @@ export const deleteEntity = async (req, res) => {
     if (!access.isOwner && !access.isAdmin && !isCreator) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
+
+    // Delete related bulk_update_changes records before deleting the entity
+    // This is necessary because the foreign key constraint may not have CASCADE delete enabled
+    await BulkUpdateChange.destroy({
+      where: { entity_id: id },
+    })
 
     await entity.destroy()
 

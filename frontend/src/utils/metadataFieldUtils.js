@@ -137,27 +137,36 @@ export const buildMetadataDisplayMap = (fields = []) => {
 
   return fields.reduce((acc, field) => {
     if (!field?.name) return acc
-    if (field.dataType !== 'reference' && field.dataType !== 'entity_reference' && field.dataType !== 'location_reference') return acc
+    const dataType = field.dataType || field.data_type
+    if (dataType !== 'reference' && dataType !== 'entity_reference' && dataType !== 'location_reference') return acc
 
     const label = (() => {
+      // First check field-level display properties
       if (field.displayValue) return field.displayValue
       if (field.display) return field.display
       if (field.selectedLabel) return field.selectedLabel
 
       const value = field.value
-      if (!value || typeof value !== 'object') return null
-
-      return (
-        value.label ??
-        value.name ??
-        value.title ??
-        value.display ??
-        value.displayName ??
-        value.text ??
-        value.value ??
-        value.id ??
-        null
-      )
+      
+      // If value is an object, try to extract label from it
+      if (value && typeof value === 'object') {
+        return (
+          value.displayValue ??
+          value.label ??
+          value.name ??
+          value.title ??
+          value.display ??
+          value.displayName ??
+          value.text ??
+          value.value ??
+          value.id ??
+          null
+        )
+      }
+      
+      // If value is just a string (UUID), we can't resolve it here
+      // This should be resolved before calling this function
+      return null
     })()
 
     if (label === undefined || label === null) return acc

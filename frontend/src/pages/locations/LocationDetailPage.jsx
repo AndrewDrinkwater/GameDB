@@ -20,8 +20,128 @@ import { formatDateTime } from '../../utils/dateUtils.js'
 import useLocationAccess from '../../hooks/useLocationAccess.js'
 import useIsMobile from '../../hooks/useIsMobile.js'
 import { fetchLocationTypes } from '../../api/locationTypes.js'
+import { getLocationTypeFields } from '../../api/locationTypeFields.js'
 import AccessTab from './tabs/AccessTab.jsx'
 import SystemTab from './tabs/SystemTab.jsx'
+import EntitiesTab from './tabs/EntitiesTab.jsx'
+import LocationsTab from './tabs/LocationsTab.jsx'
+import {
+  buildMetadataDisplayMap,
+  buildMetadataInitialMap,
+  buildMetadataViewMap,
+} from '../../utils/metadataFieldUtils.js'
+import { getEntity } from '../../api/entities.js'
+import { fetchLocationById } from '../../api/locations.js'
+
+const buildEnumOptions = (field) => {
+  const choices = field?.options?.choices
+  if (!Array.isArray(choices) || choices.length === 0) return []
+
+  return choices
+    .map((choice, index) => {
+      if (choice === null || choice === undefined) return null
+      if (typeof choice === 'object') {
+        const value =
+          choice.value ??
+          choice.id ??
+          choice.key ??
+          choice.slug ??
+          `choice-${index}`
+        const label =
+          choice.label ??
+          choice.name ??
+          choice.title ??
+          choice.display ??
+          value
+        if (value === null || value === undefined) return null
+        return { value, label: String(label ?? value) }
+      }
+      const text = String(choice)
+      return { value: text, label: text }
+    })
+    .filter(Boolean)
+}
+
+const mapFieldToSchemaField = (field) => {
+  if (!field?.name) return null
+  const key = `metadata.${field.name}`
+  const visibleByDefault =
+    field.visibleByDefault !== undefined
+      ? Boolean(field.visibleByDefault)
+      : field.visible_by_default !== undefined
+        ? Boolean(field.visible_by_default)
+        : true
+  const base = {
+    key,
+    name: key,
+    label: field.label || field.name,
+    metadataField: field.name,
+    dataType: field.dataType || field.data_type,
+    visibleByDefault,
+  }
+
+  switch (field.dataType || field.data_type) {
+    case 'text':
+      return { ...base, type: 'textarea', rows: 3 }
+    case 'boolean':
+      return { ...base, type: 'boolean' }
+    case 'enum':
+      return { ...base, type: 'select', options: buildEnumOptions(field) }
+    case 'number':
+      return { ...base, type: 'text', inputType: 'number' }
+    case 'date':
+      return { ...base, type: 'text' }
+    case 'entity_reference':
+    case 'location_reference':
+    case 'reference': {
+      const referenceTypeId =
+        field.referenceTypeId ??
+        field.reference_type_id ??
+        field.referenceType?.id ??
+        null
+      const referenceTypeName =
+        field.referenceTypeName ??
+        field.reference_type_name ??
+        field.referenceType?.name ??
+        ''
+      const referenceFilter =
+        field.referenceFilter ??
+        field.reference_filter ??
+        field.referenceFilterJson ??
+        {}
+      const selectedLabel = (() => {
+        if (field.displayValue) return String(field.displayValue)
+        if (field.display) return String(field.display)
+        if (field.selectedLabel) return String(field.selectedLabel)
+
+        const value = field.value
+        if (!value || typeof value !== 'object') return ''
+
+        const label =
+          value.label ??
+          value.name ??
+          value.title ??
+          value.display ??
+          value.displayName ??
+          value.text ??
+          value.value
+        return label !== undefined && label !== null ? String(label) : ''
+      })()
+
+      return {
+        ...base,
+        type: 'reference',
+        referenceTypeId,
+        referenceTypeName,
+        referenceFilter,
+        displayKey: `metadataDisplay.${field.name}`,
+        selectedLabel,
+      }
+    }
+    default:
+      return { ...base, type: 'text' }
+  }
+}
 
 export default function LocationDetailPage() {
   const { id } = useParams()
@@ -34,6 +154,8 @@ export default function LocationDetailPage() {
   const [entities, setEntities] = useState([])
   const [path, setPath] = useState([])
   const [locationTypes, setLocationTypes] = useState([])
+  const [locationFields, setLocationFields] = useState([])
+  const [resolvedReferences, setResolvedReferences] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
@@ -124,6 +246,22 @@ export default function LocationDetailPage() {
     }
   }, [activeWorldId])
 
+  const loadLocationFields = useCallback(async () => {
+    if (!location?.location_type_id) {
+      setLocationFields([])
+      return
+    }
+
+    try {
+      const res = await getLocationTypeFields(location.location_type_id)
+      const fields = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []
+      setLocationFields(fields)
+    } catch (err) {
+      console.error('❌ Failed to load location type fields:', err)
+      setLocationFields([])
+    }
+  }, [location?.location_type_id])
+
   useEffect(() => {
     if (sessionReady && token) {
       loadLocation()
@@ -132,6 +270,85 @@ export default function LocationDetailPage() {
       loadLocationTypes()
     }
   }, [sessionReady, token, loadLocation, loadEntities, loadPath, loadLocationTypes])
+
+  useEffect(() => {
+    if (location?.location_type_id) {
+      loadLocationFields()
+    }
+  }, [location?.location_type_id, loadLocationFields])
+
+  // Resolve entity and location reference IDs to names
+  useEffect(() => {
+    if (!location?.metadata || !locationFields || locationFields.length === 0) {
+      setResolvedReferences({})
+      return
+    }
+
+    let cancelled = false
+    const referenceFields = locationFields.filter(
+      (field) =>
+        (field.data_type === 'entity_reference' || field.data_type === 'location_reference') &&
+        location.metadata?.[field.name]
+    )
+
+    if (referenceFields.length === 0) {
+      setResolvedReferences({})
+      return
+    }
+
+    const resolveReferences = async () => {
+      const resolved = { ...resolvedReferences }
+
+      for (const field of referenceFields) {
+        const fieldName = field.name
+        const metadataValue = location.metadata[fieldName]
+
+        // Extract ID from metadata value (could be UUID string or object with id)
+        let referenceId = null
+        if (typeof metadataValue === 'string' && metadataValue.trim()) {
+          referenceId = metadataValue.trim()
+        } else if (typeof metadataValue === 'object' && metadataValue !== null) {
+          referenceId = metadataValue.id || metadataValue.value || metadataValue.entity_id || null
+          // If object already has displayValue/name, use it
+          if (metadataValue.displayValue || metadataValue.name || metadataValue.label) {
+            resolved[fieldName] =
+              metadataValue.displayValue || metadataValue.name || metadataValue.label
+            continue
+          }
+        }
+
+        if (!referenceId || resolved[fieldName]) continue
+
+        try {
+          if (field.data_type === 'entity_reference') {
+            const entityRes = await getEntity(referenceId)
+            const entity = entityRes?.data || entityRes
+            if (entity?.name) {
+              resolved[fieldName] = entity.name
+            }
+          } else if (field.data_type === 'location_reference') {
+            const locationRes = await fetchLocationById(referenceId)
+            const loc = locationRes?.data || locationRes
+            if (loc?.name) {
+              resolved[fieldName] = loc.name
+            }
+          }
+        } catch (err) {
+          console.warn(`Failed to resolve reference for field ${fieldName}:`, err)
+        }
+      }
+
+      if (!cancelled) {
+        setResolvedReferences(resolved)
+      }
+    }
+
+    resolveReferences()
+
+    return () => {
+      cancelled = true
+    }
+  }, [location?.metadata, locationFields])
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this location?')) return
@@ -168,6 +385,7 @@ export default function LocationDetailPage() {
         description: data.description || location.description,
         location_type_id: location.location_type_id,
         parent_id: location.parent_id,
+        metadata: data.metadata || location.metadata || {},
       }
 
       const response = await updateLocation(location.id, payload)
@@ -234,6 +452,9 @@ export default function LocationDetailPage() {
 
   const tabItems = useMemo(() => {
     const items = [{ id: 'dossier', label: 'Dossier' }]
+    
+    items.push({ id: 'entities', label: 'Entities' })
+    items.push({ id: 'locations', label: 'Locations' })
 
     if (canEdit && isEditing) {
       items.push({ id: 'access', label: 'Access' })
@@ -254,6 +475,128 @@ export default function LocationDetailPage() {
   const createdAtValue = location?.createdAt || location?.created_at
   const updatedAtValue = location?.updatedAt || location?.updated_at
 
+  // Build metadata fields from location type fields
+  const metadataFields = useMemo(() => {
+    if (!Array.isArray(locationFields) || locationFields.length === 0) return []
+    
+    // Map location fields with metadata values
+    const fieldsWithMetadata = locationFields.map((field) => {
+      const metadataValue = location?.metadata?.[field.name]
+      const resolvedName = resolvedReferences[field.name]
+      
+      // For reference fields, include resolved display name
+      let value = metadataValue
+      let displayValue = resolvedName
+      let selectedLabel = resolvedName
+      
+      if (
+        (field.data_type === 'entity_reference' || field.data_type === 'location_reference') &&
+        metadataValue
+      ) {
+        if (typeof metadataValue === 'object' && metadataValue !== null) {
+          // Value is already an object, use it but override displayValue if we have a resolved name
+          value = resolvedName
+            ? { ...metadataValue, displayValue: resolvedName }
+            : metadataValue
+          displayValue = metadataValue.displayValue || metadataValue.name || metadataValue.label || resolvedName || null
+          selectedLabel = displayValue || resolvedName
+        } else if (typeof metadataValue === 'string' && resolvedName) {
+          // Value is just an ID string, create an object with displayValue
+          value = { id: metadataValue, displayValue: resolvedName }
+          displayValue = resolvedName
+          selectedLabel = resolvedName
+        }
+      }
+      
+      return {
+        ...field,
+        value,
+        displayValue,
+        selectedLabel,
+        dataType: field.data_type || field.dataType,
+        visibleByDefault: field.visible_by_default !== undefined ? field.visible_by_default : field.visibleByDefault !== undefined ? field.visibleByDefault : true,
+      }
+    })
+    
+    return fieldsWithMetadata.map((field) => mapFieldToSchemaField(field)).filter(Boolean)
+  }, [locationFields, location?.metadata, resolvedReferences])
+
+  const metadataViewValues = useMemo(() => {
+    if (!locationFields || locationFields.length === 0) {
+      return { __placeholder: 'No custom fields defined for this location type.' }
+    }
+
+    const fieldsWithMetadata = locationFields.map((field) => ({
+      ...field,
+      value: location?.metadata?.[field.name],
+    }))
+    
+    return buildMetadataViewMap(fieldsWithMetadata)
+  }, [locationFields, location?.metadata])
+
+  const metadataDisplayValues = useMemo(() => {
+    if (!locationFields || locationFields.length === 0) {
+      return {}
+    }
+
+    const fieldsWithMetadata = locationFields.map((field) => {
+      const metadataValue = location?.metadata?.[field.name]
+      const resolvedName = resolvedReferences[field.name]
+      
+      // For reference fields, use resolved name if available, otherwise try to extract from value
+      if (
+        (field.data_type === 'entity_reference' || field.data_type === 'location_reference') &&
+        metadataValue
+      ) {
+        // If we have a resolved name, use it
+        if (resolvedName) {
+          return {
+            ...field,
+            value: typeof metadataValue === 'object' && metadataValue !== null
+              ? { ...metadataValue, displayValue: resolvedName }
+              : { id: metadataValue, displayValue: resolvedName },
+          }
+        }
+        
+        // If value is already an object with display properties, use as-is
+        if (typeof metadataValue === 'object' && metadataValue !== null) {
+          return { ...field, value: metadataValue }
+        }
+        
+        // If value is just an ID string, wrap it in an object (buildMetadataDisplayMap will handle it)
+        return { ...field, value: { id: metadataValue } }
+      }
+      
+      return { ...field, value: metadataValue }
+    })
+    
+    const displayMap = buildMetadataDisplayMap(fieldsWithMetadata)
+    
+    // Override with resolved names where available
+    Object.keys(resolvedReferences).forEach((fieldName) => {
+      if (resolvedReferences[fieldName]) {
+        displayMap[fieldName] = resolvedReferences[fieldName]
+      }
+    })
+    
+    return displayMap
+  }, [locationFields, location?.metadata, resolvedReferences])
+
+  const metadataInitialValues = useMemo(() => {
+    if (!locationFields || locationFields.length === 0) {
+      return {}
+    }
+
+    const fieldsWithMetadata = locationFields.map((field) => ({
+      ...field,
+      value: location?.metadata?.[field.name],
+    }))
+    
+    return buildMetadataInitialMap(fieldsWithMetadata)
+  }, [locationFields, location?.metadata])
+
+  const metadataSectionTitle = 'Information'
+
   const viewData = useMemo(() => {
     if (!location) return null
 
@@ -265,6 +608,8 @@ export default function LocationDetailPage() {
       worldId,
       createdAt: formatDateTime(createdAtValue),
       updatedAt: formatDateTime(updatedAtValue),
+      metadata: metadataViewValues,
+      metadataDisplay: metadataDisplayValues,
       createdBy:
         location.creator?.username ||
         location.creator?.email ||
@@ -272,7 +617,7 @@ export default function LocationDetailPage() {
         '—',
       updatedBy: location.updated_by || '—',
     }
-  }, [location, worldId, createdAtValue, updatedAtValue])
+  }, [location, worldId, createdAtValue, updatedAtValue, metadataViewValues, metadataDisplayValues])
 
   const editInitialData = useMemo(() => {
     if (!location) return null
@@ -285,10 +630,22 @@ export default function LocationDetailPage() {
       worldId,
       createdAt: formatDateTime(createdAtValue),
       updatedAt: formatDateTime(updatedAtValue),
+      metadata: metadataInitialValues,
     }
-  }, [location, worldId, createdAtValue, updatedAtValue])
+  }, [location, worldId, createdAtValue, updatedAtValue, metadataInitialValues])
 
   const editSchema = useMemo(() => {
+    const metadataSectionFields = metadataFields.length > 0
+      ? metadataFields
+      : [
+          {
+            key: 'metadata.__placeholder',
+            name: 'metadata.__placeholder',
+            label: 'Information',
+            type: 'readonly',
+          },
+        ]
+
     return {
       title: 'Edit Location',
       sections: [
@@ -307,11 +664,27 @@ export default function LocationDetailPage() {
             },
           ],
         },
+        {
+          title: metadataSectionTitle,
+          columns: metadataFields.length > 0 ? 2 : 1,
+          fields: metadataSectionFields,
+        },
       ],
     }
-  }, [])
+  }, [metadataFields, metadataSectionTitle])
 
   const dossierSchema = useMemo(() => {
+    const metadataSectionFields = metadataFields.length > 0
+      ? metadataFields
+      : [
+          {
+            key: 'metadata.__placeholder',
+            name: 'metadata.__placeholder',
+            label: 'Information',
+            type: 'readonly',
+          },
+        ]
+
     return {
       title: 'Location Overview',
       sections: [
@@ -335,9 +708,14 @@ export default function LocationDetailPage() {
             },
           ],
         },
+        {
+          title: metadataSectionTitle,
+          columns: metadataFields.length > 0 ? 2 : 1,
+          fields: metadataSectionFields,
+        },
       ],
     }
-  }, [])
+  }, [metadataFields, metadataSectionTitle])
 
   const systemSchema = useMemo(() => {
     return {
@@ -538,45 +916,26 @@ export default function LocationDetailPage() {
                 ) : (
                   renderSchemaSections(dossierSchema, viewData, 'dossier')
                 )}
-
-                {/* Additional location info */}
-                <section className="entity-card bg-white rounded-lg border p-4 sm:p-6 w-full">
-                  <h2 className="entity-card-title">Related Information</h2>
-                  
-                  {location.parent && (
-                    <div className="form-group">
-                      <label>Parent Location</label>
-                      <div>
-                        <Link to={`/locations/${location.parent.id}`}>
-                          <MapPin size={16} style={{ display: 'inline', marginRight: '0.5rem' }} />
-                          {location.parent.name}
-                        </Link>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="form-group">
-                    <label>Child Locations</label>
-                    <div>{location.childCount || 0}</div>
-                  </div>
-
-                  {entities.length > 0 && (
-                    <div className="form-group">
-                      <label>Entities in this Location ({entities.length})</label>
-                      <ul style={{ listStyle: 'none', padding: 0 }}>
-                        {entities.map((entity) => (
-                          <li key={entity.id} style={{ marginBottom: '0.5rem' }}>
-                            <Link to={`/entities/${entity.id}`}>
-                              {entity.name} ({entity.entityType?.name || 'Unknown Type'})
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </section>
               </div>
             </div>
+
+            {/* ENTITIES TAB */}
+            {activeTab === 'entities' && (
+              <EntitiesTab
+                entities={entities}
+                loading={loading}
+                error={error}
+              />
+            )}
+
+            {/* LOCATIONS TAB */}
+            {activeTab === 'locations' && (
+              <LocationsTab
+                location={location}
+                worldId={worldId}
+                path={path}
+              />
+            )}
 
             {/* ACCESS TAB */}
             {activeTab === 'access' && isEditing && canEdit && (
