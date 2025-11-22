@@ -24,6 +24,7 @@ export default function LocationList() {
   const [selectedParentId, setSelectedParentId] = useState(
     searchParams.get('parentId') || null
   )
+  const selectedLocationTypeId = searchParams.get('locationType') || null
   const [path, setPath] = useState([])
   const [panelOpen, setPanelOpen] = useState(false)
   const [editingLocation, setEditingLocation] = useState(null)
@@ -45,6 +46,11 @@ export default function LocationList() {
         params.parentId = selectedParentId
       }
       
+      // Filter by location type if provided
+      if (selectedLocationTypeId) {
+        params.locationTypeId = selectedLocationTypeId
+      }
+      
       const res = await fetchLocations(params)
       setLocations(res?.data || [])
     } catch (err) {
@@ -53,7 +59,7 @@ export default function LocationList() {
     } finally {
       setLoading(false)
     }
-  }, [activeWorldId, selectedParentId])
+  }, [activeWorldId, selectedParentId, selectedLocationTypeId])
 
   const loadLocationTypes = useCallback(async () => {
     if (!activeWorldId) return
@@ -94,12 +100,15 @@ export default function LocationList() {
   }, [loadPath])
 
   useEffect(() => {
+    const params = {}
     if (selectedParentId) {
-      setSearchParams({ parentId: selectedParentId })
-    } else {
-      setSearchParams({})
+      params.parentId = selectedParentId
     }
-  }, [selectedParentId, setSearchParams])
+    if (selectedLocationTypeId) {
+      params.locationType = selectedLocationTypeId
+    }
+    setSearchParams(params)
+  }, [selectedParentId, selectedLocationTypeId, setSearchParams])
 
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this location?')) return
@@ -161,8 +170,21 @@ export default function LocationList() {
   return (
     <div className="page-container">
       <div className="page-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <h1>Locations</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          <h1>
+            {selectedLocationTypeId
+              ? locationTypes.find((t) => t.id === selectedLocationTypeId)?.name || 'Locations'
+              : 'Locations'}
+          </h1>
+          {selectedLocationTypeId && (
+            <button
+              className="btn btn-sm btn-secondary"
+              onClick={() => setSearchParams({})}
+              title="Clear location type filter"
+            >
+              <X size={14} /> Clear Filter
+            </button>
+          )}
           <button className="btn btn-primary" onClick={handleNew}>
             <Plus size={16} /> New Location
           </button>

@@ -2,6 +2,9 @@
 import { Op } from 'sequelize'
 import { LocationType, LocationTypeField, World, Location, sequelize } from '../models/index.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
+import { buildEntityReadContext, buildReadableEntitiesWhereClause } from '../utils/entityAccess.js'
+
+const PUBLIC_VISIBILITY = ['visible', 'partial']
 
 const isSystemAdmin = (user) => user?.role === 'system_admin'
 
@@ -165,7 +168,7 @@ export const getLocationTypeById = async (req, res) => {
 // Create a new location type
 export const createLocationType = async (req, res) => {
   try {
-    const { world_id, name, description, parent_type_id, sort_order } = req.body
+    const { world_id, name, description, parent_type_id, sort_order, focus } = req.body
 
     const worldId = normaliseId(world_id)
     if (!worldId) {
@@ -205,6 +208,7 @@ export const createLocationType = async (req, res) => {
       description: description?.trim() || null,
       parent_type_id: parent_type_id ? normaliseId(parent_type_id) : null,
       sort_order: sort_order || 0,
+      focus: focus === true,
     })
 
     const fullLocationType = await LocationType.findByPk(locationType.id, {
@@ -233,7 +237,7 @@ export const createLocationType = async (req, res) => {
 export const updateLocationType = async (req, res) => {
   try {
     const { id } = req.params
-    const { name, description, parent_type_id, sort_order } = req.body
+    const { name, description, parent_type_id, sort_order, focus } = req.body
 
     const locationType = await LocationType.findByPk(id, {
       include: [
@@ -302,6 +306,9 @@ export const updateLocationType = async (req, res) => {
     }
     if (sort_order !== undefined) {
       updates.sort_order = sort_order || 0
+    }
+    if (focus !== undefined) {
+      updates.focus = focus === true
     }
 
     await locationType.update(updates)
@@ -386,6 +393,104 @@ export const deleteLocationType = async (req, res) => {
   } catch (error) {
     console.error('Error deleting location type:', error)
     res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// List location types with location counts (campaign-aware, similar to listWorldEntityTypesWithEntities)
+export const listWorldLocationTypesWithLocations = async (req, res) => {
+  try {
+    const { world, user } = req
+
+    if (!world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    const access = req.worldAccess ?? (await checkWorldAccess(world.id, user))
+    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const viewAsCharacterId =
+      typeof req.query?.viewAsCharacterId === 'string'
+        ? req.query.viewAsCharacterId.trim()
+        : typeof req.query?.characterId === 'string'
+          ? req.query.characterId.trim()
+          : ''
+
+    const readContext = await buildEntityReadContext({
+      worldId: world.id,
+      user,
+      worldAccess: access,
+      campaignContextId: req.campaignContextId,
+      characterContextId: viewAsCharacterId,
+    })
+
+    const where = { world_id: world.id }
+    const isPrivilegedView = Boolean(readContext?.isOwner || readContext?.isAdmin)
+    const allowPersonalAccess = Boolean(user?.id && !readContext?.suppressPersonalAccess)
+
+    if (!isPrivilegedView) {
+      const orClauses = [{ visibility: { [Op.in]: PUBLIC_VISIBILITY } }]
+
+      if (allowPersonalAccess) {
+        orClauses.push({ created_by: user.id })
+      }
+
+      if (orClauses.length > 1) {
+        where[Op.or] = orClauses
+      } else {
+        where[Op.and] = [...(where[Op.and] ?? []), orClauses[0]]
+      }
+    }
+
+    const readAccessWhere = buildReadableEntitiesWhereClause(readContext)
+
+    if (readAccessWhere) {
+      if (where[Op.and]) {
+        where[Op.and].push(readAccessWhere)
+      } else {
+        where[Op.and] = [readAccessWhere]
+      }
+    }
+
+    const usage = await Location.findAll({
+      where,
+      attributes: [
+        'location_type_id',
+        [sequelize.fn('COUNT', sequelize.col('location_type_id')), 'locationCount'],
+      ],
+      group: ['location_type_id'],
+      raw: true,
+    })
+
+    const usageMap = new Map()
+    usage.forEach((row) => {
+      const typeId = row.location_type_id
+      const count = Number(row.locationCount ?? row.count ?? 0)
+      if (!typeId || count <= 0) return
+      usageMap.set(typeId, count)
+    })
+
+    if (usageMap.size === 0) {
+      return res.json({ success: true, data: [] })
+    }
+
+    const types = await LocationType.findAll({
+      where: { id: [...usageMap.keys()], world_id: world.id },
+      order: [['name', 'ASC']],
+    })
+
+    const data = types.map((type) => ({
+      id: type.id,
+      name: type.name,
+      description: type.description,
+      focus: type.focus || false,
+      locationCount: usageMap.get(type.id) ?? 0,
+    }))
+
+    return res.json({ success: true, data })
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message })
   }
 }
 

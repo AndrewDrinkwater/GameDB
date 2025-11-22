@@ -15,6 +15,7 @@ export default function LocationTypeForm({
     worldId: '',
     parent_type_id: '',
     sort_order: 0,
+    focus: false,
   })
   const [localError, setLocalError] = useState('')
 
@@ -28,6 +29,7 @@ export default function LocationTypeForm({
       worldId: initialWorld ? String(initialWorld) : '',
       parent_type_id: initialData?.parent_type_id || initialData?.parentType?.id || '',
       sort_order: initialData?.sort_order || 0,
+      focus: initialData?.focus || false,
     })
     setLocalError('')
   }, [initialData])
@@ -40,7 +42,8 @@ export default function LocationTypeForm({
         (initialData?.world_id || initialData?.worldId || initialData?.world?.id || '') ||
       values.parent_type_id !==
         (initialData?.parent_type_id || initialData?.parentType?.id || '') ||
-      values.sort_order !== (initialData?.sort_order || 0)
+      values.sort_order !== (initialData?.sort_order || 0) ||
+      values.focus !== (initialData?.focus || false)
     )
   }, [
     initialData,
@@ -49,6 +52,7 @@ export default function LocationTypeForm({
     values.worldId,
     values.parent_type_id,
     values.sort_order,
+    values.focus,
   ])
 
   useEffect(() => {
@@ -66,6 +70,11 @@ export default function LocationTypeForm({
     if (!Number.isNaN(numValue)) {
       setValues((prev) => ({ ...prev, [field]: numValue }))
     }
+  }
+
+  const handleCheckboxChange = (field) => (event) => {
+    const { checked } = event.target
+    setValues((prev) => ({ ...prev, [field]: checked }))
   }
 
   // Filter out the current type and its descendants from parent options
@@ -99,6 +108,7 @@ export default function LocationTypeForm({
       world_id: trimmedWorldId,
       parent_type_id: values.parent_type_id || null,
       sort_order: values.sort_order || 0,
+      focus: values.focus || false,
     }
 
     try {
@@ -185,6 +195,22 @@ export default function LocationTypeForm({
           disabled={submitting}
           className="textarea-field"
         />
+      </div>
+
+      <div className="form-group">
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={values.focus}
+            onChange={handleCheckboxChange('focus')}
+            disabled={submitting}
+          />
+          <span>Focus (show in sidebar navigation)</span>
+        </label>
+        <p className="help-text">
+          When enabled, this location type will appear as a menu item in the Locations section of
+          the sidebar with a count of locations.
+        </p>
       </div>
 
       {localError && (

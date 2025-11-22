@@ -2,6 +2,7 @@ import express from 'express'
 import { getWorlds, createWorld, updateWorld, deleteWorld } from '../controllers/worldController.js'
 import { listWorldEntities, createWorldEntity } from '../controllers/entityController.js'
 import { listWorldEntityTypesWithEntities } from '../controllers/entityTypeController.js'
+import { listWorldLocationTypesWithLocations } from '../controllers/locationTypeController.js'
 import { authenticate, requireRole } from '../middleware/authMiddleware.js'
 import { ensureWorldAccess } from '../middleware/worldAccess.js'
 
@@ -20,6 +21,9 @@ router.post('/', requireRole('system_admin', 'user'), createWorld)
 router.get('/:id/entity-types', ensureWorldAccess, listWorldEntityTypesWithEntities)
 router.get('/:id/entities', ensureWorldAccess, listWorldEntities)
 router.post('/:id/entities', ensureWorldAccess, createWorldEntity)
+
+// World-scoped location type management
+router.get('/:id/location-types', ensureWorldAccess, listWorldLocationTypesWithLocations)
 
 // Update world (only creator or admin, enforced in controller)
 router.put('/:id', requireRole('system_admin', 'user'), updateWorld)
