@@ -4,6 +4,7 @@ import {
   EntityRelationship,
   EntityRelationshipType,
   EntityRelationshipTypeEntityType,
+  World,
 } from '../models/index.js'
 import { ensureBidirectionalLink } from '../utils/relationshipHelpers.js'
 import { applyRelBuilderHeader } from '../utils/featureFlags.js'
@@ -307,7 +308,30 @@ export async function createRelationship(req, res) {
     if (!hasPrivilegedRelationshipRole(req.user)) {
       const access = await checkWorldAccess(fromWorldId, req.user)
       if (!access.isOwner && !access.isAdmin) {
-        return res.status(403).json({ error: 'Forbidden' })
+        // Check if the world allows players to create entities
+        const world = await World.findByPk(fromWorldId, {
+          attributes: ['id', 'entity_creation_scope'],
+        })
+
+        const entityCreationScope = world?.entity_creation_scope
+        if (entityCreationScope !== 'all_players') {
+          return res.status(403).json({ error: 'Forbidden' })
+        }
+
+        // If world allows player entity creation, check if user can see both entities
+        const readContext = await buildEntityReadContext({
+          worldId: fromWorldId,
+          user: req.user,
+          worldAccess: access,
+          campaignContextId: req.campaignContextId,
+        })
+
+        const canSeeFrom = canUserReadEntity(from, readContext)
+        const canSeeTo = canUserReadEntity(to, readContext)
+
+        if (!canSeeFrom || !canSeeTo) {
+          return res.status(403).json({ error: 'Forbidden' })
+        }
       }
     }
 
