@@ -460,9 +460,20 @@ function groupChildrenByRelationship(
   }
 
   const queue = Array.from(levelSeeds)
-  while (queue.length) {
+  const visited = new Set(Array.from(levelSeeds))
+  const MAX_ITERATIONS = 10000
+  let iterations = 0
+
+  while (queue.length && iterations < MAX_ITERATIONS) {
+    iterations += 1
     const currentId = queue.shift()
     if (!currentId) continue
+    
+    // Safety check: prevent infinite loops from circular relationships
+    if (!visited.has(currentId)) {
+      visited.add(currentId)
+    }
+
     const currentLevel = nodeLevels.get(currentId)
     if (currentLevel == null || !Number.isFinite(currentLevel)) continue
 
@@ -470,13 +481,21 @@ function groupChildrenByRelationship(
     if (!children) continue
 
     children.forEach((childId) => {
+      // Skip if already visited to prevent circular relationship loops
+      if (visited.has(childId)) return
+      
       const candidateLevel = currentLevel + 1
       const existingLevel = nodeLevels.get(childId)
       if (existingLevel == null || candidateLevel < existingLevel) {
         nodeLevels.set(childId, candidateLevel)
+        visited.add(childId)
         queue.push(childId)
       }
     })
+  }
+
+  if (iterations >= MAX_ITERATIONS) {
+    console.warn(`groupChildrenByRelationship: Reached maximum iteration limit (${MAX_ITERATIONS}), possible circular relationship detected`)
   }
 
   const grouped = new Map()
@@ -1355,10 +1374,19 @@ function buildLevelsFromEdges(centerKey, edges) {
   })
 
   const queue = [normalizedCenter]
+  const visited = new Set([normalizedCenter])
+  const MAX_ITERATIONS = 10000
+  let iterations = 0
 
-  while (queue.length) {
+  while (queue.length && iterations < MAX_ITERATIONS) {
+    iterations += 1
     const current = queue.shift()
     if (!current) continue
+
+    // Safety check: prevent infinite loops from circular relationships
+    if (!visited.has(current)) {
+      visited.add(current)
+    }
 
     const currentLevel = levels.get(current) ?? 0
 
@@ -1366,11 +1394,12 @@ function buildLevelsFromEdges(centerKey, edges) {
     if (parents) {
       parents.forEach((parentId) => {
         const normalizedParent = parentId != null ? String(parentId) : null
-        if (!normalizedParent) return
+        if (!normalizedParent || visited.has(normalizedParent)) return
         const candidateLevel = currentLevel - 1
         const existing = levels.get(normalizedParent)
         if (existing == null || candidateLevel < existing) {
           levels.set(normalizedParent, candidateLevel)
+          visited.add(normalizedParent)
           queue.push(normalizedParent)
         }
       })
@@ -1380,15 +1409,20 @@ function buildLevelsFromEdges(centerKey, edges) {
     if (children) {
       children.forEach((childId) => {
         const normalizedChild = childId != null ? String(childId) : null
-        if (!normalizedChild) return
+        if (!normalizedChild || visited.has(normalizedChild)) return
         const candidateLevel = currentLevel + 1
         const existing = levels.get(normalizedChild)
         if (existing == null || candidateLevel < existing) {
           levels.set(normalizedChild, candidateLevel)
+          visited.add(normalizedChild)
           queue.push(normalizedChild)
         }
       })
     }
+  }
+
+  if (iterations >= MAX_ITERATIONS) {
+    console.warn(`buildLevelsFromEdges: Reached maximum iteration limit (${MAX_ITERATIONS}), possible circular relationship detected`)
   }
 
   return levels

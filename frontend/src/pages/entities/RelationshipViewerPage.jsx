@@ -160,8 +160,11 @@ function computeDepthLookup(sourceId, adjacency) {
   depthMap.set(normalizedSource, 0)
   const queue = [normalizedSource]
   const visited = new Set([normalizedSource])
+  const MAX_ITERATIONS = 10000
+  let iterations = 0
 
-  while (queue.length) {
+  while (queue.length && iterations < MAX_ITERATIONS) {
+    iterations += 1
     const currentId = queue.shift()
     if (!currentId) continue
 
@@ -186,6 +189,10 @@ function computeDepthLookup(sourceId, adjacency) {
       visited.add(childId)
       queue.push(childId)
     })
+  }
+
+  if (iterations >= MAX_ITERATIONS) {
+    console.warn(`computeDepthLookup: Reached maximum iteration limit (${MAX_ITERATIONS}), possible circular relationship detected`)
   }
 
   return depthMap
@@ -2060,9 +2067,16 @@ export default function RelationshipViewerPage() {
   useEffect(() => {
     if (!entityId) return
     let active = true
+    const abortController = new AbortController()
+    const API_TIMEOUT_MS = 30000 // 30 seconds
+
     async function fetchData() {
       setLoading(true)
       setError(null)
+      
+      const startTime = performance.now()
+      console.log(`[RelationshipViewer] Starting graph fetch for entity ${entityId} at depth ${relationshipDepth}`)
+      
       try {
         const suppressedEntries =
           suppressedNodesRef.current instanceof Map
@@ -2073,7 +2087,19 @@ export default function RelationshipViewerPage() {
         )
         const suppressedIds = new Set(suppressedLookup.keys())
 
-        const graph = await getEntityGraph(entityId, relationshipDepth)
+        // Create timeout promise
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(`Graph fetch timed out after ${API_TIMEOUT_MS / 1000} seconds`))
+          }, API_TIMEOUT_MS)
+        })
+
+        // Race between API call and timeout
+        const graphPromise = getEntityGraph(entityId, relationshipDepth)
+        const graph = await Promise.race([graphPromise, timeoutPromise])
+        
+        const fetchTime = performance.now() - startTime
+        console.log(`[RelationshipViewer] Graph fetch completed in ${fetchTime.toFixed(2)}ms`)
         const graphData = graph ?? {}
 
         let sanitizedEdges = Array.isArray(graphData.edges) ? graphData.edges : []
@@ -2130,18 +2156,32 @@ export default function RelationshipViewerPage() {
           ancestorDepthLimit
         )
 
-        const {
-          nodes: layoutedNodes,
-          edges: layoutedEdges,
-          suppressedNodes: layoutedSuppressedNodes,
-          clusters: layoutedClusters,
-        } = buildReactFlowGraph(
-          { ...graphData, edges: sanitizedEdges },
-          entityId,
-          undefined,
-          { alwaysIncludeIds: forcedAncestorIds }
-        )
-        if (active) {
+        // Break up heavy processing to prevent UI blocking
+        // Use setTimeout to defer processing and allow UI to update
+        const processingStartTime = performance.now()
+        console.log(`[RelationshipViewer] Starting graph processing: ${sanitizedEdges.length} edges`)
+        
+        setTimeout(() => {
+          try {
+            if (!active) return
+          
+            const buildStartTime = performance.now()
+            const {
+              nodes: layoutedNodes,
+              edges: layoutedEdges,
+              suppressedNodes: layoutedSuppressedNodes,
+              clusters: layoutedClusters,
+            } = buildReactFlowGraph(
+              { ...graphData, edges: sanitizedEdges },
+              entityId,
+              undefined,
+              { alwaysIncludeIds: forcedAncestorIds }
+            )
+            
+            const buildTime = performance.now() - buildStartTime
+            console.log(`[RelationshipViewer] buildReactFlowGraph completed in ${buildTime.toFixed(2)}ms: ${layoutedNodes.length} nodes, ${layoutedEdges.length} edges`)
+          
+            if (!active) return
           const decorateNode = (node) => {
             if (!node) return null
             if (node.type === 'cluster') {
@@ -2394,18 +2434,34 @@ export default function RelationshipViewerPage() {
             ? [...layoutedEdges, ...preservedEdges]
             : preservedEdges
 
-          setNodes(applyUserPlacedPositions(mergedNodes))
-          setEdges(mergedEdges)
-        }
+            const processingTime = performance.now() - processingStartTime
+            console.log(`[RelationshipViewer] Total processing completed in ${processingTime.toFixed(2)}ms`)
+            
+            setNodes(applyUserPlacedPositions(mergedNodes))
+            setEdges(mergedEdges)
+            
+            // Set loading to false after processing is complete
+            if (active) setLoading(false)
+          } catch (processingError) {
+            if (active) {
+              console.error('[RelationshipViewer] Error processing graph data:', processingError)
+              setError(processingError.message || 'Failed to process graph data')
+              setLoading(false)
+            }
+          }
+        }, 0)
       } catch (err) {
-        if (active) setError(err.message || 'Failed to load graph')
-      } finally {
-        if (active) setLoading(false)
+        if (active) {
+          console.error('[RelationshipViewer] Error fetching graph:', err)
+          setError(err.message || 'Failed to load graph')
+          setLoading(false)
+        }
       }
     }
     fetchData()
     return () => {
       active = false
+      abortController.abort()
     }
   }, [
     applyUserPlacedPositions,
@@ -2548,12 +2604,16 @@ export default function RelationshipViewerPage() {
   ])
 
   const handleIncreaseDepth = useCallback(() => {
+    // Prevent depth changes while loading to avoid crashes
+    if (loading) return
     setRelationshipDepth((current) => Math.min(3, current + 1))
-  }, [])
+  }, [loading])
 
   const handleDecreaseDepth = useCallback(() => {
+    // Prevent depth changes while loading to avoid crashes
+    if (loading) return
     setRelationshipDepth((current) => Math.max(1, current - 1))
-  }, [])
+  }, [loading])
 
   // Ensure React Flow container has explicit dimensions
   useEffect(() => {
