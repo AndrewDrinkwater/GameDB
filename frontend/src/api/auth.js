@@ -1,9 +1,11 @@
 // src/api/auth.js
 import { getAuthToken } from '../utils/authHelpers.js'
 
-const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api/auth`
-  : 'http://localhost:3000/api/auth'
+// Always use a single API base
+const API_BASE =
+  (import.meta.env.VITE_API_BASE &&
+    import.meta.env.VITE_API_BASE.replace(/\/$/, '')) ||
+  'http://localhost:3000/api'
 
 function authHeaders() {
   const token = getAuthToken()
@@ -24,11 +26,10 @@ async function handleResponse(res, action = 'request') {
 }
 
 export async function changePassword(currentPassword, newPassword) {
-  const res = await fetch(`${API_BASE}/change-password`, {
+  const res = await fetch(`${API_BASE}/auth/change-password`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({ currentPassword, newPassword }),
   })
   return handleResponse(res, 'change password')
 }
-

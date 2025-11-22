@@ -37,6 +37,8 @@ import RequestNoteModel from './requestNote.js'
 // If DB_PASS is undefined or null, use empty string; otherwise convert to string
 const dbPassword = process.env.DB_PASS == null ? '' : String(process.env.DB_PASS)
 
+const isProduction = process.env.NODE_ENV === 'production'
+
 export const sequelize = new Sequelize({
   database: process.env.DB_NAME,
   username: process.env.DB_USER,
@@ -45,6 +47,14 @@ export const sequelize = new Sequelize({
   port: parseInt(process.env.DB_PORT || '5432', 10),
   dialect: 'postgres',
   logging: false,
+  dialectOptions: isProduction
+    ? {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false
+        }
+      }
+    : {}
 })
 
 // Initialise models
