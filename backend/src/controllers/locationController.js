@@ -360,10 +360,68 @@ export const createLocation = async (req, res) => {
 }
 
 // Update a location
+// Helper functions for access control
+const READ_ACCESS_VALUES = new Set(['global', 'selective', 'hidden'])
+const WRITE_ACCESS_VALUES = new Set(['global', 'selective', 'hidden', 'owner_only'])
+const VISIBILITY_VALUES = new Set(['hidden', 'visible', 'partial'])
+
+const normaliseAccessValue = (value, fieldName) => {
+  if (value === undefined) return undefined
+
+  if (value === null) {
+    throw new Error(`${fieldName} cannot be null`)
+  }
+
+  if (typeof value !== 'string') {
+    throw new Error(`${fieldName} must be a string`)
+  }
+
+  const trimmed = value.trim().toLowerCase()
+  const allowedValues = fieldName === 'write_access' ? WRITE_ACCESS_VALUES : READ_ACCESS_VALUES
+
+  if (!allowedValues.has(trimmed)) {
+    throw new Error(
+      `${fieldName} must be one of: ${Array.from(allowedValues).join(', ')}`,
+    )
+  }
+
+  return trimmed
+}
+
+const normaliseUuidArray = (value, fieldName) => {
+  if (value === undefined) return undefined
+  if (value === null) return []
+  if (!Array.isArray(value)) {
+    throw new Error(`${fieldName} must be an array`)
+  }
+  return value
+    .map((v) => {
+      if (v === null || v === undefined) return null
+      const str = String(v).trim()
+      return str || null
+    })
+    .filter((v) => v !== null)
+}
+
 export const updateLocation = async (req, res) => {
   try {
     const { id } = req.params
-    const { name, description, parent_id, location_type_id, metadata, coordinates } = req.body
+    const {
+      name,
+      description,
+      parent_id,
+      location_type_id,
+      metadata,
+      coordinates,
+      visibility,
+      read_access: readAccessInput,
+      write_access: writeAccessInput,
+      read_campaign_ids: readCampaignIdsInput,
+      read_user_ids: readUserIdsInput,
+      read_character_ids: readCharacterIdsInput,
+      write_campaign_ids: writeCampaignIdsInput,
+      write_user_ids: writeUserIdsInput,
+    } = req.body
 
     const location = await Location.findByPk(id, {
       include: [
@@ -411,6 +469,41 @@ export const updateLocation = async (req, res) => {
       }
     }
 
+    // Normalize access control fields
+    let readAccess
+    let writeAccess
+    let readCampaignIds
+    let readUserIds
+    let readCharacterIds
+    let writeCampaignIds
+    let writeUserIds
+
+    try {
+      if (readAccessInput !== undefined) {
+        readAccess = normaliseAccessValue(readAccessInput, 'read_access')
+      }
+      if (writeAccessInput !== undefined) {
+        writeAccess = normaliseAccessValue(writeAccessInput, 'write_access')
+      }
+      if (readCampaignIdsInput !== undefined) {
+        readCampaignIds = normaliseUuidArray(readCampaignIdsInput, 'read_campaign_ids')
+      }
+      if (readUserIdsInput !== undefined) {
+        readUserIds = normaliseUuidArray(readUserIdsInput, 'read_user_ids')
+      }
+      if (readCharacterIdsInput !== undefined) {
+        readCharacterIds = normaliseUuidArray(readCharacterIdsInput, 'read_character_ids')
+      }
+      if (writeCampaignIdsInput !== undefined) {
+        writeCampaignIds = normaliseUuidArray(writeCampaignIdsInput, 'write_campaign_ids')
+      }
+      if (writeUserIdsInput !== undefined) {
+        writeUserIds = normaliseUuidArray(writeUserIdsInput, 'write_user_ids')
+      }
+    } catch (err) {
+      return res.status(400).json({ success: false, message: err.message })
+    }
+
     const updates = {}
     if (name !== undefined) {
       if (!name || !name.trim()) {
@@ -437,6 +530,44 @@ export const updateLocation = async (req, res) => {
     }
     if (coordinates !== undefined) {
       updates.coordinates = coordinates && typeof coordinates === 'object' ? coordinates : null
+    }
+    if (visibility !== undefined) {
+      if (!VISIBILITY_VALUES.has(visibility)) {
+        return res.status(400).json({ success: false, message: 'Invalid visibility value' })
+      }
+      updates.visibility = visibility
+    }
+    if (readAccess !== undefined) {
+      updates.read_access = readAccess
+      if (readAccess !== 'selective') {
+        readCampaignIds = []
+        readUserIds = []
+        readCharacterIds = []
+      }
+    }
+
+    if (writeAccess !== undefined) {
+      updates.write_access = writeAccess
+      if (writeAccess !== 'selective') {
+        writeCampaignIds = []
+        writeUserIds = []
+      }
+    }
+
+    if (readCampaignIds !== undefined) {
+      updates.read_campaign_ids = readCampaignIds
+    }
+    if (readUserIds !== undefined) {
+      updates.read_user_ids = readUserIds
+    }
+    if (readCharacterIds !== undefined) {
+      updates.read_character_ids = readCharacterIds
+    }
+    if (writeCampaignIds !== undefined) {
+      updates.write_campaign_ids = writeCampaignIds
+    }
+    if (writeUserIds !== undefined) {
+      updates.write_user_ids = writeUserIds
     }
 
     await location.update(updates)
