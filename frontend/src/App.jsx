@@ -39,6 +39,7 @@ import RequestDetailPage from './pages/requests/RequestDetailPage.jsx'
 import CreateRequestPage from './pages/requests/CreateRequestPage.jsx'
 import LocationList from './pages/locations/LocationList.jsx'
 import LocationDetailPage from './pages/locations/LocationDetailPage.jsx'
+import LocationTypeList from './pages/locationTypes/LocationTypeList.jsx'
 
 const router = createBrowserRouter(
   createRoutesFromElements(
@@ -105,6 +106,8 @@ const router = createBrowserRouter(
           <Route index element={<LocationList />} />
           <Route path=":id" element={<LocationDetailPage />} />
         </Route>
+
+        <Route path="location-types" element={<LocationTypeList />} />
 
         <Route path="notes">
           <Route index element={<Navigate to="/notes/session" replace />} />

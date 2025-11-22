@@ -39,10 +39,10 @@ export default function LocationList() {
         includeEntities: 'true',
       }
       
+      // Only include parentId if it's actually set (not null)
+      // When parentId is not provided, backend defaults to root locations
       if (selectedParentId) {
         params.parentId = selectedParentId
-      } else {
-        params.parentId = null
       }
       
       const res = await fetchLocations(params)

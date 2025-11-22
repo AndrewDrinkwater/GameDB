@@ -45,9 +45,19 @@ export const getLocations = async (req, res) => {
       world_id: worldIdParam,
     }
 
-    if (parentId) {
-      where.parent_id = normaliseId(parentId)
-    } else if (parentId === null || parentId === 'null') {
+    // Handle parentId: if explicitly provided (even as 'null'), use it
+    // If not provided at all, default to root locations (parent_id is null)
+    if (parentId !== undefined) {
+      if (parentId === null || parentId === 'null' || parentId === '') {
+        where.parent_id = null
+      } else {
+        const normalisedParentId = normaliseId(parentId)
+        if (normalisedParentId) {
+          where.parent_id = normalisedParentId
+        }
+      }
+    } else {
+      // Default to root locations when parentId is not specified
       where.parent_id = null
     }
 

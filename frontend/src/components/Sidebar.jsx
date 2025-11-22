@@ -254,13 +254,13 @@ export default function Sidebar({
                 </Link>
               )}
 
-              {hasWorldContext && (
+              {canViewEntityTypes && (
                 <Link
-                  to="/locations"
-                  className={`nav-entity-link ${isActive('/locations') ? 'active' : ''}`}
+                  to="/location-types"
+                  className={`nav-entity-link ${isActive('/location-types') ? 'active' : ''}`}
                 >
                   <MapPin size={16} className="nav-icon" />
-                  <span>Locations</span>
+                  <span>Location Admin</span>
                 </Link>
               )}
 
@@ -396,6 +396,16 @@ export default function Sidebar({
             />
           </button>
           <div id="entities-nav" className="nav-sub-links">
+            {hasWorldContext && (
+              <Link
+                to="/locations"
+                className={`nav-entity-link ${isActive('/locations') ? 'active' : ''}`}
+              >
+                <MapPin size={16} className="nav-icon" />
+                <span>Locations</span>
+              </Link>
+            )}
+
             {loadingEntityTypes && <span className="nav-helper">Loading entity types…</span>}
             {!loadingEntityTypes && entityTypeError && (
               <span className="nav-helper error">{entityTypeError}</span>

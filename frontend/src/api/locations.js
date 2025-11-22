@@ -51,7 +51,9 @@ export async function fetchLocations(params = {}) {
   const queryParams = new URLSearchParams()
   
   if (params.worldId) queryParams.append('worldId', params.worldId)
-  if (params.parentId !== undefined) queryParams.append('parentId', params.parentId)
+  if (params.parentId !== undefined && params.parentId !== null) {
+    queryParams.append('parentId', params.parentId)
+  }
   if (params.locationTypeId) queryParams.append('locationTypeId', params.locationTypeId)
   if (params.includeEntities) queryParams.append('includeEntities', params.includeEntities)
   
