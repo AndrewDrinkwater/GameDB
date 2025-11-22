@@ -943,10 +943,15 @@ export default function EntityDetailPage() {
   const viewData = useMemo(() => {
     if (!entity) return null
 
+    const locationId = entity.location?.id || entity.location_id || null
+    const locationName = entity.location?.name || null
+
     return {
       name: entity.name || '—',
       description: entity.description || '',
       typeName: entity.entityType?.name || entity.entity_type?.name || '—',
+      location: locationId,
+      locationName: locationName || '—',
       worldName: entity.world?.name || entity.world_name || '—',
       worldId: entityWorldId,
       createdAt: formatDateTime(createdAtValue),
@@ -977,11 +982,14 @@ export default function EntityDetailPage() {
   const editInitialData = useMemo(() => {
     if (!entity) return null
 
+      const locationId = entity.location?.id || entity.location_id || null
+
     return {
       name: entity.name || '',
       description: entity.description || '',
       visibility: entity.visibility || 'visible',
       entityTypeName: entity.entityType?.name || entity.entity_type?.name || '—',
+      location_id: locationId || null,
       worldName: entity.world?.name || entity.world_name || '—',
       worldId: entityWorldId,
       createdAt: formatDateTime(createdAtValue),
@@ -1039,21 +1047,27 @@ export default function EntityDetailPage() {
     const hasMetadataFields = metadataFields.length > 0
 
     const sections = [
-      {
-        title: 'Edit Entity',
-        columns: 2,
-        fields: [
-          { key: 'name', label: 'Name', type: 'text' },
-          { key: 'entityTypeName', label: 'Type', type: 'readonly' },
-          {
-            key: 'description',
-            label: 'Description',
-            type: 'textarea',
-            rows: 4,
-            span: 2, // Make description span both columns
-          },
-        ],
-      },
+        {
+          title: 'Edit Entity',
+          columns: 2,
+          fields: [
+            { key: 'name', label: 'Name', type: 'text' },
+            { key: 'entityTypeName', label: 'Type', type: 'readonly' },
+            { 
+              key: 'location_id', 
+              label: 'Location', 
+              type: 'location_reference',
+              dataType: 'location_reference',
+            },
+            {
+              key: 'description',
+              label: 'Description',
+              type: 'textarea',
+              rows: 4,
+              span: 2, // Make description span both columns
+            },
+          ],
+        },
       {
         title: metadataSectionTitle,
         columns: hasMetadataFields ? 2 : 1,
@@ -1098,6 +1112,12 @@ export default function EntityDetailPage() {
           fields: [
             { key: 'name', label: 'Name', type: 'readonly' },
             { key: 'typeName', label: 'Type', type: 'readonly' },
+            { 
+              key: 'location', 
+              label: 'Location', 
+              type: 'location_reference',
+              dataType: 'location_reference',
+            },
           ],
         },
         {
@@ -1653,6 +1673,9 @@ export default function EntityDetailPage() {
         if (entity?.visibility) {
           payload.visibility = entity.visibility
         }
+
+        // Include location_id - always send it, even if empty/null
+        payload.location_id = values?.location_id || null
 
         const response = await updateEntity(entity.id, payload)
         const updated = resolveEntityResponse(response)

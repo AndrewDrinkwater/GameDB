@@ -9,6 +9,7 @@ import {
   EntitySecretPermission,
   EntityType,
   EntityTypeField,
+  Location,
   LocationType,
   SessionNote,
   User,
@@ -1944,6 +1945,7 @@ export const updateEntity = async (req, res) => {
       write_user_ids: writeUserIdsInput,
       image_data: imageDataInput,
       image_mime_type: imageMimeTypeInput,
+      location_id: locationIdInput,
     } = req.body
     const { user } = req
 
@@ -2056,6 +2058,21 @@ export const updateEntity = async (req, res) => {
       updates.write_user_ids = writeUserIds
     }
 
+    if (locationIdInput !== undefined) {
+      const locationId = normaliseId(locationIdInput)
+      if (locationId) {
+        // Validate that the location exists and belongs to the same world
+        const location = await Location.findByPk(locationId)
+        if (!location) {
+          return res.status(404).json({ success: false, message: 'Location not found' })
+        }
+        if (location.world_id !== entity.world_id) {
+          return res.status(400).json({ success: false, message: 'Location does not belong to the same world as the entity' })
+        }
+      }
+      updates.location_id = locationId || null
+    }
+
     if (imageData !== undefined) {
       updates.image_data = imageData
       if (imageData === null && imageMimeType === undefined) {
@@ -2091,6 +2108,7 @@ export const updateEntity = async (req, res) => {
         { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
         { model: World, as: 'world', attributes: ['id', 'name', 'created_by'] },
         { association: 'creator', attributes: ['id', 'username', 'email'] },
+        { model: Location, as: 'location', attributes: ['id', 'name'], required: false },
       ],
     })
 
@@ -2143,6 +2161,7 @@ export const getEntityById = async (req, res) => {
         { model: EntityType, as: 'entityType', attributes: ['id', 'name'] },
         { model: World, as: 'world', attributes: ['id', 'name'] },
         { association: 'creator', attributes: ['id', 'username', 'email'] },
+        { model: Location, as: 'location', attributes: ['id', 'name'], required: false },
       ],
     })
 
