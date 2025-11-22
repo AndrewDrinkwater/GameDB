@@ -31,15 +31,49 @@ export default function LocationForm({ location, parentId, locationTypes, onClos
     try {
       const res = await fetchLocations({
         worldId: activeWorldId,
+        all: 'true', // Get all locations, not just root ones
       })
       const allLocations = res?.data || []
-      // Filter out the current location and its descendants to prevent circular references
-      const filtered = location
-        ? allLocations.filter((loc) => loc.id !== location.id)
-        : allLocations
+      
+      // Filter out the current location and its ancestors to prevent circular references
+      let filtered = allLocations
+      
+      if (location?.id) {
+        const currentLocationIdStr = String(location.id)
+        
+        // First, exclude the current location itself
+        filtered = filtered.filter((loc) => {
+          const locIdStr = String(loc.id)
+          return locIdStr !== currentLocationIdStr
+        })
+        
+        // Then, exclude all ancestors (the path from root to current location)
+        // The path includes the current location, so we exclude all items in the path
+        try {
+          const { fetchLocationPath } = await import('../../api/locations.js')
+          const pathRes = await fetchLocationPath(location.id)
+          const path = pathRes?.data || []
+          
+          // Create a set of all IDs in the path (including current location)
+          const pathIds = new Set(
+            path.map((p) => String(p.id))
+          )
+          
+          // Filter out any location that's in the path (ancestors + current)
+          filtered = filtered.filter((loc) => {
+            const locIdStr = String(loc.id)
+            return !pathIds.has(locIdStr)
+          })
+        } catch (err) {
+          console.error('Failed to load location path for ancestor exclusion:', err)
+          // If we can't load the path, at least exclude the current location
+        }
+      }
+      
       setAvailableParents(filtered)
     } catch (err) {
       console.error('❌ Failed to load available parents:', err)
+      setAvailableParents([])
     }
   }, [activeWorldId, location])
 
@@ -120,13 +154,20 @@ export default function LocationForm({ location, parentId, locationTypes, onClos
         metadata: formData.metadata,
       }
 
+      let result
       if (location) {
-        await updateLocation(location.id, payload)
+        result = await updateLocation(location.id, payload)
       } else {
-        await createLocation(payload)
+        result = await createLocation(payload)
       }
 
-      onSuccess()
+      // Pass the created/updated location to onSuccess if it accepts a parameter
+      const locationData = result?.data || result
+      if (onSuccess.length > 0) {
+        onSuccess(locationData)
+      } else {
+        onSuccess()
+      }
     } catch (err) {
       console.error('❌ Failed to save location:', err)
       setError(err.message)

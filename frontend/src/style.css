@@ -6952,6 +6952,29 @@ body.theme-dark .reference-field-info-btn:focus-visible {
   transform: translateY(-1px);
 }
 
+.location-info-trigger {
+  border: none;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.location-info-trigger:hover,
+.location-info-trigger:focus-visible {
+  color: #334155;
+}
+
+.location-link-with-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .relationship-phrase {
   font-weight: 500;
   color: #111827; /* Tailwind gray-900 */

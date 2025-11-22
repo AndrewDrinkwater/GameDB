@@ -14,6 +14,7 @@ import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import EntityPageLayout from '../../components/entities/EntityPageLayout.jsx'
 import EntityHeader from '../../components/entities/EntityHeader.jsx'
 import TabNav from '../../components/TabNav.jsx'
+import LocationImportanceSelector from '../../components/locations/LocationImportanceSelector.jsx'
 import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
 import FieldRenderer from '../../components/RecordForm/FieldRenderer.jsx'
 import { formatDateTime } from '../../utils/dateUtils.js'
@@ -873,6 +874,15 @@ export default function LocationDetailPage() {
                 activeTab={activeTab}
                 onChange={handleTabChange}
               />
+              {id && (
+                <LocationImportanceSelector
+                  locationId={id}
+                  importance={location.importance}
+                  onUpdate={(newImportance) => {
+                    setLocation((prev) => (prev ? { ...prev, importance: newImportance } : null))
+                  }}
+                />
+              )}
             </div>
           </div>
         </header>
@@ -944,6 +954,9 @@ export default function LocationDetailPage() {
                 entities={entities}
                 loading={loading}
                 error={error}
+                locationId={id}
+                worldId={worldId}
+                onEntitiesChange={loadEntities}
               />
             )}
 
@@ -953,6 +966,10 @@ export default function LocationDetailPage() {
                 location={location}
                 worldId={worldId}
                 path={path}
+                onLocationsChange={() => {
+                  loadPath()
+                  loadLocation()
+                }}
               />
             )}
 

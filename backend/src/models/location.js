@@ -113,6 +113,13 @@ export default (sequelize, DataTypes) => {
         as: 'entities',
       })
     }
+    if (models.LocationCampaignImportance) {
+      Location.hasMany(models.LocationCampaignImportance, {
+        foreignKey: 'location_id',
+        as: 'campaignImportances',
+        onDelete: 'CASCADE',
+      })
+    }
   }
 
   return Location

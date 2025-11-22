@@ -8,6 +8,8 @@ import {
   User,
   Entity,
   EntityType,
+  LocationCampaignImportance,
+  Campaign,
   sequelize,
 } from '../models/index.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
@@ -39,14 +41,15 @@ export const getLocations = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    const { parentId, locationTypeId, includeEntities } = req.query
+    const { parentId, locationTypeId, includeEntities, all } = req.query
 
     const where = {
       world_id: worldIdParam,
     }
 
     // Handle parentId: if explicitly provided (even as 'null'), use it
-    // If not provided at all, default to root locations (parent_id is null)
+    // If not provided at all and no locationTypeId filter and all is not true, default to root locations (parent_id is null)
+    // If locationTypeId is provided or all is true, don't filter by parent unless explicitly requested
     if (parentId !== undefined) {
       if (parentId === null || parentId === 'null' || parentId === '') {
         where.parent_id = null
@@ -56,8 +59,8 @@ export const getLocations = async (req, res) => {
           where.parent_id = normalisedParentId
         }
       }
-    } else {
-      // Default to root locations when parentId is not specified
+    } else if (!locationTypeId && all !== 'true') {
+      // Default to root locations when parentId is not specified AND no type filter AND all is not true
       where.parent_id = null
     }
 
@@ -217,6 +220,20 @@ export const getLocationById = async (req, res) => {
 
     const locationData = location.toJSON()
     locationData.childCount = childCount
+
+    // Add importance if campaign context exists
+    const campaignId = req.campaignContextId || null
+    if (campaignId) {
+      const importanceRecord = await LocationCampaignImportance.findOne({
+        where: {
+          location_id: location.id,
+          campaign_id: campaignId,
+        },
+      })
+      locationData.importance = importanceRecord?.importance || null
+    } else {
+      locationData.importance = null
+    }
 
     res.json({ success: true, data: locationData })
   } catch (error) {
@@ -743,6 +760,343 @@ export const moveEntityToLocation = async (req, res) => {
     res.json({ success: true, data: updatedEntity })
   } catch (error) {
     console.error('Error moving entity to location:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Add entity to location
+export const addEntityToLocation = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { entity_id } = req.body
+
+    if (!entity_id) {
+      return res.status(400).json({ success: false, message: 'entity_id is required' })
+    }
+
+    const location = await Location.findByPk(id, {
+      attributes: ['id', 'world_id'],
+    })
+
+    if (!location) {
+      return res.status(404).json({ success: false, message: 'Location not found' })
+    }
+
+    const access = await checkWorldAccess(location.world_id, req.user)
+    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const entityId = normaliseId(entity_id)
+    const entity = await Entity.findByPk(entityId, {
+      attributes: ['id', 'world_id'],
+    })
+
+    if (!entity) {
+      return res.status(404).json({ success: false, message: 'Entity not found' })
+    }
+
+    if (entity.world_id !== location.world_id) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Location and entity must belong to the same world' })
+    }
+
+    await entity.update({ location_id: id })
+
+    const updatedEntity = await Entity.findByPk(entityId, {
+      include: [
+        {
+          model: EntityType,
+          as: 'entityType',
+          attributes: ['id', 'name'],
+        },
+      ],
+    })
+
+    res.json({ success: true, data: updatedEntity })
+  } catch (error) {
+    console.error('Error adding entity to location:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Remove entity from location
+export const removeEntityFromLocation = async (req, res) => {
+  try {
+    const { id, entityId } = req.params
+
+    const location = await Location.findByPk(id, {
+      attributes: ['id', 'world_id'],
+    })
+
+    if (!location) {
+      return res.status(404).json({ success: false, message: 'Location not found' })
+    }
+
+    const access = await checkWorldAccess(location.world_id, req.user)
+    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const entity = await Entity.findByPk(entityId, {
+      attributes: ['id', 'world_id', 'location_id'],
+    })
+
+    if (!entity) {
+      return res.status(404).json({ success: false, message: 'Entity not found' })
+    }
+
+    if (entity.location_id !== id) {
+      return res.status(400).json({ success: false, message: 'Entity is not in this location' })
+    }
+
+    await entity.update({ location_id: null })
+
+    res.json({ success: true, message: 'Entity removed from location' })
+  } catch (error) {
+    console.error('Error removing entity from location:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Add child location
+export const addChildLocation = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { child_location_id } = req.body
+
+    if (!child_location_id) {
+      return res.status(400).json({ success: false, message: 'child_location_id is required' })
+    }
+
+    const parentLocation = await Location.findByPk(id, {
+      attributes: ['id', 'world_id'],
+    })
+
+    if (!parentLocation) {
+      return res.status(404).json({ success: false, message: 'Parent location not found' })
+    }
+
+    const access = await checkWorldAccess(parentLocation.world_id, req.user)
+    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const childLocationId = normaliseId(child_location_id)
+    const childLocation = await Location.findByPk(childLocationId, {
+      attributes: ['id', 'world_id', 'parent_id'],
+    })
+
+    if (!childLocation) {
+      return res.status(404).json({ success: false, message: 'Child location not found' })
+    }
+
+    if (childLocation.world_id !== parentLocation.world_id) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Locations must belong to the same world' })
+    }
+
+    // Prevent circular references
+    if (childLocationId === id) {
+      return res.status(400).json({ success: false, message: 'Location cannot be its own child' })
+    }
+
+    // Check if parent is a descendant of child
+    let current = await Location.findByPk(id, {
+      attributes: ['id', 'parent_id'],
+    })
+    while (current) {
+      if (current.id === childLocationId) {
+        return res
+          .status(400)
+          .json({ success: false, message: 'Cannot set child to a location that is its ancestor' })
+      }
+      if (current.parent_id) {
+        current = await Location.findByPk(current.parent_id, {
+          attributes: ['id', 'parent_id'],
+        })
+      } else {
+        current = null
+      }
+    }
+
+    await childLocation.update({ parent_id: id })
+
+    const updatedLocation = await Location.findByPk(childLocationId, {
+      include: [
+        {
+          model: LocationType,
+          as: 'locationType',
+          attributes: ['id', 'name'],
+        },
+        {
+          model: Location,
+          as: 'parent',
+          attributes: ['id', 'name'],
+        },
+      ],
+    })
+
+    res.json({ success: true, data: updatedLocation })
+  } catch (error) {
+    console.error('Error adding child location:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Remove child location
+export const removeChildLocation = async (req, res) => {
+  try {
+    const { id, childId } = req.params
+
+    const parentLocation = await Location.findByPk(id, {
+      attributes: ['id', 'world_id'],
+    })
+
+    if (!parentLocation) {
+      return res.status(404).json({ success: false, message: 'Parent location not found' })
+    }
+
+    const access = await checkWorldAccess(parentLocation.world_id, req.user)
+    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const childLocation = await Location.findByPk(childId, {
+      attributes: ['id', 'world_id', 'parent_id'],
+    })
+
+    if (!childLocation) {
+      return res.status(404).json({ success: false, message: 'Child location not found' })
+    }
+
+    if (childLocation.parent_id !== id) {
+      return res.status(400).json({ success: false, message: 'Location is not a child of this location' })
+    }
+
+    await childLocation.update({ parent_id: null })
+
+    res.json({ success: true, message: 'Child location removed' })
+  } catch (error) {
+    console.error('Error removing child location:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+
+// Update location importance
+export const updateLocationImportance = async (req, res) => {
+  try {
+    const { id } = req.params
+    const { importance } = req.body
+    const { user } = req
+    const campaignId = req.campaignContextId
+
+    if (!campaignId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Campaign context is required to set location importance',
+      })
+    }
+
+    // Validate importance value
+    const validImportanceValues = ['critical', 'important', 'medium', null]
+    if (importance !== null && importance !== undefined && !validImportanceValues.includes(importance)) {
+      return res.status(400).json({
+        success: false,
+        message: 'importance must be one of: critical, important, medium, or null',
+      })
+    }
+
+    const location = await Location.findByPk(id, {
+      include: [
+        {
+          model: World,
+          as: 'world',
+          attributes: ['id'],
+        },
+      ],
+    })
+
+    if (!location) {
+      return res.status(404).json({ success: false, message: 'Location not found' })
+    }
+
+    const access = await checkWorldAccess(location.world_id, user)
+    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    // Verify campaign exists and user has access
+    const campaign = await Campaign.findByPk(campaignId)
+    if (!campaign) {
+      return res.status(404).json({ success: false, message: 'Campaign not found' })
+    }
+
+    if (campaign.world_id !== location.world_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Campaign does not belong to the same world as the location',
+      })
+    }
+
+    // Upsert importance record
+    const [importanceRecord, created] = await LocationCampaignImportance.findOrCreate({
+      where: {
+        location_id: id,
+        campaign_id: campaignId,
+      },
+      defaults: {
+        location_id: id,
+        campaign_id: campaignId,
+        importance: importance || null,
+      },
+    })
+
+    if (!created) {
+      if (importance === null || importance === undefined) {
+        // Delete the record if setting to null
+        await importanceRecord.destroy()
+      } else {
+        // Update existing record
+        await importanceRecord.update({ importance })
+      }
+    }
+
+    // Reload location and return updated data
+    const updatedLocation = await Location.findByPk(id, {
+      include: [
+        {
+          model: LocationType,
+          as: 'locationType',
+          attributes: ['id', 'name', 'description'],
+        },
+        {
+          model: User,
+          as: 'creator',
+          attributes: ['id', 'username'],
+        },
+        {
+          model: Location,
+          as: 'parent',
+          attributes: ['id', 'name'],
+        },
+      ],
+    })
+
+    const locationData = updatedLocation.toJSON()
+    const finalImportanceRecord = await LocationCampaignImportance.findOne({
+      where: {
+        location_id: id,
+        campaign_id: campaignId,
+      },
+    })
+    locationData.importance = finalImportanceRecord?.importance || null
+
+    res.json({ success: true, data: locationData })
+  } catch (error) {
+    console.error('Error updating location importance:', error)
     res.status(500).json({ success: false, message: error.message })
   }
 }

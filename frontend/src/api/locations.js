@@ -56,6 +56,7 @@ export async function fetchLocations(params = {}) {
   }
   if (params.locationTypeId) queryParams.append('locationTypeId', params.locationTypeId)
   if (params.includeEntities) queryParams.append('includeEntities', params.includeEntities)
+  if (params.all) queryParams.append('all', params.all)
   
   const queryString = queryParams.toString()
   const url = `${API_BASE}/locations${queryString ? `?${queryString}` : ''}`
@@ -119,5 +120,149 @@ export async function moveEntityToLocation(entityId, locationId) {
     body: JSON.stringify({ location_id: locationId }),
   })
   return handleResponse(res, 'move entity to location')
+}
+
+export async function addEntityToLocation(locationId, entityId) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_BASE}/locations/${locationId}/entities`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ entity_id: entityId }),
+  })
+  return handleResponse(res, 'add entity to location')
+}
+
+export async function removeEntityFromLocation(locationId, entityId) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_BASE}/locations/${locationId}/entities/${entityId}`, {
+    method: 'DELETE',
+    headers,
+  })
+  return handleResponse(res, 'remove entity from location')
+}
+
+export async function addChildLocation(parentLocationId, childLocationId) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_BASE}/locations/${parentLocationId}/children`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ child_location_id: childLocationId }),
+  })
+  return handleResponse(res, 'add child location')
+}
+
+export async function removeChildLocation(parentLocationId, childLocationId) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_BASE}/locations/${parentLocationId}/children/${childLocationId}`, {
+    method: 'DELETE',
+    headers,
+  })
+  return handleResponse(res, 'remove child location')
+}
+
+export async function updateLocationImportance(locationId, importance) {
+  const headers = await authHeaders()
+  
+  // Include campaign context header if available
+  try {
+    const CAMPAIGN_CONTEXT_STORAGE_KEY = 'gamedb_campaign_context'
+    const CAMPAIGN_CONTEXT_HEADER = 'X-Campaign-Context-Id'
+    const storedContextId = localStorage.getItem(CAMPAIGN_CONTEXT_STORAGE_KEY)
+    if (storedContextId) {
+      try {
+        const context = JSON.parse(storedContextId)
+        if (context?.type === 'campaign' && context.id) {
+          headers[CAMPAIGN_CONTEXT_HEADER] = context.id
+        }
+      } catch {
+        // If not JSON, treat as plain campaign ID
+        const trimmed = storedContextId.trim()
+        if (trimmed) {
+          headers[CAMPAIGN_CONTEXT_HEADER] = trimmed
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️ Unable to include campaign context header', err)
+  }
+  
+  const res = await fetch(`${API_BASE}/locations/${locationId}/importance`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ importance }),
+  })
+  return handleResponse(res, 'update location importance')
+}
+
+// Location notes
+export async function fetchLocationNotes(id, params = {}) {
+  const headers = await authHeaders()
+  const query = new URLSearchParams()
+  const campaignId = params.campaignId ?? params.campaign_id
+  if (campaignId) {
+    query.set('campaignId', campaignId)
+  }
+
+  const queryString = query.toString()
+  const res = await fetch(
+    `${API_BASE}/locations/${id}/notes${queryString ? `?${queryString}` : ''}`,
+    { headers }
+  )
+  return handleResponse(res, 'fetch location notes')
+}
+
+export async function fetchLocationMentionNotes(id, params = {}) {
+  const headers = await authHeaders()
+  const query = new URLSearchParams()
+  const campaignId = params.campaignId ?? params.campaign_id
+  if (campaignId) {
+    query.set('campaignId', campaignId)
+  }
+
+  const queryString = query.toString()
+  const res = await fetch(
+    `${API_BASE}/locations/${id}/mention-notes${queryString ? `?${queryString}` : ''}`,
+    { headers }
+  )
+  return handleResponse(res, 'fetch location mention notes')
+}
+
+export async function createLocationNote(id, data) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_BASE}/locations/${id}/notes`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(data),
+  })
+  return handleResponse(res, 'create location note')
+}
+
+export async function updateLocationNote(locationId, noteId, data) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_BASE}/locations/${locationId}/notes/${noteId}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(data),
+  })
+  return handleResponse(res, 'update location note')
+}
+
+export async function deleteLocationNote(locationId, noteId, params = {}) {
+  const headers = await authHeaders()
+  const query = new URLSearchParams()
+  const campaignId = params.campaignId ?? params.campaign_id
+  if (campaignId) {
+    query.set('campaignId', campaignId)
+  }
+
+  const queryString = query.toString()
+  const res = await fetch(
+    `${API_BASE}/locations/${locationId}/notes/${noteId}${queryString ? `?${queryString}` : ''}`,
+    {
+      method: 'DELETE',
+      headers,
+    }
+  )
+  return handleResponse(res, 'delete location note')
 }
 
