@@ -80,8 +80,9 @@ async function start() {
 
     console.log('Database connected and synced')
 
+    console.log('Starting server...')
     app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`)
+      console.log('Server listening on port', PORT)
     })
   } catch (err) {
     console.error('Failed to start:', err.message)

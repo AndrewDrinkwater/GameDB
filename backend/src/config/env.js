@@ -21,7 +21,13 @@ const parseFeatureFlag = (value, defaultValue = false) => {
 export const cfg = {
   port: process.env.PORT || 3000,
   nodeEnv: process.env.NODE_ENV || 'development',
-  dbUrl: process.env.DATABASE_URL,
+  db: {
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT || 5432,
+    database: process.env.DB_NAME,
+    username: process.env.DB_USER,
+    password: process.env.DB_PASS,
+  },
   jwtSecret: process.env.JWT_SECRET || 'devsecret',
   jwtExpiry: process.env.JWT_EXPIRY || '8h',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',

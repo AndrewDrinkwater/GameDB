@@ -33,7 +33,16 @@ import RequestModel from './request.js'
 import RequestNoteModel from './requestNote.js'
 
 // Create Sequelize instance
-export const sequelize = new Sequelize(process.env.DATABASE_URL, {
+// Ensure password is always a string (required by PostgreSQL SCRAM authentication)
+// If DB_PASS is undefined or null, use empty string; otherwise convert to string
+const dbPassword = process.env.DB_PASS == null ? '' : String(process.env.DB_PASS)
+
+export const sequelize = new Sequelize({
+  database: process.env.DB_NAME,
+  username: process.env.DB_USER,
+  password: dbPassword,
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432', 10),
   dialect: 'postgres',
   logging: false,
 })
@@ -130,10 +139,12 @@ if (RequestNote.associate) RequestNote.associate({ Request, User })
 // --- Init DB ---
 export async function initDB() {
   try {
+    console.log('Attempting database connection...')
     await sequelize.authenticate()
-    console.log('✅ Database connected')
+    console.log('✅ Database connection successful - sequelize.authenticate() succeeded')
   } catch (err) {
-    console.error('❌ DB connection failed:', err.message)
+    console.error('❌ Database connection failed - sequelize.authenticate() failed:', err.message)
+    throw err // Re-throw to allow start() to handle the error
   }
 }
 
