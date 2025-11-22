@@ -42,6 +42,46 @@ export default (sequelize, DataTypes) => {
         allowNull: true,
         comment: 'Coordinates for map integration (e.g., {x: 100, y: 200})',
       },
+      visibility: {
+        type: DataTypes.ENUM('hidden', 'visible', 'partial'),
+        allowNull: false,
+        defaultValue: 'visible',
+      },
+      read_access: {
+        type: DataTypes.ENUM('global', 'selective', 'hidden'),
+        allowNull: false,
+        defaultValue: 'global',
+      },
+      write_access: {
+        type: DataTypes.ENUM('global', 'selective', 'hidden', 'owner_only'),
+        allowNull: false,
+        defaultValue: 'global',
+      },
+      read_campaign_ids: {
+        type: DataTypes.ARRAY(DataTypes.UUID),
+        allowNull: false,
+        defaultValue: [],
+      },
+      read_user_ids: {
+        type: DataTypes.ARRAY(DataTypes.UUID),
+        allowNull: false,
+        defaultValue: [],
+      },
+      read_character_ids: {
+        type: DataTypes.ARRAY(DataTypes.UUID),
+        allowNull: false,
+        defaultValue: [],
+      },
+      write_campaign_ids: {
+        type: DataTypes.ARRAY(DataTypes.UUID),
+        allowNull: false,
+        defaultValue: [],
+      },
+      write_user_ids: {
+        type: DataTypes.ARRAY(DataTypes.UUID),
+        allowNull: false,
+        defaultValue: [],
+      },
     },
     {
       tableName: 'locations',
