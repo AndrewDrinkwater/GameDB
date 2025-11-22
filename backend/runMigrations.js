@@ -12,7 +12,16 @@ const __dirname = path.dirname(__filename)
 const migrationsDir = path.join(__dirname, 'src', 'migrations')
 
 // --- Connect to DB ---
-const sequelize = new Sequelize(process.env.DATABASE_URL, {
+// Ensure password is always a string (required by PostgreSQL SCRAM authentication)
+// If DB_PASS is undefined or null, use empty string; otherwise convert to string
+const dbPassword = process.env.DB_PASS == null ? '' : String(process.env.DB_PASS)
+
+const sequelize = new Sequelize({
+  database: process.env.DB_NAME,
+  username: process.env.DB_USER,
+  password: dbPassword,
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432', 10),
   dialect: 'postgres',
   logging: console.log,
 })
