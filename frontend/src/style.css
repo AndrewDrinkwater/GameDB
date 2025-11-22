@@ -2894,7 +2894,6 @@ body.theme-dark .campaign-tab.is-active {
   --entity-page-max-width: 1280px;
   --entity-page-inline-padding: clamp(1rem, 3vw, 1.5rem);
   --entity-header-height: 120px;
-  min-height: 100vh;
   background: #f8fafc;
   padding-bottom: 2.5rem;
   padding-top: calc(56px + var(--entity-header-height));
