@@ -9,6 +9,7 @@ export default function EntityHeader({
   onSave,
   isSaving = false,
   isSaveDisabled = false,
+  isMobile = false,
 }) {
   const title = name || 'Untitled entity'
 
@@ -27,7 +28,7 @@ export default function EntityHeader({
   return (
     <div className="entity-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-2" role="banner">
       <div className="entity-header-center">
-        <h1>{title}</h1>
+        <h1 className={isMobile ? 'entity-header-title-mobile' : ''}>{title}</h1>
       </div>
       <div className="entity-header-right">
         {entityId && <EntityFollowButton entityId={entityId} />}

@@ -229,6 +229,7 @@ export default function EntityDetailPage() {
   const [formError, setFormError] = useState('')
   const [activeTab, setActiveTab] = useState('dossier')
   const [isEditing, setIsEditing] = useState(false)
+  const [headerExpanded, setHeaderExpanded] = useState(false)
 
   const [showRelationshipForm, setShowRelationshipForm] = useState(false)
   const [toast, setToast] = useState(null)
@@ -1880,14 +1881,37 @@ export default function EntityDetailPage() {
   if (error) return <div className="alert error">{error}</div>
   if (!entity || !viewData) return <p>Entity not found</p>
 
-  const pageClassName = `entity-detail-page${isMobile ? ' entity-detail-page--mobile' : ''}`
+  const pageClassName = `entity-detail-page${isMobile ? ' entity-detail-page--mobile' : ''}${isMobile && headerExpanded ? ' entity-detail-page--header-expanded' : ''}`
 
   return (
     <>
       <EntityPageLayout maxWidth={1280} className={pageClassName}>
         <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 overflow-x-hidden">
-          <header className="entity-page-header">
+          <header className={`entity-page-header ${isMobile && !headerExpanded ? 'entity-page-header--collapsed' : ''}`}>
             <div className="entity-page-header__inner">
+              {isMobile && (
+                <button
+                  type="button"
+                  className="entity-page-header__drag-handle"
+                  onClick={() => setHeaderExpanded(!headerExpanded)}
+                  aria-label={headerExpanded ? 'Collapse header' : 'Expand header'}
+                  aria-expanded={headerExpanded}
+                >
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={headerExpanded ? 'rotated' : ''}
+                  >
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+              )}
               <EntityHeader
                 entityId={id}
                 name={entity.name}
@@ -1897,8 +1921,9 @@ export default function EntityDetailPage() {
                 onSave={handleSaveAll}
                 isSaving={formState.isSubmitting || accessSaving}
                 isSaveDisabled={!formState.isDirty && !isAccessDirty}
+                isMobile={isMobile}
               />
-              <div className="entity-page-header__tabs flex flex-wrap items-center justify-between gap-4 mt-4">
+              <div className={`entity-page-header__tabs flex flex-wrap items-center justify-between gap-4 mt-4 ${isMobile && !headerExpanded ? 'entity-page-header__tabs--collapsed' : ''}`}>
                 <TabNav
                   tabs={tabItems}
                   activeTab={activeTab}

@@ -2935,6 +2935,7 @@ body.theme-dark .campaign-tab.is-active {
   flex-direction: column;
   gap: 0.5rem;
   box-sizing: border-box;
+  position: relative;
 }
 
 /* 2. TITLE ROW: flex items-center justify-between mb-6 */
@@ -2953,6 +2954,19 @@ body.theme-dark .campaign-tab.is-active {
   line-height: 2.25rem;
   font-weight: 600; /* font-semibold */
   margin: 0;
+}
+
+/* Mobile title override */
+@media (max-width: 767px) {
+  .entity-page-header__inner .entity-header h1.entity-header-title-mobile {
+    font-size: 1.25rem !important;
+    line-height: 1.5rem !important;
+  }
+
+  .entity-page-header__inner .entity-header {
+    margin-bottom: 0.5rem;
+    padding-right: 2.5rem; /* Make room for drag handle */
+  }
 }
 
 /* This fixes spacing and alignment permanently */
@@ -3002,13 +3016,98 @@ body.theme-dark .campaign-tab.is-active {
 
 .entity-detail-page--mobile.entity-page-layout {
   --entity-page-inline-padding: 1rem;
-  --entity-header-height: 110px;
+  --entity-header-height: 70px;
   padding-bottom: 2rem;
   padding-top: calc(56px + var(--entity-header-height));
 }
 
 .entity-detail-page--mobile .entity-page-header__inner {
-  padding: 0.75rem var(--entity-page-inline-padding) 0.5rem;
+  padding: 0.5rem var(--entity-page-inline-padding) 0.25rem;
+}
+
+/* Drag handle for mobile */
+.entity-page-header__drag-handle {
+  display: none;
+  position: absolute;
+  top: 0.5rem;
+  right: var(--entity-page-inline-padding);
+  background: transparent;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  color: #64748b;
+  z-index: 10;
+  transition: transform 0.2s ease, color 0.2s ease;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+}
+
+.entity-page-header__drag-handle:hover {
+  color: #1e293b;
+}
+
+.entity-page-header__drag-handle svg {
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.entity-page-header__drag-handle svg.rotated {
+  transform: rotate(180deg);
+}
+
+/* Collapsible tabs section */
+.entity-page-header__tabs--collapsed {
+  max-height: 0;
+  overflow: hidden;
+  margin: 0;
+  opacity: 0;
+  padding: 0;
+  transition: max-height 0.3s ease, opacity 0.3s ease, margin 0.3s ease, padding 0.3s ease;
+}
+
+.entity-page-header__tabs {
+  transition: max-height 0.3s ease, opacity 0.3s ease, margin 0.3s ease;
+}
+
+/* Mobile header collapsed state */
+.entity-page-header--collapsed {
+  --entity-header-height: 70px;
+}
+
+.entity-page-header--collapsed .entity-page-header__inner {
+  padding-bottom: 0.5rem;
+}
+
+/* Show drag handle on mobile only */
+@media (max-width: 767px) {
+  .entity-page-header__drag-handle {
+    display: flex;
+  }
+
+  .entity-page-header--collapsed {
+    --entity-header-height: 70px;
+  }
+
+  .entity-detail-page--mobile.entity-page-layout {
+    --entity-header-height: 70px;
+    padding-top: calc(56px + var(--entity-header-height));
+  }
+
+  .entity-page-header--collapsed .entity-page-header__inner {
+    padding-bottom: 0.5rem;
+  }
+
+  /* When expanded, use auto height */
+  .entity-page-header:not(.entity-page-header--collapsed) {
+    --entity-header-height: auto;
+  }
+
+  .entity-detail-page--mobile.entity-detail-page--header-expanded.entity-page-layout {
+    --entity-header-height: auto;
+    padding-top: calc(56px + 140px);
+  }
 }
 
 .entity-detail-page--mobile .entity-detail-shell {
