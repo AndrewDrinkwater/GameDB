@@ -1,20 +1,5 @@
 import { getAuthToken } from '../utils/authHelpers.js'
-
-const apiEnv = typeof import.meta !== 'undefined' ? import.meta.env : undefined
-const apiBase = apiEnv?.VITE_API_URL || apiEnv?.VITE_API_BASE
-
-function normalizeApiBase(base) {
-  if (!base) return null
-
-  const trimmed = base.replace(/\/+$/, '')
-  if (trimmed.endsWith('/api')) {
-    return trimmed
-  }
-
-  return `${trimmed}/api`
-}
-
-const API_BASE = normalizeApiBase(apiBase) || 'http://localhost:3000/api'
+import { API_BASE } from './config.js'
 
 const CAMPAIGN_CONTEXT_STORAGE_KEY = 'gamedb_campaign_context'
 const CAMPAIGN_CONTEXT_HEADER = 'X-Campaign-Context-Id'

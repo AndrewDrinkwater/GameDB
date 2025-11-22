@@ -1,10 +1,6 @@
 // src/api/worlds.js
 import { getAuthToken } from '../utils/authHelpers.js'
-
-// ✅ Base URL fallback for local dev
-const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api/worlds`
-  : 'http://localhost:3000/api/worlds'
+import { API_BASE } from './config.js'
 
 // 🔐 Safe token getter that waits for localStorage if necessary
 async function waitForToken(retries = 5, delay = 200) {
@@ -52,13 +48,13 @@ async function handleResponse(res, action = 'request') {
 
 export async function fetchWorlds() {
   const headers = await authHeaders()
-  const res = await fetch(API_BASE, { headers })
+  const res = await fetch(`${API_BASE}/worlds`, { headers })
   return handleResponse(res, 'fetch worlds')
 }
 
 export async function createWorld(payload) {
   const headers = await authHeaders()
-  const res = await fetch(API_BASE, {
+  const res = await fetch(`${API_BASE}/worlds`, {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
@@ -68,7 +64,7 @@ export async function createWorld(payload) {
 
 export async function updateWorld(id, payload) {
   const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/${id}`, {
+  const res = await fetch(`${API_BASE}/worlds/${id}`, {
     method: 'PUT',
     headers,
     body: JSON.stringify(payload),
@@ -78,7 +74,7 @@ export async function updateWorld(id, payload) {
 
 export async function removeWorld(id) {
   const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/${id}`, {
+  const res = await fetch(`${API_BASE}/worlds/${id}`, {
     method: 'DELETE',
     headers,
   })

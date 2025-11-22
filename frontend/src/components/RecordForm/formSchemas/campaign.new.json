@@ -6,6 +6,9 @@
       "label": "World",
       "type": "select",
       "optionsSource": "worlds",
+      "optionsCriteria": {
+        "owned_only": true
+      },
       "required": true
     },
     {

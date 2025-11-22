@@ -1,9 +1,6 @@
 // src/api/users.js
 import { getAuthToken } from '../utils/authHelpers.js'
-
-const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api/users`
-  : 'http://localhost:3000/api/users'
+import { API_BASE } from './config.js'
 
 function authHeaders() {
   const token = getAuthToken()
@@ -24,12 +21,12 @@ async function handleResponse(res, action = 'request') {
 }
 
 export async function fetchUsers() {
-  const res = await fetch(API_BASE, { headers: authHeaders() })
+  const res = await fetch(`${API_BASE}/users`, { headers: authHeaders() })
   return handleResponse(res, 'fetch users')
 }
 
 export async function createUser(payload) {
-  const res = await fetch(API_BASE, {
+  const res = await fetch(`${API_BASE}/users`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify(payload),
@@ -38,7 +35,7 @@ export async function createUser(payload) {
 }
 
 export async function updateUser(id, payload) {
-  const res = await fetch(`${API_BASE}/${id}`, {
+  const res = await fetch(`${API_BASE}/users/${id}`, {
     method: 'PUT',
     headers: authHeaders(),
     body: JSON.stringify(payload),
@@ -47,7 +44,7 @@ export async function updateUser(id, payload) {
 }
 
 export async function removeUser(id) {
-  const res = await fetch(`${API_BASE}/${id}`, {
+  const res = await fetch(`${API_BASE}/users/${id}`, {
     method: 'DELETE',
     headers: authHeaders(),
   })

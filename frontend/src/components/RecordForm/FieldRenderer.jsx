@@ -57,7 +57,7 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
         return
       }
 
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+      const { API_BASE } = await import('../../api/config.js')
       let endpoint = null
       const searchParams = new URLSearchParams()
       let criteriaOverride = null
@@ -131,10 +131,10 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
 
       switch (field.optionsSource) {
         case 'worlds':
-          endpoint = '/api/worlds'
+          endpoint = '/worlds'
           break
         case 'campaigns':
-          endpoint = '/api/campaigns'
+          endpoint = '/campaigns'
           break
         case 'entities': {
           const criteriaWorldId = extractWorldId(field.optionsCriteria)
@@ -148,15 +148,15 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
             break
           }
 
-          endpoint = `/api/worlds/${worldId}/entities`
+          endpoint = `/worlds/${worldId}/entities`
           criteriaOverride = sanitiseEntityCriteria(field.optionsCriteria)
           break
         }
         case 'users':
-          endpoint = '/api/users'
+          endpoint = '/users'
           break
         case 'players': {
-          endpoint = '/api/users'
+          endpoint = '/users'
           const roles = field.roles || 'player,user'
           if (roles) searchParams.set('roles', roles)
           break
@@ -175,10 +175,16 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
 
       const resolveUrl = () => {
         try {
-          const base = new URL(API_BASE)
-          const url = endpoint.startsWith('http')
-            ? new URL(endpoint)
-            : new URL(endpoint, base)
+          let url
+          if (endpoint.startsWith('http')) {
+            url = new URL(endpoint)
+          } else {
+            // Properly append endpoint to API_BASE
+            // Remove trailing slash from base and leading slash from endpoint to avoid double slashes
+            const baseUrl = API_BASE.replace(/\/$/, '')
+            const endpointPath = endpoint.startsWith('/') ? endpoint : `/${endpoint}`
+            url = new URL(`${baseUrl}${endpointPath}`)
+          }
           searchParams.forEach((value, key) => {
             if (value !== undefined && value !== null) {
               url.searchParams.append(key, value)
@@ -270,11 +276,30 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
           },
         })
 
+        // Check if response is actually JSON before parsing
+        const contentType = res.headers.get('content-type')
+        if (!contentType || !contentType.includes('application/json')) {
+          const text = await res.text()
+          console.error(`❌ ${field.optionsSource} returned non-JSON response:`, {
+            status: res.status,
+            statusText: res.statusText,
+            contentType,
+            url: url.toString(),
+            preview: text.substring(0, 200),
+          })
+          if (isMounted) setOptionsLoaded(true)
+          return
+        }
+
         const json = await res.json()
         if (!res.ok) {
           console.warn(`⚠️ ${field.optionsSource} fetch failed`, json)
           if (isMounted) setOptionsLoaded(true)
           return
+        }
+
+        if (field.optionsSource === 'worlds') {
+          console.log('🌍 Worlds response:', json)
         }
 
         const toOption = (item) => {
@@ -302,9 +327,14 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
           return { value, label }
         }
 
-        const options = Array.isArray(json?.data)
-          ? json.data.map(toOption).filter(Boolean)
+        // Handle different response formats
+        const dataArray = Array.isArray(json?.data)
+          ? json.data
+          : Array.isArray(json)
+          ? json
           : []
+
+        const options = dataArray.map(toOption).filter(Boolean)
 
         if (isMounted) {
           setDynamicOptions(options)

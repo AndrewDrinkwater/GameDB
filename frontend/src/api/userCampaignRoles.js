@@ -1,9 +1,6 @@
 // src/api/userCampaignRoles.js
 import { getAuthToken } from '../utils/authHelpers.js'
-
-const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api/user-campaign-roles`
-  : 'http://localhost:3000/api/user-campaign-roles'
+import { API_BASE } from './config.js'
 
 async function waitForToken(retries = 5, delay = 200) {
   for (let i = 0; i < retries; i++) {
@@ -39,7 +36,7 @@ async function handleResponse(res, action = 'request') {
 export async function fetchAssignmentsByCampaign(campaignId) {
   if (!campaignId) throw new Error('campaignId is required')
   const headers = await authHeaders()
-  const url = new URL(API_BASE)
+  const url = new URL(`${API_BASE}/user-campaign-roles`)
   url.searchParams.set('campaign_id', campaignId)
   const res = await fetch(url.toString(), { headers })
   return handleResponse(res, 'load campaign members')
@@ -47,7 +44,7 @@ export async function fetchAssignmentsByCampaign(campaignId) {
 
 export async function addUserToCampaign(payload) {
   const headers = await authHeaders()
-  const res = await fetch(API_BASE, {
+  const res = await fetch(`${API_BASE}/user-campaign-roles`, {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
@@ -57,7 +54,7 @@ export async function addUserToCampaign(payload) {
 
 export async function updateCampaignAssignment(id, payload) {
   const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/${id}`, {
+  const res = await fetch(`${API_BASE}/user-campaign-roles/${id}`, {
     method: 'PUT',
     headers,
     body: JSON.stringify(payload),
@@ -67,7 +64,7 @@ export async function updateCampaignAssignment(id, payload) {
 
 export async function removeUserFromCampaign(id) {
   const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/${id}`, {
+  const res = await fetch(`${API_BASE}/user-campaign-roles/${id}`, {
     method: 'DELETE',
     headers,
   })
