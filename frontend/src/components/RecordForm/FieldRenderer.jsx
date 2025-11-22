@@ -657,19 +657,26 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
           : null
 
       // For location references, check locationName from data or location object
-      // The field key might be 'location' or 'location_id', so check both
-      // When key is 'location', data.location is the ID, and data.locationName is the display name
+      // The field key might be 'location', 'location_id', 'parent', or 'parent_id', so check all
+      // When key is 'location' or 'parent', data.location/parent is the ID, and data.locationName/parentName is the display name
       const locationIdForDisplay = isLocationReference
         ? (referenceValue || 
            data?.location_id || 
+           data?.parent_id ||
            data?.location?.id || 
+           data?.parent?.id ||
            (key === 'location' && data?.location) ||
+           (key === 'parent' && data?.parent) ||
+           (key === 'parent_id' && data?.parent_id) ||
            data?.location ||
+           data?.parent ||
            '')
         : null
       const locationNameForDisplay = isLocationReference
         ? (data?.locationName || 
+           data?.parentName ||
            data?.location?.name || 
+           data?.parent?.name ||
            null)
         : null
 

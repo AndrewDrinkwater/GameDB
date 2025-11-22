@@ -383,7 +383,7 @@ export default function LocationDetailPage() {
         name: data.name || location.name,
         description: data.description || location.description,
         location_type_id: location.location_type_id,
-        parent_id: location.parent_id,
+        parent_id: data.parent_id !== undefined ? (data.parent_id || null) : location.parent_id,
         metadata: data.metadata || location.metadata || {},
       }
 
@@ -599,10 +599,15 @@ export default function LocationDetailPage() {
   const viewData = useMemo(() => {
     if (!location) return null
 
+    const parentId = location.parent?.id || location.parent_id || null
+    const parentName = location.parent?.name || null
+
     return {
       name: location.name || '—',
       description: location.description || '—',
       typeName: location.locationType?.name || '—',
+      parent_id: parentId,
+      parentName: parentName || '—',
       worldName: location.world?.name || '—',
       worldId,
       createdAt: formatDateTime(createdAtValue),
@@ -621,10 +626,13 @@ export default function LocationDetailPage() {
   const editInitialData = useMemo(() => {
     if (!location) return null
 
+    const parentId = location.parent?.id || location.parent_id || null
+
     return {
       name: location.name || '',
       description: location.description || '',
       typeName: location.locationType?.name || '—',
+      parent_id: parentId || null,
       worldName: location.world?.name || '—',
       worldId,
       createdAt: formatDateTime(createdAtValue),
@@ -654,6 +662,12 @@ export default function LocationDetailPage() {
           fields: [
             { key: 'name', label: 'Name', type: 'text' },
             { key: 'typeName', label: 'Type', type: 'readonly' },
+            { 
+              key: 'parent_id', 
+              label: 'Parent Location', 
+              type: 'location_reference',
+              dataType: 'location_reference',
+            },
             {
               key: 'description',
               label: 'Description',
@@ -693,6 +707,12 @@ export default function LocationDetailPage() {
           fields: [
             { key: 'name', label: 'Name', type: 'readonly' },
             { key: 'typeName', label: 'Type', type: 'readonly' },
+            { 
+              key: 'parent_id', 
+              label: 'Parent Location', 
+              type: 'location_reference',
+              dataType: 'location_reference',
+            },
           ],
         },
         {
