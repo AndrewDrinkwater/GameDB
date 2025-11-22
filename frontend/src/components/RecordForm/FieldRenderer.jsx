@@ -3,6 +3,7 @@ import ListCollector from '../ListCollector.jsx'
 import { normaliseListCollectorOption } from '../listCollectorUtils.js'
 import { getAuthToken } from '../../utils/authHelpers.js'
 import EntitySearchSelect from '../../modules/relationships3/ui/EntitySearchSelect.jsx'
+import LocationSearchSelect from '../../modules/relationships3/ui/LocationSearchSelect.jsx'
 import EntityInfoPreview from '../entities/EntityInfoPreview.jsx'
 import { extractReferenceEntityId, extractReferenceEntityName } from '../../utils/metadataFieldUtils.js'
 
@@ -377,6 +378,9 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
 
   const label = field.label || key
   const type = (field.type || 'text').toLowerCase()
+  // Check dataType first to distinguish location_reference from entity_reference
+  // since type is normalized to 'reference' in EntityDetailPage.jsx
+  const dataType = (field.dataType || field.data_type || type).toLowerCase()
   const referenceTypeId =
     field.referenceTypeId ?? field.reference_type_id ?? field.referenceType?.id ?? null
   const referenceTypeName =
@@ -482,7 +486,17 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     data?.metadata,
   ])
 
-  const isReferenceType = type === 'reference' || type === 'entity_reference' || type === 'location_reference'
+  // Check both type and dataType to properly detect location_reference and entity_reference
+  // since EntityDetailPage.jsx normalizes type to 'reference' but preserves dataType
+  const isReferenceType = 
+    type === 'reference' || 
+    type === 'entity_reference' || 
+    type === 'location_reference' ||
+    dataType === 'entity_reference' ||
+    dataType === 'location_reference' ||
+    dataType === 'reference'
+  const isLocationReference = dataType === 'location_reference' || type === 'location_reference'
+  const isEntityReference = dataType === 'entity_reference' || type === 'entity_reference'
   
   const referenceValue =
     isReferenceType && normalisedValue !== undefined && normalisedValue !== null
@@ -618,9 +632,11 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     const placeholderName =
       typeof referenceTypeName === 'string' && referenceTypeName.trim()
         ? referenceTypeName.trim()
-        : 'entities'
+        : isLocationReference ? 'locations' : 'entities'
     const hasStaticOptions = staticReferenceOptions.length > 0
-    const canSearch = Boolean(referenceTypeId && worldId)
+    // Location references can work without a type restriction (allows selecting any location)
+    // Entity references still require a type to be specified
+    const canSearch = Boolean(worldId && (referenceTypeId || isLocationReference))
     const controlDisabled = !canSearch && !hasStaticOptions
 
     if (isReadOnly) {
@@ -759,10 +775,13 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
         ? { id: referenceValue, name: referenceState.selectedLabel }
         : referenceValue
 
+    // Use LocationSearchSelect for location references, EntitySearchSelect for entity references
+    const SearchComponent = isLocationReference ? LocationSearchSelect : EntitySearchSelect
+
     return (
       <div className="form-group">
         <label>{label}</label>
-        <EntitySearchSelect
+        <SearchComponent
           worldId={worldId}
           value={controlValue}
           allowedTypeIds={referenceTypeId ? [referenceTypeId] : []}
@@ -772,12 +791,13 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
           onChange={handleReferenceChange}
           onResolved={handleReferenceResolved}
           required={Boolean(field.required)}
+          minSearchLength={isLocationReference && !referenceTypeId ? 0 : undefined}
         />
-        {!referenceTypeId && (
+        {!referenceTypeId && !isLocationReference && (
           <p className="help-text warning">Reference type configuration is missing.</p>
         )}
-        {referenceTypeId && !worldId && (
-          <p className="help-text warning">Select a world to search for entities.</p>
+        {!worldId && canSearch && (
+          <p className="help-text warning">Select a world to search for {isLocationReference ? 'locations' : 'entities'}.</p>
         )}
         {renderHelpText(false)}
       </div>

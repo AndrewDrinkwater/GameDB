@@ -11,6 +11,7 @@ import { getFields as getEntityTypeFields } from '../../api/entityTypeFields.js'
 import AccessSettingsEditor from '../../components/entities/AccessSettingsEditor.jsx'
 import { fetchAccessOptionsForWorld } from '../../utils/entityAccessOptions.js'
 import EntitySearchSelect from '../../modules/relationships3/ui/EntitySearchSelect.jsx'
+import LocationSearchSelect from '../../modules/relationships3/ui/LocationSearchSelect.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import { buildEntityImageUrl, resolveEntityResponse } from '../../utils/entityHelpers.js'
 import ImageCropper from '../../components/images/ImageCropper.jsx'
@@ -1079,11 +1080,14 @@ export default function EntityForm({
         const referenceTypeId = referenceTypeIdRaw
           ? String(referenceTypeIdRaw).trim()
           : null
-        const placeholderName = field.referenceTypeName || 'entities'
+        // Check if this is a location_reference or entity_reference
+        const isLocationReference = field.dataType === 'location_reference'
+        const isEntityReference = field.dataType === 'entity_reference'
+        const placeholderName = field.referenceTypeName || (isLocationReference ? 'locations' : 'entities')
         const placeholderLabel =
           typeof placeholderName === 'string' && placeholderName.trim()
             ? placeholderName.trim()
-            : 'entities'
+            : (isLocationReference ? 'locations' : 'entities')
 
         const staticOptions = Array.isArray(field.options?.choices)
           ? field.options.choices
@@ -1113,7 +1117,9 @@ export default function EntityForm({
           : []
 
         const hasStaticOptions = staticOptions.length > 0
-        const canSearch = Boolean(worldId && referenceTypeId)
+        // Location references can work without a type restriction (allows selecting any location)
+        // Entity references still require a type to be specified
+        const canSearch = Boolean(worldId && (referenceTypeId || isLocationReference))
         const controlDisabled =
           saving ||
           loadingMetadataFields ||
@@ -1206,10 +1212,13 @@ export default function EntityForm({
           })
         }
 
+        // Use LocationSearchSelect for location references, EntitySearchSelect for entity references
+        const SearchComponent = isLocationReference ? LocationSearchSelect : EntitySearchSelect
+
         return (
           <div className="reference-field-control">
             <div className="reference-field-input-row">
-              <EntitySearchSelect
+              <SearchComponent
                 worldId={worldId}
                 value={controlValue}
                 allowedTypeIds={referenceTypeId && referenceTypeId.length > 0 ? [referenceTypeId] : []}
@@ -1219,6 +1228,7 @@ export default function EntityForm({
                 onChange={handleReferenceChange}
                 onResolved={handleReferenceResolved}
                 required={isRequired}
+                minSearchLength={isLocationReference && !referenceTypeId ? 0 : undefined}
               />
               {resolvedValue && (
                 <EntityInfoPreview
@@ -1228,11 +1238,11 @@ export default function EntityForm({
                 />
               )}
             </div>
-            {!referenceTypeId && (
+            {!referenceTypeId && !isLocationReference && (
               <p className="field-hint warning">Reference type configuration is missing.</p>
             )}
-            {referenceTypeId && !worldId && (
-              <p className="field-hint warning">Select a world to search for entities.</p>
+            {!worldId && canSearch && (
+              <p className="field-hint warning">Select a world to search for {isLocationReference ? 'locations' : 'entities'}.</p>
             )}
           </div>
         )

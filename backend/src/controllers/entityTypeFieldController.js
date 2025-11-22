@@ -72,9 +72,10 @@ const validateFieldPayload = (payload) => {
     }
   }
 
-  if (payload.data_type === 'entity_reference' || payload.data_type === 'location_reference') {
+  // Entity references require a type, but location references can work without one (allows selecting any location)
+  if (payload.data_type === 'entity_reference') {
     if (!trimmedReferenceTypeId) {
-      throw new Error(`${payload.data_type === 'entity_reference' ? 'Entity' : 'Location'} reference fields require a reference_type_id`)
+      throw new Error('Entity reference fields require a reference_type_id')
     }
   }
 
@@ -106,7 +107,11 @@ const validateFieldPayload = (payload) => {
   return {
     ...payload,
     options,
-    reference_type_id: (payload.data_type === 'entity_reference' || payload.data_type === 'location_reference') ? trimmedReferenceTypeId : null,
+    // Allow null/empty reference_type_id for location_reference (means "all locations")
+    // Entity references still require a type
+    reference_type_id: (payload.data_type === 'entity_reference' || payload.data_type === 'location_reference') 
+      ? (trimmedReferenceTypeId || null) 
+      : null,
     reference_filter: (payload.data_type === 'entity_reference' || payload.data_type === 'location_reference') ? referenceFilter : {},
     visible_by_default: visibleByDefault,
   }
@@ -118,8 +123,16 @@ const ensureValidReferenceTarget = async (fieldPayload, worldId) => {
   }
 
   const referenceTypeId = fieldPayload.reference_type_id
+  
+  // Entity references always require a type
+  // Location references can optionally have a type (null means "all locations")
+  if (fieldPayload.data_type === 'entity_reference' && !referenceTypeId) {
+    throw new Error('Entity reference fields require a reference_type_id')
+  }
+
+  // If no reference_type_id is provided for location_reference, that's valid (means "all locations")
   if (!referenceTypeId) {
-    throw new Error(`${fieldPayload.data_type === 'entity_reference' ? 'Entity' : 'Location'} reference fields require a reference_type_id`)
+    return null
   }
 
   if (fieldPayload.data_type === 'entity_reference') {
@@ -411,7 +424,8 @@ export const updateEntityTypeField = async (req, res) => {
     await field.update(validated)
     await field.reload({
       include: [
-        { model: EntityType, as: 'referenceType', attributes: ['id', 'name', 'world_id'] },
+        { model: EntityType, as: 'entityReferenceType', attributes: ['id', 'name', 'world_id'], required: false },
+        { model: LocationType, as: 'locationReferenceType', attributes: ['id', 'name', 'world_id'], required: false },
       ],
     })
 

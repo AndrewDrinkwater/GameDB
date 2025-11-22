@@ -536,27 +536,6 @@ export default function EntityTypeFields() {
     return map
   }, [entityReferenceTypes, locationReferenceTypes])
 
-  const availableReferenceTypes = useMemo(() => {
-    if (!Array.isArray(referenceTypes) || !referenceTypes.length) {
-      return []
-    }
-
-    if (!entityType?.world_id) {
-      return referenceTypes
-    }
-
-    return referenceTypes.filter((type) => {
-      if (!type) return false
-      if (!entityType.world_id) return true
-
-      const candidateWorldId = type.world_id ?? type.worldId ?? type.world?.id
-      if (candidateWorldId) {
-        return candidateWorldId === entityType.world_id
-      }
-
-      return true
-    })
-  }, [entityType, referenceTypes])
 
   const combinedError = typeError || fieldsError
 
@@ -951,8 +930,8 @@ export default function EntityTypeFields() {
             <div className="side-panel-content">
               <EntityTypeFieldForm
                 initialData={editingField}
-                entityReferenceTypes={availableEntityReferenceTypes}
-                locationReferenceTypes={availableLocationReferenceTypes}
+                entityReferenceTypes={entityReferenceTypes}
+                locationReferenceTypes={locationReferenceTypes}
                 onSubmit={handleSave}
                 onCancel={closePanel}
                 submitting={saving}

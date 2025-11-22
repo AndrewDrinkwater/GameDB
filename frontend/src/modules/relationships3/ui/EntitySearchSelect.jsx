@@ -160,6 +160,13 @@ export default function EntitySearchSelect({
     }
   }, [value, normalisedStaticOptions, selectedEntity?.id])
 
+  // Clear results when allowedTypeIds changes to prevent showing stale results
+  useEffect(() => {
+    if (query.trim().length === 0) {
+      setResults([])
+    }
+  }, [allowedTypeIdsMemo])
+
   useEffect(() => {
     if (!query.trim() || selectedEntity) return
     if (disabled) return
@@ -185,14 +192,30 @@ export default function EntitySearchSelect({
         try {
           setLoading(true)
           setError('')
-          const res = await searchEntities({
+          // Only include typeIds in the search if we have valid type IDs to filter by
+          // If empty, don't include typeIds parameter so backend handles it appropriately
+          const searchParams = {
             worldId,
             query: term,
-            typeIds: allowedTypeIdsMemo,
             limit: 20,
-          })
+          }
+          
+          // Only add typeIds filter if we have valid type IDs
+          if (allowedTypeIdsMemo && allowedTypeIdsMemo.length > 0) {
+            searchParams.typeIds = allowedTypeIdsMemo
+          }
+          
+          const res = await searchEntities(searchParams)
           const data = Array.isArray(res?.data) ? res.data : res
-          setResults(Array.isArray(data) ? data : [])
+          
+          // Additional client-side filtering as a safety check when typeIds are specified
+          const filteredData = Array.isArray(data) ? (allowedTypeIdsMemo && allowedTypeIdsMemo.length > 0
+            ? data.filter((entity) => {
+                const entityTypeId = entity.typeId || entity.entity_type_id || entity.entityType?.id || ''
+                return entityTypeId && allowedTypeIdsMemo.includes(String(entityTypeId))
+              })
+            : data) : []
+          setResults(filteredData)
         } catch (err) {
           console.error('Entity search failed', err)
           setResults([])

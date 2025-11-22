@@ -139,8 +139,10 @@ export default function EntityTypeFieldForm({
     let referenceFilter = {}
 
     if (isReference) {
-      if (!values.reference_type_id) {
-        setLocalError('Reference type is required for reference fields.')
+      // Location references can work without a type restriction (allows selecting any location)
+      // Entity references still require a type to be specified
+      if (isEntityReference && !values.reference_type_id) {
+        setLocalError('Reference type is required for entity reference fields.')
         return
       }
 
@@ -183,7 +185,8 @@ export default function EntityTypeFieldForm({
     }
 
     if (isReference) {
-      payload.reference_type_id = values.reference_type_id
+      // Allow null/empty reference_type_id for location references (means "all locations")
+      payload.reference_type_id = values.reference_type_id || null
       payload.reference_filter = referenceFilter
     } else {
       payload.reference_type_id = null
@@ -296,7 +299,7 @@ export default function EntityTypeFieldForm({
           <>
             <div className="form-group form-group-full">
               <label htmlFor="entity-field-reference-type">
-                {isEntityReference ? 'Entity' : 'Location'} Reference Type *
+                {isEntityReference ? 'Entity' : 'Location'} Reference Type{isEntityReference ? ' *' : ''}
               </label>
               <select
                 id="entity-field-reference-type"
@@ -305,7 +308,7 @@ export default function EntityTypeFieldForm({
                 disabled={submitting}
               >
                 <option value="">
-                  Select {isEntityReference ? 'entity' : 'location'} type
+                  {isEntityReference ? 'Select entity type' : 'All locations (no type restriction)'}
                 </option>
                 {(isEntityReference ? entityReferenceTypeOptions : locationReferenceTypeOptions).map((option) => (
                   <option key={option.value} value={option.value}>
@@ -314,7 +317,9 @@ export default function EntityTypeFieldForm({
                 ))}
               </select>
               <p className="field-hint">
-                Choose which {isEntityReference ? 'entity' : 'location'} type this field should reference.
+                {isEntityReference
+                  ? 'Choose which entity type this field should reference.'
+                  : 'Choose a specific location type to restrict selection, or leave blank to allow any location.'}
               </p>
             </div>
 
