@@ -81,6 +81,10 @@ export default (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: [],
       },
+      location_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
     },
     {
       tableName: 'entities',
@@ -94,6 +98,9 @@ export default (sequelize, DataTypes) => {
     Entity.belongsTo(models.EntityType, { foreignKey: 'entity_type_id', as: 'entityType' })
     Entity.belongsTo(models.User, { foreignKey: 'created_by', as: 'creator' })
     Entity.belongsTo(models.World, { foreignKey: 'world_id', as: 'world' })
+    if (models.Location) {
+      Entity.belongsTo(models.Location, { foreignKey: 'location_id', as: 'location' })
+    }
     if (models.EntitySecret) {
       Entity.hasMany(models.EntitySecret, {
         foreignKey: 'entity_id',

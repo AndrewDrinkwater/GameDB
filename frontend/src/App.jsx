@@ -37,6 +37,8 @@ import FollowedEntitiesPage from './pages/entities/FollowedEntitiesPage.jsx'
 import RequestListPage from './pages/requests/RequestListPage.jsx'
 import RequestDetailPage from './pages/requests/RequestDetailPage.jsx'
 import CreateRequestPage from './pages/requests/CreateRequestPage.jsx'
+import LocationList from './pages/locations/LocationList.jsx'
+import LocationDetailPage from './pages/locations/LocationDetailPage.jsx'
 
 const router = createBrowserRouter(
   createRoutesFromElements(
@@ -97,6 +99,12 @@ const router = createBrowserRouter(
 
         <Route path="entity-relationships" element={<EntityRelationshipList />} />
         <Route path="entity-secrets" element={<EntitySecretList />} />
+
+        {/* Location routes */}
+        <Route path="locations">
+          <Route index element={<LocationList />} />
+          <Route path=":id" element={<LocationDetailPage />} />
+        </Route>
 
         <Route path="notes">
           <Route index element={<Navigate to="/notes/session" replace />} />

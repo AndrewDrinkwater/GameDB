@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   History,
   Layers,
+  MapPin,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useCampaignContext } from '../context/CampaignContext.jsx'
@@ -250,6 +251,16 @@ export default function Sidebar({
                 >
                   <Database size={16} className="nav-icon" />
                   <span>All Entities</span>
+                </Link>
+              )}
+
+              {hasWorldContext && (
+                <Link
+                  to="/locations"
+                  className={`nav-entity-link ${isActive('/locations') ? 'active' : ''}`}
+                >
+                  <MapPin size={16} className="nav-icon" />
+                  <span>Locations</span>
                 </Link>
               )}
 

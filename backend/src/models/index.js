@@ -31,6 +31,9 @@ import EntityFollowModel from './entityFollow.js'
 import NotificationModel from './notification.js'
 import RequestModel from './request.js'
 import RequestNoteModel from './requestNote.js'
+import LocationModel from './location.js'
+import LocationTypeModel from './locationType.js'
+import LocationTypeFieldModel from './locationTypeField.js'
 
 // Create Sequelize instance
 // Ensure password is always a string (required by PostgreSQL SCRAM authentication)
@@ -86,11 +89,14 @@ export const EntityFollow = EntityFollowModel(sequelize, DataTypes)
 export const Notification = NotificationModel(sequelize, DataTypes)
 export const Request = RequestModel(sequelize, DataTypes)
 export const RequestNote = RequestNoteModel(sequelize, DataTypes)
+export const Location = LocationModel(sequelize, DataTypes)
+export const LocationType = LocationTypeModel(sequelize, DataTypes)
+export const LocationTypeField = LocationTypeFieldModel(sequelize, DataTypes)
 
 // --- Associations ---
 if (User.associate)
   User.associate({ World, Campaign, Character, UserCampaignRole, UploadedFile }) // ✅ link uploaded files to user
-if (World.associate) World.associate({ User, Campaign, Entity, EntityType })
+if (World.associate) World.associate({ User, Campaign, Entity, EntityType, Location, LocationType })
 if (Campaign.associate)
   Campaign.associate({ World, Character, User, UserCampaignRole, SessionNote })
 if (Character.associate) Character.associate({ Campaign, User })
@@ -104,6 +110,7 @@ if (Entity.associate)
     User,
     EntityRelationship,
     UploadedFile, // ✅ link uploaded files to entity
+    Location, // ✅ link entities to locations
   })
 if (EntitySecret.associate)
   EntitySecret.associate({ Entity, User, EntitySecretPermission })
@@ -145,6 +152,9 @@ if (EntityFollow.associate) EntityFollow.associate({ User, Entity, Campaign })
 if (Notification.associate) Notification.associate({ User, Campaign })
 if (Request.associate) Request.associate({ User, RequestNote })
 if (RequestNote.associate) RequestNote.associate({ Request, User })
+if (Location.associate) Location.associate({ World, User, LocationType, Location, Entity })
+if (LocationType.associate) LocationType.associate({ World, LocationType, Location, LocationTypeField })
+if (LocationTypeField.associate) LocationTypeField.associate({ LocationType })
 
 // --- Init DB ---
 export async function initDB() {
@@ -186,4 +196,7 @@ export default {
   Notification,
   Request,
   RequestNote,
+  Location,
+  LocationType,
+  LocationTypeField,
 }
