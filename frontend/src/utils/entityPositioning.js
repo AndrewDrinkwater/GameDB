@@ -851,11 +851,14 @@ function buildPrimaryParentMap(
 
     if (!parentId || !childId || parentId === childId) return
 
-    const relationshipLabel = extractEdgeRelationshipLabel(edge)
-    const relationshipName = extractEdgeRelationshipName(edge)
+    // Extract relationship label/name - check normalized edge label first as it's most reliable
+    const edgeLabel = edge?.label ?? edge?.relationshipLabel ?? ''
+    const relationshipLabel = edgeLabel || extractEdgeRelationshipLabel(edge)
+    const relationshipName = edgeLabel || extractEdgeRelationshipName(edge)
     const relationshipKey =
       normalizeRelationshipKey(relationshipLabel) ||
-      normalizeRelationshipKey(relationshipName)
+      normalizeRelationshipKey(relationshipName) ||
+      normalizeRelationshipKey(edgeLabel)
     const indicatesParental =
       Boolean(relationshipLabel) &&
       (isParentRelation(relationshipLabel) ||
@@ -1081,206 +1084,155 @@ function createSiblingComparator(primaryParentByNode) {
   }
 }
 
+/**
+ * Assigns positions to entities following simple, intuitive rules:
+ * 1. Children appear below their parents (higher level = lower Y position)
+ * 2. Entities with the same parent AND relationship type are grouped together
+ * 3. Groups are positioned sequentially, centered around their parent
+ */
 function assignPositions(groups, primaryParentByNode = new Map()) {
   const positions = new Map()
   let globalMinX = Infinity
-
   const baseY = 0
   const sortedLevels = Array.from(groups.keys()).sort((a, b) => a - b)
+  let levelIndexCounter = 0
 
   sortedLevels.forEach((level) => {
     const nodesAtLevel = groups.get(level) || []
     if (!nodesAtLevel.length) return
 
-    const groupedByParent = new Map()
+    // STEP 1: Group nodes by their parent and relationship type
+    // Rule: Entities with same parent + same relationship type must spawn together
+    const groupsByParent = new Map() // parentId -> { anchorX, relationshipGroups: [{ relationshipKey, nodes }] }
     const orphans = []
-    const levelOccupied = new Set()
 
     nodesAtLevel.forEach((node) => {
-      const info = getPrimaryParentInfo(primaryParentByNode, node.id)
-      const parentId = info?.parentId ?? null
+      const parentInfo = getPrimaryParentInfo(primaryParentByNode, node.id)
+      const parentId = parentInfo?.parentId ?? null
       const parentPosition = parentId ? positions.get(parentId) : null
+
       if (parentId && parentPosition) {
-        if (!groupedByParent.has(parentId)) groupedByParent.set(parentId, [])
-        groupedByParent.get(parentId).push(node)
-        return
-      }
+        // Get relationship key (normalized to lowercase for consistency)
+        const relationshipKey = parentInfo?.relationshipKey || 
+                                normalizeRelationshipKey(parentInfo?.relationshipName) || 
+                                'no-relationship'
 
-      orphans.push(node)
-    })
+        if (!groupsByParent.has(parentId)) {
+          groupsByParent.set(parentId, {
+            anchorX: parentPosition.x,
+            relationshipGroups: new Map() // relationshipKey -> nodes[]
+          })
+        }
 
-    const levelGroups = []
-    const siblingComparator = createSiblingComparator(primaryParentByNode)
-
-    groupedByParent.forEach((children, parentId) => {
-      const parentPosition = positions.get(parentId)
-      if (!parentPosition) {
-        children.forEach((child) => orphans.push(child))
-        return
-      }
-      const sortedChildren = [...children].sort(siblingComparator)
-      levelGroups.push({
-        anchorX: parentPosition.x,
-        nodes: sortedChildren,
-        parentId,
-      })
-    })
-
-    if (orphans.length) {
-      const sortedOrphans = [...orphans].sort(compareNodesByLabel)
-      levelGroups.push({
-        anchorX: null,
-        nodes: sortedOrphans,
-        parentId: null,
-      })
-    }
-
-    levelGroups.sort((a, b) => {
-      if (a.anchorX != null && b.anchorX != null) return a.anchorX - b.anchorX
-      if (a.anchorX != null) return -1
-      if (b.anchorX != null) return 1
-      return 0
-    })
-
-    let hasPlaced = false
-    let rightmostAssigned = -Infinity
-    let levelIndexCounter = 0
-
-    levelGroups.forEach((group) => {
-      const width = (group.nodes.length - 1) * LEVEL_HORIZONTAL_SPACING
-      let startX
-
-      if (group.anchorX != null) {
-        startX = group.anchorX - width / 2
+        const parentGroup = groupsByParent.get(parentId)
+        if (!parentGroup.relationshipGroups.has(relationshipKey)) {
+          parentGroup.relationshipGroups.set(relationshipKey, [])
+        }
+        parentGroup.relationshipGroups.get(relationshipKey).push(node)
       } else {
-        startX =
-          hasPlaced && Number.isFinite(rightmostAssigned)
-            ? rightmostAssigned + LEVEL_HORIZONTAL_SPACING
-            : -width / 2
+        orphans.push(node)
       }
+    })
 
-      const y = baseY + level * LEVEL_VERTICAL_SPACING
-      const placedXs = []
+    // STEP 2: Sort entities within each relationship group by label
+    const siblingComparator = createSiblingComparator(primaryParentByNode)
+    groupsByParent.forEach((parentGroup) => {
+      parentGroup.relationshipGroups.forEach((nodes, relationshipKey) => {
+        nodes.sort(siblingComparator)
+      })
+    })
 
-      group.nodes.forEach((node, index) => {
-        const spacing = LEVEL_HORIZONTAL_SPACING
-        let x = startX + index * spacing
+    // STEP 3: Position entities level by level
+    const y = baseY + level * LEVEL_VERTICAL_SPACING
+    let rightmostX = -Infinity
 
-        if (
-          group.anchorX == null &&
-          hasPlaced &&
-          Number.isFinite(rightmostAssigned) &&
-          x <= rightmostAssigned
-        ) {
-          x = rightmostAssigned + spacing
-        }
+    // Process groups with parents (sorted by parent X position for consistent layout)
+    const sortedParentIds = Array.from(groupsByParent.keys()).sort((a, b) => {
+      const groupA = groupsByParent.get(a)
+      const groupB = groupsByParent.get(b)
+      return (groupA?.anchorX ?? 0) - (groupB?.anchorX ?? 0)
+    })
 
-        let attempts = 0
-        let key = `${Math.round(x * 100)}`
-        while (levelOccupied.has(key) && attempts < 100) {
-          x += spacing
-          attempts += 1
-          key = `${Math.round(x * 100)}`
-        }
+    sortedParentIds.forEach((parentId) => {
+      const parentGroup = groupsByParent.get(parentId)
+      if (!parentGroup) return
 
-        levelOccupied.add(key)
-        placedXs.push(x)
-        positions.set(node.id, { x, y, level, levelIndex: levelIndexCounter })
+      // Get all relationship groups for this parent, sorted by relationship key
+      const sortedRelationshipKeys = Array.from(parentGroup.relationshipGroups.keys()).sort()
+      
+      // Collect all nodes for this parent (all relationship types together)
+      const allNodesForParent = []
+      sortedRelationshipKeys.forEach((relationshipKey) => {
+        const nodes = parentGroup.relationshipGroups.get(relationshipKey) || []
+        allNodesForParent.push(...nodes)
+      })
+
+      if (allNodesForParent.length === 0) return
+
+      // Position all children of this parent together, centered under the parent
+      const totalWidth = (allNodesForParent.length - 1) * LEVEL_HORIZONTAL_SPACING
+      const startX = parentGroup.anchorX - totalWidth / 2
+
+      allNodesForParent.forEach((node, index) => {
+        const x = startX + index * LEVEL_HORIZONTAL_SPACING
+        
+        positions.set(node.id, { 
+          x, 
+          y, 
+          level, 
+          levelIndex: levelIndexCounter 
+        })
+        
         levelIndexCounter += 1
         if (x < globalMinX) globalMinX = x
-        if (x > rightmostAssigned) rightmostAssigned = x
+        if (x > rightmostX) rightmostX = x
       })
-
-      if (placedXs.length) {
-        const groupRight = Math.max(...placedXs)
-        if (groupRight > rightmostAssigned) {
-          rightmostAssigned = groupRight
-        }
-      }
-      hasPlaced = true
     })
-  })
 
-  const orderedNodeEntries = []
-  sortedLevels.forEach((level) => {
-    const nodesAtLevel = groups.get(level) || []
-    nodesAtLevel.forEach((node) => {
-      if (!node) return
-      const id = node?.id != null ? String(node.id) : null
-      if (!id) return
-      if (positions.has(id)) {
-        orderedNodeEntries.push({ id, node })
-      }
-    })
-  })
+    // Process orphan nodes (no parent) - place them to the right of parent groups
+    if (orphans.length) {
+      orphans.sort(compareNodesByLabel)
+      const orphanWidth = (orphans.length - 1) * LEVEL_HORIZONTAL_SPACING
+      const orphanStartX = rightmostX !== -Infinity 
+        ? rightmostX + LEVEL_HORIZONTAL_SPACING 
+        : -orphanWidth / 2
 
-  const positioned = []
-  orderedNodeEntries.forEach(({ id, node }) => {
-    const placement = positions.get(id)
-    if (!placement) return
-
-    const { width, height } = getNodeDimensions(node)
-    const level = placement.level ?? null
-    const current = {
-      id,
-      width,
-      height,
-      level,
-      position: { ...placement },
-    }
-
-    const isUserPlaced = Boolean(
-      (node?.data && node.data.isUserPlaced) || node?.isUserPlaced
-    )
-
-    if (!isUserPlaced) {
-      positioned.forEach((prev) => {
-        const sameLevel =
-          (current.level != null && prev.level != null && current.level === prev.level) ||
-          Math.abs(current.position.y - prev.position.y) <
-            Math.max(current.height, prev.height, DEFAULT_ENTITY_HEIGHT)
-        if (!sameLevel) return
-
-        const prevRightEdge = prev.position.x + prev.width
-        const minAllowedX = Math.max(
-          prev.position.x + MIN_HORIZONTAL_GAP,
-          prevRightEdge + 40
-        )
-        if (current.position.x < minAllowedX) {
-          current.position.x = minAllowedX
-        }
+      orphans.forEach((node, index) => {
+        const x = orphanStartX + index * LEVEL_HORIZONTAL_SPACING
+        
+        positions.set(node.id, { 
+          x, 
+          y, 
+          level, 
+          levelIndex: levelIndexCounter 
+        })
+        
+        levelIndexCounter += 1
+        if (x < globalMinX) globalMinX = x
+        if (x > rightmostX) rightmostX = x
       })
     }
-
-    positions.set(id, {
-      ...placement,
-      x: current.position.x,
-    })
-
-    positioned.push({
-      id,
-      width: current.width,
-      height: current.height,
-      level: current.level,
-      position: { ...current.position },
-    })
   })
 
-  globalMinX = Infinity
-  positions.forEach((value) => {
-    if (value.x < globalMinX) globalMinX = value.x
-  })
-
+  // STEP 4: Adjust all positions to ensure nothing is left of X=0
   const xOffset = Number.isFinite(globalMinX) && globalMinX < 0 ? -globalMinX : 0
   const adjusted = new Map()
-  positions.forEach((value, key) => {
-    adjusted.set(key, {
-      x: value.x + xOffset,
-      y: value.y,
-      level: value.level,
-      levelIndex: value.levelIndex,
+  
+  if (xOffset > 0) {
+    positions.forEach((value, key) => {
+      adjusted.set(key, {
+        x: value.x + xOffset,
+        y: value.y,
+        level: value.level,
+        levelIndex: value.levelIndex,
+      })
     })
-  })
+  } else {
+    // No offset needed - return positions as-is
+    positions.forEach((value, key) => {
+      adjusted.set(key, value)
+    })
+  }
 
   return adjusted
 }
@@ -1298,15 +1250,20 @@ export function isChildRelation(typeName) {
 function extractEdgeRelationshipLabel(edge) {
   if (!edge) return ''
 
+  // Check multiple possible locations for relationship label
   const rawRelationship =
     edge?.data?.relationshipType ??
     edge?.relationshipType ??
-    edge?.label ??
+    edge?.data?.relationshipLabel ??
     edge?.relationshipLabel ??
+    edge?.data?.label ??
+    edge?.label ??
+    edge?.data?.typeName ??
+    edge?.typeName ??
     ''
 
   if (typeof rawRelationship === 'string') {
-    return rawRelationship.toLowerCase()
+    return rawRelationship.toLowerCase().trim()
   }
 
   if (rawRelationship && typeof rawRelationship === 'object') {
@@ -1318,7 +1275,7 @@ function extractEdgeRelationshipLabel(edge) {
       ''
 
     if (typeof candidate === 'string') {
-      return candidate.toLowerCase()
+      return candidate.toLowerCase().trim()
     }
   }
 
@@ -1328,11 +1285,16 @@ function extractEdgeRelationshipLabel(edge) {
 function extractEdgeRelationshipName(edge) {
   if (!edge) return ''
 
+  // Check multiple possible locations for relationship name
   const rawRelationship =
     edge?.data?.relationshipType ??
     edge?.relationshipType ??
-    edge?.label ??
+    edge?.data?.relationshipLabel ??
     edge?.relationshipLabel ??
+    edge?.data?.label ??
+    edge?.label ??
+    edge?.data?.typeName ??
+    edge?.typeName ??
     ''
 
   if (typeof rawRelationship === 'string') {
