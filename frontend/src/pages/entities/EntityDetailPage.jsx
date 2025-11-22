@@ -109,6 +109,10 @@ const mapFieldToSchemaField = (field) => {
       return { ...base, type: 'text', inputType: 'number' }
     case 'date':
       return { ...base, type: 'text' }
+    case 'entity_reference':
+    case 'location_reference':
+    case 'entity_reference':
+    case 'location_reference':
     case 'reference': {
       const referenceTypeId =
         field.referenceTypeId ??

@@ -32,6 +32,8 @@ export const normaliseMetadataValue = (field) => {
       return value
     case 'date':
       return formatDateTimeValue(value)
+    case 'entity_reference':
+    case 'location_reference':
     case 'reference':
       if (typeof value === 'object' && value !== null) {
         const label =
@@ -88,7 +90,7 @@ export const initialMetadataValue = (field) => {
     return Boolean(value)
   }
 
-  if (field?.dataType === 'reference') {
+  if (field?.dataType === 'reference' || field?.dataType === 'entity_reference' || field?.dataType === 'location_reference') {
     if (typeof value === 'object' && value !== null) {
       return (
         value.value ??
@@ -135,7 +137,7 @@ export const buildMetadataDisplayMap = (fields = []) => {
 
   return fields.reduce((acc, field) => {
     if (!field?.name) return acc
-    if (field.dataType !== 'reference') return acc
+    if (field.dataType !== 'reference' && field.dataType !== 'entity_reference' && field.dataType !== 'location_reference') return acc
 
     const label = (() => {
       if (field.displayValue) return field.displayValue

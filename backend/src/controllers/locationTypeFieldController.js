@@ -1,4 +1,4 @@
-import { EntityType, EntityTypeField, LocationType } from '../models/index.js'
+import { LocationType, LocationTypeField, EntityType } from '../models/index.js'
 import { coerceValueForField } from '../utils/entityMetadataValidator.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
 
@@ -106,24 +106,23 @@ const validateFieldPayload = (payload) => {
   return {
     ...payload,
     options,
+    visible_by_default: visibleByDefault,
     reference_type_id: (payload.data_type === 'entity_reference' || payload.data_type === 'location_reference') ? trimmedReferenceTypeId : null,
     reference_filter: (payload.data_type === 'entity_reference' || payload.data_type === 'location_reference') ? referenceFilter : {},
-    visible_by_default: visibleByDefault,
   }
 }
 
-const ensureValidReferenceTarget = async (fieldPayload, worldId) => {
-  if (fieldPayload.data_type !== 'entity_reference' && fieldPayload.data_type !== 'location_reference') {
-    return null
+const ensureValidReferenceTarget = async (payload, worldId) => {
+  if (payload.data_type !== 'entity_reference' && payload.data_type !== 'location_reference') {
+    return
   }
 
-  const referenceTypeId = fieldPayload.reference_type_id
-  if (!referenceTypeId) {
-    throw new Error(`${fieldPayload.data_type === 'entity_reference' ? 'Entity' : 'Location'} reference fields require a reference_type_id`)
+  if (!payload.reference_type_id) {
+    throw new Error(`${payload.data_type === 'entity_reference' ? 'Entity' : 'Location'} reference fields require a reference_type_id`)
   }
 
-  if (fieldPayload.data_type === 'entity_reference') {
-    const referenceType = await EntityType.findByPk(referenceTypeId)
+  if (payload.data_type === 'entity_reference') {
+    const referenceType = await EntityType.findByPk(payload.reference_type_id)
     if (!referenceType) {
       throw new Error('Reference entity type not found')
     }
@@ -131,10 +130,8 @@ const ensureValidReferenceTarget = async (fieldPayload, worldId) => {
     if (worldId && referenceType.world_id && referenceType.world_id !== worldId) {
       throw new Error('Reference entity type must belong to the same world')
     }
-
-    return referenceType
-  } else if (fieldPayload.data_type === 'location_reference') {
-    const referenceType = await LocationType.findByPk(referenceTypeId)
+  } else if (payload.data_type === 'location_reference') {
+    const referenceType = await LocationType.findByPk(payload.reference_type_id)
     if (!referenceType) {
       throw new Error('Reference location type not found')
     }
@@ -142,83 +139,68 @@ const ensureValidReferenceTarget = async (fieldPayload, worldId) => {
     if (worldId && referenceType.world_id && referenceType.world_id !== worldId) {
       throw new Error('Reference location type must belong to the same world')
     }
-
-    return referenceType
   }
-
-  return null
 }
 
-const mapFieldResponse = (fieldInstance) => {
-  if (!fieldInstance) return null
-
-  const plain = fieldInstance.get({ plain: true })
+const mapFieldResponse = (field) => {
+  const plain = field.toJSON ? field.toJSON() : field
   const entityReferenceType = plain.entityReferenceType
   const locationReferenceType = plain.locationReferenceType
-
+  
+  let referenceType = null
   if (entityReferenceType) {
-    plain.reference_type_id = plain.reference_type_id ?? entityReferenceType.id
-    plain.reference_type_name = entityReferenceType.name
-    plain.referenceType = entityReferenceType
+    referenceType = {
+      id: entityReferenceType.id,
+      name: entityReferenceType.name,
+      world_id: entityReferenceType.world_id,
+    }
   } else if (locationReferenceType) {
-    plain.reference_type_id = plain.reference_type_id ?? locationReferenceType.id
-    plain.reference_type_name = locationReferenceType.name
-    plain.referenceType = locationReferenceType
+    referenceType = {
+      id: locationReferenceType.id,
+      name: locationReferenceType.name,
+      world_id: locationReferenceType.world_id,
+    }
   }
 
-  delete plain.entityReferenceType
-  delete plain.locationReferenceType
-
-  if (plain.visible_by_default === undefined && plain.visibleByDefault !== undefined) {
-    plain.visible_by_default = plain.visibleByDefault
+  return {
+    id: plain.id,
+    name: plain.name,
+    label: plain.label,
+    data_type: plain.data_type,
+    dataType: plain.data_type,
+    options: plain.options || {},
+    required: Boolean(plain.required),
+    default_value: plain.default_value,
+    defaultValue: plain.default_value,
+    sort_order: plain.sort_order,
+    sortOrder: plain.sort_order,
+    visible_by_default: Boolean(plain.visible_by_default),
+    visibleByDefault: Boolean(plain.visible_by_default),
+    reference_type_id: plain.reference_type_id,
+    referenceTypeId: plain.reference_type_id,
+    reference_filter: plain.reference_filter || {},
+    referenceFilter: plain.reference_filter || {},
+    referenceType,
   }
-
-  if (plain.visibleByDefault === undefined) {
-    plain.visibleByDefault =
-      plain.visible_by_default !== undefined ? Boolean(plain.visible_by_default) : true
-  } else {
-    plain.visibleByDefault = Boolean(plain.visibleByDefault)
-  }
-
-  if (plain.visible_by_default === undefined) {
-    plain.visible_by_default = plain.visibleByDefault
-  } else {
-    plain.visible_by_default = Boolean(plain.visible_by_default)
-  }
-
-  return plain
 }
 
-export const listEntityTypeFields = async (req, res) => {
+export const listLocationTypeFields = async (req, res) => {
   try {
     const { id } = req.params
-    const entityType = await EntityType.findByPk(id)
 
-    if (!entityType) {
-      return res.status(404).json({ success: false, message: 'Entity type not found' })
+    const locationType = await LocationType.findByPk(id)
+
+    if (!locationType) {
+      return res.status(404).json({ success: false, message: 'Location type not found' })
     }
 
-    const worldId = entityType.world_id
-
-    if (!worldId) {
-      if (!isSystemAdmin(req.user)) {
-        return res.status(403).json({ success: false, message: 'Forbidden' })
-      }
-    } else {
-      const access = await checkWorldAccess(worldId, req.user)
-
-      if (!access.world) {
-        return res.status(404).json({ success: false, message: 'World not found' })
-      }
-
-      if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
-        return res.status(403).json({ success: false, message: 'Forbidden' })
-      }
+    const canManage = await ensureManageAccess(req.user, locationType.world_id)
+    if (!canManage) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    const fields = await EntityTypeField.findAll({
-      where: { entity_type_id: id },
-      order: FIELD_ORDER,
+    const fields = await LocationTypeField.findAll({
+      where: { location_type_id: id },
       include: [
         {
           model: EntityType,
@@ -233,15 +215,17 @@ export const listEntityTypeFields = async (req, res) => {
           required: false,
         },
       ],
+      order: FIELD_ORDER,
     })
 
-    return res.json({ success: true, data: fields.map((field) => mapFieldResponse(field)) })
+    res.json({ success: true, data: fields.map(mapFieldResponse) })
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message })
+    console.error('Error listing location type fields:', error)
+    res.status(500).json({ success: false, message: error.message })
   }
 }
 
-export const createEntityTypeField = async (req, res) => {
+export const createLocationTypeField = async (req, res) => {
   try {
     const { id } = req.params
     const {
@@ -258,12 +242,12 @@ export const createEntityTypeField = async (req, res) => {
       visibleByDefault,
     } = req.body
 
-    const entityType = await EntityType.findByPk(id)
-    if (!entityType) {
-      return res.status(404).json({ success: false, message: 'Entity type not found' })
+    const locationType = await LocationType.findByPk(id)
+    if (!locationType) {
+      return res.status(404).json({ success: false, message: 'Location type not found' })
     }
 
-    const canManage = await ensureManageAccess(req.user, entityType.world_id)
+    const canManage = await ensureManageAccess(req.user, locationType.world_id)
     if (!canManage) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
@@ -288,7 +272,7 @@ export const createEntityTypeField = async (req, res) => {
     let payload
     try {
       payload = validateFieldPayload({
-        entity_type_id: id,
+        location_type_id: id,
         name: trimmedName,
         label,
         data_type,
@@ -305,13 +289,13 @@ export const createEntityTypeField = async (req, res) => {
     }
 
     try {
-      await ensureValidReferenceTarget(payload, entityType.world_id)
+      await ensureValidReferenceTarget(payload, locationType.world_id)
     } catch (referenceError) {
       return res.status(400).json({ success: false, message: referenceError.message })
     }
 
     try {
-      const field = await EntityTypeField.create(payload)
+      const field = await LocationTypeField.create(payload)
       await field.reload({
         include: [
           { model: EntityType, as: 'entityReferenceType', attributes: ['id', 'name', 'world_id'], required: false },
@@ -323,7 +307,7 @@ export const createEntityTypeField = async (req, res) => {
       if (error.name === 'SequelizeUniqueConstraintError') {
         return res
           .status(409)
-          .json({ success: false, message: 'A field with this name already exists for the entity type' })
+          .json({ success: false, message: 'A field with this name already exists for the location type' })
       }
       throw error
     }
@@ -332,7 +316,7 @@ export const createEntityTypeField = async (req, res) => {
   }
 }
 
-export const updateEntityTypeField = async (req, res) => {
+export const updateLocationTypeField = async (req, res) => {
   try {
     const { id } = req.params
     const {
@@ -349,106 +333,141 @@ export const updateEntityTypeField = async (req, res) => {
       visibleByDefault,
     } = req.body
 
-    const field = await EntityTypeField.findByPk(id)
+    const field = await LocationTypeField.findByPk(id, {
+      include: [
+        {
+          model: LocationType,
+          as: 'locationType',
+          attributes: ['id', 'world_id'],
+        },
+      ],
+    })
+
     if (!field) {
-      return res.status(404).json({ success: false, message: 'Field not found' })
+      return res.status(404).json({ success: false, message: 'Location type field not found' })
     }
 
-    const entityType = await EntityType.findByPk(field.entity_type_id)
-    if (!entityType) {
-      return res.status(404).json({ success: false, message: 'Entity type not found' })
-    }
-
-    const canManage = await ensureManageAccess(req.user, entityType.world_id)
+    const canManage = await ensureManageAccess(req.user, field.locationType.world_id)
     if (!canManage) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    const trimmedName = name !== undefined ? name.trim() : undefined
-    if (trimmedName !== undefined && !trimmedName) {
-      return res.status(400).json({ success: false, message: 'name cannot be empty' })
+    const updates = {}
+
+    if (name !== undefined) {
+      const trimmedName = name?.trim()
+      if (!trimmedName) {
+        return res.status(400).json({ success: false, message: 'name cannot be empty' })
+      }
+      updates.name = trimmedName
     }
 
-    const parsedSortOrder = sort_order !== undefined ? Number(sort_order) : field.sort_order
-    if (Number.isNaN(parsedSortOrder)) {
-      return res.status(400).json({ success: false, message: 'sort_order must be a number' })
+    if (label !== undefined) {
+      updates.label = label?.trim() || null
     }
 
-    const updates = {
-      name: trimmedName !== undefined ? trimmedName : field.name,
-      label: label !== undefined ? label : field.label,
-      data_type: data_type ?? field.data_type,
-      options: options !== undefined ? options : field.options,
-      required: required !== undefined ? Boolean(required) : field.required,
-      default_value:
-        default_value !== undefined ? default_value : field.default_value,
-      sort_order: parsedSortOrder,
-      reference_type_id:
-        reference_type_id !== undefined ? reference_type_id : field.reference_type_id,
-      reference_filter:
-        reference_filter !== undefined ? reference_filter : field.reference_filter,
-      visible_by_default:
-        visible_by_default !== undefined
-          ? Boolean(visible_by_default)
-          : visibleByDefault !== undefined
-            ? Boolean(visibleByDefault)
-            : field.visible_by_default,
+    if (data_type !== undefined) {
+      if (!ALLOWED_TYPES.has(data_type)) {
+        return res.status(400).json({ success: false, message: 'Invalid data_type value' })
+      }
+      updates.data_type = data_type
     }
 
-    let validated
+    if (options !== undefined) {
+      try {
+        updates.options = normaliseOptions(options)
+      } catch (error) {
+        return res.status(400).json({ success: false, message: error.message })
+      }
+    }
+
+    if (required !== undefined) {
+      updates.required = Boolean(required)
+    }
+
+    if (default_value !== undefined) {
+      updates.default_value = default_value || null
+    }
+
+    if (sort_order !== undefined) {
+      const parsed = Number(sort_order)
+      if (Number.isNaN(parsed)) {
+        return res.status(400).json({ success: false, message: 'sort_order must be a number' })
+      }
+      updates.sort_order = parsed
+    }
+
+    if (reference_type_id !== undefined) {
+      updates.reference_type_id = reference_type_id?.trim() || null
+    }
+
+    if (reference_filter !== undefined) {
+      try {
+        updates.reference_filter = normaliseReferenceFilter(reference_filter)
+      } catch (error) {
+        return res.status(400).json({ success: false, message: error.message })
+      }
+    }
+
+    if (visible_by_default !== undefined || visibleByDefault !== undefined) {
+      updates.visible_by_default = Boolean(visible_by_default ?? visibleByDefault)
+    }
+
+    const finalPayload = {
+      ...updates,
+      location_type_id: field.location_type_id,
+    }
+
     try {
-      validated = validateFieldPayload({ id: field.id, ...updates, entity_type_id: field.entity_type_id })
+      const validated = validateFieldPayload(finalPayload)
+      await ensureValidReferenceTarget(validated, field.locationType.world_id)
     } catch (validationError) {
       return res.status(400).json({ success: false, message: validationError.message })
     }
 
-    try {
-      await ensureValidReferenceTarget(validated, entityType.world_id)
-    } catch (referenceError) {
-      return res.status(400).json({ success: false, message: referenceError.message })
-    }
-
-    await field.update(validated)
+    await field.update(updates)
     await field.reload({
       include: [
-        { model: EntityType, as: 'referenceType', attributes: ['id', 'name', 'world_id'] },
+        { model: LocationType, as: 'referenceType', attributes: ['id', 'name', 'world_id'] },
       ],
     })
 
-    return res.json({ success: true, data: mapFieldResponse(field) })
+    res.json({ success: true, data: mapFieldResponse(field) })
   } catch (error) {
-    if (error.name === 'SequelizeUniqueConstraintError') {
-      return res
-        .status(409)
-        .json({ success: false, message: 'A field with this name already exists for the entity type' })
-    }
-    return res.status(500).json({ success: false, message: error.message })
+    console.error('Error updating location type field:', error)
+    res.status(500).json({ success: false, message: error.message })
   }
 }
 
-export const deleteEntityTypeField = async (req, res) => {
+export const deleteLocationTypeField = async (req, res) => {
   try {
     const { id } = req.params
-    const field = await EntityTypeField.findByPk(id)
+
+    const field = await LocationTypeField.findByPk(id, {
+      include: [
+        {
+          model: LocationType,
+          as: 'locationType',
+          attributes: ['id', 'world_id'],
+        },
+      ],
+    })
 
     if (!field) {
-      return res.status(404).json({ success: false, message: 'Field not found' })
+      return res.status(404).json({ success: false, message: 'Location type field not found' })
     }
 
-    const entityType = await EntityType.findByPk(field.entity_type_id)
-    if (!entityType) {
-      return res.status(404).json({ success: false, message: 'Entity type not found' })
-    }
-
-    const canManage = await ensureManageAccess(req.user, entityType.world_id)
+    const canManage = await ensureManageAccess(req.user, field.locationType.world_id)
     if (!canManage) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
     await field.destroy()
 
-    return res.status(204).send()
+    res.json({ success: true, message: 'Location type field deleted successfully' })
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message })
+    console.error('Error deleting location type field:', error)
+    res.status(500).json({ success: false, message: error.message })
   }
 }
+

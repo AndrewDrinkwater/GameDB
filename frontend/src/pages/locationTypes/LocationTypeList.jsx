@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Pencil, Plus, Trash2, X, List } from 'lucide-react'
 import {
   fetchLocationTypes,
   createLocationType,
@@ -155,6 +155,11 @@ export default function LocationTypeList() {
     setEditingType(type)
     setFormError('')
     setPanelOpen(true)
+  }
+
+  const goToFields = (type) => {
+    if (!type?.id) return
+    navigate(`/location-types/${type.id}/fields`)
   }
 
   const closePanel = () => {
@@ -495,6 +500,14 @@ export default function LocationTypeList() {
                     <td>{formatDate(createdAt)}</td>
                     <td className="actions-column">
                       <div className="entity-type-actions">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          title="Manage fields"
+                          onClick={() => goToFields(type)}
+                        >
+                          <List size={16} />
+                        </button>
                         {canManage && (
                           <>
                             <button
@@ -544,6 +557,14 @@ export default function LocationTypeList() {
                 <div className="card-header">
                   <h3>{type.name}</h3>
                   <div className="entity-type-actions">
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      title="Manage fields"
+                      onClick={() => goToFields(type)}
+                    >
+                      <List size={16} />
+                    </button>
                     {canManage && (
                       <>
                         <button

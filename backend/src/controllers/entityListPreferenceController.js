@@ -1,4 +1,4 @@
-import { EntityListPreference, EntityType, EntityTypeField } from '../models/index.js'
+import { EntityListPreference, EntityType, EntityTypeField, LocationType } from '../models/index.js'
 
 const CORE_COLUMNS = [
   { key: 'name', label: 'Name', description: 'Entity name' },
@@ -15,21 +15,27 @@ const FIELD_ORDER = [
 ]
 
 const buildMetadataColumns = (fields = []) =>
-  fields.map((field) => ({
-    key: `metadata.${field.name}`,
-    name: field.name,
-    label: field.label || field.name,
-    dataType: field.data_type,
-    data_type: field.data_type,
-    required: field.required,
-    options: field.options || {},
-    referenceTypeId: field.reference_type_id || null,
-    reference_type_id: field.reference_type_id || null,
-    referenceTypeName: field.referenceType?.name || null,
-    referenceType: field.referenceType ? { name: field.referenceType.name } : null,
-    referenceFilter: field.reference_filter || {},
-    reference_filter: field.reference_filter || {},
-  }))
+  fields.map((field) => {
+    const entityRef = field.entityReferenceType
+    const locationRef = field.locationReferenceType
+    const referenceType = entityRef || locationRef
+    
+    return {
+      key: `metadata.${field.name}`,
+      name: field.name,
+      label: field.label || field.name,
+      dataType: field.data_type,
+      data_type: field.data_type,
+      required: field.required,
+      options: field.options || {},
+      referenceTypeId: field.reference_type_id || null,
+      reference_type_id: field.reference_type_id || null,
+      referenceTypeName: referenceType?.name || null,
+      referenceType: referenceType ? { name: referenceType.name } : null,
+      referenceFilter: field.reference_filter || {},
+      reference_filter: field.reference_filter || {},
+    }
+  })
 
 const sanitiseColumnList = (columns, allowedKeys, fallback) => {
   const allowed = new Set(allowedKeys)
@@ -72,7 +78,13 @@ export const getEntityTypeListColumns = async (req, res) => {
       include: [
         {
           model: EntityType,
-          as: 'referenceType',
+          as: 'entityReferenceType',
+          attributes: ['id', 'name'],
+          required: false,
+        },
+        {
+          model: LocationType,
+          as: 'locationReferenceType',
           attributes: ['id', 'name'],
           required: false,
         },
@@ -149,7 +161,13 @@ export const updateEntityTypeListColumns = async (req, res) => {
       include: [
         {
           model: EntityType,
-          as: 'referenceType',
+          as: 'entityReferenceType',
+          attributes: ['id', 'name'],
+          required: false,
+        },
+        {
+          model: LocationType,
+          as: 'locationReferenceType',
           attributes: ['id', 'name'],
           required: false,
         },

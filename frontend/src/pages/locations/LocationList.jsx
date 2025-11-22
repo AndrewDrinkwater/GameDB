@@ -1,7 +1,7 @@
 // src/pages/locations/LocationList.jsx
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ChevronRight, MapPin, Plus, Trash2, Edit, ArrowUp } from 'lucide-react'
+import { ChevronRight, MapPin, Plus, Trash2, Edit, ArrowUp, X } from 'lucide-react'
 import {
   fetchLocations,
   deleteLocation,
@@ -25,7 +25,7 @@ export default function LocationList() {
     searchParams.get('parentId') || null
   )
   const [path, setPath] = useState([])
-  const [showForm, setShowForm] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false)
   const [editingLocation, setEditingLocation] = useState(null)
 
   const loadLocations = useCallback(async () => {
@@ -128,21 +128,21 @@ export default function LocationList() {
 
   const handleNew = () => {
     setEditingLocation(null)
-    setShowForm(true)
+    setPanelOpen(true)
   }
 
   const handleEdit = (location) => {
     setEditingLocation(location)
-    setShowForm(true)
+    setPanelOpen(true)
   }
 
   const handleFormClose = () => {
-    setShowForm(false)
+    setPanelOpen(false)
     setEditingLocation(null)
   }
 
   const handleFormSuccess = () => {
-    setShowForm(false)
+    setPanelOpen(false)
     setEditingLocation(null)
     loadLocations()
   }
@@ -277,14 +277,31 @@ export default function LocationList() {
         </div>
       )}
 
-      {showForm && (
-        <LocationForm
-          location={editingLocation}
-          parentId={selectedParentId}
-          locationTypes={locationTypes}
-          onClose={handleFormClose}
-          onSuccess={handleFormSuccess}
-        />
+      {panelOpen && (
+        <div className="side-panel-overlay" role="dialog" aria-modal="true">
+          <div className="side-panel">
+            <div className="side-panel-header">
+              <h2>{editingLocation ? 'Edit Location' : 'New Location'}</h2>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={handleFormClose}
+                title="Close form"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="side-panel-content">
+              <LocationForm
+                location={editingLocation}
+                parentId={selectedParentId}
+                locationTypes={locationTypes}
+                onClose={handleFormClose}
+                onSuccess={handleFormSuccess}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

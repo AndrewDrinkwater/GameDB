@@ -196,13 +196,15 @@ export async function up(queryInterface, Sequelize) {
     },
   })
 
-  // Add indexes for performance
-  await queryInterface.addIndex('locations', ['world_id'])
-  await queryInterface.addIndex('locations', ['parent_id'])
-  await queryInterface.addIndex('locations', ['location_type_id'])
-  await queryInterface.addIndex('location_types', ['world_id'])
-  await queryInterface.addIndex('location_types', ['parent_type_id'])
-  await queryInterface.addIndex('location_type_fields', ['location_type_id'])
+  // Add indexes for performance (with IF NOT EXISTS check)
+  await queryInterface.sequelize.query(`
+    CREATE INDEX IF NOT EXISTS "locations_world_id" ON "locations" ("world_id");
+    CREATE INDEX IF NOT EXISTS "locations_parent_id" ON "locations" ("parent_id");
+    CREATE INDEX IF NOT EXISTS "locations_location_type_id" ON "locations" ("location_type_id");
+    CREATE INDEX IF NOT EXISTS "location_types_world_id" ON "location_types" ("world_id");
+    CREATE INDEX IF NOT EXISTS "location_types_parent_type_id" ON "location_types" ("parent_type_id");
+    CREATE INDEX IF NOT EXISTS "location_type_fields_location_type_id" ON "location_type_fields" ("location_type_id");
+  `)
 
   // Add location_id to entities table
   await queryInterface.sequelize.query(`

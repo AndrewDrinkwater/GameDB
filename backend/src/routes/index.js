@@ -21,6 +21,7 @@ import notificationRoutes from './notificationRoutes.js'
 import requestRoutes from './requestRoutes.js'
 import locationRoutes from './locationRoutes.js'
 import locationTypeRoutes from './locationTypeRoutes.js'
+import locationTypeFieldRoutes from './locationTypeFieldRoutes.js'
 
 const router = Router()
 
@@ -44,5 +45,6 @@ router.use('/notifications', notificationRoutes)
 router.use('/requests', requestRoutes)
 router.use('/locations', locationRoutes)
 router.use('/location-types', locationTypeRoutes)
+router.use('/location-type-fields', locationTypeFieldRoutes)
 
 export default router

@@ -92,6 +92,8 @@ const formatFieldValue = (field) => {
         )
       }
       return String(value)
+    case 'entity_reference':
+    case 'location_reference':
     case 'reference': {
       if (Array.isArray(value)) {
         const labels = value

@@ -144,6 +144,8 @@ const serialiseFieldValueForInput = (value, field) => {
       return value === '' ? '' : String(value)
     case 'date':
       return normaliseDateInputValue(value)
+    case 'entity_reference':
+    case 'location_reference':
     case 'reference': {
       if (typeof value === 'object' && value !== null) {
         const identifier =
@@ -1067,7 +1069,11 @@ export default function EntityForm({
           </select>
         )
       }
-      case 'reference': {
+      case 'entity_reference':
+      case 'location_reference':
+      case 'entity_reference':
+    case 'location_reference':
+    case 'reference': {
         // Extract referenceTypeId from various possible locations and ensure it's a valid string
         const referenceTypeIdRaw = field.referenceTypeId ?? field.reference_type_id ?? null
         const referenceTypeId = referenceTypeIdRaw

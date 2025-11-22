@@ -11,6 +11,25 @@ const normaliseId = (value) => {
   return trimmed || null
 }
 
+const mapLocationType = (instance) => {
+  if (!instance) return null
+
+  const plain = instance.get ? instance.get({ plain: true }) : instance
+  const worldId = plain.world_id ?? (plain.world && plain.world.id) ?? null
+  const worldName = plain.world?.name ?? null
+  const mappedWorld = worldId
+    ? { id: worldId, name: worldName ?? plain.world?.name ?? null, created_by: plain.world?.created_by ?? null }
+    : null
+
+  return {
+    ...plain,
+    world_id: worldId,
+    world_name: worldName,
+    world_owner_id: plain.world?.created_by ?? plain.world_owner_id ?? null,
+    world: mappedWorld,
+  }
+}
+
 // Get all location types for a world
 export const getLocationTypes = async (req, res) => {
   try {
@@ -79,9 +98,9 @@ export const getLocationTypes = async (req, res) => {
     })
 
     const locationTypesWithCounts = locationTypes.map((locationType) => {
-      const plain = locationType.toJSON()
+      const mapped = mapLocationType(locationType)
       return {
-        ...plain,
+        ...mapped,
         childTypeCount: childCountMap.get(locationType.id) || 0,
       }
     })
@@ -118,7 +137,7 @@ export const getLocationTypeById = async (req, res) => {
         {
           model: World,
           as: 'world',
-          attributes: ['id', 'name'],
+          attributes: ['id', 'name', 'created_by'],
         },
       ],
     })
@@ -136,7 +155,7 @@ export const getLocationTypeById = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
-    res.json({ success: true, data: locationType })
+    res.json({ success: true, data: mapLocationType(locationType) })
   } catch (error) {
     console.error('Error fetching location type:', error)
     res.status(500).json({ success: false, message: error.message })
@@ -198,12 +217,12 @@ export const createLocationType = async (req, res) => {
         {
           model: World,
           as: 'world',
-          attributes: ['id', 'name'],
+          attributes: ['id', 'name', 'created_by'],
         },
       ],
     })
 
-    res.status(201).json({ success: true, data: fullLocationType })
+    res.status(201).json({ success: true, data: mapLocationType(fullLocationType) })
   } catch (error) {
     console.error('Error creating location type:', error)
     res.status(500).json({ success: false, message: error.message })
@@ -297,12 +316,12 @@ export const updateLocationType = async (req, res) => {
         {
           model: World,
           as: 'world',
-          attributes: ['id', 'name'],
+          attributes: ['id', 'name', 'created_by'],
         },
       ],
     })
 
-    res.json({ success: true, data: updatedLocationType })
+    res.json({ success: true, data: mapLocationType(updatedLocationType) })
   } catch (error) {
     console.error('Error updating location type:', error)
     res.status(500).json({ success: false, message: error.message })

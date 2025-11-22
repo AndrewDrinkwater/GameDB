@@ -9,6 +9,7 @@ import {
   EntitySecretPermission,
   EntityType,
   EntityTypeField,
+  LocationType,
   SessionNote,
   User,
   UserCampaignRole,
@@ -492,13 +493,30 @@ const fetchEntityTypeFields = async (entityTypeId) => {
     include: [
       {
         model: EntityType,
-        as: 'referenceType',
+        as: 'entityReferenceType',
+        attributes: ['id', 'name'],
+        required: false,
+      },
+      {
+        model: LocationType,
+        as: 'locationReferenceType',
         attributes: ['id', 'name'],
         required: false,
       },
     ],
   })
-  return records.map((record) => record.get({ plain: true }))
+  return records.map((record) => {
+    const plain = record.get({ plain: true })
+    // Map both reference types to a single referenceType for backward compatibility
+    const entityRef = plain.entityReferenceType
+    const locationRef = plain.locationReferenceType
+    if (entityRef) {
+      plain.referenceType = entityRef
+    } else if (locationRef) {
+      plain.referenceType = locationRef
+    }
+    return plain
+  })
 }
 
 const entityTypeFieldCache = new Map()
@@ -846,6 +864,10 @@ export const buildEntityPayload = async (entityInstance, fieldsCache, campaignId
           ? Boolean(field.visibleByDefault)
           : true
 
+    const entityRef = field.entityReferenceType
+    const locationRef = field.locationReferenceType
+    const referenceType = entityRef || locationRef
+    
     return {
       id: field.id,
       name: field.name,
@@ -854,9 +876,9 @@ export const buildEntityPayload = async (entityInstance, fieldsCache, campaignId
       required: field.required,
       options: field.options || {},
       referenceTypeId:
-        field.reference_type_id ?? field.referenceTypeId ?? field.referenceType?.id ?? null,
+        field.reference_type_id ?? field.referenceTypeId ?? referenceType?.id ?? null,
       referenceTypeName:
-        field.reference_type_name ?? field.referenceTypeName ?? field.referenceType?.name ?? '',
+        field.reference_type_name ?? field.referenceTypeName ?? referenceType?.name ?? '',
       referenceFilter:
         field.reference_filter ?? field.referenceFilter ?? field.referenceFilterJson ?? {},
       defaultValue:

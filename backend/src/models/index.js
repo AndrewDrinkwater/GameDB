@@ -130,7 +130,7 @@ if (EntityRelationshipType.associate)
   })
 if (EntityRelationship.associate)
   EntityRelationship.associate({ Entity, EntityRelationshipType })
-if (EntityTypeField.associate) EntityTypeField.associate({ EntityType })
+if (EntityTypeField.associate) EntityTypeField.associate({ EntityType, LocationType })
 if (EntityTypeFieldLayout.associate)
   EntityTypeFieldLayout.associate({ EntityType, EntityTypeField })
 if (EntityTypeFieldRule.associate) EntityTypeFieldRule.associate({ EntityType })
@@ -154,7 +154,7 @@ if (Request.associate) Request.associate({ User, RequestNote })
 if (RequestNote.associate) RequestNote.associate({ Request, User })
 if (Location.associate) Location.associate({ World, User, LocationType, Location, Entity })
 if (LocationType.associate) LocationType.associate({ World, LocationType, Location, LocationTypeField })
-if (LocationTypeField.associate) LocationTypeField.associate({ LocationType })
+if (LocationTypeField.associate) LocationTypeField.associate({ LocationType, EntityType })
 
 // --- Init DB ---
 export async function initDB() {

@@ -482,13 +482,15 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     data?.metadata,
   ])
 
+  const isReferenceType = type === 'reference' || type === 'entity_reference' || type === 'location_reference'
+  
   const referenceValue =
-    type === 'reference' && normalisedValue !== undefined && normalisedValue !== null
+    isReferenceType && normalisedValue !== undefined && normalisedValue !== null
       ? String(normalisedValue)
       : ''
 
   const staticReferenceOptions = useMemo(() => {
-    if (type !== 'reference') return []
+    if (!isReferenceType) return []
     const choices = field.options?.choices
     if (!Array.isArray(choices)) return []
     return choices
@@ -611,7 +613,7 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
     return help
   }
 
-  if (type === 'reference') {
+  if (isReferenceType) {
     const worldId = resolveWorldId()
     const placeholderName =
       typeof referenceTypeName === 'string' && referenceTypeName.trim()

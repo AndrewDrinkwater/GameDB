@@ -21,7 +21,7 @@ export default (sequelize, DataTypes) => {
         allowNull: true,
       },
       data_type: {
-        type: DataTypes.ENUM('string', 'number', 'boolean', 'text', 'date', 'enum', 'reference'),
+        type: DataTypes.ENUM('string', 'number', 'boolean', 'text', 'date', 'enum', 'entity_reference', 'location_reference'),
         allowNull: false,
       },
       reference_type_id: {
@@ -68,10 +68,19 @@ export default (sequelize, DataTypes) => {
       as: 'locationType',
     })
 
+    if (models.EntityType) {
+      LocationTypeField.belongsTo(models.EntityType, {
+        foreignKey: 'reference_type_id',
+        as: 'entityReferenceType',
+        constraints: false,
+      })
+    }
+
     if (models.LocationType) {
       LocationTypeField.belongsTo(models.LocationType, {
         foreignKey: 'reference_type_id',
-        as: 'referenceType',
+        as: 'locationReferenceType',
+        constraints: false,
       })
     }
   }
