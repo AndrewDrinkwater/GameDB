@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import ReactFlow, { Background, Controls, MiniMap, applyEdgeChanges, applyNodeChanges } from 'reactflow'
+import ReactFlow, { 
+  Background, 
+  Controls, 
+  MiniMap, 
+  applyEdgeChanges, 
+  applyNodeChanges,
+  BaseEdge,
+  EdgeLabelRenderer,
+  getSmoothStepPath,
+  useReactFlow
+} from 'reactflow'
 import 'reactflow/dist/style.css'
 import { getEntityGraph, getEntity } from '../../api/entities.js'
 import { getEntityTypeFieldOrder, getEntityTypeFieldRules } from '../../api/entityTypes.js'
@@ -19,9 +29,91 @@ import EntityInfoDrawer from '../../components/relationshipViewer/EntityInfoDraw
 import { resolveEntityResponse } from '../../utils/entityHelpers.js'
 import { extractListResponse } from '../../utils/apiUtils.js'
 
+// Custom edge component that positions label centered above the target (child) entity
+function CustomEdgeWithTargetLabel({ id, source, target, data, markerEnd, style, selected }) {
+  const { getNode } = useReactFlow()
+  const sourceNode = getNode(source)
+  const targetNode = getNode(target)
+
+  if (!sourceNode || !targetNode) {
+    return null
+  }
+
+  // Get node dimensions with fallback defaults
+  const sourceWidth = sourceNode.width ?? 200
+  const sourceHeight = sourceNode.height ?? 80
+  const targetWidth = targetNode.width ?? 200
+  const targetHeight = targetNode.height ?? 80
+
+  // Use positionAbsolute for accurate positioning (accounts for viewport transforms)
+  const sourcePosX = sourceNode.positionAbsolute?.x ?? sourceNode.position?.x ?? 0
+  const sourcePosY = sourceNode.positionAbsolute?.y ?? sourceNode.position?.y ?? 0
+  const targetPosX = targetNode.positionAbsolute?.x ?? targetNode.position?.x ?? 0
+  const targetPosY = targetNode.positionAbsolute?.y ?? targetNode.position?.y ?? 0
+
+  // Calculate center positions for proper edge connection
+  // Handles at Position.Top and Position.Bottom are centered horizontally
+  const sourceX = sourcePosX + sourceWidth / 2
+  const sourceY = sourcePosY + sourceHeight // Bottom center of source node (where bottom handle is)
+  const targetX = targetPosX + targetWidth / 2
+  const targetY = targetPosY // Top center of target node (where top handle is)
+
+  const [edgePath] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    sourcePosition: 'bottom',
+    targetX,
+    targetY,
+    targetPosition: 'top',
+  })
+
+  // Position label centered above the target node
+  // Offset it slightly above the top edge (about 18-20px for visual spacing)
+  const labelOffsetY = -18
+  const labelXPos = targetX // Center horizontally on target node center
+  const labelYPos = targetY + labelOffsetY // Position above target node top
+
+  // Get the label text - prioritize data.relationshipType, then data.label
+  const label = data?.relationshipType || data?.label || 'Related'
+
+  return (
+    <>
+      <BaseEdge
+        id={id}
+        path={edgePath}
+        markerEnd={markerEnd}
+        style={style}
+        selected={selected}
+      />
+      <EdgeLabelRenderer>
+        <div
+          style={{
+            position: 'absolute',
+            transform: `translate(-50%, -50%) translate(${labelXPos}px,${labelYPos}px)`,
+            fontSize: 12,
+            pointerEvents: 'all',
+            background: 'rgba(255, 255, 255, 0.9)',
+            padding: '2px 6px',
+            borderRadius: '4px',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)',
+            whiteSpace: 'nowrap',
+            zIndex: 10,
+          }}
+          className="nodrag nopan"
+        >
+          {label}
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  )
+}
+
 // Memoize nodeTypes and edgeTypes outside component to prevent recreation warnings
 const nodeTypes = { cluster: ClusterNode, entity: EntityNode }
-const edgeTypes = {}
+const edgeTypes = {
+  'smoothstep': CustomEdgeWithTargetLabel,
+}
 
 const DEFAULT_RELATIONSHIP_LABEL = 'Related'
 
