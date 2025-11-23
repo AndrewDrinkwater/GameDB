@@ -1,5 +1,5 @@
 import { Handle, Position } from 'reactflow'
-import { Plus, Info, Link as LinkIcon } from 'lucide-react'
+import { Plus, Info, Link as LinkIcon, ChevronDown, ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import './nodeStyles.css'
 
@@ -11,6 +11,8 @@ export default function LocationNode({ data }) {
   const isOrphan = !data?.parentId
   const dragHoverState = data?.dragHoverState // 'valid', 'invalid', or null
   const isFocused = data?.isFocused || false
+  const isCollapsed = data?.isCollapsed || false
+  const onToggleCollapse = data?.onToggleCollapse
 
   const handleAddChild = (event) => {
     event?.preventDefault()
@@ -31,6 +33,13 @@ export default function LocationNode({ data }) {
     event?.stopPropagation()
     if (!data?.onSetParent || !locationId) return
     data.onSetParent(String(locationId))
+  }
+
+  const handleToggleCollapse = (event) => {
+    event?.preventDefault()
+    event?.stopPropagation()
+    if (!onToggleCollapse || !locationId || childCount === 0) return
+    onToggleCollapse(String(locationId))
   }
 
   const hoverClass =
@@ -61,6 +70,34 @@ export default function LocationNode({ data }) {
             boxShadow: '0 2px 4px rgba(15, 23, 42, 0.2), 0 0 0 1px rgba(99, 102, 241, 0.1)',
           }}
         />
+      )}
+
+      {/* Collapse/Expand Toggle Button */}
+      {childCount > 0 && onToggleCollapse && (
+        <button
+          type="button"
+          className="location-node__collapse-toggle"
+          onClick={handleToggleCollapse}
+          onPointerDown={(event) => event.stopPropagation()}
+          aria-label={isCollapsed ? 'Expand children' : 'Collapse children'}
+          title={isCollapsed ? 'Expand children' : 'Collapse children'}
+        >
+          {isCollapsed ? (
+            <ChevronRight
+              size={14}
+              strokeWidth={2.5}
+              absoluteStrokeWidth
+              aria-hidden="true"
+            />
+          ) : (
+            <ChevronDown
+              size={14}
+              strokeWidth={2.5}
+              absoluteStrokeWidth
+              aria-hidden="true"
+            />
+          )}
+        </button>
       )}
 
       <div className="location-node__content">

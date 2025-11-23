@@ -127,6 +127,31 @@ function getLocationDescendants(locationId, locations) {
   return descendants
 }
 
+// Helper function to get all descendant IDs (returns Set of string IDs)
+function getAllDescendantIds(nodeId, locations) {
+  const descendantIds = new Set()
+  const visited = new Set()
+
+  function collectDescendantIds(parentId) {
+    const parentIdStr = String(parentId)
+    if (visited.has(parentIdStr)) return // Prevent infinite loops
+    visited.add(parentIdStr)
+
+    const children = locations.filter(
+      (loc) => loc && loc.parent_id && String(loc.parent_id) === parentIdStr
+    )
+
+    for (const child of children) {
+      const childIdStr = String(child.id)
+      descendantIds.add(childIdStr)
+      collectDescendantIds(child.id)
+    }
+  }
+
+  collectDescendantIds(nodeId)
+  return descendantIds
+}
+
 export default function LocationBuilderPage() {
   const {
     activeWorldId,
@@ -166,6 +191,8 @@ export default function LocationBuilderPage() {
   const [dragHoverTarget, setDragHoverTarget] = useState(null) // { nodeId, isValid }
   const [draggingNodeId, setDraggingNodeId] = useState(null)
   const [showSearchDropdown, setShowSearchDropdown] = useState(false)
+  const [collapsedNodeIds, setCollapsedNodeIds] = useState(() => new Set())
+  const hasInitializedCollapse = useRef(false)
 
 
   const membershipRole = useMemo(() => {
@@ -227,6 +254,8 @@ export default function LocationBuilderPage() {
         all: 'true', // Get all locations for hierarchy
       })
       setLocations(res?.data || [])
+      // Reset collapse initialization when locations are reloaded (e.g., world change)
+      hasInitializedCollapse.current = false
     } catch (err) {
       console.error('Failed to load locations:', err)
       setError(err.message)
@@ -253,6 +282,39 @@ export default function LocationBuilderPage() {
   useEffect(() => {
     loadLocationTypes()
   }, [loadLocationTypes])
+
+  // Initialize collapsed state for nodes with more than 5 children on first load
+  useEffect(() => {
+    if (!locations.length || hasInitializedCollapse.current) {
+      return
+    }
+
+    // Calculate child count for each location
+    const childCountMap = new Map()
+    locations.forEach((location) => {
+      if (!location || !location.id) return
+      const locationId = String(location.id)
+      childCountMap.set(locationId, 0)
+    })
+
+    locations.forEach((location) => {
+      if (!location || !location.parent_id) return
+      const parentId = String(location.parent_id)
+      const currentCount = childCountMap.get(parentId) || 0
+      childCountMap.set(parentId, currentCount + 1)
+    })
+
+    // Find locations with more than 5 children and add them to collapsed set
+    const nodesToCollapse = new Set()
+    childCountMap.forEach((count, locationId) => {
+      if (count > 5) {
+        nodesToCollapse.add(locationId)
+      }
+    })
+
+    setCollapsedNodeIds(nodesToCollapse)
+    hasInitializedCollapse.current = true
+  }, [locations])
 
   // Load location data when info drawer is opened
   useEffect(() => {
@@ -488,8 +550,15 @@ export default function LocationBuilderPage() {
 
       const rootId = rootLocation ? String(rootLocation.id) : null
 
-      // Layout nodes hierarchically
-      const layoutedNodes = layoutLocationsHierarchically(filteredLocations, rootId)
+      // Collect all descendant IDs of collapsed nodes
+      const hiddenNodeIds = new Set()
+      collapsedNodeIds.forEach((collapsedId) => {
+        const descendants = getAllDescendantIds(collapsedId, filteredLocations)
+        descendants.forEach((id) => hiddenNodeIds.add(id))
+      })
+
+      // Layout nodes hierarchically (pass collapsedNodeIds to layout algorithm)
+      const layoutedNodes = layoutLocationsHierarchically(filteredLocations, rootId, collapsedNodeIds)
 
       if (!Array.isArray(layoutedNodes) || layoutedNodes.length === 0) {
         setNodes([])
@@ -506,17 +575,21 @@ export default function LocationBuilderPage() {
       })
 
       // Add event handlers to nodes and ensure all required properties
+      // Filter out nodes that are descendants of collapsed nodes
       const nodesWithHandlers = layoutedNodes
         .filter((node) => {
           // Strict validation - ensure node exists and has required properties
           if (!node || !node.id) return false
+          // Filter out descendants of collapsed nodes
+          const nodeId = String(node.id)
+          if (hiddenNodeIds.has(nodeId)) return false
           return true
         })
         .map((node) => {
-          const nodeId = String(node.id)
+          const nodeIdStr = String(node.id)
           // If node is currently being dragged, preserve its current position
-          const isBeingDragged = draggingNodeId === nodeId
-          const existingNode = currentNodesMap.get(nodeId)
+          const isBeingDragged = draggingNodeId === nodeIdStr
+          const existingNode = currentNodesMap.get(nodeIdStr)
           
           let position
           if (isBeingDragged && existingNode && existingNode.position) {
@@ -531,8 +604,10 @@ export default function LocationBuilderPage() {
             }
           }
 
+          const isCollapsed = collapsedNodeIds.has(nodeIdStr)
+
           return {
-            id: nodeId,
+            id: nodeIdStr,
             type: node.type || 'location',
             width: 120,
             height: 120,
@@ -541,18 +616,20 @@ export default function LocationBuilderPage() {
             data: {
               label: node.data?.label || String(node.id),
               typeName: node.data?.typeName || 'Location',
-              locationId: String(node.id),
+              locationId: nodeIdStr,
               parentId: node.data?.parentId || node.parentId || null,
               childCount: node.data?.childCount || 0,
               description: node.data?.description || '',
               locationTypeId: node.data?.locationTypeId || null,
               dragHoverState:
-                draggingNodeId && dragHoverTarget?.nodeId === String(node.id)
+                draggingNodeId && dragHoverTarget?.nodeId === nodeIdStr
                   ? dragHoverTarget.isValid
                     ? 'valid'
                     : 'invalid'
                   : null,
-              isFocused: focusedLocationId === String(node.id),
+              isFocused: focusedLocationId === nodeIdStr,
+              isCollapsed,
+              onToggleCollapse: toggleNodeCollapse,
               onAddChild: canCreateLocations
                 ? (parentId) => {
                     setQuickFormParentId(parentId)
@@ -589,11 +666,22 @@ export default function LocationBuilderPage() {
 
       // Build edges from parent_id relationships
       const locationEdges = buildLocationEdges(filteredLocations)
+      
+      // Filter out edges where source or target is a descendant of collapsed node
+      const filteredEdges = locationEdges.filter((edge) => {
+        const sourceId = String(edge.source)
+        const targetId = String(edge.target)
+        // Don't show edges to/from hidden nodes
+        if (hiddenNodeIds.has(sourceId) || hiddenNodeIds.has(targetId)) {
+          return false
+        }
+        return true
+      })
 
       // Only set nodes if we have valid nodes
       if (nodesWithHandlers.length > 0) {
         setNodes(nodesWithHandlers)
-        setEdges(locationEdges || [])
+        setEdges(filteredEdges || [])
       } else {
         setNodes([])
         setEdges([])
@@ -604,7 +692,7 @@ export default function LocationBuilderPage() {
       setNodes([])
       setEdges([])
     }
-  }, [filteredLocations, selectedLocationId, focusedLocationId, canCreateLocations, navigate, draggingNodeId, dragHoverTarget])
+  }, [filteredLocations, selectedLocationId, focusedLocationId, canCreateLocations, navigate, draggingNodeId, dragHoverTarget, collapsedNodeIds])
 
   const onNodesChange = useCallback((changes) => {
     setNodes((nds) => applyNodeChanges(changes, nds))
@@ -639,6 +727,25 @@ export default function LocationBuilderPage() {
 
   const handleShowAll = useCallback(() => {
     setFocusedLocationId(null)
+  }, [])
+
+  const toggleNodeCollapse = useCallback((nodeId) => {
+    // Preserve viewport when toggling collapse
+    if (reactFlowInstance.current) {
+      const viewport = reactFlowInstance.current.getViewport()
+      shouldPreserveViewport.current = true
+      window.__locationBuilderViewport = viewport
+    }
+    
+    setCollapsedNodeIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(nodeId)) {
+        next.delete(nodeId)
+      } else {
+        next.add(nodeId)
+      }
+      return next
+    })
   }, [])
 
   const handleNodeDragStart = useCallback((event, node) => {
@@ -904,7 +1011,12 @@ export default function LocationBuilderPage() {
         setError(
           `Cannot assign parent: The location type "${draggedLocation.locationType?.name || 'Unknown'}" cannot be a child of "${targetLocation.locationType?.name || 'Unknown'}"`
         )
-        // Invalid type - reset position only after showing error
+        // Invalid type - preserve viewport and reload
+        if (reactFlowInstance.current) {
+          const viewport = reactFlowInstance.current.getViewport()
+          shouldPreserveViewport.current = true
+          window.__locationBuilderViewport = viewport
+        }
         loadLocations()
         return
       }
@@ -939,7 +1051,12 @@ export default function LocationBuilderPage() {
 
       if (wouldCreateCycle) {
         setError('Cannot assign parent: This would create a circular reference (cannot make a location a child of its own descendant)')
-        // Would create cycle - reset position only after showing error
+        // Would create cycle - preserve viewport and reload
+        if (reactFlowInstance.current) {
+          const viewport = reactFlowInstance.current.getViewport()
+          shouldPreserveViewport.current = true
+          window.__locationBuilderViewport = viewport
+        }
         loadLocations()
         return
       }
