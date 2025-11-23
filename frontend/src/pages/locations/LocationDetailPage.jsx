@@ -12,7 +12,7 @@ import {
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import EntityPageLayout from '../../components/entities/EntityPageLayout.jsx'
-import EntityHeader from '../../components/entities/EntityHeader.jsx'
+import LocationHeader from '../../components/locations/LocationHeader.jsx'
 import TabNav from '../../components/TabNav.jsx'
 import LocationImportanceSelector from '../../components/locations/LocationImportanceSelector.jsx'
 import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
@@ -866,8 +866,8 @@ export default function LocationDetailPage() {
                 </button>
               )}
             </div>
-            <EntityHeader
-              entityId={id}
+            <LocationHeader
+              locationId={id}
               name={location.name}
               canEdit={canEdit}
               isEditing={isEditing}

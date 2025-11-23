@@ -30,44 +30,22 @@ export default function LocationForm({ location, parentId, locationTypes, onClos
   const loadAvailableParents = useCallback(async (selectedTypeId = null) => {
     if (!activeWorldId) return
     try {
-      console.log('🔍 [Parent Selection] Starting to load available parents...')
       const res = await fetchLocations({
         worldId: activeWorldId,
         all: 'true', // Get all locations, not just root ones
       })
       const allLocations = res?.data || []
-      console.log('🔍 [Parent Selection] Fetched all locations:', {
-        totalCount: allLocations.length,
-        sampleLocations: allLocations.slice(0, 5).map(loc => ({
-          id: loc.id,
-          name: loc.name,
-          typeId: loc.location_type_id || loc.locationType?.id,
-          typeName: loc.locationType?.name,
-          parentId: loc.parent_id || loc.parent?.id
-        }))
-      })
       
       // Filter out the current location and its ancestors to prevent circular references
       let filtered = allLocations
       
       if (location?.id) {
         const currentLocationIdStr = String(location.id)
-        console.log('🔍 [Parent Selection] Current location:', {
-          id: location.id,
-          name: location.name,
-          typeId: location.location_type_id || location.locationType?.id,
-          typeName: location.locationType?.name
-        })
         
         // First, exclude the current location itself
-        const beforeSelfExclusion = filtered.length
         filtered = filtered.filter((loc) => {
           const locIdStr = String(loc.id)
           return locIdStr !== currentLocationIdStr
-        })
-        console.log('🔍 [Parent Selection] After excluding self:', {
-          before: beforeSelfExclusion,
-          after: filtered.length
         })
         
         // Then, exclude all ancestors (the path from root to current location)
@@ -77,26 +55,15 @@ export default function LocationForm({ location, parentId, locationTypes, onClos
           const pathRes = await fetchLocationPath(location.id)
           const path = pathRes?.data || []
           
-          console.log('🔍 [Parent Selection] Location path (ancestors):', {
-            pathLength: path.length,
-            path: path.map(p => ({ id: p.id, name: p.name, typeId: p.location_type_id || p.locationType?.id }))
-          })
-          
           // Create a set of all IDs in the path (including current location)
           const pathIds = new Set(
             path.map((p) => String(p.id))
           )
           
           // Filter out any location that's in the path (ancestors + current)
-          const beforePathExclusion = filtered.length
           filtered = filtered.filter((loc) => {
             const locIdStr = String(loc.id)
             return !pathIds.has(locIdStr)
-          })
-          console.log('🔍 [Parent Selection] After excluding path ancestors:', {
-            before: beforePathExclusion,
-            after: filtered.length,
-            excludedIds: Array.from(pathIds)
           })
         } catch (err) {
           console.error('❌ [Parent Selection] Failed to load location path for ancestor exclusion:', err)
@@ -108,54 +75,18 @@ export default function LocationForm({ location, parentId, locationTypes, onClos
       // (parent, grandparent, etc.) of the current location's type
       // Use the passed selectedTypeId, or fall back to location's type
       const typeIdToUse = selectedTypeId || location?.location_type_id
-      console.log('🔍 [Parent Selection] Type filtering:', {
-        typeIdToUse,
-        selectedTypeId,
-        hasLocationTypes: !!locationTypes,
-        locationTypesCount: locationTypes?.length || 0,
-        locationTypes: locationTypes?.map(t => ({
-          id: t.id,
-          name: t.name,
-          parentTypeId: t.parent_type_id || t.parentType?.id
-        })) || []
-      })
       
       if (typeIdToUse && locationTypes && locationTypes.length > 0) {
         const currentTypeId = String(typeIdToUse)
         const currentType = locationTypes.find(t => String(t.id) === currentTypeId)
-        console.log('🔍 [Parent Selection] Current type:', {
-          id: currentTypeId,
-          name: currentType?.name,
-          parentTypeId: currentType?.parent_type_id || currentType?.parentType?.id
-        })
         
         const ancestorTypeIds = getAncestorTypeIds(currentTypeId, locationTypes)
-        console.log('🔍 [Parent Selection] Ancestor type IDs found:', {
-          ancestorTypeIds,
-          ancestorTypes: ancestorTypeIds.map(id => {
-            const type = locationTypes.find(t => String(t.id) === id)
-            return { id, name: type?.name || 'unknown' }
-          })
-        })
         
         // Explicitly exclude the current type itself (to avoid showing peers)
         const currentTypeIdStr = String(currentTypeId)
         
         if (ancestorTypeIds.length > 0) {
           const ancestorTypeIdSet = new Set(ancestorTypeIds.map(id => String(id)))
-          const beforeTypeFilter = filtered.length
-          
-          // Log locations before type filtering
-          console.log('🔍 [Parent Selection] Locations before type filter:', {
-            count: filtered.length,
-            locationsByType: filtered.reduce((acc, loc) => {
-              const typeId = String(loc.location_type_id || loc.locationType?.id || 'unknown')
-              const typeName = loc.locationType?.name || 'unknown'
-              if (!acc[typeName]) acc[typeName] = []
-              acc[typeName].push({ id: loc.id, name: loc.name })
-              return acc
-            }, {})
-          })
           
           filtered = filtered.filter((loc) => {
             const locTypeId = loc.location_type_id || loc.locationType?.id
@@ -168,48 +99,22 @@ export default function LocationForm({ location, parentId, locationTypes, onClos
             // Also explicitly exclude the current type to avoid showing peers
             return matches
           })
-          
-          console.log('🔍 [Parent Selection] After type filter:', {
-            before: beforeTypeFilter,
-            after: filtered.length,
-            filteredLocations: filtered.map(loc => ({
-              id: loc.id,
-              name: loc.name,
-              typeId: loc.location_type_id || loc.locationType?.id,
-              typeName: loc.locationType?.name,
-              parentId: loc.parent_id || loc.parent?.id
-            }))
-          })
         } else {
           // If no ancestor types found, show no parents (current type has no parent types)
-          console.log('⚠️ [Parent Selection] No ancestor types found - current type has no parent types')
           filtered = []
         }
       } else {
-        console.log('⚠️ [Parent Selection] Cannot filter by type - missing typeId or locationTypes')
         // When creating a new location, if we can't filter by type, show all locations
         // (user hasn't selected a type yet, so we can't enforce hierarchy)
         // When editing, if we can't filter, show nothing to prevent invalid selections
         if (!location) {
           // Creating new location - show all locations until type is selected
           // filtered already contains all locations (minus circular refs)
-          console.log('✅ [Parent Selection] Creating new location - showing all locations until type selected')
         } else {
           // Editing existing location - don't show any if we can't filter safely
-          console.log('⚠️ [Parent Selection] Editing location but can\'t filter - showing no parents')
           filtered = []
         }
       }
-      
-      console.log('✅ [Parent Selection] Final available parents:', {
-        count: filtered.length,
-        parents: filtered.map(loc => ({
-          id: loc.id,
-          name: loc.name,
-          typeId: loc.location_type_id || loc.locationType?.id,
-          typeName: loc.locationType?.name
-        }))
-      })
       
       setAvailableParents(filtered)
     } catch (err) {

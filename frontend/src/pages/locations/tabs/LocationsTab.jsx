@@ -174,35 +174,13 @@ export default function LocationsTab({
   // Only show types that are DIRECT children (not grandchildren, etc.)
   const allowedChildTypeIds = useMemo(() => {
     if (!location?.location_type_id || !locationTypes || locationTypes.length === 0) {
-      console.log('⚠️ [Child Location Search] Cannot get child types - missing data:', {
-        hasLocation: !!location,
-        locationTypeId: location?.location_type_id,
-        hasLocationTypes: !!locationTypes,
-        locationTypesCount: locationTypes?.length || 0
-      })
       return []
     }
     const currentTypeId = String(location.location_type_id)
     const currentType = locationTypes.find(t => String(t.id) === currentTypeId)
-    console.log('🔍 [Child Location Search] Current location type:', {
-      id: currentTypeId,
-      name: currentType?.name,
-      locationTypes: locationTypes.map(t => ({
-        id: t.id,
-        name: t.name,
-        parentTypeId: t.parent_type_id || t.parentType?.id
-      }))
-    })
     
     // Get only DIRECT child types (not all descendants)
     const directChildTypeIds = getDirectChildTypeIds(currentTypeId, locationTypes)
-    console.log('✅ [Child Location Search] Direct child type IDs found:', {
-      directChildTypeIds,
-      childTypes: directChildTypeIds.map(id => {
-        const type = locationTypes.find(t => String(t.id) === id)
-        return { id, name: type?.name || 'unknown' }
-      })
-    })
     
     return directChildTypeIds
   }, [location?.location_type_id, locationTypes])
