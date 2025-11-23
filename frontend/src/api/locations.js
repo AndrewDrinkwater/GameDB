@@ -150,8 +150,7 @@ export async function updateLocationImportance(locationId, importance) {
 }
 
 // Location notes
-export async function fetchLocationNotes(id, params = {}) {
-  const headers = await authHeaders()
+export const fetchLocationNotes = (id, params = {}) => {
   const query = new URLSearchParams()
   const campaignId = params.campaignId ?? params.campaign_id
   if (campaignId) {
@@ -159,15 +158,10 @@ export async function fetchLocationNotes(id, params = {}) {
   }
 
   const queryString = query.toString()
-  const res = await fetch(
-    `${API_BASE}/locations/${id}/notes${queryString ? `?${queryString}` : ''}`,
-    { headers }
-  )
-  return handleResponse(res, 'fetch location notes')
+  return api.get(`/locations/${id}/notes${queryString ? `?${queryString}` : ''}`)
 }
 
-export async function fetchLocationMentionNotes(id, params = {}) {
-  const headers = await authHeaders()
+export const fetchLocationMentionNotes = (id, params = {}) => {
   const query = new URLSearchParams()
   const campaignId = params.campaignId ?? params.campaign_id
   if (campaignId) {
@@ -175,35 +169,15 @@ export async function fetchLocationMentionNotes(id, params = {}) {
   }
 
   const queryString = query.toString()
-  const res = await fetch(
-    `${API_BASE}/locations/${id}/mention-notes${queryString ? `?${queryString}` : ''}`,
-    { headers }
-  )
-  return handleResponse(res, 'fetch location mention notes')
+  return api.get(`/locations/${id}/mention-notes${queryString ? `?${queryString}` : ''}`)
 }
 
-export async function createLocationNote(id, data) {
-  const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/locations/${id}/notes`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(data),
-  })
-  return handleResponse(res, 'create location note')
-}
+export const createLocationNote = (id, data) => api.post(`/locations/${id}/notes`, data)
 
-export async function updateLocationNote(locationId, noteId, data) {
-  const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/locations/${locationId}/notes/${noteId}`, {
-    method: 'PUT',
-    headers,
-    body: JSON.stringify(data),
-  })
-  return handleResponse(res, 'update location note')
-}
+export const updateLocationNote = (locationId, noteId, data) =>
+  api.patch(`/locations/${locationId}/notes/${noteId}`, data)
 
-export async function deleteLocationNote(locationId, noteId, params = {}) {
-  const headers = await authHeaders()
+export const deleteLocationNote = (locationId, noteId, params = {}) => {
   const query = new URLSearchParams()
   const campaignId = params.campaignId ?? params.campaign_id
   if (campaignId) {
@@ -211,13 +185,6 @@ export async function deleteLocationNote(locationId, noteId, params = {}) {
   }
 
   const queryString = query.toString()
-  const res = await fetch(
-    `${API_BASE}/locations/${locationId}/notes/${noteId}${queryString ? `?${queryString}` : ''}`,
-    {
-      method: 'DELETE',
-      headers,
-    }
-  )
-  return handleResponse(res, 'delete location note')
+  return api.delete(`/locations/${locationId}/notes/${noteId}${queryString ? `?${queryString}` : ''}`)
 }
 

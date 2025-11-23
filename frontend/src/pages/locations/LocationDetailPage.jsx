@@ -8,6 +8,8 @@ import {
   fetchLocationPath,
   fetchLocationEntities,
   updateLocation,
+  fetchLocationNotes,
+  createLocationNote,
 } from '../../api/locations.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
@@ -27,6 +29,7 @@ import AccessTab from './tabs/AccessTab.jsx'
 import SystemTab from './tabs/SystemTab.jsx'
 import EntitiesTab from './tabs/EntitiesTab.jsx'
 import LocationsTab from './tabs/LocationsTab.jsx'
+import LocationNotesTab from './tabs/NotesTab.jsx'
 import {
   buildMetadataDisplayMap,
   buildMetadataInitialMap,
@@ -148,7 +151,7 @@ export default function LocationDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user, token, sessionReady } = useAuth()
-  const { activeWorldId, selectedCampaignId } = useCampaignContext()
+  const { activeWorldId, selectedCampaignId, selectedCampaign } = useCampaignContext()
   const isMobile = useIsMobile()
 
   const [location, setLocation] = useState(null)
@@ -163,6 +166,12 @@ export default function LocationDetailPage() {
   const [activeTab, setActiveTab] = useState('dossier')
   const [isEditing, setIsEditing] = useState(false)
   const [headerExpanded, setHeaderExpanded] = useState(false)
+  const [notesState, setNotesState] = useState({
+    items: [],
+    loading: false,
+    error: '',
+  })
+  const [notesSaving, setNotesSaving] = useState(false)
 
   const formRef = useRef(null)
   const [formState, setFormState] = useState({
@@ -470,9 +479,194 @@ export default function LocationDetailPage() {
     setActiveTab(tabId)
   }, [])
 
+  const campaignMatchesLocationWorld = useMemo(() => {
+    if (!selectedCampaign || !location) return false
+    const campaignWorldId = selectedCampaign.world?.id || selectedCampaign.world_id
+    const locationWorldId = location.world?.id || location.world_id
+    if (!campaignWorldId || !locationWorldId) return false
+    return String(campaignWorldId) === String(locationWorldId)
+  }, [selectedCampaign, location])
+
+  const campaignMembership = useMemo(() => {
+    if (!selectedCampaign || !user?.id) return null
+    const members = Array.isArray(selectedCampaign.members)
+      ? selectedCampaign.members
+      : []
+    const match = members.find((member) => {
+      if (!member) return false
+      const memberUserId =
+        member.user_id ?? member.userId ?? member.user?.id ?? member.id ?? null
+      if (!memberUserId) return false
+      return String(memberUserId) === String(user.id)
+    })
+    return match || null
+  }, [selectedCampaign, user?.id])
+
+  const membershipRole = campaignMembership?.role ?? null
+
+  const isCampaignDm = useMemo(() => {
+    if (user?.role === 'system_admin') return true
+    return membershipRole === 'dm'
+  }, [membershipRole, user?.role])
+
+  const isCampaignPlayer = useMemo(
+    () => membershipRole === 'player',
+    [membershipRole],
+  )
+
+  const canCreateNotes = useMemo(
+    () => Boolean(isCampaignDm || isCampaignPlayer),
+    [isCampaignDm, isCampaignPlayer],
+  )
+
+  const fetchNotes = useCallback(async () => {
+    const response = await fetchLocationNotes(id, {
+      campaignId: selectedCampaignId,
+    })
+    const data = Array.isArray(response?.data)
+      ? response.data
+      : Array.isArray(response)
+        ? response
+        : []
+    return data
+  }, [id, selectedCampaignId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!id || !selectedCampaignId || !campaignMatchesLocationWorld) {
+      setNotesState({ items: [], loading: false, error: '' })
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setNotesState((previous) => ({ ...previous, loading: true, error: '' }))
+
+    const loadNotes = async () => {
+      try {
+        const list = await fetchNotes()
+        if (!cancelled) {
+          setNotesState({ items: list, loading: false, error: '' })
+        }
+      } catch (err) {
+        if (!cancelled) {
+          // Check if this is a 403 error with campaign context active
+          const isForbidden = err.status === 403 || err.status === '403' || err.message === 'Forbidden'
+          const hasCampaignContext = Boolean(selectedCampaignId)
+          
+          const errorMessage = isForbidden && hasCampaignContext
+            ? 'CAMPAIGN_CONTEXT_ACCESS_DENIED'
+            : err.message || 'Failed to load notes'
+          
+          setNotesState((previous) => ({
+            ...previous,
+            loading: false,
+            error: errorMessage,
+          }))
+        }
+      }
+    }
+
+    loadNotes()
+
+    return () => {
+      cancelled = true
+    }
+  }, [id, selectedCampaignId, campaignMatchesLocationWorld, fetchNotes])
+
+  const handleNoteCreate = useCallback(
+    async (payload) => {
+      if (!id) {
+        return { success: false, message: 'Location not found' }
+      }
+      if (!selectedCampaignId) {
+        return { success: false, message: 'Select a campaign first' }
+      }
+
+      setNotesSaving(true)
+
+      try {
+        const requestPayload = {
+          ...payload,
+          campaignId: payload?.campaignId ?? selectedCampaignId,
+        }
+
+        const response = await createLocationNote(id, requestPayload)
+        const note = response?.data || response
+
+        if (!note) {
+          throw new Error('Note could not be created')
+        }
+
+        const timestamp =
+          note?.createdAt ?? note?.created_at ?? new Date().toISOString()
+        const normalizedNote =
+          note?.createdAt && note?.created_at
+            ? note
+            : {
+                ...note,
+                ...(note?.createdAt ? {} : { createdAt: timestamp }),
+                ...(note?.created_at ? {} : { created_at: timestamp }),
+              }
+
+        setNotesState((previous) => {
+          const existing = Array.isArray(previous.items) ? previous.items : []
+          return {
+            ...previous,
+            items: [normalizedNote, ...existing],
+          }
+        })
+
+        return { success: true, note: normalizedNote }
+      } catch (err) {
+        console.error('Failed to create location note', err)
+        return { success: false, message: err.message || 'Failed to create note' }
+      } finally {
+        setNotesSaving(false)
+      }
+    },
+    [id, selectedCampaignId],
+  )
+
+  const handleNoteUpdate = useCallback(
+    async (updatedNote) => {
+      if (!updatedNote?.id) return
+
+      setNotesState((previous) => {
+        const existing = Array.isArray(previous.items) ? previous.items : []
+        const index = existing.findIndex(
+          (note) => note?.id && String(note.id) === String(updatedNote.id),
+        )
+
+        if (index < 0) {
+          return previous
+        }
+
+        const next = [...existing]
+        next[index] = updatedNote
+        return { ...previous, items: next }
+      })
+    },
+    [],
+  )
+
+  const handleNoteDelete = useCallback(async (noteId) => {
+    if (!noteId) return
+
+    setNotesState((previous) => {
+      const existing = Array.isArray(previous.items) ? previous.items : []
+      const filtered = existing.filter(
+        (note) => !note?.id || String(note.id) !== String(noteId),
+      )
+      return { ...previous, items: filtered }
+    })
+  }, [])
+
   const tabItems = useMemo(() => {
     const items = [{ id: 'dossier', label: 'Dossier' }]
     
+    items.push({ id: 'notes', label: 'Notes' })
     items.push({ id: 'entities', label: 'Entities' })
     items.push({ id: 'locations', label: 'Locations' })
 
@@ -1011,6 +1205,26 @@ export default function LocationDetailPage() {
             </div>
 
             {/* ENTITIES TAB */}
+            {activeTab === 'notes' && (
+              <LocationNotesTab
+                location={location}
+                worldId={worldId}
+                selectedCampaign={selectedCampaign}
+                selectedCampaignId={selectedCampaignId}
+                isCampaignDm={isCampaignDm}
+                isCampaignPlayer={isCampaignPlayer}
+                canCreateNote={canCreateNotes}
+                notes={notesState.items}
+                loading={notesState.loading}
+                error={notesState.error}
+                onCreateNote={handleNoteCreate}
+                onNoteUpdate={handleNoteUpdate}
+                onNoteDelete={handleNoteDelete}
+                creating={notesSaving}
+                campaignMatchesLocationWorld={campaignMatchesLocationWorld}
+              />
+            )}
+
             {activeTab === 'entities' && (
               <EntitiesTab
                 entities={entities}
