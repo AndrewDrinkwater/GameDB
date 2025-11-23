@@ -194,9 +194,22 @@ export const listLocationTypeFields = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Location type not found' })
     }
 
-    const canManage = await ensureManageAccess(req.user, locationType.world_id)
-    if (!canManage) {
-      return res.status(403).json({ success: false, message: 'Forbidden' })
+    const worldId = locationType.world_id
+
+    if (!worldId) {
+      if (!isSystemAdmin(req.user)) {
+        return res.status(403).json({ success: false, message: 'Forbidden' })
+      }
+    } else {
+      const access = await checkWorldAccess(worldId, req.user)
+
+      if (!access.world) {
+        return res.status(404).json({ success: false, message: 'World not found' })
+      }
+
+      if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+        return res.status(403).json({ success: false, message: 'Forbidden' })
+      }
     }
 
     const fields = await LocationTypeField.findAll({

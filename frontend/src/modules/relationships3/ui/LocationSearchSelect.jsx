@@ -23,7 +23,7 @@ export default function LocationSearchSelect({
   label,
   value,
   onChange,
-  allowedTypeIds = [],
+  allowedTypeIds,
   disabled = false,
   placeholder = 'Search locations…',
   staticOptions,
@@ -42,8 +42,10 @@ export default function LocationSearchSelect({
   const debounceRef = useRef(null)
   const onResolvedRef = useRef(onResolved)
 
+  // Track if allowedTypeIds was explicitly provided (even if empty)
+  const hasAllowedTypeIdsRestriction = allowedTypeIds !== undefined
   const allowedTypeIdsMemo = useMemo(
-    () => [...allowedTypeIds],
+    () => (Array.isArray(allowedTypeIds) ? [...allowedTypeIds] : []),
     [JSON.stringify(allowedTypeIds)],
   )
 
@@ -103,25 +105,31 @@ export default function LocationSearchSelect({
 
   // Filter locations by type if allowedTypeIds is specified
   const filteredLocations = useMemo(() => {
-    if (!allowedTypeIdsMemo.length) {
-      return allLocations
+    // If allowedTypeIds was explicitly provided (even if empty), respect it
+    if (hasAllowedTypeIdsRestriction) {
+      // If it's an empty array, return empty (lowest level type - no children allowed)
+      if (allowedTypeIdsMemo.length === 0) {
+        return []
+      }
+      // If it has items, filter by those types
+      const allowedTypeIdSet = new Set(allowedTypeIdsMemo.map(id => String(id)))
+      
+      const filtered = allLocations.filter((location) => {
+        const typeId =
+          location.location_type_id ||
+          location.locationTypeId ||
+          location.locationType?.id ||
+          ''
+        const typeIdStr = String(typeId)
+        const matches = allowedTypeIdSet.has(typeIdStr)
+        return matches
+      })
+      
+      return filtered
     }
-    
-    const allowedTypeIdSet = new Set(allowedTypeIdsMemo.map(id => String(id)))
-    
-    const filtered = allLocations.filter((location) => {
-      const typeId =
-        location.location_type_id ||
-        location.locationTypeId ||
-        location.locationType?.id ||
-        ''
-      const typeIdStr = String(typeId)
-      const matches = allowedTypeIdSet.has(typeIdStr)
-      return matches
-    })
-    
-    return filtered
-  }, [allLocations, allowedTypeIdsMemo])
+    // If allowedTypeIds is not provided, show all locations
+    return allLocations
+  }, [allLocations, allowedTypeIdsMemo, hasAllowedTypeIdsRestriction])
 
   // Filter locations by query
   const searchResults = useMemo(() => {

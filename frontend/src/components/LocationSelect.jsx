@@ -72,6 +72,8 @@ const LocationSelect = ({
   excludeIds,
 }) => {
   // Use stable array references to prevent unnecessary re-renders
+  // Track if allowedTypeIds was explicitly provided (even if empty)
+  const hasAllowedTypeIdsRestriction = allowedTypeIds !== undefined
   const stableAllowedTypeIds = useMemo(() => allowedTypeIds || EMPTY_ARRAY, [allowedTypeIds])
   const stableExcludeIds = useMemo(() => excludeIds || EMPTY_ARRAY, [excludeIds])
   const [inputValue, setInputValue] = useState('')
@@ -247,7 +249,9 @@ const LocationSelect = ({
           allowedTypeIds: stableAllowedTypeIds,
           allowedTypeIdSet: allowedTypeIdSet ? Array.from(allowedTypeIdSet) : null,
           excludeIds: Array.from(excludeSet),
-          hasAllowedTypes: !!allowedTypeIdSet && allowedTypeIdSet.size > 0
+          hasAllowedTypes: !!allowedTypeIdSet && allowedTypeIdSet.size > 0,
+          hasAllowedTypeIdsRestriction,
+          isExplicitlyEmpty: hasAllowedTypeIdsRestriction && stableAllowedTypeIds.length === 0
         })
         
         // Group locations by type before filtering for logging
@@ -269,34 +273,38 @@ const LocationSelect = ({
           }
           // Filter by allowed type IDs - include ONLY locations with these types
           // This should be direct child types only (not grandchildren, etc.)
-          if (allowedTypeIdSet && allowedTypeIdSet.size > 0) {
-            const locTypeId = loc.location_type_id || loc.locationType?.id
-            const locTypeIdStr = locTypeId ? String(locTypeId) : ''
-            const isAllowed = locTypeIdStr && allowedTypeIdSet.has(locTypeIdStr)
-            
-            if (!isAllowed) {
-              console.log('🔍 [LocationSelect] ❌ Excluded location (type not in allowed list):', {
-                name: loc.name,
-                typeId: locTypeIdStr,
-                typeName: loc.locationType?.name,
-                allowedTypeIds: Array.from(allowedTypeIdSet),
-                allowedTypeNames: Array.from(allowedTypeIdSet).map(id => {
-                  // We don't have access to type names here, but we can log the IDs
-                  return id
-                })
-              })
+          if (hasAllowedTypeIdsRestriction) {
+            // If allowedTypeIds was explicitly provided but is empty, show nothing (lowest level type)
+            if (stableAllowedTypeIds.length === 0) {
+              console.log('🔍 [LocationSelect] ⚠️ No allowed types - filtering out all locations')
               return false
-            } else {
-              console.log('🔍 [LocationSelect] ✅ Included location (type matches):', {
-                name: loc.name,
-                typeId: locTypeIdStr,
-                typeName: loc.locationType?.name
-              })
             }
-          } else if (allowedTypeIdSet && allowedTypeIdSet.size === 0) {
-            // If allowedTypeIds is empty array, show nothing
-            console.log('🔍 [LocationSelect] ⚠️ No allowed types - filtering out all locations')
-            return false
+            // If allowedTypeIds has items, only show locations with those types
+            if (allowedTypeIdSet && allowedTypeIdSet.size > 0) {
+              const locTypeId = loc.location_type_id || loc.locationType?.id
+              const locTypeIdStr = locTypeId ? String(locTypeId) : ''
+              const isAllowed = locTypeIdStr && allowedTypeIdSet.has(locTypeIdStr)
+              
+              if (!isAllowed) {
+                console.log('🔍 [LocationSelect] ❌ Excluded location (type not in allowed list):', {
+                  name: loc.name,
+                  typeId: locTypeIdStr,
+                  typeName: loc.locationType?.name,
+                  allowedTypeIds: Array.from(allowedTypeIdSet),
+                  allowedTypeNames: Array.from(allowedTypeIdSet).map(id => {
+                    // We don't have access to type names here, but we can log the IDs
+                    return id
+                  })
+                })
+                return false
+              } else {
+                console.log('🔍 [LocationSelect] ✅ Included location (type matches):', {
+                  name: loc.name,
+                  typeId: locTypeIdStr,
+                  typeName: loc.locationType?.name
+                })
+              }
+            }
           }
           return true
         })
@@ -350,6 +358,7 @@ const LocationSelect = ({
     [
       worldId,
       stableAllowedTypeIds,
+      hasAllowedTypeIdsRestriction,
       debouncedInput,
       limit,
       offset,

@@ -109,34 +109,58 @@ export const canUserReadLocation = (locationInput, context) => {
   const createdBy = location.created_by ?? location.createdBy ?? location.createdById ?? null
   const isCreator = Boolean(userId && createdBy && String(createdBy) === String(userId))
 
+  // Logging for access determination
+  const locationName = location.name || location.id || 'Unknown'
+  const logPrefix = `[Location Access] "${locationName}" (${location.id}):`
+
   if (isAdmin || isOwner || isCreator) {
+    if (isAdmin) {
+      console.log(`${logPrefix} ✅ Access granted - User is ADMIN`)
+    } else if (isOwner) {
+      console.log(`${logPrefix} ✅ Access granted - User is WORLD OWNER`)
+    } else if (isCreator) {
+      console.log(`${logPrefix} ✅ Access granted - User is CREATOR (userId: ${userId})`)
+    }
     return true
   }
 
   if (!isViewAs && canUserWriteLocation(location, context)) {
+    console.log(`${logPrefix} ✅ Access granted - User has WRITE ACCESS`)
     return true
   }
 
   if (!userId && characterIds.size === 0) {
+    console.log(`${logPrefix} ❌ Access denied - No user ID or character IDs`)
     return false
   }
 
   if (readAccess === 'hidden') {
+    console.log(`${logPrefix} ❌ Access denied - Location is HIDDEN`)
     return false
   }
 
   if (readAccess === 'global' || readAccess === null) {
-    return hasWorldAccess || hasWorldCharacter
+    if (hasWorldAccess || hasWorldCharacter) {
+      const reason = hasWorldAccess ? 'WORLD ACCESS' : 'WORLD CHARACTER'
+      console.log(`${logPrefix} ✅ Access granted - ${reason} (read_access: global)`)
+      return true
+    } else {
+      console.log(`${logPrefix} ❌ Access denied - Global access but no world access/character`)
+      return false
+    }
   }
 
   if (readAccess === 'selective') {
     if (userId && readUserIds.some((id) => String(id) === String(userId))) {
+      console.log(`${logPrefix} ✅ Access granted - User ID in read_user_ids (selective access)`)
       return true
     }
 
     if (characterIds.size > 0 && readCharacterIds.length > 0) {
       const hasCharacterMatch = readCharacterIds.some((id) => characterIds.has(String(id)))
       if (hasCharacterMatch) {
+        const matchingChars = Array.from(characterIds).filter(id => readCharacterIds.includes(String(id)))
+        console.log(`${logPrefix} ✅ Access granted - Character ID(s) match: ${matchingChars.join(', ')} (selective access)`)
         return true
       }
     }
@@ -146,15 +170,25 @@ export const canUserReadLocation = (locationInput, context) => {
         activeCampaignId && campaignIds.has(activeCampaignId) ? activeCampaignId : null
 
       if (!candidateCampaignId) {
+        console.log(`${logPrefix} ❌ Access denied - Selective access: activeCampaignId (${activeCampaignId}) not in user's campaigns (${Array.from(campaignIds).join(', ')})`)
         return false
       }
 
-      return readCampaignIds.some((id) => String(id) === candidateCampaignId)
+      const hasCampaignMatch = readCampaignIds.some((id) => String(id) === candidateCampaignId)
+      if (hasCampaignMatch) {
+        console.log(`${logPrefix} ✅ Access granted - Campaign ID matches: ${candidateCampaignId} (selective access, read_campaign_ids: ${readCampaignIds.join(', ')})`)
+        return true
+      } else {
+        console.log(`${logPrefix} ❌ Access denied - Selective access: Campaign ${candidateCampaignId} not in read_campaign_ids (${readCampaignIds.join(', ')})`)
+        return false
+      }
     }
 
+    console.log(`${logPrefix} ❌ Access denied - Selective access but no matching user/character/campaign (read_user_ids: ${readUserIds.join(', ')}, read_character_ids: ${readCharacterIds.join(', ')}, read_campaign_ids: ${readCampaignIds.join(', ')})`)
     return false
   }
 
+  console.log(`${logPrefix} ❌ Access denied - Unknown read_access value: ${readAccess}`)
   return false
 }
 
