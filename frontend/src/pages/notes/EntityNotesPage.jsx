@@ -5,7 +5,7 @@ import { AlertCircle, Filter, RotateCcw, Loader2, Edit2, Trash2 } from 'lucide-r
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { fetchCampaignEntityNotes, fetchCampaignLocationNotes } from '../../api/campaigns.js'
-import { updateEntityNote, deleteEntityNote, searchEntities } from '../../api/entities.js'
+import { updateEntityNote, deleteEntityNote } from '../../api/entities.js'
 import { updateLocationNote, deleteLocationNote } from '../../api/locations.js'
 import { fetchCharacters } from '../../api/characters.js'
 import { getEntityTypes } from '../../api/entityTypes.js'
@@ -14,7 +14,7 @@ import TaggedNoteContent from '../../components/notes/TaggedNoteContent.jsx'
 import MentionsInputWrapper from '../../components/notes/MentionsInputWrapper.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
 import LocationInfoPreview from '../../components/locations/LocationInfoPreview.jsx'
-import { buildNoteSegments, cleanEntityName } from '../../utils/noteMentions.js'
+import { buildNoteSegments } from '../../utils/noteMentions.js'
 import './NotesPage.css'
 
 const SHARE_LABELS = {
@@ -483,7 +483,7 @@ export default function EntityNotesPage() {
     }
   }, [isCampaignPlayer, selectedCampaignId, editCharacterId])
 
-  // Entity mention search - need to get world ID from the note being edited
+  // Unified mention search (entities and locations) - need to get world ID from the note being edited
   const handleEntityMentionSearch = useCallback(
     async (query, callback) => {
       const trimmedQuery = query?.trim() ?? ''
@@ -518,37 +518,21 @@ export default function EntityNotesPage() {
         const nEntityId = resolveEntityId(n)
         return nEntityId === targetEntityId
       })
-      const worldId = note?.entity?.world_id ?? note?.entity?.world?.id ?? ''
+      const worldId = note?.entity?.world_id ?? note?.entity?.world?.id ?? note?.location?.world_id ?? note?.location?.world?.id ?? ''
 
       if (!worldId) {
         callback([])
         return
       }
 
-      try {
-        const response = await searchEntities({
-          worldId,
-          query: trimmedQuery,
-          limit: 8,
-        })
-        const data = Array.isArray(response?.data) ? response.data : response
-        const formatted = Array.isArray(data)
-          ? data
-              .map((entity) => {
-                const entityId = entity?.id ?? entity?.entity?.id
-                if (!entityId) return null
-                const rawName =
-                  entity?.name || entity?.displayName || entity?.entity?.name || 'Unnamed entity'
-                const display = cleanEntityName(rawName) || 'Unnamed entity'
-                return { id: entityId, display }
-              })
-              .filter(Boolean)
-          : []
-        callback(formatted)
-      } catch (err) {
-        console.error('Failed to search entities for mentions', err)
-        callback([])
-      }
+      // Use unified mention search that includes both entities and locations
+      const { searchMentions } = await import('../../utils/mentionSearch.js')
+      await searchMentions({
+        worldId,
+        query: trimmedQuery,
+        limit: 8,
+        callback,
+      })
     },
     [entityFilter, notesState.items, editingNoteId],
   )
@@ -731,12 +715,35 @@ export default function EntityNotesPage() {
     if (!segments.length) return null
 
     return segments.map((segment, index) => {
-      if (segment.type === 'mention' && segment.entityId) {
+      if (segment.type === 'mention') {
+        // Handle location mentions
+        if (segment.locationId) {
+          const key = `${note?.id || 'note'}-mention-${index}`
+          const label = segment.locationName || 'location'
+          return (
+            <span key={key} className="note-mention">
+              @{label}
+              <LocationInfoPreview locationId={segment.locationId} locationName={label} />
+            </span>
+          )
+        }
+        // Handle entity mentions
+        if (segment.entityId) {
+          const key = `${note?.id || 'note'}-mention-${index}`
+          const label = segment.entityName || 'entity'
+          return (
+            <span key={key} className="note-mention">
+              @{label}
+              <EntityInfoPreview entityId={segment.entityId} entityName={label} />
+            </span>
+          )
+        }
+        // Fallback: if it's a mention but we don't have ID info, show the fallback name
+        const fallbackLabel = segment.locationName || segment.entityName || 'mention'
         const key = `${note?.id || 'note'}-mention-${index}`
-        const label = segment.entityName || 'entity'
         return (
           <span key={key} className="note-mention">
-            @{label}
+            @{fallbackLabel}
           </span>
         )
       }

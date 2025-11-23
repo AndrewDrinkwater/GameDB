@@ -649,7 +649,7 @@ export default function LocationNotesTab({
     return segments.map((segment, index) => {
       if (segment.type === 'mention') {
         // Handle location mentions
-        if (segment.locationId || segment.type === 'location') {
+        if (segment.locationId) {
           const key = `${note?.id || 'note'}-mention-${index}`
           const label = segment.locationName || 'location'
           return (
@@ -660,7 +660,7 @@ export default function LocationNotesTab({
           )
         }
         // Handle entity mentions
-        if (segment.entityId || segment.type === 'entity') {
+        if (segment.entityId) {
           const key = `${note?.id || 'note'}-mention-${index}`
           const label = segment.entityName || 'entity'
           return (
@@ -670,6 +670,14 @@ export default function LocationNotesTab({
             </span>
           )
         }
+        // Fallback: if it's a mention but we don't have ID info, show the fallback name
+        const fallbackLabel = segment.locationName || segment.entityName || 'mention'
+        const key = `${note?.id || 'note'}-mention-${index}`
+        return (
+          <span key={key} className="entity-note-mention">
+            @{fallbackLabel}
+          </span>
+        )
       }
 
       return (

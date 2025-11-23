@@ -1,6 +1,7 @@
 import {
   Campaign,
   Character,
+  Entity,
   Location,
   LocationNote,
   User,
@@ -67,7 +68,7 @@ export const normaliseShareType = (value) => {
   return str
 }
 
-export const extractMentions = (content) => {
+export const extractMentions = async (content) => {
   if (typeof content !== 'string' || !content.includes('@')) return []
 
   const regex = /@\[(.+?)]\(([^)]+)\)/g
@@ -78,23 +79,48 @@ export const extractMentions = (content) => {
   while ((match = regex.exec(content)) !== null) {
     const rawLabel = match[1] ?? ''
     const rawId = match[2] ?? ''
-    // Support both entity and location mentions
-    const entityId = normaliseId(rawId)
-    const locationId = normaliseId(rawId)
-    const targetId = entityId || locationId
-    if (!targetId) continue
-
     const label = normaliseString(rawLabel).trim()
-    const key = `${targetId}:${label}`
+    
+    // Check if ID has a type prefix (entity:UUID or location:UUID)
+    let mentionId = normaliseId(rawId)
+    let mentionType = null
+    
+    if (mentionId && mentionId.includes(':')) {
+      const parts = mentionId.split(':')
+      if (parts.length === 2) {
+        mentionType = parts[0]
+        mentionId = normaliseId(parts[1])
+      }
+    }
+    
+    if (!mentionId) continue
+
+    const key = `${mentionId}:${label}`
     if (seen.has(key)) continue
     seen.add(key)
 
-    mentions.push({ 
-      entityId: entityId || null,
-      locationId: locationId || null,
-      entityName: entityId ? (label || null) : null,
-      locationName: locationId ? (label || null) : null,
-    })
+    // If type is specified, use it; otherwise try to determine from database
+    if (mentionType === 'entity') {
+      mentions.push({ entityId: mentionId, entityName: label || null, type: 'entity' })
+    } else if (mentionType === 'location') {
+      mentions.push({ locationId: mentionId, locationName: label || null, type: 'location' })
+    } else {
+      // Backward compatibility: try to determine type by checking database
+      // Check entity first (most common)
+      const entity = await Entity.findByPk(mentionId).catch(() => null)
+      if (entity) {
+        mentions.push({ entityId: mentionId, entityName: label || null, type: 'entity' })
+      } else {
+        // Check location
+        const location = await Location.findByPk(mentionId).catch(() => null)
+        if (location) {
+          mentions.push({ locationId: mentionId, locationName: label || null, type: 'location' })
+        } else {
+          // Default to entity for backward compatibility
+          mentions.push({ entityId: mentionId, entityName: label || null, type: 'entity' })
+        }
+      }
+    }
   }
 
   return mentions
@@ -498,7 +524,7 @@ export const createLocationNote = async (req, res) => {
       characterId = character.id
     }
 
-    const mentions = extractMentions(content)
+    const mentions = await extractMentions(content)
 
     const note = await LocationNote.create({
       location_id: location.id,
@@ -710,7 +736,7 @@ export const updateLocationNote = async (req, res) => {
       validatedCharacterId = character.id
     }
 
-    const mentions = extractMentions(content)
+    const mentions = await extractMentions(content)
 
     // Update the note
     await note.update({

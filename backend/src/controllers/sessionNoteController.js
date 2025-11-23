@@ -112,18 +112,36 @@ const formatMentionList = (mentions) => {
   return mentions
     .map((mention) => {
       const entityId =
-        mention?.entityId ?? mention?.entity_id ?? mention?.id ?? mention?.entityID
-      if (!entityId) return null
-
-      const entityName =
-        mention?.entityName ?? mention?.entity_name ?? mention?.label ?? ''
-
-      return {
-        entityId,
-        entity_id: entityId,
-        entityName,
-        entity_name: entityName,
+        mention?.entityId ?? mention?.entity_id ?? mention?.id ?? mention?.entityID ?? null
+      const locationId =
+        mention?.locationId ?? mention?.location_id ?? null
+      const mentionType = mention?.type ?? (locationId ? 'location' : 'entity')
+      
+      if (mentionType === 'location' && locationId) {
+        const locationName =
+          mention?.locationName ?? mention?.location_name ?? mention?.label ?? ''
+        return {
+          locationId,
+          location_id: locationId,
+          locationName,
+          location_name: locationName,
+          type: 'location',
+        }
       }
+      
+      if (entityId) {
+        const entityName =
+          mention?.entityName ?? mention?.entity_name ?? mention?.label ?? ''
+        return {
+          entityId,
+          entity_id: entityId,
+          entityName,
+          entity_name: entityName,
+          type: 'entity',
+        }
+      }
+      
+      return null
     })
     .filter(Boolean)
 }
