@@ -1,488 +1,251 @@
 // src/utils/locationPositioning.js
 // Utility for calculating hierarchical positions for location nodes
 
-export const DEFAULT_LOCATION_WIDTH = 120 // Polished, slightly larger square
-export const DEFAULT_LOCATION_HEIGHT = 120 // Square dimensions
-// Restored spacing ratios from when 80x80 nodes were working perfectly
-// Scaled by 1.5x (120/80) to maintain the same proportions
-const HIERARCHY_HORIZONTAL_PADDING = 60 * 1.5 // 90 - maintains ratio from 80x80 nodes
-const HIERARCHY_VERTICAL_PADDING = 80 * 1.5 // 120 - maintains ratio from 80x80 nodes
-const LEVEL_HORIZONTAL_SPACING = DEFAULT_LOCATION_WIDTH + HIERARCHY_HORIZONTAL_PADDING
-const LEVEL_VERTICAL_SPACING = DEFAULT_LOCATION_HEIGHT + HIERARCHY_VERTICAL_PADDING
-const MIN_NODE_GAP = DEFAULT_LOCATION_WIDTH + (40 * 1.5) // 180 - maintains ratio from 80x80 nodes
-const SIBLING_GROUP_PADDING = 40 * 1.5 // 60 - maintains ratio from 80x80 nodes
+// Fixed spacing constants for deterministic tree layout
+const NODE_WIDTH = 200
+const NODE_HEIGHT = 140
+const H_SPACING = 80
+const V_SPACING = 150
+
+// Export for React Flow node dimensions
+export const DEFAULT_LOCATION_WIDTH = NODE_WIDTH
+export const DEFAULT_LOCATION_HEIGHT = NODE_HEIGHT
 
 /**
- * Builds a map of parent_id -> [child_ids] from location data
+ * Sorts children by metadata.orderIndex if present, then alphabetically by name
  */
-function buildParentChildMap(locations) {
+function sortChildren(children, nodeMap) {
+  return [...children].sort((a, b) => {
+    const nodeA = nodeMap.get(a)
+    const nodeB = nodeMap.get(b)
+    
+    if (!nodeA && !nodeB) return 0
+    if (!nodeA) return 1
+    if (!nodeB) return -1
+    
+    // Check for orderIndex in metadata
+    const orderIndexA = nodeA.data?.metadata?.orderIndex ?? nodeA.metadata?.orderIndex
+    const orderIndexB = nodeB.data?.metadata?.orderIndex ?? nodeB.metadata?.orderIndex
+    
+    if (orderIndexA !== undefined && orderIndexB !== undefined && orderIndexA !== orderIndexB) {
+      return orderIndexA - orderIndexB
+    }
+    if (orderIndexA !== undefined && orderIndexB === undefined) return -1
+    if (orderIndexA === undefined && orderIndexB !== undefined) return 1
+    
+    // Fallback to alphabetical by name
+    const nameA = (nodeA.data?.label || nodeA.name || '').toLowerCase()
+    const nameB = (nodeB.data?.label || nodeB.name || '').toLowerCase()
+    
+    return nameA.localeCompare(nameB)
+  })
+}
+
+/**
+ * Builds strict tree structure from parent_id relationships
+ * Computes depth for every node (root = 0, children = parent depth + 1)
+ * Attaches children array to each node
+ * Returns: { nodeMap: Map<id, node>, rootNodes: string[] }
+ */
+function buildTreeStructure(nodes) {
+  const nodeMap = new Map()
   const parentToChildren = new Map()
   
-  locations.forEach((location) => {
-    if (!location) return
-    const locationId = String(location.id)
-    // Handle both normalized (parentId) and raw (parent_id) formats
-    const parentId = location.parentId || (location.parent_id ? String(location.parent_id) : null)
+  // Build node map and parent-to-children map
+  nodes.forEach((node) => {
+    if (!node || !node.id) return
+    const nodeId = String(node.id)
+    nodeMap.set(nodeId, node)
     
+    const parentId = node.parentId ? String(node.parentId) : null
     if (parentId) {
       if (!parentToChildren.has(parentId)) {
         parentToChildren.set(parentId, [])
       }
-      parentToChildren.get(parentId).push(locationId)
+      parentToChildren.get(parentId).push(nodeId)
     }
   })
   
-  return parentToChildren
-}
-
-/**
- * Builds level assignments for locations based on parent_id relationships
- * Root locations (no parent) are at level 0, children are at parent level + 1
- */
-function buildLevelsFromLocations(locations, rootLocationId = null) {
-  const levels = new Map()
-  const parentToChildren = buildParentChildMap(locations)
+  // Attach children array to each node and compute depth
+  const depth = new Map()
+  const rootNodes = []
   
-  // Find root locations (no parent) and sort them intelligently
-  // Check both parentId (normalized) and parent_id (raw)
-  const rootLocationsData = locations.filter((loc) => {
-    const hasParent = loc.parentId || loc.parent_id
-    return !hasParent
-  })
-  
-  // Sort root locations: most children first, then by type, then by name
-  rootLocationsData.sort((a, b) => {
-    const childCountA = a.childCount || 0
-    const childCountB = b.childCount || 0
-    if (childCountA !== childCountB) {
-      return childCountB - childCountA // More children first
+  nodeMap.forEach((node, nodeId) => {
+    const children = parentToChildren.get(nodeId) || []
+    // Sort children by orderIndex then name
+    const sortedChildren = sortChildren(children, nodeMap)
+    node.children = sortedChildren
+    
+    const parentId = node.parentId ? String(node.parentId) : null
+    if (!parentId || !nodeMap.has(parentId)) {
+      rootNodes.push(nodeId)
+      depth.set(nodeId, 0)
     }
-    const typeA = (a.locationType?.name || '').toLowerCase()
-    const typeB = (b.locationType?.name || '').toLowerCase()
-    const typeCompare = typeA.localeCompare(typeB)
-    if (typeCompare !== 0) return typeCompare
-    return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase())
   })
   
-  const rootLocations = rootLocationsData.map((loc) => String(loc.id))
-  
-  // If a root location ID is specified, use it as the center
-  // Otherwise, use the first root location (which is now sorted intelligently)
-  const centerId = rootLocationId ? String(rootLocationId) : (rootLocations[0] || null)
-  
-  // Set all root locations to level 0
-  rootLocations.forEach((id) => {
-    levels.set(id, 0)
-  })
-  
-  // Assign levels using BFS from root locations
-  const queue = rootLocations.map((id) => ({ id, level: 0 }))
-  const visited = new Set(rootLocations)
+  // Compute depth using BFS from root nodes
+  const queue = rootNodes.map((id) => ({ id, level: 0 }))
+  const visited = new Set(rootNodes)
   
   while (queue.length > 0) {
     const { id, level } = queue.shift()
-    const children = parentToChildren.get(id) || []
+    const node = nodeMap.get(id)
+    const children = node?.children || []
     
     children.forEach((childId) => {
       if (!visited.has(childId)) {
         visited.add(childId)
-        levels.set(childId, level + 1)
+        depth.set(childId, level + 1)
         queue.push({ id: childId, level: level + 1 })
       }
     })
   }
   
-  // Ensure all locations have a level (orphans get level 0)
-  locations.forEach((location) => {
-    if (!location) return
-    const locationId = String(location.id)
-    if (!levels.has(locationId)) {
-      // Orphan location - assign to level 0
-      levels.set(locationId, 0)
+  // Ensure all nodes have a depth (orphans get depth 0)
+  nodeMap.forEach((node, nodeId) => {
+    if (!depth.has(nodeId)) {
+      depth.set(nodeId, 0)
     }
+    node.depth = depth.get(nodeId)
   })
   
-  return { levels, centerId }
+  return { nodeMap, rootNodes }
 }
 
 /**
- * Groups nodes by their level
+ * Computes subtree width for each node (bottom-up)
+ * If node has no children: subtreeWidth = NODE_WIDTH
+ * Else: subtreeWidth = sum(child.subtreeWidth) + H_SPACING * (childCount - 1)
  */
-function buildLevelGroups(levels, nodes) {
-  const groups = new Map()
-  let minLevel = Infinity
+function computeSubtreeWidths(nodeMap) {
+  // Process nodes bottom-up (from deepest to shallowest)
+  const nodesByDepth = new Map()
+  let maxDepth = 0
   
-  nodes.forEach((node) => {
-    if (!node) return
-    const level = levels.get(node.id) ?? 0
-    if (level < minLevel) minLevel = level
+  nodeMap.forEach((node, nodeId) => {
+    const depth = node.depth || 0
+    if (depth > maxDepth) maxDepth = depth
     
-    if (!groups.has(level)) {
-      groups.set(level, [])
+    if (!nodesByDepth.has(depth)) {
+      nodesByDepth.set(depth, [])
     }
-    groups.get(level).push(node)
+    nodesByDepth.get(depth).push(nodeId)
   })
   
-  // Normalize levels to start at 0
-  const visualLevels = new Map()
-  const normalizedGroups = new Map()
-  
-  groups.forEach((nodesAtLevel, rawLevel) => {
-    const visualLevel = rawLevel - minLevel
-    normalizedGroups.set(visualLevel, nodesAtLevel)
-    nodesAtLevel.forEach((node) => {
-      visualLevels.set(node.id, visualLevel)
-    })
-  })
-  
-  return { groups: normalizedGroups, visualLevels }
-}
-
-/**
- * Compares nodes with intelligent sorting:
- * 1. Locations with children first (to show hierarchy)
- * 2. Then by type name (group similar types)
- * 3. Then by name (alphabetical)
- */
-function compareNodes(a, b) {
-  if (!a && !b) return 0
-  if (!a) return 1
-  if (!b) return -1
-  
-  // Get child counts
-  const childCountA = a.data?.childCount || a.childCount || 0
-  const childCountB = b.data?.childCount || b.childCount || 0
-  
-  // Locations with children first
-  if (childCountA !== childCountB) {
-    return childCountB - childCountA // Descending: more children first
-  }
-  
-  // Then by type name
-  const typeA = (a.data?.typeName || a.typeName || '').toLowerCase()
-  const typeB = (b.data?.typeName || b.typeName || '').toLowerCase()
-  const typeCompare = typeA.localeCompare(typeB)
-  if (typeCompare !== 0) {
-    return typeCompare
-  }
-  
-  // Finally by name (alphabetical)
-  const nameA = (a.data?.label || a.name || '').toLowerCase()
-  const nameB = (b.data?.label || b.name || '').toLowerCase()
-  return nameA.localeCompare(nameB)
-}
-
-/**
- * Checks if a position would overlap with existing positions
- */
-function wouldOverlap(x, y, positions, nodeWidth = DEFAULT_LOCATION_WIDTH, nodeHeight = DEFAULT_LOCATION_HEIGHT, margin = 25 * 1.5) {
-  for (const [id, pos] of positions.entries()) {
-    const dx = Math.abs(x - pos.x)
-    const dy = Math.abs(y - pos.y)
-    // Check if nodes would overlap (accounting for margins)
-    // Restored margin ratio from working 80x80 layout (scaled by 1.5x)
-    const requiredX = (nodeWidth / 2) + (pos.width || DEFAULT_LOCATION_WIDTH) / 2 + margin
-    const requiredY = (nodeHeight / 2) + (pos.height || DEFAULT_LOCATION_HEIGHT) / 2 + margin
-    if (dx < requiredX && dy < requiredY) {
-      return true
-    }
-  }
-  return false
-}
-
-/**
- * Checks if a position would be directly under a node that is not the parent
- * This ensures nodes only sit under their parent or blank space, never under another node
- */
-function wouldBeUnderNonParent(x, y, currentNodeParentId, positions, nodeWidth = DEFAULT_LOCATION_WIDTH, levelSpacing = LEVEL_VERTICAL_SPACING) {
-  // Check all positions at the level directly above (one level up)
-  const levelAboveY = y - levelSpacing
-  
-  for (const [nodeId, pos] of positions.entries()) {
-    // Only check nodes at the level directly above (within a small tolerance for floating point)
-    const yDiff = Math.abs(pos.y - levelAboveY)
-    if (yDiff > 5) continue // Not at the level directly above
+  // Process from deepest level to root
+  for (let depth = maxDepth; depth >= 0; depth--) {
+    const nodesAtDepth = nodesByDepth.get(depth) || []
     
-    // Check if this node is directly above our position
-    const dx = Math.abs(x - pos.x)
-    const threshold = nodeWidth / 2 // Within half a node width = directly above
-    
-    if (dx < threshold) {
-      // There's a node directly above us
-      // Check if it's our parent
-      const nodeAboveId = String(nodeId)
-      const expectedParentId = currentNodeParentId ? String(currentNodeParentId) : null
+    nodesAtDepth.forEach((nodeId) => {
+      const node = nodeMap.get(nodeId)
+      if (!node) return
       
-      // If it's not our parent, this position is invalid
-      if (nodeAboveId !== expectedParentId) {
-        return true
-      }
-    }
-  }
-  return false
-}
-
-/**
- * Checks if a position would be directly above another node's child
- * This prevents visual confusion where a node appears to be a parent of someone else's child
- */
-function wouldBeAboveOthersChild(x, y, currentNodeParentId, positions, parentToChildren, nodeWidth = DEFAULT_LOCATION_WIDTH) {
-  // Check all positions at lower levels (higher Y values)
-  for (const [nodeId, pos] of positions.entries()) {
-    // Only check nodes below the current position
-    if (pos.y <= y) continue
-    
-    // Get the parent of this node by checking the parentToChildren map
-    let childParentId = null
-    for (const [parentId, children] of parentToChildren.entries()) {
-      if (children.includes(String(nodeId))) {
-        childParentId = parentId
-        break
-      }
-    }
-    
-    // If this node is a child of a different parent (or we have no parent), and we're directly above it
-    if (childParentId && childParentId !== currentNodeParentId) {
-      const dx = Math.abs(x - pos.x)
-      // If we're within half a node width, we're directly above it
-      const threshold = nodeWidth / 2
-      if (dx < threshold) {
-        return true
-      }
-    }
-  }
-  return false
-}
-
-/**
- * Finds the next available X position that doesn't overlap, isn't above another's child, and isn't under a non-parent
- */
-function findNonOverlappingX(desiredX, y, positions, nodeWidth = DEFAULT_LOCATION_WIDTH, nodeHeight = DEFAULT_LOCATION_HEIGHT, step = MIN_NODE_GAP, currentNodeParentId = null, parentToChildren = new Map()) {
-  let x = desiredX
-  let attempts = 0
-  const maxAttempts = 200
-  
-  // Restored margin from working 80x80 layout (scaled by 1.5x)
-  while (
-    (wouldOverlap(x, y, positions, nodeWidth, nodeHeight, 25 * 1.5) ||
-     wouldBeAboveOthersChild(x, y, currentNodeParentId, positions, parentToChildren, nodeWidth) ||
-     wouldBeUnderNonParent(x, y, currentNodeParentId, positions, nodeWidth)) &&
-    attempts < maxAttempts
-  ) {
-    x += step
-    attempts++
-  }
-  
-  return x
-}
-
-/**
- * Assigns positions to locations in a hierarchical layout
- * Children appear below their parents, with proper spacing to avoid overlaps
- */
-function assignPositions(groups, visualLevels, parentToChildren = new Map()) {
-  const positions = new Map()
-  let globalMinX = Infinity
-  const baseY = 0
-  const sortedLevels = Array.from(groups.keys()).sort((a, b) => a - b)
-  let levelIndexCounter = 0
-  
-  sortedLevels.forEach((visualLevel) => {
-    const nodesAtLevel = groups.get(visualLevel) || []
-    if (!nodesAtLevel.length) return
-    
-    // Sort nodes with intelligent ordering
-    nodesAtLevel.sort(compareNodes)
-    
-    // Calculate Y position based on visual level (level 0 = top, higher levels = lower Y)
-    const y = baseY + visualLevel * LEVEL_VERTICAL_SPACING
-    
-    // For visual level 0 (root locations), position them horizontally with spacing
-    if (visualLevel === 0) {
-      let currentX = 0
-      nodesAtLevel.forEach((node) => {
-        // Root nodes have no parent, so pass null
-        currentX = findNonOverlappingX(currentX, y, positions, DEFAULT_LOCATION_WIDTH, DEFAULT_LOCATION_HEIGHT, MIN_NODE_GAP, null, parentToChildren)
-        const x = currentX
-        const rawLevel = 0
-        positions.set(node.id, {
-          x,
-          y,
-          level: rawLevel,
-          visualLevel: visualLevel,
-          levelIndex: levelIndexCounter,
-        })
-        levelIndexCounter += 1
-        currentX += LEVEL_HORIZONTAL_SPACING
-        if (x < globalMinX) globalMinX = x
-      })
-      return
-    }
-    
-    // For levels > 0, group nodes by their parent
-    const groupsByParent = new Map() // parentId -> nodes[]
-    const orphans = []
-    
-    nodesAtLevel.forEach((node) => {
-      // Get parent ID and ensure it's a string
-      const parentIdRaw = node.data?.parentId || node.parentId || null
-      const parentId = parentIdRaw ? String(parentIdRaw) : null
-      const parentPosition = parentId ? positions.get(parentId) : null
+      const children = node.children || []
       
-      if (parentId && parentPosition) {
-        if (!groupsByParent.has(parentId)) {
-          groupsByParent.set(parentId, [])
-        }
-        groupsByParent.get(parentId).push(node)
+      if (children.length === 0) {
+        // No children: subtreeWidth = NODE_WIDTH
+        node.subtreeWidth = NODE_WIDTH
       } else {
-        // This shouldn't happen for levels > 0, but handle it
-        orphans.push(node)
+        // Has children: sum of child subtreeWidths + spacing
+        let totalWidth = 0
+        children.forEach((childId) => {
+          const child = nodeMap.get(childId)
+          if (child) {
+            totalWidth += child.subtreeWidth || NODE_WIDTH
+          }
+        })
+        node.subtreeWidth = totalWidth + H_SPACING * (children.length - 1)
       }
     })
+  }
+}
+
+/**
+ * Recursively layouts children of a parent node
+ * Each sibling subtree gets its own horizontal "slot" based on subtreeWidth
+ * Ensures parent is perfectly centered above children
+ */
+function layoutChildren(parent, nodeMap) {
+  if (!parent || !parent.children || parent.children.length === 0) {
+    return
+  }
+  
+  const totalWidth = parent.subtreeWidth || NODE_WIDTH
+  let currentX = parent.x - totalWidth / 2
+  
+  parent.children.forEach((childId) => {
+    const child = nodeMap.get(childId)
+    if (!child) return
     
-    // Process groups with parents (sorted by parent X position)
-    const sortedParentIds = Array.from(groupsByParent.keys()).sort((a, b) => {
-      const posA = positions.get(a)?.x ?? 0
-      const posB = positions.get(b)?.x ?? 0
-      return posA - posB
-    })
+    const childSubtreeWidth = child.subtreeWidth || NODE_WIDTH
+    const childCenterX = currentX + childSubtreeWidth / 2
     
-    // Position children grouped by parent to avoid crossing lines
-    // First, calculate ideal positions for all groups
-    const groupPositions = []
+    // Set child position
+    child.x = childCenterX
+    child.y = child.depth * (NODE_HEIGHT + V_SPACING)
     
-    sortedParentIds.forEach((parentId) => {
-      const children = groupsByParent.get(parentId) || []
-      if (!children.length) return
-      
-      // Sort children with the same logic
-      children.sort(compareNodes)
-      
-      const parentPosition = positions.get(parentId)
-      if (!parentPosition) return
-      
-      // Calculate spacing for this parent's children
-      const childCount = children.length
-      const spacing = LEVEL_HORIZONTAL_SPACING
-      const groupWidth = (childCount - 1) * spacing
-      
-      // Calculate ideal center position (parent's X)
-      const idealCenterX = parentPosition.x
-      const groupStartX = idealCenterX - groupWidth / 2
-      
-      groupPositions.push({
-        parentId,
-        children,
-        idealStartX: groupStartX,
-        idealEndX: groupStartX + groupWidth,
-        width: groupWidth,
-      })
-    })
+    // Move to next sibling subtree
+    currentX += childSubtreeWidth + H_SPACING
     
-    // Sort groups by their ideal start position
-    groupPositions.sort((a, b) => a.idealStartX - b.idealStartX)
-    
-    // Position groups sequentially, ensuring no overlaps between groups
-    let currentX = 0
-    
-    groupPositions.forEach((group) => {
-      const { children, idealStartX, width } = group
-      
-      // Calculate where this group should start
-      let groupStartX = idealStartX
-      
-      // If this would overlap with previous groups, shift it right
-      if (currentX > groupStartX - SIBLING_GROUP_PADDING) {
-        groupStartX = currentX + SIBLING_GROUP_PADDING
-      }
-      
-      // Position all children in this group together
-      // Use a sequential approach to ensure no overlaps within the group
-      let groupCurrentX = groupStartX
-      
-      children.forEach((node, index) => {
-        // Calculate ideal position within group
-        const idealX = groupStartX + index * LEVEL_HORIZONTAL_SPACING
-        
-        // Use the larger of ideal position or current position to maintain group integrity
-        if (groupCurrentX < idealX) {
-          groupCurrentX = idealX
-        }
-        
-        // Ensure no overlap with previously positioned nodes (including from other groups)
-        // Also ensure we're not directly above another parent's child
-        const nodeParentId = String(group.parentId)
-        const finalX = findNonOverlappingX(groupCurrentX, y, positions, DEFAULT_LOCATION_WIDTH, DEFAULT_LOCATION_HEIGHT, MIN_NODE_GAP, nodeParentId, parentToChildren)
-        
-        const rawLevel = visualLevels.get(node.id) ?? visualLevel
-        
-        positions.set(node.id, {
-          x: finalX,
-          y,
-          level: rawLevel,
-          visualLevel: visualLevel,
-          levelIndex: levelIndexCounter,
-        })
-        
-        levelIndexCounter += 1
-        if (finalX < globalMinX) globalMinX = finalX
-        
-        // Move to next position with guaranteed spacing
-        groupCurrentX = finalX + LEVEL_HORIZONTAL_SPACING
-      })
-      
-      // Update currentX to the end of this group with padding
-      currentX = groupCurrentX + SIBLING_GROUP_PADDING
-    })
-    
-    // Process orphan nodes at non-root levels (shouldn't happen, but handle it)
-    if (orphans.length) {
-      orphans.sort(compareNodes)
-      // Start after all positioned children
-      let orphanStartX = currentX + LEVEL_HORIZONTAL_SPACING
-      
-      orphans.forEach((node) => {
-        const nodeParentId = null // Orphan nodes have no parent
-        orphanStartX = findNonOverlappingX(orphanStartX, y, positions, DEFAULT_LOCATION_WIDTH, DEFAULT_LOCATION_HEIGHT, MIN_NODE_GAP, nodeParentId, parentToChildren)
-        const x = orphanStartX
-        const rawLevel = visualLevels.get(node.id) ?? visualLevel
-        
-        positions.set(node.id, {
-          x,
-          y,
-          level: rawLevel,
-          visualLevel: visualLevel,
-          levelIndex: levelIndexCounter,
-        })
-        
-        levelIndexCounter += 1
-        orphanStartX += LEVEL_HORIZONTAL_SPACING
-        if (x < globalMinX) globalMinX = x
-      })
-    }
+    // Recursively layout this child's children
+    layoutChildren(child, nodeMap)
   })
+}
+
+/**
+ * Assigns X/Y coordinates to all nodes (top-down)
+ * Y coordinate: node.y = node.depth * (NODE_HEIGHT + V_SPACING)
+ * X coordinate: computed recursively starting from root
+ */
+function assignCoordinates(nodeMap, rootNodes) {
+  if (rootNodes.length === 0) return
+  
+  if (rootNodes.length === 1) {
+    // Single root: position at root.x = root.subtreeWidth / 2
+    const rootId = rootNodes[0]
+    const root = nodeMap.get(rootId)
+    if (!root) return
+    
+    root.x = (root.subtreeWidth || NODE_WIDTH) / 2
+    root.y = 0
+    
+    // Layout children recursively
+    layoutChildren(root, nodeMap)
+  } else {
+    // Multiple roots: position them with spacing
+    let currentX = 0
+    rootNodes.forEach((rootId) => {
+      const root = nodeMap.get(rootId)
+      if (!root) return
+      
+      const rootWidth = root.subtreeWidth || NODE_WIDTH
+      root.x = currentX + rootWidth / 2
+      root.y = 0
+      
+      // Layout children from this root
+      layoutChildren(root, nodeMap)
+      
+      // Move to next root
+      currentX += rootWidth + H_SPACING
+    })
+  }
   
   // Adjust all positions to ensure nothing is left of X=0
-  const xOffset = Number.isFinite(globalMinX) && globalMinX < 0 ? -globalMinX : 0
-  const adjusted = new Map()
+  let minX = Infinity
+  nodeMap.forEach((node) => {
+    if (node.x !== undefined && node.x < minX) {
+      minX = node.x
+    }
+  })
   
-  if (xOffset > 0) {
-    positions.forEach((value, key) => {
-      adjusted.set(key, {
-        x: value.x + xOffset,
-        y: value.y,
-        level: value.level,
-        visualLevel: value.visualLevel,
-        levelIndex: value.levelIndex,
-      })
-    })
-  } else {
-    positions.forEach((value, key) => {
-      adjusted.set(key, value)
+  if (minX < 0) {
+    const offset = -minX
+    nodeMap.forEach((node) => {
+      if (node.x !== undefined) {
+        node.x += offset
+      }
     })
   }
-  
-  return adjusted
 }
 
 /**
@@ -504,11 +267,13 @@ function normalizeLocationNode(location) {
     locationTypeId: location.location_type_id,
     childCount: location.childCount || 0,
     description: location.description || '',
+    metadata: location.metadata || {}, // Preserve metadata for orderIndex
   }
 }
 
 /**
  * Main function to layout location nodes hierarchically
+ * Implements deterministic tree layout according to final rule set
  */
 export function layoutLocationsHierarchically(locations, rootLocationId = null) {
   if (!Array.isArray(locations) || locations.length === 0) {
@@ -522,29 +287,14 @@ export function layoutLocationsHierarchically(locations, rootLocationId = null) 
   
   if (normalizedLocations.length === 0) return []
   
-  // Build levels from parent_id relationships using normalized locations
-  // normalizedLocations have parentId field (not parent_id)
-  const { levels, centerId } = buildLevelsFromLocations(normalizedLocations, rootLocationId)
-  
-  // Debug: Log level distribution
-  if (import.meta.env.DEV) {
-    const levelCounts = new Map()
-    levels.forEach((level) => {
-      levelCounts.set(level, (levelCounts.get(level) || 0) + 1)
-    })
-    console.log('Location levels distribution:', Object.fromEntries(levelCounts))
-    console.log('Total locations:', normalizedLocations.length)
-    console.log('Root locations:', normalizedLocations.filter(loc => !loc.parentId).length)
-  }
-  
-  // Convert to React Flow node format
+  // Convert to React Flow node format with metadata access
   const nodes = normalizedLocations.map((loc) => {
     const parentId = loc.parentId || null
     return {
       id: loc.id,
       type: 'location',
-      width: DEFAULT_LOCATION_WIDTH,
-      height: DEFAULT_LOCATION_HEIGHT,
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
       position: { x: 0, y: 0 },
       data: {
         label: loc.name,
@@ -554,61 +304,61 @@ export function layoutLocationsHierarchically(locations, rootLocationId = null) 
         childCount: loc.childCount,
         description: loc.description,
         locationTypeId: loc.locationTypeId,
+        metadata: loc.metadata || {}, // Preserve metadata for orderIndex
       },
       parentId: parentId, // Store on node for easy access
+      metadata: loc.metadata || {}, // Also store at node level for easy access
     }
   })
   
-  // Group nodes by level
-  const { groups, visualLevels } = buildLevelGroups(levels, nodes)
+  // Build tree structure (attaches children arrays and computes depth)
+  const { nodeMap, rootNodes } = buildTreeStructure(nodes)
   
-  // Build parent-to-children map for preventing nodes from sitting above others' children
-  const parentToChildren = new Map()
-  nodes.forEach((node) => {
-    const parentId = node.parentId ? String(node.parentId) : null
-    if (parentId) {
-      if (!parentToChildren.has(parentId)) {
-        parentToChildren.set(parentId, [])
-      }
-      parentToChildren.get(parentId).push(String(node.id))
-    }
-  })
+  // Debug: Log tree structure
+  if (import.meta.env.DEV) {
+    const depthCounts = new Map()
+    nodeMap.forEach((node) => {
+      const depth = node.depth || 0
+      depthCounts.set(depth, (depthCounts.get(depth) || 0) + 1)
+    })
+    console.log('Location depth distribution:', Object.fromEntries(depthCounts))
+    console.log('Total locations:', nodes.length)
+    console.log('Root locations:', rootNodes.length)
+  }
   
-  // Assign positions (pass visualLevels to preserve raw level info and parentToChildren for collision avoidance)
-  const positions = assignPositions(groups, visualLevels, parentToChildren)
+  // Compute subtree widths (bottom-up)
+  computeSubtreeWidths(nodeMap)
   
-  // Apply positions to nodes
+  // Assign X/Y coordinates (top-down)
+  assignCoordinates(nodeMap, rootNodes)
+  
+  // Convert back to React Flow node format
   return nodes.map((node) => {
     if (!node || !node.id) return null
     
-    const rawLevel = levels.get(node.id) ?? 0
-    const visualLevel = visualLevels.get(node.id) ?? rawLevel
-    const placement = positions.get(node.id) || {
-      x: 0,
-      y: visualLevel * LEVEL_VERTICAL_SPACING,
-      level: visualLevel,
-      visualLevel: visualLevel,
-      levelIndex: 0,
+    const nodeId = String(node.id)
+    const treeNode = nodeMap.get(nodeId)
+    
+    if (!treeNode) return null
+    
+    const x = typeof treeNode.x === 'number' && Number.isFinite(treeNode.x) ? treeNode.x : 0
+    const y = typeof treeNode.y === 'number' && Number.isFinite(treeNode.y) ? treeNode.y : (treeNode.depth || 0) * (NODE_HEIGHT + V_SPACING)
+    const nodeDepth = treeNode.depth || 0
+    
+    return {
+      ...node,
+      id: nodeId,
+      type: node.type || 'location',
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+      position: { x, y },
+      data: {
+        ...node.data,
+        level: nodeDepth,
+        visualLevel: nodeDepth,
+        levelIndex: 0,
+      },
     }
-    
-    // Ensure position values are valid numbers
-    const x = typeof placement.x === 'number' && Number.isFinite(placement.x) ? placement.x : 0
-    const y = typeof placement.y === 'number' && Number.isFinite(placement.y) ? placement.y : visualLevel * LEVEL_VERTICAL_SPACING
-    
-      return {
-        ...node,
-        id: String(node.id),
-        type: node.type || 'location',
-        width: DEFAULT_LOCATION_WIDTH,
-        height: DEFAULT_LOCATION_HEIGHT,
-        position: { x, y },
-        data: {
-          ...node.data,
-          level: rawLevel,
-          visualLevel: placement.visualLevel ?? visualLevel,
-          levelIndex: placement.levelIndex ?? 0,
-        },
-      }
   }).filter(Boolean)
 }
 
