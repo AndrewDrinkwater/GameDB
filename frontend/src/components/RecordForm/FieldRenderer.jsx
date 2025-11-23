@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import ListCollector from '../ListCollector.jsx'
 import { normaliseListCollectorOption } from '../listCollectorUtils.js'
 import { getAuthToken } from '../../utils/authHelpers.js'
 import EntitySearchSelect from '../../modules/relationships3/ui/EntitySearchSelect.jsx'
 import LocationSearchSelect from '../../modules/relationships3/ui/LocationSearchSelect.jsx'
 import EntityInfoPreview from '../entities/EntityInfoPreview.jsx'
+import LocationInfoPreview from '../locations/LocationInfoPreview.jsx'
 import { extractReferenceEntityId, extractReferenceEntityName } from '../../utils/metadataFieldUtils.js'
 
 export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) {
@@ -705,52 +705,40 @@ export default function FieldRenderer({ field, data, onChange, mode = 'edit' }) 
         <div className={`form-group ${isReadOnly ? 'readonly' : ''}`}>
           <label>{label}</label>
           <div style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
-            {isLocationReference && referenceId && referenceId !== '—' ? (
-              <Link
-                to={`/locations/${referenceId}`}
+            <input
+              type="text"
+              value={formattedValue(displayFallback)}
+              disabled
+              className="readonly-control"
+              style={{
+                paddingRight: referenceId ? '2.5rem' : '0.8rem',
+                width: '100%',
+              }}
+            />
+            {referenceId && (
+              <div
                 style={{
-                  display: 'block',
-                  padding: '0.5rem 0.75rem',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px',
-                  textDecoration: 'none',
-                  color: 'inherit',
+                  position: 'absolute',
+                  right: '0.5rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  zIndex: 1,
                 }}
               >
-                {locationNameForDisplay && locationNameForDisplay !== '—' 
-                  ? locationNameForDisplay 
-                  : (displayFallback && displayFallback !== '—' ? displayFallback : '—')}
-              </Link>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  value={formattedValue(displayFallback)}
-                  disabled
-                  className="readonly-control"
-                  style={{
-                    paddingRight: referenceId ? '2.5rem' : '0.8rem',
-                    width: '100%',
-                  }}
-                />
-                {referenceId && !isLocationReference && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      right: '0.5rem',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      zIndex: 1,
-                    }}
-                  >
-                    <EntityInfoPreview
-                      entityId={referenceId}
-                      entityName={referenceName}
-                      className="entity-info-trigger--field-button"
-                    />
-                  </div>
+                {isLocationReference ? (
+                  <LocationInfoPreview
+                    locationId={referenceId}
+                    locationName={referenceName}
+                    className="location-info-trigger--field-button"
+                  />
+                ) : (
+                  <EntityInfoPreview
+                    entityId={referenceId}
+                    entityName={referenceName}
+                    className="entity-info-trigger--field-button"
+                  />
                 )}
-              </>
+              </div>
             )}
           </div>
           {renderHelpText(false)}
