@@ -1,7 +1,7 @@
 // src/pages/locations/LocationList.jsx
 import { useCallback, useEffect, useState, useMemo } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
-import { ChevronRight, Plus, Trash2, Pencil, ArrowUp, X, RotateCcw } from 'lucide-react'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { ChevronRight, Plus, Trash2, Pencil, ArrowUp, X, RotateCcw, Network } from 'lucide-react'
 import {
   fetchLocations,
   deleteLocation,
@@ -28,6 +28,7 @@ export default function LocationList() {
   } = useCampaignContext()
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   
   const [locations, setLocations] = useState([])
   const [locationTypes, setLocationTypes] = useState([])
@@ -292,6 +293,15 @@ export default function LocationList() {
             )}
           </div>
           <div className="entities-header-right">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate('/locations/builder')}
+              disabled={!activeWorldId}
+              title="Open location builder"
+            >
+              <Network size={18} /> Builder
+            </button>
             <button
               type="button"
               className="icon-btn"
