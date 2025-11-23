@@ -15,6 +15,7 @@ import {
   addChildLocation,
   removeChildLocation,
   updateLocationImportance,
+  searchLocations,
 } from '../controllers/locationController.js'
 import {
   getLocationNotes,
@@ -39,6 +40,7 @@ router.get('/followed', getFollowedLocations)
 
 // Location routes
 router.get('/', getLocations)
+router.get('/search', searchLocations)
 router.get('/:id', getLocationById)
 router.get('/:id/path', getLocationPath)
 router.get('/:id/entities', getLocationEntities)

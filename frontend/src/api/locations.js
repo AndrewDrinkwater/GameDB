@@ -64,6 +64,26 @@ export async function fetchLocations(params = {}) {
   return api.get(url)
 }
 
+export async function searchLocations(params = {}) {
+  const queryParams = new URLSearchParams()
+  
+  if (params.worldId) queryParams.append('worldId', params.worldId)
+  if (params.query) queryParams.append('q', params.query)
+  if (params.limit) queryParams.append('limit', params.limit)
+  if (params.offset) queryParams.append('offset', params.offset)
+  if (params.locationTypeIds) {
+    const typeIds = Array.isArray(params.locationTypeIds)
+      ? params.locationTypeIds.join(',')
+      : params.locationTypeIds
+    queryParams.append('locationTypeIds', typeIds)
+  }
+  
+  const queryString = queryParams.toString()
+  const url = `/locations/search${queryString ? `?${queryString}` : ''}`
+  
+  return api.get(url)
+}
+
 export async function fetchLocationById(id) {
   return api.get(`/locations/${id}`)
 }
@@ -175,7 +195,7 @@ export const fetchLocationMentionNotes = (id, params = {}) => {
 export const createLocationNote = (id, data) => api.post(`/locations/${id}/notes`, data)
 
 export const updateLocationNote = (locationId, noteId, data) =>
-  api.patch(`/locations/${locationId}/notes/${noteId}`, data)
+  api.put(`/locations/${locationId}/notes/${noteId}`, data)
 
 export const deleteLocationNote = (locationId, noteId, params = {}) => {
   const query = new URLSearchParams()

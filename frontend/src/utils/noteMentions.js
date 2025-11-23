@@ -14,7 +14,6 @@ export const buildNoteSegments = (content = '', mentionList = []) => {
   if (!text) return []
 
   const mentions = Array.isArray(mentionList) ? mentionList : []
-  console.log('[buildNoteSegments] Input:', { contentLength: text.length, mentionsCount: mentions.length, mentions })
   const mentionLookup = new Map()
   mentions.forEach((mention) => {
     if (!mention) return
@@ -86,8 +85,6 @@ export const buildNoteSegments = (content = '', mentionList = []) => {
     const rawFallback = match[1]
     const fallbackName = cleanEntityName(rawFallback) || String(rawFallback ?? '').trim()
     
-    console.log('[buildNoteSegments] Found mention pattern:', { rawMentionId, rawFallback, fallbackName })
-    
     // Check if the mention ID has a type prefix (entity:UUID or location:UUID)
     let mentionId = rawMentionId.trim()
     let mentionType = null
@@ -100,27 +97,22 @@ export const buildNoteSegments = (content = '', mentionList = []) => {
       }
     }
     
-    console.log('[buildNoteSegments] Parsed mention:', { mentionId, mentionType, fallbackName })
-    
     // Normalize the mentionId for consistent matching
     mentionId = mentionId.trim()
     
     // Skip if we don't have a valid mention ID
     if (!mentionId) {
-      console.warn('[buildNoteSegments] Skipping mention with empty ID:', { rawMentionId, fallbackName })
       lastIndex = regex.lastIndex
       continue
     }
     
     // Try to find the mention in the lookup (check both with and without type prefix)
     let mention = mentionLookup.get(mentionId)
-    console.log('[buildNoteSegments] Lookup by ID:', { mentionId, found: !!mention })
     
     // If we have a type prefix but didn't find it, try the prefixed key
     if (!mention && mentionType) {
       const prefixedKey = `${mentionType}:${mentionId}`
       mention = mentionLookup.get(prefixedKey)
-      console.log('[buildNoteSegments] Lookup by prefixed key:', { prefixedKey, found: !!mention })
     }
     
     // If not found, try to determine type from the mention list or use the prefix
@@ -196,13 +188,11 @@ export const buildNoteSegments = (content = '', mentionList = []) => {
     
     // Only push if we have a valid mention with an ID
     if (mention && (mention.entityId || mention.locationId)) {
-      console.log('[buildNoteSegments] Creating mention segment:', mention)
       // Create segment with type: 'mention' first, then spread mention properties
       // But ensure type stays as 'mention' (don't let mention.type overwrite it)
       const { type: mentionType, ...mentionProps } = mention
       segments.push({ type: 'mention', ...mentionProps })
     } else {
-      console.warn('[buildNoteSegments] Failed to create mention segment:', { mention, mentionId, mentionType, fallbackName })
       // Create a placeholder mention segment so we can see where it should be
       const placeholderMention = {
         type: 'mention',
@@ -210,7 +200,6 @@ export const buildNoteSegments = (content = '', mentionList = []) => {
         entityName: fallbackName || 'Unresolved',
         isPlaceholder: true,
       }
-      console.log('[buildNoteSegments] Creating placeholder mention segment:', placeholderMention)
       segments.push(placeholderMention)
     }
     lastIndex = regex.lastIndex
@@ -224,7 +213,6 @@ export const buildNoteSegments = (content = '', mentionList = []) => {
     }
   }
 
-  console.log('[buildNoteSegments] Final segments:', segments)
   return segments
 }
 

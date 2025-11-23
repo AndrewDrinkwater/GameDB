@@ -79,11 +79,6 @@ export default function LocationSearchSelect({
 
     ;(async () => {
       try {
-        console.log('🔍 [Child Location Search] Loading locations...', {
-          worldId,
-          allowedTypeIds: allowedTypeIdsMemo
-        })
-        
         // Fetch ALL locations regardless of parent/child status
         const res = await fetchLocations({
           worldId,
@@ -93,21 +88,9 @@ export default function LocationSearchSelect({
         const data = Array.isArray(res?.data) ? res.data : res
         const locations = Array.isArray(data) ? data : []
         
-        console.log('🔍 [Child Location Search] Fetched locations:', {
-          totalCount: locations.length,
-          sampleLocations: locations.slice(0, 5).map(loc => ({
-            id: loc.id,
-            name: loc.name,
-            typeId: loc.location_type_id || loc.locationType?.id,
-            typeName: loc.locationType?.name,
-            parentId: loc.parent_id || loc.parent?.id
-          }))
-        })
-        
         setAllLocations(locations)
       } catch (err) {
         if (!cancelled) {
-          console.error('❌ [Child Location Search] Failed to load locations', err)
           setAllLocations([])
         }
       }
@@ -120,29 +103,11 @@ export default function LocationSearchSelect({
 
   // Filter locations by type if allowedTypeIds is specified
   const filteredLocations = useMemo(() => {
-    console.log('🔍 [Child Location Search] Filtering locations by type...', {
-      totalLocations: allLocations.length,
-      allowedTypeIds: allowedTypeIdsMemo,
-      hasAllowedTypes: allowedTypeIdsMemo.length > 0
-    })
-    
     if (!allowedTypeIdsMemo.length) {
-      console.log('✅ [Child Location Search] No type filter - returning all locations:', allLocations.length)
       return allLocations
     }
     
     const allowedTypeIdSet = new Set(allowedTypeIdsMemo.map(id => String(id)))
-    
-    // Group locations by type before filtering for logging
-    const locationsByType = allLocations.reduce((acc, loc) => {
-      const typeId = String(loc.location_type_id || loc.locationTypeId || loc.locationType?.id || 'unknown')
-      const typeName = loc.locationType?.name || 'unknown'
-      if (!acc[typeName]) acc[typeName] = { typeId, locations: [] }
-      acc[typeName].locations.push({ id: loc.id, name: loc.name })
-      return acc
-    }, {})
-    
-    console.log('🔍 [Child Location Search] Locations by type before filter:', locationsByType)
     
     const filtered = allLocations.filter((location) => {
       const typeId =
@@ -153,18 +118,6 @@ export default function LocationSearchSelect({
       const typeIdStr = String(typeId)
       const matches = allowedTypeIdSet.has(typeIdStr)
       return matches
-    })
-    
-    console.log('✅ [Child Location Search] After type filter:', {
-      before: allLocations.length,
-      after: filtered.length,
-      filteredLocations: filtered.map(loc => ({
-        id: loc.id,
-        name: loc.name,
-        typeId: loc.location_type_id || loc.locationType?.id,
-        typeName: loc.locationType?.name,
-        parentId: loc.parent_id || loc.parent?.id
-      }))
     })
     
     return filtered
@@ -245,7 +198,6 @@ export default function LocationSearchSelect({
         }
       } catch (err) {
         if (!cancelled) {
-          console.warn('Location lookup failed', err)
         }
       }
 

@@ -1324,3 +1324,156 @@ export const updateLocationImportance = async (req, res) => {
   }
 }
 
+const normaliseIdList = (value) => {
+  if (!value) return []
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => {
+        if (entry === undefined || entry === null) return ''
+        return String(entry).trim()
+      })
+      .filter(Boolean)
+  }
+
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  }
+
+  return []
+}
+
+const clampNumber = (value, { min = 0, max = Number.MAX_SAFE_INTEGER, fallback = 0 } = {}) => {
+  if (value === undefined || value === null || value === '') return fallback
+  const parsed = Number(value)
+  if (Number.isNaN(parsed)) return fallback
+  if (parsed < min) return min
+  if (parsed > max) return max
+  return parsed
+}
+
+export const searchLocations = async (req, res) => {
+  try {
+    const { worldId, q = '', limit: rawLimit, offset: rawOffset, locationTypeIds } = req.query
+
+    if (!worldId) {
+      return res.status(400).json({ success: false, message: 'worldId is required' })
+    }
+
+    const world = await World.findByPk(worldId)
+    if (!world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    const access = req.worldAccess ?? (await checkWorldAccess(world.id, req.user))
+    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const viewAsCharacterId =
+      typeof req.query?.viewAsCharacterId === 'string'
+        ? req.query.viewAsCharacterId.trim()
+        : typeof req.query?.characterId === 'string'
+          ? req.query.characterId.trim()
+          : ''
+
+    const readContext = await buildLocationReadContext({
+      worldId: world.id,
+      user: req.user,
+      worldAccess: access,
+      campaignContextId: req.campaignContextId,
+      characterContextId: viewAsCharacterId,
+    })
+
+    const limit = clampNumber(rawLimit, { min: 1, max: 100, fallback: 20 })
+    const offset = clampNumber(rawOffset, { min: 0, fallback: 0 })
+    const trimmedQuery = typeof q === 'string' ? q.trim() : ''
+    const where = { world_id: world.id }
+    const isPrivilegedView = Boolean(readContext?.isOwner || readContext?.isAdmin)
+    const allowPersonalAccess = Boolean(req.user?.id && !readContext?.suppressPersonalAccess)
+
+    if (!isPrivilegedView) {
+      const visibilityClauses = [{ visibility: { [Op.in]: PUBLIC_VISIBILITY } }]
+
+      if (allowPersonalAccess) {
+        visibilityClauses.push({ created_by: req.user.id })
+      }
+
+      if (visibilityClauses.length > 1) {
+        where[Op.or] = visibilityClauses
+      } else {
+        where[Op.and] = [...(where[Op.and] ?? []), visibilityClauses[0]]
+      }
+    }
+
+    const readAccessWhere = buildReadableLocationsWhereClause(readContext)
+    if (readAccessWhere) {
+      if (where[Op.and]) {
+        where[Op.and].push(readAccessWhere)
+      } else {
+        where[Op.and] = [readAccessWhere]
+      }
+    }
+
+    if (trimmedQuery) {
+      const pattern = `%${trimmedQuery}%`
+      const dialect = Location.sequelize?.getDialect?.() || ''
+      if (dialect === 'postgres') {
+        where.name = { [Op.iLike]: pattern }
+      } else {
+        where.name = { [Op.like]: pattern }
+      }
+    }
+
+    const resolvedLocationTypeIds = normaliseIdList(locationTypeIds)
+    if (resolvedLocationTypeIds.length) {
+      where.location_type_id = { [Op.in]: resolvedLocationTypeIds }
+    }
+
+    const { rows, count } = await Location.findAndCountAll({
+      where,
+      include: [
+        { model: LocationType, as: 'locationType', attributes: ['id', 'name'] },
+      ],
+      order: [['name', 'ASC']],
+      distinct: true,
+      limit,
+      offset,
+    })
+
+    // Filter locations by access permissions (post-query filtering for complex access rules)
+    const filteredLocations = rows.filter((location) =>
+      canUserReadLocation(location, readContext),
+    )
+
+    const payload = filteredLocations.map((location) => {
+      const plain = location.get({ plain: true })
+      const type = plain.locationType || {}
+      return {
+        id: plain.id,
+        name: plain.name,
+        typeId: type.id ?? plain.location_type_id ?? null,
+        typeName: type.name ?? plain.location_type_name ?? null,
+      }
+    })
+
+    const hasMore = offset + filteredLocations.length < count
+
+    return res.json({
+      success: true,
+      data: payload,
+      pagination: {
+        offset,
+        limit,
+        total: count,
+        hasMore,
+      },
+    })
+  } catch (error) {
+    console.error('Error searching locations:', error)
+    res.status(500).json({ success: false, message: error.message })
+  }
+}
+

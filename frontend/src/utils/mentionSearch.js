@@ -1,5 +1,5 @@
 import { searchEntities } from '../api/entities.js'
-import { fetchLocations } from '../api/locations.js'
+import { searchLocations } from '../api/locations.js'
 import { cleanEntityName } from './noteMentions.js'
 
 /**
@@ -29,12 +29,12 @@ export const searchMentions = async ({ worldId, query, limit = 4, callback }) =>
         query: trimmedQuery,
         limit,
       }).catch(() => ({ data: [] })),
-      fetchLocations({
+      searchLocations({
         worldId,
-        // Note: fetchLocations doesn't have a query parameter, so we'll filter client-side
-        // In the future, we might want to add a search endpoint for locations
+        query: trimmedQuery,
+        limit,
       }).catch((err) => {
-        console.error('Failed to fetch locations for mention search', err)
+        console.error('Failed to search locations for mention search', err)
         return { data: [] }
       }),
     ])
@@ -74,16 +74,8 @@ export const searchMentions = async ({ worldId, query, limit = 4, callback }) =>
       })
       .filter(Boolean)
 
-    // Format locations with type prefix (filter by query client-side since fetchLocations doesn't support search)
-    const queryLower = trimmedQuery.toLowerCase()
+    // Format locations with type prefix
     const formattedLocations = (Array.isArray(locations) ? locations : [])
-      .filter((location) => {
-        if (!location || typeof location !== 'object') return false
-        const name = String(location?.name || '').trim()
-        if (!name) return false
-        return name.toLowerCase().includes(queryLower)
-      })
-      .slice(0, limit)
       .map((location) => {
         if (!location || typeof location !== 'object') return null
         const locationId = location?.id
