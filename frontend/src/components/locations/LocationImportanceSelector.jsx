@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { AlertCircle, Info, Minus, X } from 'lucide-react'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import { updateLocationImportance } from '../../api/locations.js'
-import './LocationImportanceSelector.css'
+import '../entities/EntityImportanceSelector.css'
 
 const IMPORTANCE_OPTIONS = [
   { value: 'critical', label: 'Critical', icon: AlertCircle, color: '#dc2626' },
@@ -11,6 +11,7 @@ const IMPORTANCE_OPTIONS = [
   { value: null, label: 'None', icon: X, color: '#9ca3af' },
 ]
 
+// Reuses EntityImportanceSelector styles and structure, but uses location API
 export default function LocationImportanceSelector({ locationId, importance, onUpdate }) {
   const { selectedCampaignId } = useCampaignContext()
   const [loading, setLoading] = useState(false)
@@ -36,9 +37,9 @@ export default function LocationImportanceSelector({ locationId, importance, onU
   }
 
   return (
-    <div className="location-importance-selector">
-      <span className="location-importance-label">Importance:</span>
-      <div className="location-importance-buttons">
+    <div className="entity-importance-selector">
+      <span className="entity-importance-label">Importance:</span>
+      <div className="entity-importance-buttons">
         {IMPORTANCE_OPTIONS.map((option) => {
           const Icon = option.icon
           const isSelected = importance === option.value
@@ -46,7 +47,7 @@ export default function LocationImportanceSelector({ locationId, importance, onU
             <button
               key={option.value || 'none'}
               type="button"
-              className={`location-importance-button ${isSelected ? 'selected' : ''}`}
+              className={`entity-importance-button ${isSelected ? 'selected' : ''}`}
               onClick={() => handleSelect(option.value)}
               disabled={loading}
               title={option.label}
@@ -59,7 +60,7 @@ export default function LocationImportanceSelector({ locationId, importance, onU
               }
             >
               <Icon size={16} />
-              <span className="location-importance-button-label">{option.label}</span>
+              <span className="entity-importance-button-label">{option.label}</span>
             </button>
           )
         })}

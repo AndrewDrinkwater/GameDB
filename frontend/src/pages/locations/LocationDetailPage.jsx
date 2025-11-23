@@ -148,7 +148,7 @@ export default function LocationDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user, token, sessionReady } = useAuth()
-  const { activeWorldId } = useCampaignContext()
+  const { activeWorldId, selectedCampaignId } = useCampaignContext()
   const isMobile = useIsMobile()
 
   const [location, setLocation] = useState(null)
@@ -212,7 +212,7 @@ export default function LocationDetailPage() {
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }, [id, selectedCampaignId])
 
   const loadEntities = useCallback(async () => {
     if (!id) return

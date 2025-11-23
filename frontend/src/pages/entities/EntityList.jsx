@@ -25,6 +25,7 @@ import EntityForm from './EntityForm.jsx'
 import SearchBar from '../../components/SearchBar.jsx'
 import ConditionBuilderModal from '../../components/ConditionBuilderModal.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
+import ImportanceIndicator from '../../components/shared/ImportanceIndicator.jsx'
 import useDataExplorer from '../../hooks/useDataExplorer.js'
 import useIsMobile from '../../hooks/useIsMobile.js'
 import { ENTITY_CREATION_SCOPES } from '../../utils/worldCreationScopes.js'
@@ -1200,12 +1201,6 @@ export default function EntityList() {
 
     switch (column.key) {
       case 'name':
-        const importance = selectedCampaignId ? entity.importance : null
-        const importanceIcons = {
-          critical: '🔴',
-          important: '🟠',
-          medium: '⚪',
-        }
         const hasChildren = (entity.childCount || 0) > 0
         
         const handleChevronClick = (e) => {
@@ -1257,17 +1252,8 @@ export default function EntityList() {
                 <EntityInfoPreview entityId={entity.id} entityName={entity.name || 'entity'} />
               </>
             ) : null}
-            {importance && (
-              <>
-                {'\u00A0'}
-                <span
-                  className="entity-importance-indicator"
-                  title={`Importance: ${importance}`}
-                >
-                  {importanceIcons[importance] || '•'}
-                </span>
-              </>
-            )}
+            {'\u00A0'}
+            <ImportanceIndicator importance={entity.importance} />
           </>
         )
       case 'type':

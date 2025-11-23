@@ -1,6 +1,7 @@
 // src/api/locations.js
 import { getAuthToken } from '../utils/authHelpers.js'
 import { API_BASE } from './config.js'
+import api from './client.js'
 
 // 🔐 Safe token getter that waits for localStorage if necessary
 async function waitForToken(retries = 5, delay = 200) {
@@ -47,7 +48,6 @@ async function handleResponse(res, action = 'request') {
 // === Location API methods ===
 
 export async function fetchLocations(params = {}) {
-  const headers = await authHeaders()
   const queryParams = new URLSearchParams()
   
   if (params.worldId) queryParams.append('worldId', params.worldId)
@@ -59,16 +59,13 @@ export async function fetchLocations(params = {}) {
   if (params.all) queryParams.append('all', params.all)
   
   const queryString = queryParams.toString()
-  const url = `${API_BASE}/locations${queryString ? `?${queryString}` : ''}`
+  const url = `/locations${queryString ? `?${queryString}` : ''}`
   
-  const res = await fetch(url, { headers })
-  return handleResponse(res, 'fetch locations')
+  return api.get(url)
 }
 
 export async function fetchLocationById(id) {
-  const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/locations/${id}`, { headers })
-  return handleResponse(res, 'fetch location')
+  return api.get(`/locations/${id}`)
 }
 
 export async function fetchLocationPath(id) {
@@ -161,37 +158,7 @@ export async function removeChildLocation(parentLocationId, childLocationId) {
 }
 
 export async function updateLocationImportance(locationId, importance) {
-  const headers = await authHeaders()
-  
-  // Include campaign context header if available
-  try {
-    const CAMPAIGN_CONTEXT_STORAGE_KEY = 'gamedb_campaign_context'
-    const CAMPAIGN_CONTEXT_HEADER = 'X-Campaign-Context-Id'
-    const storedContextId = localStorage.getItem(CAMPAIGN_CONTEXT_STORAGE_KEY)
-    if (storedContextId) {
-      try {
-        const context = JSON.parse(storedContextId)
-        if (context?.type === 'campaign' && context.id) {
-          headers[CAMPAIGN_CONTEXT_HEADER] = context.id
-        }
-      } catch {
-        // If not JSON, treat as plain campaign ID
-        const trimmed = storedContextId.trim()
-        if (trimmed) {
-          headers[CAMPAIGN_CONTEXT_HEADER] = trimmed
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('⚠️ Unable to include campaign context header', err)
-  }
-  
-  const res = await fetch(`${API_BASE}/locations/${locationId}/importance`, {
-    method: 'PUT',
-    headers,
-    body: JSON.stringify({ importance }),
-  })
-  return handleResponse(res, 'update location importance')
+  return api.put(`/locations/${locationId}/importance`, { importance })
 }
 
 // Location notes

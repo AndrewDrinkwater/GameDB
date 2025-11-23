@@ -12,9 +12,10 @@ import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 import LocationForm from './LocationForm.jsx'
 import LocationInfoPreview from '../../components/locations/LocationInfoPreview.jsx'
+import ImportanceIndicator from '../../components/shared/ImportanceIndicator.jsx'
 
 export default function LocationList() {
-  const { activeWorldId } = useCampaignContext()
+  const { activeWorldId, selectedCampaignId, contextKey } = useCampaignContext()
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   
@@ -66,7 +67,7 @@ export default function LocationList() {
     } finally {
       setLoading(false)
     }
-  }, [activeWorldId, selectedParentId, selectedLocationTypeId])
+  }, [activeWorldId, selectedParentId, selectedLocationTypeId, selectedCampaignId, contextKey])
 
   const loadLocationTypes = useCallback(async () => {
     if (!activeWorldId) return
@@ -350,6 +351,8 @@ export default function LocationList() {
                             <LocationInfoPreview locationId={location.id} locationName={location.name || 'location'} />
                           </>
                         ) : null}
+                        {'\u00A0'}
+                        <ImportanceIndicator importance={location.importance} />
                       </>
                     ) : (
                       <>
@@ -365,6 +368,8 @@ export default function LocationList() {
                             <LocationInfoPreview locationId={location.id} locationName={location.name || 'location'} />
                           </>
                         ) : null}
+                        {'\u00A0'}
+                        <ImportanceIndicator importance={location.importance} />
                       </>
                     )}
                   </td>

@@ -13,6 +13,14 @@ import {
   sequelize,
 } from '../models/index.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
+import {
+  buildLocationReadContext,
+  canUserReadLocation,
+  buildReadableLocationsWhereClause,
+} from '../utils/locationAccess.js'
+import { resolveEntityCreationAccess } from './entityController.js'
+
+const PUBLIC_VISIBILITY = ['visible', 'partial']
 
 const isSystemAdmin = (user) => user?.role === 'system_admin'
 
@@ -41,6 +49,21 @@ export const getLocations = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
+    const viewAsCharacterId =
+      typeof req.query?.viewAsCharacterId === 'string'
+        ? req.query.viewAsCharacterId.trim()
+        : typeof req.query?.characterId === 'string'
+          ? req.query.characterId.trim()
+          : ''
+
+    const readContext = await buildLocationReadContext({
+      worldId: worldIdParam,
+      user: req.user,
+      worldAccess: access,
+      campaignContextId: req.campaignContextId,
+      characterContextId: viewAsCharacterId,
+    })
+
     const { parentId, locationTypeId, includeEntities, all } = req.query
 
     const where = {
@@ -66,6 +89,37 @@ export const getLocations = async (req, res) => {
 
     if (locationTypeId) {
       where.location_type_id = normaliseId(locationTypeId)
+    }
+
+    // Apply visibility and access filtering
+    const isPrivilegedView = Boolean(readContext?.isOwner || readContext?.isAdmin)
+    const allowPersonalAccess = Boolean(req.user?.id && !readContext?.suppressPersonalAccess)
+
+    if (!isPrivilegedView) {
+      const visibilityClauses = [{ visibility: { [Op.in]: PUBLIC_VISIBILITY } }]
+
+      if (allowPersonalAccess) {
+        visibilityClauses.push({ created_by: req.user.id })
+      }
+
+      if (visibilityClauses.length > 1) {
+        where[Op.or] = visibilityClauses
+      } else {
+        where[Op.and] = [...(where[Op.and] ?? []), visibilityClauses[0]]
+      }
+    }
+
+    // Apply access-based where clause for non-privileged users
+    const accessWhere = buildReadableLocationsWhereClause(readContext)
+    if (accessWhere) {
+      if (where[Op.or]) {
+        // Combine with existing OR clause
+        where[Op.or] = [where[Op.or], accessWhere]
+      } else if (where[Op.and]) {
+        where[Op.and].push(accessWhere)
+      } else {
+        where[Op.and] = [accessWhere]
+      }
     }
 
     const include = [
@@ -107,8 +161,16 @@ export const getLocations = async (req, res) => {
       order: [['name', 'ASC']],
     })
 
+    // Filter locations by access permissions (post-query filtering for complex access rules)
+    const filteredLocations = locations.filter((location) =>
+      canUserReadLocation(location, readContext),
+    )
+    if (!filteredLocations.length) {
+      return res.json({ success: true, data: [] })
+    }
+
     // Get child counts
-    const locationIds = locations.map((l) => l.id)
+    const locationIds = filteredLocations.map((l) => l.id)
     const childCounts = await Location.findAll({
       attributes: [
         'parent_id',
@@ -128,12 +190,39 @@ export const getLocations = async (req, res) => {
       }
     })
 
-    const locationsWithCounts = locations.map((location) => {
+    // Fetch all importance records in one query if campaign context exists
+    const campaignId = req.campaignContextId || null
+    let importanceMap = new Map()
+    if (campaignId) {
+      const importanceLocationIds = filteredLocations.map((l) => l.id).filter(Boolean)
+      if (importanceLocationIds.length > 0) {
+        const importanceRecords = await LocationCampaignImportance.findAll({
+          where: {
+            location_id: { [Op.in]: importanceLocationIds },
+            campaign_id: campaignId,
+          },
+        })
+        importanceRecords.forEach((record) => {
+          importanceMap.set(record.location_id, record.importance)
+        })
+      }
+    }
+
+    const locationsWithCounts = filteredLocations.map((location) => {
       const plain = location.toJSON()
-      return {
+      const result = {
         ...plain,
         childCount: childCountMap.get(location.id) || 0,
       }
+      
+      // Add importance if campaign context exists
+      if (campaignId) {
+        result.importance = importanceMap.get(location.id) || null
+      } else {
+        result.importance = null
+      }
+      
+      return result
     })
 
     res.json({ success: true, data: locationsWithCounts })
@@ -210,6 +299,26 @@ export const getLocationById = async (req, res) => {
 
     const access = await checkWorldAccess(location.world_id, req.user)
     if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const viewAsCharacterId =
+      typeof req.query?.viewAsCharacterId === 'string'
+        ? req.query.viewAsCharacterId.trim()
+        : typeof req.query?.characterId === 'string'
+          ? req.query.characterId.trim()
+          : ''
+
+    const readContext = await buildLocationReadContext({
+      worldId: location.world_id,
+      user: req.user,
+      worldAccess: access,
+      campaignContextId: req.campaignContextId,
+      characterContextId: viewAsCharacterId,
+    })
+
+    // Check if user can read this location
+    if (!canUserReadLocation(location, readContext)) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 
@@ -338,6 +447,79 @@ export const createLocation = async (req, res) => {
       return res.status(400).json({ success: false, message: 'name is required' })
     }
 
+    // Resolve creation access to determine default access settings
+    const creationAccessResult = await resolveEntityCreationAccess({
+      world: access.world,
+      user: req.user,
+      campaignContextId: req.campaignContextId,
+    })
+
+    if (!creationAccessResult.allowed) {
+      return res.status(403).json({
+        success: false,
+        message: creationAccessResult.reason || 'You do not have permission to create locations in this world.',
+      })
+    }
+
+    const defaultCampaignId = creationAccessResult.defaultCampaignId ?? null
+    const enforceCampaignScope = Boolean(
+      creationAccessResult.enforceCampaignScope && defaultCampaignId,
+    )
+
+    // Set default access based on campaign context
+    const defaultAccessMode = defaultCampaignId ? 'selective' : 'global'
+    const defaultCampaignTargets = defaultCampaignId ? [defaultCampaignId] : []
+
+    let readAccess = defaultAccessMode
+    let writeAccess = defaultAccessMode
+    let readCampaignIds = [...defaultCampaignTargets]
+    let writeCampaignIds = [...defaultCampaignTargets]
+
+    // Handle access inputs from request body
+    const {
+      read_access: readAccessInput,
+      write_access: writeAccessInput,
+      read_campaign_ids: readCampaignIdsInput,
+      write_campaign_ids: writeCampaignIdsInput,
+    } = req.body ?? {}
+
+    try {
+      if (readAccessInput !== undefined) {
+        readAccess = normaliseAccessValue(readAccessInput, 'read_access')
+      }
+
+      if (writeAccessInput !== undefined) {
+        writeAccess = normaliseAccessValue(writeAccessInput, 'write_access')
+      }
+
+      if (readCampaignIdsInput !== undefined) {
+        readCampaignIds = normaliseUuidArray(readCampaignIdsInput, 'read_campaign_ids')
+      }
+
+      if (writeCampaignIdsInput !== undefined) {
+        writeCampaignIds = normaliseUuidArray(writeCampaignIdsInput, 'write_campaign_ids')
+      }
+    } catch (err) {
+      return res.status(400).json({ success: false, message: err.message })
+    }
+
+    // Clear campaign IDs if access mode is not selective
+    if (readAccess !== 'selective') {
+      readCampaignIds = []
+    }
+
+    if (writeAccess !== 'selective') {
+      writeCampaignIds = []
+    }
+
+    // Enforce campaign scope if required
+    if (enforceCampaignScope && defaultCampaignId) {
+      readAccess = 'selective'
+      writeAccess = 'selective'
+      readCampaignIds = [defaultCampaignId]
+      writeCampaignIds = [defaultCampaignId]
+    }
+
     const location = await Location.create({
       world_id: worldId,
       created_by: req.user.id,
@@ -347,6 +529,10 @@ export const createLocation = async (req, res) => {
       description: description?.trim() || null,
       metadata: metadata && typeof metadata === 'object' ? metadata : {},
       coordinates: coordinates && typeof coordinates === 'object' ? coordinates : null,
+      read_access: readAccess,
+      write_access: writeAccess,
+      read_campaign_ids: readCampaignIds,
+      write_campaign_ids: writeCampaignIds,
     })
 
     const fullLocation = await Location.findByPk(location.id, {
