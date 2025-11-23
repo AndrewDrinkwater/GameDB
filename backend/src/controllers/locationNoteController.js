@@ -1069,7 +1069,18 @@ export const listLocationMentionNotes = async (req, res) => {
             mention?.locationID ??
             null,
         )
-        return mentionLocationId && mentionLocationId === mentionId
+        if (mentionLocationId && mentionLocationId === mentionId) {
+          return true
+        }
+        // Also check for entity mentions (in case location ID matches an entity ID - unlikely but possible)
+        const mentionEntityId = normaliseId(
+          mention?.entityId ??
+            mention?.entity_id ??
+            mention?.id ??
+            mention?.entityID ??
+            null,
+        )
+        return mentionEntityId && mentionEntityId === mentionId
       })
 
       if (!hasMention) {

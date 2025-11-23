@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import EntityInfoPreview from '../entities/EntityInfoPreview.jsx'
+import LocationInfoPreview from '../locations/LocationInfoPreview.jsx'
 import { buildNoteSegments } from '../../utils/noteMentions.js'
 
 export default function TaggedNoteContent({
@@ -23,17 +24,33 @@ export default function TaggedNoteContent({
   }
 
   return resolvedSegments.map((segment, index) => {
-    if (segment.type === 'mention' && segment.entityId) {
-      const label = segment.entityName || 'entity'
-      return (
-        <span
-          key={`${noteId}-mention-${index}`}
-          className={mentionClassName}
-        >
-          @{label}
-          <EntityInfoPreview entityId={segment.entityId} entityName={label} />
-        </span>
-      )
+    if (segment.type === 'mention') {
+      // Handle location mentions
+      if (segment.locationId || segment.type === 'location') {
+        const label = segment.locationName || 'location'
+        return (
+          <span
+            key={`${noteId}-mention-${index}`}
+            className={mentionClassName}
+          >
+            @{label}
+            <LocationInfoPreview locationId={segment.locationId} locationName={label} />
+          </span>
+        )
+      }
+      // Handle entity mentions
+      if (segment.entityId || segment.type === 'entity') {
+        const label = segment.entityName || 'entity'
+        return (
+          <span
+            key={`${noteId}-mention-${index}`}
+            className={mentionClassName}
+          >
+            @{label}
+            <EntityInfoPreview entityId={segment.entityId} entityName={label} />
+          </span>
+        )
+      }
     }
 
     return (

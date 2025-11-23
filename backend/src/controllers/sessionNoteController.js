@@ -305,14 +305,22 @@ export const listEntityMentionSessionNotes = async (req, res) => {
       }
 
       return plain.mentions.some((mention) => {
-        const mentionId = normaliseId(
+        // Check for entity mentions
+        const mentionEntityId = normaliseId(
           mention?.entityId ??
             mention?.entity_id ??
             mention?.id ??
             mention?.entityID ??
             null,
         )
-        return mentionId && mentionId === entityId
+        if (mentionEntityId && mentionEntityId === entityId) {
+          return true
+        }
+        // Also check for location mentions (in case entity ID matches a location ID - unlikely but possible)
+        const mentionLocationId = normaliseId(
+          mention?.locationId ?? mention?.location_id ?? null,
+        )
+        return mentionLocationId && mentionLocationId === entityId
       })
     })
 

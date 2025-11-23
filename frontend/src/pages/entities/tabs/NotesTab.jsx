@@ -4,6 +4,7 @@ import MentionsInputWrapper from '../../../components/notes/MentionsInputWrapper
 import { AlertCircle, Loader2, Plus, Edit2, X, Check, Trash2 } from 'lucide-react'
 import PropTypes from '../../../utils/propTypes.js'
 import EntityInfoPreview from '../../../components/entities/EntityInfoPreview.jsx'
+import LocationInfoPreview from '../../../components/locations/LocationInfoPreview.jsx'
 import { fetchCharacters } from '../../../api/characters.js'
 import DrawerPanel from '../../../components/DrawerPanel.jsx'
 import {
@@ -247,33 +248,14 @@ export default function NotesTab({
         return
       }
 
-      try {
-        const response = await searchEntities({
-          worldId: resolvedWorldId,
-          query: trimmedQuery,
-          limit: 8,
-        })
-        const data = Array.isArray(response?.data) ? response.data : response
-        const formatted = Array.isArray(data)
-          ? data
-              .map((entity) => {
-                const entityId = entity?.id ?? entity?.entity?.id
-                if (!entityId) return null
-                const rawName =
-                  entity?.name ||
-                  entity?.displayName ||
-                  entity?.entity?.name ||
-                  'Unnamed entity'
-                const display = cleanEntityName(rawName) || 'Unnamed entity'
-                return { id: entityId, display }
-              })
-              .filter(Boolean)
-          : []
-        callback(formatted)
-      } catch (err) {
-        console.error('Failed to search entities for mentions', err)
-        callback([])
-      }
+      // Use unified mention search that includes both entities and locations
+      const { searchMentions } = await import('../../../utils/mentionSearch.js')
+      await searchMentions({
+        worldId: resolvedWorldId,
+        query: trimmedQuery,
+        limit: 8,
+        callback,
+      })
     },
     [resolvedWorldId],
   )
@@ -792,15 +774,29 @@ export default function NotesTab({
     if (!segments.length) return null
 
     return segments.map((segment, index) => {
-      if (segment.type === 'mention' && segment.entityId) {
-        const key = `${note?.id || 'note'}-mention-${index}`
-        const label = segment.entityName || 'entity'
-        return (
-          <span key={key} className="entity-note-mention">
-            @{label}
-            <EntityInfoPreview entityId={segment.entityId} entityName={label} />
-          </span>
-        )
+      if (segment.type === 'mention') {
+        // Handle location mentions
+        if (segment.locationId || segment.type === 'location') {
+          const key = `${note?.id || 'note'}-mention-${index}`
+          const label = segment.locationName || 'location'
+          return (
+            <span key={key} className="entity-note-mention">
+              @{label}
+              <LocationInfoPreview locationId={segment.locationId} locationName={label} />
+            </span>
+          )
+        }
+        // Handle entity mentions
+        if (segment.entityId || segment.type === 'entity') {
+          const key = `${note?.id || 'note'}-mention-${index}`
+          const label = segment.entityName || 'entity'
+          return (
+            <span key={key} className="entity-note-mention">
+              @{label}
+              <EntityInfoPreview entityId={segment.entityId} entityName={label} />
+            </span>
+          )
+        }
       }
 
       return (
@@ -983,7 +979,11 @@ export default function NotesTab({
                             <Mention
                               trigger="@"
                               markup="@[__display__](__id__)"
-                              displayTransform={(id, display) => `@${display}`}
+                              displayTransform={(id, display) => {
+                                // Extract display name, handling type prefix in ID
+                                const cleanDisplay = display || (id.includes(':') ? id.split(':')[1] : id)
+                                return `@${cleanDisplay}`
+                              }}
                               data={handleEntityMentionSearch}
                               appendSpaceOnAdd
                             />
@@ -1315,7 +1315,11 @@ export default function NotesTab({
                 <Mention
                   trigger="@"
                   markup="@[__display__](__id__)"
-                  displayTransform={(id, display) => `@${display}`}
+                  displayTransform={(id, display) => {
+                    // Extract display name, handling type prefix in ID
+                    const cleanDisplay = display || (id.includes(':') ? id.split(':')[1] : id)
+                    return `@${cleanDisplay}`
+                  }}
                   data={handleEntityMentionSearch}
                   appendSpaceOnAdd
                 />

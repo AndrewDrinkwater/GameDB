@@ -372,30 +372,14 @@ export default function SessionNotesPage() {
         return
       }
 
-      try {
-        const response = await searchEntities({
-          worldId: resolvedWorldId,
-          query: trimmedQuery,
-          limit: 8,
-        })
-        const data = Array.isArray(response?.data) ? response.data : response
-        const formatted = Array.isArray(data)
-          ? data
-              .map((entity) => {
-                const entityId = entity?.id ?? entity?.entity?.id
-                if (!entityId) return null
-                const rawName =
-                  entity?.name || entity?.displayName || entity?.entity?.name || 'Unnamed entity'
-                const display = cleanEntityName(rawName) || 'Unnamed entity'
-                return { id: entityId, display }
-              })
-              .filter(Boolean)
-          : []
-        callback(formatted)
-      } catch (error) {
-        console.error('❌ Failed to search entities for mentions', error)
-        callback([])
-      }
+      // Use unified mention search that includes both entities and locations
+      const { searchMentions } = await import('../../utils/mentionSearch.js')
+      await searchMentions({
+        worldId: resolvedWorldId,
+        query: trimmedQuery,
+        limit: 8,
+        callback,
+      })
     },
     [resolvedWorldId],
   )
@@ -835,13 +819,17 @@ export default function SessionNotesPage() {
                           rows: 14,
                         }}
                       >
-                        <Mention
-                          trigger="@"
-                          markup="@[__display__](__id__)"
-                          displayTransform={(id, display) => `@${display}`}
-                          data={handleMentionSearch}
-                          appendSpaceOnAdd
-                        />
+                <Mention
+                  trigger="@"
+                  markup="@[__display__](__id__)"
+                  displayTransform={(id, display) => {
+                    // Extract display name, handling type prefix in ID
+                    const cleanDisplay = display || (id.includes(':') ? id.split(':')[1] : id)
+                    return `@${cleanDisplay}`
+                  }}
+                  data={handleMentionSearch}
+                  appendSpaceOnAdd
+                />
                       </MentionsInputWrapper>
                     </div>
 

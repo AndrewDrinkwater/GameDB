@@ -4,6 +4,7 @@ import MentionsInputWrapper from '../../../components/notes/MentionsInputWrapper
 import { AlertCircle, Loader2, Plus, Edit2, X, Check, Trash2 } from 'lucide-react'
 import PropTypes from '../../../utils/propTypes.js'
 import LocationInfoPreview from '../../../components/locations/LocationInfoPreview.jsx'
+import EntityInfoPreview from '../../../components/entities/EntityInfoPreview.jsx'
 import { fetchCharacters } from '../../../api/characters.js'
 import DrawerPanel from '../../../components/DrawerPanel.jsx'
 import {
@@ -242,33 +243,14 @@ export default function LocationNotesTab({
         return
       }
 
-      try {
-        const response = await fetchLocations({
-          worldId: resolvedWorldId,
-        })
-        const data = Array.isArray(response?.data) ? response.data : response
-        const allLocations = Array.isArray(data) ? data : []
-        
-        // Filter client-side by query
-        const filtered = allLocations
-          .filter((loc) => {
-            const name = loc?.name || ''
-            return name.toLowerCase().includes(trimmedQuery.toLowerCase())
-          })
-          .slice(0, 8)
-          .map((loc) => {
-            const locationId = loc?.id
-            if (!locationId) return null
-            const rawName = loc?.name || 'Unnamed location'
-            const display = cleanEntityName(rawName) || 'Unnamed location'
-            return { id: locationId, display }
-          })
-          .filter(Boolean)
-        callback(filtered)
-      } catch (err) {
-        console.error('Failed to search locations for mentions', err)
-        callback([])
-      }
+      // Use unified mention search that includes both entities and locations
+      const { searchMentions } = await import('../../../utils/mentionSearch.js')
+      await searchMentions({
+        worldId: resolvedWorldId,
+        query: trimmedQuery,
+        limit: 8,
+        callback,
+      })
     },
     [resolvedWorldId],
   )
@@ -665,15 +647,29 @@ export default function LocationNotesTab({
     if (!segments.length) return null
 
     return segments.map((segment, index) => {
-      if (segment.type === 'mention' && segment.entityId) {
-        const key = `${note?.id || 'note'}-mention-${index}`
-        const label = segment.entityName || 'location'
-        return (
-          <span key={key} className="entity-note-mention">
-            @{label}
-            <LocationInfoPreview locationId={segment.entityId} locationName={label} />
-          </span>
-        )
+      if (segment.type === 'mention') {
+        // Handle location mentions
+        if (segment.locationId || segment.type === 'location') {
+          const key = `${note?.id || 'note'}-mention-${index}`
+          const label = segment.locationName || 'location'
+          return (
+            <span key={key} className="entity-note-mention">
+              @{label}
+              <LocationInfoPreview locationId={segment.locationId} locationName={label} />
+            </span>
+          )
+        }
+        // Handle entity mentions
+        if (segment.entityId || segment.type === 'entity') {
+          const key = `${note?.id || 'note'}-mention-${index}`
+          const label = segment.entityName || 'entity'
+          return (
+            <span key={key} className="entity-note-mention">
+              @{label}
+              <EntityInfoPreview entityId={segment.entityId} entityName={label} />
+            </span>
+          )
+        }
       }
 
       return (
@@ -834,7 +830,11 @@ export default function LocationNotesTab({
                             <Mention
                               trigger="@"
                               markup="@[__display__](__id__)"
-                              displayTransform={(id, display) => `@${display}`}
+                              displayTransform={(id, display) => {
+                                // Extract display name, handling type prefix in ID
+                                const cleanDisplay = display || (id.includes(':') ? id.split(':')[1] : id)
+                                return `@${cleanDisplay}`
+                              }}
                               data={handleLocationMentionSearch}
                               appendSpaceOnAdd
                             />
