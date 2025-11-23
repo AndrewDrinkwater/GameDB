@@ -9,6 +9,7 @@ import { fetchCharacters } from '../../../api/characters.js'
 import DrawerPanel from '../../../components/DrawerPanel.jsx'
 import {
   fetchLocationMentionNotes,
+  fetchLocationMentionSessionNotes,
   fetchLocations,
 } from '../../../api/locations.js'
 import {
@@ -180,6 +181,13 @@ export default function LocationNotesTab({
     error: '',
     loaded: false,
   })
+  const [mentionSessionNotesState, setMentionSessionNotesState] = useState({
+    items: emptyArray,
+    loading: false,
+    error: '',
+    loaded: false,
+  })
+  const [expandedSessionNotes, setExpandedSessionNotes] = useState(() => new Set())
 
   const canShowForm =
     Boolean(selectedCampaignId) &&
@@ -489,6 +497,12 @@ export default function LocationNotesTab({
       : emptyArray
   }, [mentionLocationNotesState.items])
 
+  const mentionSessionNotes = useMemo(() => {
+    return Array.isArray(mentionSessionNotesState.items)
+      ? mentionSessionNotesState.items
+      : emptyArray
+  }, [mentionSessionNotesState.items])
+
   useEffect(() => {
     setShareType(isCampaignDm ? 'private' : 'private')
   }, [isCampaignDm, selectedCampaignId])
@@ -507,6 +521,13 @@ export default function LocationNotesTab({
       error: '',
       loaded: false,
     })
+    setMentionSessionNotesState({
+      items: emptyArray,
+      loading: false,
+      error: '',
+      loaded: false,
+    })
+    setExpandedSessionNotes(new Set())
     setMentionSource('location')
   }, [selectedCampaignId, location?.id, campaignMatchesLocationWorld])
 
@@ -572,56 +593,104 @@ export default function LocationNotesTab({
     }
   }, [isCampaignPlayer, selectedCampaignId, characterId])
 
-  useEffect(() => {
-    if (activeSubTab !== 'mentions' || !location?.id || !selectedCampaignId || !campaignMatchesLocationWorld) {
+  const loadLocationMentionNotes = useCallback(async () => {
+    if (!location?.id || !selectedCampaignId || !campaignMatchesLocationWorld) {
       return
     }
 
-    let cancelled = false
+    setMentionLocationNotesState((previous) => ({
+      ...previous,
+      loading: true,
+      error: '',
+    }))
 
-    const loadMentionNotes = async () => {
-      if (mentionLocationNotesState.loaded) return
+    try {
+      const response = await fetchLocationMentionNotes(location.id, {
+        campaignId: selectedCampaignId,
+      })
 
-      setMentionLocationNotesState((prev) => ({ ...prev, loading: true, error: '' }))
+      const data = Array.isArray(response?.data)
+        ? response.data
+        : Array.isArray(response)
+          ? response
+          : emptyArray
 
-      try {
-        const response = await fetchLocationMentionNotes(location.id, {
-          campaignId: selectedCampaignId,
-        })
-        if (cancelled) return
+      setMentionLocationNotesState({
+        items: data,
+        loading: false,
+        error: '',
+        loaded: true,
+      })
+    } catch (err) {
+      setMentionLocationNotesState({
+        items: emptyArray,
+        loading: false,
+        error: err?.message || 'Failed to load mentions',
+        loaded: true,
+      })
+    }
+  }, [campaignMatchesLocationWorld, location?.id, selectedCampaignId])
 
-        const data = Array.isArray(response?.data) ? response.data : response
-        const list = Array.isArray(data) ? data : []
-
-        setMentionLocationNotesState({
-          items: list,
-          loading: false,
-          error: '',
-          loaded: true,
-        })
-      } catch (err) {
-        if (cancelled) return
-        console.error('Failed to load location mention notes', err)
-        setMentionLocationNotesState({
-          items: emptyArray,
-          loading: false,
-          error: err.message || 'Failed to load mention notes',
-          loaded: false,
-        })
-      }
+  const loadSessionMentionNotes = useCallback(async () => {
+    if (!location?.id || !selectedCampaignId || !campaignMatchesLocationWorld) {
+      return
     }
 
-    loadMentionNotes()
+    setMentionSessionNotesState((previous) => ({
+      ...previous,
+      loading: true,
+      error: '',
+    }))
 
-    return () => {
-      cancelled = true
+    try {
+      const response = await fetchLocationMentionSessionNotes(location.id, {
+        campaignId: selectedCampaignId,
+      })
+
+      const data = Array.isArray(response?.data)
+        ? response.data
+        : Array.isArray(response)
+          ? response
+          : emptyArray
+
+      setMentionSessionNotesState({
+        items: data,
+        loading: false,
+        error: '',
+        loaded: true,
+      })
+    } catch (err) {
+      setMentionSessionNotesState({
+        items: emptyArray,
+        loading: false,
+        error: err?.message || 'Failed to load mentions',
+        loaded: true,
+      })
+    }
+  }, [campaignMatchesLocationWorld, location?.id, selectedCampaignId])
+
+  useEffect(() => {
+    if (activeSubTab !== 'mentions') {
+      return
+    }
+
+    // Load location mentions when mentions tab is opened
+    if (!mentionLocationNotesState.loading && !mentionLocationNotesState.loaded) {
+      loadLocationMentionNotes()
+    }
+
+    // Load session mentions when mentions tab is opened
+    if (!mentionSessionNotesState.loading && !mentionSessionNotesState.loaded) {
+      loadSessionMentionNotes()
     }
   }, [
     activeSubTab,
-    location?.id,
-    selectedCampaignId,
-    campaignMatchesLocationWorld,
+    mentionLocationNotesState.loading,
     mentionLocationNotesState.loaded,
+    mentionSessionNotesState.loading,
+    mentionSessionNotesState.loaded,
+    loadLocationMentionNotes,
+    loadSessionMentionNotes,
   ])
 
   const campaignName = selectedCampaign?.name || ''
@@ -687,6 +756,85 @@ export default function LocationNotesTab({
       )
     })
   }, [])
+
+  const buildNotePreview = useCallback((note) => {
+    const segments = buildNoteSegments(note?.content, note?.mentions)
+    if (!segments.length) return ''
+
+    const plain = segments
+      .map((segment) =>
+        segment.type === 'mention'
+          ? `@${segment.locationName || segment.entityName || 'mention'}`
+          : segment.text || '',
+      )
+      .join('')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    if (plain.length <= 180) {
+      return plain
+    }
+
+    return `${plain.slice(0, 177)}…`
+  }, [])
+
+  const formatSessionDate = useCallback((note) => {
+    const raw = note?.sessionDate ?? note?.session_date
+    if (!raw) return ''
+
+    try {
+      const date = new Date(raw)
+      if (!Number.isNaN(date.getTime())) {
+        return date.toLocaleDateString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        })
+      }
+    } catch (err) {
+      console.warn('Unable to format session date', err)
+      return raw
+    }
+
+    return raw
+  }, [])
+
+  const handleSessionNoteToggle = useCallback((noteId) => {
+    const key = String(noteId)
+    setExpandedSessionNotes((previous) => {
+      const next = new Set(previous)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }, [])
+
+  const isSessionNoteExpanded = useCallback(
+    (noteId) => expandedSessionNotes.has(String(noteId)),
+    [expandedSessionNotes],
+  )
+
+  const handleMentionsRefresh = useCallback(() => {
+    if (!location?.id || !selectedCampaignId || !campaignMatchesLocationWorld) {
+      return
+    }
+
+    if (mentionSource === 'location') {
+      loadLocationMentionNotes()
+    } else {
+      loadSessionMentionNotes()
+    }
+  }, [
+    campaignMatchesLocationWorld,
+    location?.id,
+    loadLocationMentionNotes,
+    loadSessionMentionNotes,
+    mentionSource,
+    selectedCampaignId,
+  ])
 
   const shareDisabled = creating
   const saveDisabled = creating || !noteContent.trim() || (isCampaignPlayer && !characterId)
@@ -954,60 +1102,211 @@ export default function LocationNotesTab({
         ) : (
           /* 10. @Mentions tab - same structure */
           <div className="entity-notes-strict-mentions">
-            {mentionLocationNotesState.loading ? (
-              <div className="entity-notes-strict-loading">
-                <Loader2 className="spin" size={20} />
-                <span>Loading mentions…</span>
+              <div className="entity-notes-strict-mentions-header">
+              <div className="entity-notes-strict-mention-toggle">
+                <button
+                  type="button"
+                  className={`entity-notes-strict-mention-toggle-button${
+                    mentionSource === 'location' ? ' active' : ''
+                  }`}
+                  onClick={() => setMentionSource('location')}
+                >
+                  Location Notes
+                  {mentionLocationNotesState.loaded ? (
+                    <span className="entity-notes-strict-mention-count">{mentionLocationNotes.length}</span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  className={`entity-notes-strict-mention-toggle-button${
+                    mentionSource === 'session' ? ' active' : ''
+                  }`}
+                  onClick={() => setMentionSource('session')}
+                >
+                  Session Notes
+                  {mentionSessionNotesState.loaded ? (
+                    <span className="entity-notes-strict-mention-count">{mentionSessionNotes.length}</span>
+                  ) : null}
+                </button>
               </div>
-            ) : null}
-            {mentionLocationNotesState.error ? (
-              <div className="entity-notes-strict-alert error">
-                <AlertCircle size={16} />
-                <p>{mentionLocationNotesState.error}</p>
-              </div>
-            ) : null}
-            {!mentionLocationNotesState.loading && mentionLocationNotesState.loaded && mentionLocationNotes.length === 0 ? (
-              <p className="entity-notes-strict-empty">
-                This location hasn&apos;t been mentioned in other location notes yet.
-              </p>
-            ) : null}
-            {!mentionLocationNotesState.loading && mentionLocationNotesState.loaded && mentionLocationNotes.length > 0 ? (
-              <div className="entity-notes-strict-list">
-                {mentionLocationNotes.map((note, index) => {
-                  const rawKey =
-                    note?.id ??
-                    note?.locationNoteId ??
-                    note?.location_note_id ??
-                    `location-mention-${index}`
-                  const noteKey = String(rawKey)
-                  const createdAtValue = note?.createdAt ?? note?.created_at
-                  const createdAtDate = createdAtValue ? new Date(createdAtValue) : null
-                  const formattedTimestamp = formatTimestamp(createdAtDate)
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleMentionsRefresh}
+                disabled={
+                  !selectedCampaignId ||
+                  !campaignMatchesLocationWorld ||
+                  (mentionSource === 'location' ? mentionLocationNotesState.loading : mentionSessionNotesState.loading)
+                }
+              >
+                {(mentionSource === 'location' ? mentionLocationNotesState.loading : mentionSessionNotesState.loading) ? (
+                  <>
+                    <Loader2 className="spin" size={16} /> Refreshing…
+                  </>
+                ) : (
+                  'Refresh'
+                )}
+              </button>
+            </div>
 
-                  return (
-                    <div
-                      key={`location-mention-${noteKey}`}
-                      className="entity-notes-strict-note-item"
-                    >
-                      <div className="entity-notes-strict-note-header">
-                        <div className="entity-notes-strict-note-title-row">
-                          <span className="entity-notes-strict-note-title">
-                            {getNoteTitle(note)}
-                          </span>
-                          <span className="entity-notes-strict-note-visibility">
-                            {getVisibilityTag(note)}
-                          </span>
+            {mentionSource === 'location' ? (
+              <>
+                {mentionLocationNotesState.error ? (
+                  <div className="entity-notes-strict-alert error">
+                    <AlertCircle size={16} />
+                    <p>{mentionLocationNotesState.error}</p>
+                  </div>
+                ) : null}
+                {mentionLocationNotesState.loading ? (
+                  <div className="entity-notes-strict-loading">
+                    <Loader2 className="spin" size={20} />
+                    <span>Loading mentions…</span>
+                  </div>
+                ) : null}
+                {!mentionLocationNotesState.loading && mentionLocationNotesState.loaded && mentionLocationNotes.length === 0 ? (
+                  <p className="entity-notes-strict-empty">
+                    This location hasn&apos;t been mentioned in location or entity notes yet.
+                  </p>
+                ) : null}
+                {!mentionLocationNotesState.loading && mentionLocationNotesState.loaded && mentionLocationNotes.length > 0 ? (
+                  <div className="entity-notes-strict-list">
+                    {mentionLocationNotes.map((note, index) => {
+                      const rawKey =
+                        note?.id ??
+                        note?.locationNoteId ??
+                        note?.location_note_id ??
+                        `location-mention-${index}`
+                      const noteKey = String(rawKey)
+                      const createdAtValue = note?.createdAt ?? note?.created_at
+                      const createdAtDate = createdAtValue ? new Date(createdAtValue) : null
+                      const formattedTimestamp = formatTimestamp(createdAtDate)
+                      const noteLocationName =
+                        note?.location?.name ?? note?.locationName ?? 'Unnamed location'
+                      const noteLocationId =
+                        note?.location?.id ?? note?.locationId ?? note?.location_id ?? null
+                      const noteEntityName =
+                        note?.entity?.name ?? note?.entityName ?? 'Unnamed entity'
+                      const noteEntityId =
+                        note?.entity?.id ?? note?.entityId ?? note?.entity_id ?? null
+
+                      return (
+                        <div
+                          key={`location-mention-${noteKey}`}
+                          className="entity-notes-strict-note-item"
+                        >
+                          <div className="entity-notes-strict-note-header">
+                            <div className="entity-notes-strict-note-title-row">
+                              <span className="entity-notes-strict-note-title">
+                                {getNoteTitle(note)}
+                                {noteLocationId ? (
+                                  <>
+                                    {' '}on{' '}
+                                    <span style={{ fontWeight: 500 }}>{noteLocationName}</span>
+                                    {' '}
+                                    <LocationInfoPreview locationId={noteLocationId} locationName={noteLocationName} />
+                                  </>
+                                ) : noteEntityId ? (
+                                  <>
+                                    {' '}on{' '}
+                                    <span style={{ fontWeight: 500 }}>{noteEntityName}</span>
+                                    {' '}
+                                    <EntityInfoPreview entityId={noteEntityId} entityName={noteEntityName} />
+                                  </>
+                                ) : null}
+                              </span>
+                              <span className="entity-notes-strict-note-visibility">
+                                {getVisibilityTag(note)}
+                              </span>
+                            </div>
+                            <span className="entity-notes-strict-note-timestamp">
+                              {formattedTimestamp || '—'}
+                            </span>
+                          </div>
+                          <p className="entity-notes-strict-note-body">{renderNoteBody(note)}</p>
                         </div>
-                        <span className="entity-notes-strict-note-timestamp">
-                          {formattedTimestamp || '—'}
-                        </span>
-                      </div>
-                      <p className="entity-notes-strict-note-body">{renderNoteBody(note)}</p>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : null}
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <>
+                {mentionSessionNotesState.error ? (
+                  <div className="entity-notes-strict-alert error">
+                    <AlertCircle size={16} />
+                    <p>{mentionSessionNotesState.error}</p>
+                  </div>
+                ) : null}
+                {mentionSessionNotesState.loading ? (
+                  <div className="entity-notes-strict-loading">
+                    <Loader2 className="spin" size={20} />
+                    <span>Loading session mentions…</span>
+                  </div>
+                ) : null}
+                {!mentionSessionNotesState.loading && mentionSessionNotesState.loaded && mentionSessionNotes.length === 0 ? (
+                  <p className="entity-notes-strict-empty">
+                    This location hasn&apos;t been mentioned in session notes yet.
+                  </p>
+                ) : null}
+                {!mentionSessionNotesState.loading && mentionSessionNotesState.loaded && mentionSessionNotes.length > 0 ? (
+                  <div className="entity-notes-strict-list">
+                    {mentionSessionNotes.map((note, index) => {
+                      const rawKey =
+                        note?.id ??
+                        note?.noteId ??
+                        note?.note_id ??
+                        `session-mention-${index}`
+                      const noteKey = String(rawKey)
+                      const expanded = isSessionNoteExpanded(noteKey)
+                      const preview = buildNotePreview(note)
+                      const sessionTitle =
+                        note?.sessionTitle ?? note?.session_title ?? 'Session note'
+                      const sessionDate = formatSessionDate(note)
+                      const authorName = resolveAuthorLabel(note)
+                      const timestampValue =
+                        note?.updatedAt ??
+                        note?.updated_at ??
+                        note?.createdAt ??
+                        note?.created_at
+                      const timestampDate = timestampValue ? new Date(timestampValue) : null
+                      const formattedTimestamp = formatTimestamp(timestampDate)
+                      const summaryText =
+                        preview || 'This session note does not include any text.'
+
+                      return (
+                        <div
+                          key={`session-mention-${noteKey}`}
+                          className="entity-notes-strict-note-item"
+                        >
+                          <div className="entity-notes-strict-note-header">
+                            <div className="entity-notes-strict-note-title-row">
+                              <span className="entity-notes-strict-note-title">{sessionTitle}</span>
+                            </div>
+                            <span className="entity-notes-strict-note-timestamp">
+                              {formattedTimestamp || '—'}
+                            </span>
+                          </div>
+                          {!expanded ? (
+                            <p className="entity-notes-strict-note-body">{summaryText}</p>
+                          ) : (
+                            <p className="entity-notes-strict-note-body">{renderNoteBody(note)}</p>
+                          )}
+                          <div className="entity-notes-strict-note-actions">
+                            <button
+                              type="button"
+                              className="entity-notes-strict-action-button"
+                              onClick={() => handleSessionNoteToggle(noteKey)}
+                            >
+                              {expanded ? 'Hide note' : 'View note'}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
         )}
       </div>

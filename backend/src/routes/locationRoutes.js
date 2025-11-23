@@ -24,6 +24,7 @@ import {
   deleteLocationNote,
   listLocationMentionNotes,
 } from '../controllers/locationNoteController.js'
+import { listLocationMentionSessionNotes } from '../controllers/sessionNoteController.js'
 import {
   followLocation,
   unfollowLocation,
@@ -68,6 +69,7 @@ router.post('/:id/notes', createLocationNote)
 router.put('/:id/notes/:noteId', updateLocationNote)
 router.delete('/:id/notes/:noteId', deleteLocationNote)
 router.get('/:id/mention-notes', listLocationMentionNotes)
+router.get('/:id/mentions/session-notes', listLocationMentionSessionNotes)
 
 // Location follow routes
 router.post('/:id/follow', followLocation)

@@ -1162,7 +1162,7 @@ export default function NotesTab({
                 ) : null}
                 {!mentionEntityLoading && mentionEntityLoaded && mentionEntityCount === 0 ? (
                   <p className="entity-notes-strict-empty">
-                    This entity hasn&apos;t been mentioned in other entity notes yet.
+                    This entity hasn&apos;t been mentioned in entity or location notes yet.
                   </p>
                 ) : null}
                 {!mentionEntityLoading && mentionEntityLoaded && mentionEntityCount > 0 ? (
@@ -1186,6 +1186,10 @@ export default function NotesTab({
                         note?.entity?.name ?? note?.entityName ?? 'Unnamed entity'
                       const noteEntityId =
                         note?.entity?.id ?? note?.entityId ?? note?.entity_id ?? null
+                      const noteLocationName =
+                        note?.location?.name ?? note?.locationName ?? 'Unnamed location'
+                      const noteLocationId =
+                        note?.location?.id ?? note?.locationId ?? note?.location_id ?? null
 
                       return (
                         <div
@@ -1196,6 +1200,21 @@ export default function NotesTab({
                             <div className="entity-notes-strict-note-title-row">
                               <span className="entity-notes-strict-note-title">
                                 {getNoteTitle(note)}
+                                {noteEntityId ? (
+                                  <>
+                                    {' '}on{' '}
+                                    <span style={{ fontWeight: 500 }}>{noteEntityName}</span>
+                                    {' '}
+                                    <EntityInfoPreview entityId={noteEntityId} entityName={noteEntityName} />
+                                  </>
+                                ) : noteLocationId ? (
+                                  <>
+                                    {' '}on{' '}
+                                    <span style={{ fontWeight: 500 }}>{noteLocationName}</span>
+                                    {' '}
+                                    <LocationInfoPreview locationId={noteLocationId} locationName={noteLocationName} />
+                                  </>
+                                ) : null}
                               </span>
                               <span className="entity-notes-strict-note-visibility">
                                 {getVisibilityTag(note)}

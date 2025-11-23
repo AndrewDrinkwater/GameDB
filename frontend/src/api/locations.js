@@ -192,6 +192,19 @@ export const fetchLocationMentionNotes = (id, params = {}) => {
   return api.get(`/locations/${id}/mention-notes${queryString ? `?${queryString}` : ''}`)
 }
 
+export const fetchLocationMentionSessionNotes = (id, params = {}) => {
+  const query = new URLSearchParams()
+  const campaignId = params.campaignId ?? params.campaign_id
+  if (campaignId) {
+    query.set('campaignId', campaignId)
+  }
+
+  const queryString = query.toString()
+  return api.get(
+    `/locations/${id}/mentions/session-notes${queryString ? `?${queryString}` : ''}`,
+  )
+}
+
 export const createLocationNote = (id, data) => api.post(`/locations/${id}/notes`, data)
 
 export const updateLocationNote = (locationId, noteId, data) =>
