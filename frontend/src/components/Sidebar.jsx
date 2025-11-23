@@ -47,7 +47,7 @@ export default function Sidebar({
   const [locationTypes, setLocationTypes] = useState([])
   const [loadingLocationTypes, setLoadingLocationTypes] = useState(false)
   const [locationTypeError, setLocationTypeError] = useState('')
-  const [otherLocationTypesCollapsed, setOtherLocationTypesCollapsed] = useState(false)
+  const [otherLocationTypesCollapsed, setOtherLocationTypesCollapsed] = useState(true)
 
   useEffect(() => {
     setEntityTypes([])

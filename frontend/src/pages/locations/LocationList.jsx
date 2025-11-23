@@ -26,6 +26,7 @@ export default function LocationList() {
     searchParams.get('parentId') || null
   )
   const selectedLocationTypeId = searchParams.get('locationType') || null
+  const [previousLocationTypeId, setPreviousLocationTypeId] = useState(selectedLocationTypeId)
   const [path, setPath] = useState([])
   const [panelOpen, setPanelOpen] = useState(false)
   const [editingLocation, setEditingLocation] = useState(null)
@@ -51,8 +52,9 @@ export default function LocationList() {
         params.parentId = selectedParentId
       }
       
-      // Filter by location type if provided
-      if (selectedLocationTypeId) {
+      // Filter by location type only at root level (when parentId is not set)
+      // When navigating into children, show all children regardless of type
+      if (selectedLocationTypeId && !selectedParentId) {
         params.locationTypeId = selectedLocationTypeId
       }
       
@@ -103,6 +105,19 @@ export default function LocationList() {
   useEffect(() => {
     loadPath()
   }, [loadPath])
+
+  // Clear parentId (breadcrumb filter) when location type changes
+  // This ensures clicking a location type from sidebar shows all locations of that type at root level
+  useEffect(() => {
+    // Only clear parentId if the location type actually changed (not just if it's set)
+    if (selectedLocationTypeId && selectedLocationTypeId !== previousLocationTypeId) {
+      setSelectedParentId(null)
+      setPreviousLocationTypeId(selectedLocationTypeId)
+    } else if (!selectedLocationTypeId && previousLocationTypeId) {
+      // Location type was cleared
+      setPreviousLocationTypeId(null)
+    }
+  }, [selectedLocationTypeId, previousLocationTypeId])
 
   useEffect(() => {
     const params = {}
@@ -329,6 +344,12 @@ export default function LocationList() {
                         </button>
                         {'\u00A0'}
                         <ChevronRight size={16} style={{ marginLeft: '0.25rem', display: 'inline-block', verticalAlign: 'middle', color: '#6b7280' }} />
+                        {location.id ? (
+                          <>
+                            {'\u00A0'}
+                            <LocationInfoPreview locationId={location.id} locationName={location.name || 'location'} />
+                          </>
+                        ) : null}
                       </>
                     ) : (
                       <>
