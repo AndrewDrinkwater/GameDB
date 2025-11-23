@@ -4,8 +4,8 @@
 // Fixed spacing constants for deterministic tree layout
 const NODE_WIDTH = 200
 const NODE_HEIGHT = 140
-const H_SPACING = 80
-const V_SPACING = 150
+const H_SPACING = 50
+const V_SPACING = 80
 
 // Export for React Flow node dimensions
 export const DEFAULT_LOCATION_WIDTH = NODE_WIDTH

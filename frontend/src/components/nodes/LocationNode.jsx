@@ -9,6 +9,8 @@ export default function LocationNode({ data }) {
   const locationId = data?.locationId || data?.id
   const childCount = data?.childCount || 0
   const isOrphan = !data?.parentId
+  const dragHoverState = data?.dragHoverState // 'valid', 'invalid', or null
+  const isFocused = data?.isFocused || false
 
   const handleAddChild = (event) => {
     event?.preventDefault()
@@ -31,9 +33,18 @@ export default function LocationNode({ data }) {
     data.onSetParent(String(locationId))
   }
 
+  const hoverClass =
+    dragHoverState === 'valid'
+      ? 'location-node--drag-valid'
+      : dragHoverState === 'invalid'
+        ? 'location-node--drag-invalid'
+        : ''
+  
+  const focusedClass = isFocused ? 'location-node--focused' : ''
+
   return (
     <div
-      className={`location-node ${isOrphan ? 'location-node--orphan' : 'location-node--standard'}`}
+      className={`location-node ${isOrphan ? 'location-node--orphan' : 'location-node--standard'} ${hoverClass} ${focusedClass}`}
       style={data?.style || {}}
     >
       {!isOrphan && (

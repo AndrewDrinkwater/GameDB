@@ -347,6 +347,33 @@
   color: #0f172a;
 }
 
+.location-node--drag-valid {
+  border-color: rgba(34, 197, 94, 0.8) !important;
+  background: linear-gradient(135deg, rgba(220, 252, 231, 0.4) 0%, #ffffff 100%) !important;
+  box-shadow: 
+    0 4px 12px rgba(34, 197, 94, 0.15),
+    0 1px 3px rgba(34, 197, 94, 0.1),
+    0 0 0 2px rgba(34, 197, 94, 0.2) !important;
+}
+
+.location-node--drag-invalid {
+  border-color: rgba(239, 68, 68, 0.8) !important;
+  background: linear-gradient(135deg, rgba(254, 226, 226, 0.4) 0%, #ffffff 100%) !important;
+  box-shadow: 
+    0 4px 12px rgba(239, 68, 68, 0.15),
+    0 1px 3px rgba(239, 68, 68, 0.1),
+    0 0 0 2px rgba(239, 68, 68, 0.2) !important;
+}
+
+.location-node--focused {
+  border-color: rgba(59, 130, 246, 0.9) !important;
+  background: linear-gradient(135deg, rgba(191, 219, 254, 0.3) 0%, #ffffff 100%) !important;
+  box-shadow: 
+    0 4px 12px rgba(59, 130, 246, 0.2),
+    0 1px 3px rgba(59, 130, 246, 0.15),
+    0 0 0 3px rgba(59, 130, 246, 0.3) !important;
+}
+
 .location-node--orphan {
   border-color: rgba(251, 191, 36, 0.5);
   background: linear-gradient(135deg, rgba(254, 243, 199, 0.4) 0%, rgba(255, 247, 237, 0.6) 100%);
