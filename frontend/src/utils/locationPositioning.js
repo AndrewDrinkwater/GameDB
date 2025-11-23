@@ -116,9 +116,8 @@ function buildTreeStructure(nodes) {
  * Computes subtree width for each node (bottom-up)
  * If node has no children: subtreeWidth = NODE_WIDTH
  * Else: subtreeWidth = sum(child.subtreeWidth) + H_SPACING * (childCount - 1)
- * If node is collapsed: subtreeWidth = NODE_WIDTH (treated as leaf)
  */
-function computeSubtreeWidths(nodeMap, collapsedNodeIds = new Set()) {
+function computeSubtreeWidths(nodeMap) {
   // Process nodes bottom-up (from deepest to shallowest)
   const nodesByDepth = new Map()
   let maxDepth = 0
@@ -140,12 +139,6 @@ function computeSubtreeWidths(nodeMap, collapsedNodeIds = new Set()) {
     nodesAtDepth.forEach((nodeId) => {
       const node = nodeMap.get(nodeId)
       if (!node) return
-      
-      // If collapsed, treat as leaf
-      if (collapsedNodeIds.has(nodeId)) {
-        node.subtreeWidth = NODE_WIDTH
-        return
-      }
       
       const children = node.children || []
       
@@ -171,15 +164,9 @@ function computeSubtreeWidths(nodeMap, collapsedNodeIds = new Set()) {
  * Recursively layouts children of a parent node
  * Each sibling subtree gets its own horizontal "slot" based on subtreeWidth
  * Ensures parent is perfectly centered above children
- * Skips layout for children of collapsed nodes
  */
-function layoutChildren(parent, nodeMap, collapsedNodeIds = new Set()) {
+function layoutChildren(parent, nodeMap) {
   if (!parent || !parent.children || parent.children.length === 0) {
-    return
-  }
-  
-  // Skip layout if parent is collapsed
-  if (collapsedNodeIds.has(parent.id)) {
     return
   }
   
@@ -189,17 +176,6 @@ function layoutChildren(parent, nodeMap, collapsedNodeIds = new Set()) {
   parent.children.forEach((childId) => {
     const child = nodeMap.get(childId)
     if (!child) return
-    
-    // Skip layout if child is collapsed (its children won't be rendered anyway)
-    if (collapsedNodeIds.has(childId)) {
-      // Still position the collapsed node itself
-      const childSubtreeWidth = NODE_WIDTH
-      const childCenterX = currentX + childSubtreeWidth / 2
-      child.x = childCenterX
-      child.y = child.depth * (NODE_HEIGHT + V_SPACING)
-      currentX += childSubtreeWidth + H_SPACING
-      return
-    }
     
     const childSubtreeWidth = child.subtreeWidth || NODE_WIDTH
     const childCenterX = currentX + childSubtreeWidth / 2
@@ -212,7 +188,7 @@ function layoutChildren(parent, nodeMap, collapsedNodeIds = new Set()) {
     currentX += childSubtreeWidth + H_SPACING
     
     // Recursively layout this child's children
-    layoutChildren(child, nodeMap, collapsedNodeIds)
+    layoutChildren(child, nodeMap)
   })
 }
 
@@ -221,7 +197,7 @@ function layoutChildren(parent, nodeMap, collapsedNodeIds = new Set()) {
  * Y coordinate: node.y = node.depth * (NODE_HEIGHT + V_SPACING)
  * X coordinate: computed recursively starting from root
  */
-function assignCoordinates(nodeMap, rootNodes, collapsedNodeIds = new Set()) {
+function assignCoordinates(nodeMap, rootNodes) {
   if (rootNodes.length === 0) return
   
   if (rootNodes.length === 1) {
@@ -234,7 +210,7 @@ function assignCoordinates(nodeMap, rootNodes, collapsedNodeIds = new Set()) {
     root.y = 0
     
     // Layout children recursively
-    layoutChildren(root, nodeMap, collapsedNodeIds)
+    layoutChildren(root, nodeMap)
   } else {
     // Multiple roots: position them with spacing
     let currentX = 0
@@ -247,7 +223,7 @@ function assignCoordinates(nodeMap, rootNodes, collapsedNodeIds = new Set()) {
       root.y = 0
       
       // Layout children from this root
-      layoutChildren(root, nodeMap, collapsedNodeIds)
+      layoutChildren(root, nodeMap)
       
       // Move to next root
       currentX += rootWidth + H_SPACING
@@ -298,11 +274,8 @@ function normalizeLocationNode(location) {
 /**
  * Main function to layout location nodes hierarchically
  * Implements deterministic tree layout according to final rule set
- * @param {Array} locations - Array of location objects
- * @param {string|null} rootLocationId - Optional root location ID
- * @param {Set<string>} collapsedNodeIds - Set of collapsed node IDs (optional)
  */
-export function layoutLocationsHierarchically(locations, rootLocationId = null, collapsedNodeIds = new Set()) {
+export function layoutLocationsHierarchically(locations, rootLocationId = null) {
   if (!Array.isArray(locations) || locations.length === 0) {
     return []
   }
@@ -353,11 +326,11 @@ export function layoutLocationsHierarchically(locations, rootLocationId = null, 
     console.log('Root locations:', rootNodes.length)
   }
   
-  // Compute subtree widths (bottom-up) - respect collapsed nodes
-  computeSubtreeWidths(nodeMap, collapsedNodeIds)
+  // Compute subtree widths (bottom-up)
+  computeSubtreeWidths(nodeMap)
   
-  // Assign X/Y coordinates (top-down) - respect collapsed nodes
-  assignCoordinates(nodeMap, rootNodes, collapsedNodeIds)
+  // Assign X/Y coordinates (top-down)
+  assignCoordinates(nodeMap, rootNodes)
   
   // Convert back to React Flow node format
   return nodes.map((node) => {
