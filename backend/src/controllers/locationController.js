@@ -16,6 +16,7 @@ import { checkWorldAccess } from '../middleware/worldAccess.js'
 import {
   buildLocationReadContext,
   canUserReadLocation,
+  canUserWriteLocation,
   buildReadableLocationsWhereClause,
 } from '../utils/locationAccess.js'
 import { resolveEntityCreationAccess } from './entityController.js'
@@ -344,6 +345,24 @@ export const getLocationById = async (req, res) => {
       locationData.importance = null
     }
 
+    // Compute permissions (similar to entities)
+    const canEdit = canUserWriteLocation(location, readContext)
+    const isCreator = Boolean(
+      req.user?.id && location.created_by && String(location.created_by) === String(req.user.id),
+    )
+    const canDelete = access.isOwner || access.isAdmin || isCreator
+
+    locationData.permissions = {
+      canEdit,
+      canDelete,
+    }
+    locationData.access = {
+      isOwner: access.isOwner,
+      isAdmin: access.isAdmin,
+      isCreator,
+      hasAccess: access.hasAccess,
+    }
+
     res.json({ success: true, data: locationData })
   } catch (error) {
     console.error('Error fetching location:', error)
@@ -409,8 +428,19 @@ export const createLocation = async (req, res) => {
       return res.status(404).json({ success: false, message: 'World not found' })
     }
 
-    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
-      return res.status(403).json({ success: false, message: 'Forbidden' })
+    // Resolve creation access to determine if user can create locations
+    // This respects entity_creation_scope setting (applies to locations too)
+    const creationAccessResult = await resolveEntityCreationAccess({
+      world: access.world,
+      user: req.user,
+      campaignContextId: req.campaignContextId,
+    })
+
+    if (!creationAccessResult.allowed) {
+      return res.status(403).json({
+        success: false,
+        message: creationAccessResult.reason || 'You do not have permission to create locations in this world.',
+      })
     }
 
     const locationTypeId = normaliseId(location_type_id)
@@ -447,20 +477,7 @@ export const createLocation = async (req, res) => {
       return res.status(400).json({ success: false, message: 'name is required' })
     }
 
-    // Resolve creation access to determine default access settings
-    const creationAccessResult = await resolveEntityCreationAccess({
-      world: access.world,
-      user: req.user,
-      campaignContextId: req.campaignContextId,
-    })
-
-    if (!creationAccessResult.allowed) {
-      return res.status(403).json({
-        success: false,
-        message: creationAccessResult.reason || 'You do not have permission to create locations in this world.',
-      })
-    }
-
+    // Use the creation access result already computed above
     const defaultCampaignId = creationAccessResult.defaultCampaignId ?? null
     const enforceCampaignScope = Boolean(
       creationAccessResult.enforceCampaignScope && defaultCampaignId,
@@ -641,7 +658,27 @@ export const updateLocation = async (req, res) => {
     }
 
     const access = await checkWorldAccess(location.world_id, req.user)
-    if (!access.hasAccess && !access.isOwner && !access.isAdmin) {
+    if (!access.world) {
+      return res.status(404).json({ success: false, message: 'World not found' })
+    }
+
+    const viewAsCharacterId =
+      typeof req.query?.viewAsCharacterId === 'string'
+        ? req.query.viewAsCharacterId.trim()
+        : typeof req.query?.characterId === 'string'
+          ? req.query.characterId.trim()
+          : ''
+
+    const readContext = await buildLocationReadContext({
+      worldId: location.world_id,
+      user: req.user,
+      worldAccess: access,
+      campaignContextId: req.campaignContextId,
+      characterContextId: viewAsCharacterId,
+    })
+
+    // Check if user can write this location (respects write_access, write_campaign_ids, etc.)
+    if (!canUserWriteLocation(location, readContext)) {
       return res.status(403).json({ success: false, message: 'Forbidden' })
     }
 

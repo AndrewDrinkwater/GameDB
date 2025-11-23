@@ -1,5 +1,5 @@
 // src/pages/locations/LocationList.jsx
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ChevronRight, Plus, Trash2, Pencil, ArrowUp, X, RotateCcw } from 'lucide-react'
 import {
@@ -10,12 +10,22 @@ import {
 import { fetchLocationTypes } from '../../api/locationTypes.js'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { ENTITY_CREATION_SCOPES } from '../../utils/worldCreationScopes.js'
 import LocationForm from './LocationForm.jsx'
 import LocationInfoPreview from '../../components/locations/LocationInfoPreview.jsx'
 import ImportanceIndicator from '../../components/shared/ImportanceIndicator.jsx'
 
+const MANAGER_ROLES = new Set(['system_admin'])
+
 export default function LocationList() {
-  const { activeWorldId, selectedCampaignId, contextKey } = useCampaignContext()
+  const {
+    activeWorldId,
+    selectedCampaignId,
+    contextKey,
+    activeWorld,
+    selectedCampaign,
+    selectedContextType,
+  } = useCampaignContext()
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   
@@ -33,8 +43,53 @@ export default function LocationList() {
   const [editingLocation, setEditingLocation] = useState(null)
   const [deletingId, setDeletingId] = useState('')
   
-  // Check if user can manage locations
-  const canManage = Boolean(user?.role === 'system_admin' || user?.id)
+  const membershipRole = useMemo(() => {
+    if (!selectedCampaign || !user) return ''
+    const member = selectedCampaign.members?.find((entry) => entry.user_id === user.id)
+    return member?.role || ''
+  }, [selectedCampaign, user])
+
+  const isWorldOwner = useMemo(() => {
+    if (!activeWorld || !user?.id) return false
+    const ownerId =
+      activeWorld.created_by ||
+      activeWorld.creator?.id ||
+      activeWorld.owner_id ||
+      activeWorld.owner?.id ||
+      ''
+    return ownerId ? String(ownerId) === String(user.id) : false
+  }, [activeWorld, user?.id])
+
+  const canManage = useMemo(() => {
+    if (!user) return false
+    if (MANAGER_ROLES.has(user.role)) return true
+    if (!activeWorldId) return false
+    if (selectedContextType === 'world') {
+      return isWorldOwner
+    }
+    if (selectedCampaign) {
+      if (membershipRole === 'dm') return true
+      if (isWorldOwner) return true
+    }
+    return false
+  }, [
+    user,
+    activeWorldId,
+    selectedContextType,
+    selectedCampaign,
+    membershipRole,
+    isWorldOwner,
+  ])
+
+  const entityCreationScope = activeWorld?.entity_creation_scope ?? ''
+
+  const canPlayerCreateLocations = useMemo(() => {
+    if (!selectedCampaignId || !selectedCampaign || !user) return false
+    if (entityCreationScope !== ENTITY_CREATION_SCOPES.ALL_PLAYERS) return false
+    return membershipRole === 'player'
+  }, [selectedCampaignId, selectedCampaign, user, entityCreationScope, membershipRole])
+
+  const canCreateLocations = canManage || canPlayerCreateLocations
 
   const loadLocations = useCallback(async () => {
     if (!activeWorldId) return
@@ -184,7 +239,6 @@ export default function LocationList() {
     loadLocations()
   }
 
-  const { selectedCampaign, activeWorld } = useCampaignContext()
   const activeTypeName = selectedLocationTypeId
     ? locationTypes.find((t) => t.id === selectedLocationTypeId)?.name || ''
     : ''
@@ -247,9 +301,11 @@ export default function LocationList() {
             >
               <RotateCcw size={16} />
             </button>
-            <button className="btn submit" onClick={handleNew} disabled={!activeWorldId || loading}>
-              <Plus size={18} /> Add Location
-            </button>
+            {canCreateLocations && (
+              <button className="btn submit" onClick={handleNew} disabled={!activeWorldId || loading}>
+                <Plus size={18} /> Add Location
+              </button>
+            )}
           </div>
         </div>
       </div>

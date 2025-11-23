@@ -171,11 +171,22 @@ export default function LocationDetailPage() {
   })
 
   const canEdit = useMemo(() => {
-    if (!location || !user) return false
-    if (user.role === 'system_admin') return true
-    if (location.world?.created_by && location.world.created_by === user.id) return true
-    if (location.created_by && location.created_by === user.id) return true
-    return false
+    const result = (() => {
+      // First check explicit permissions if they exist (from backend)
+      if (location?.permissions && typeof location.permissions.canEdit === 'boolean') {
+        return location.permissions.canEdit
+      }
+      
+      // Fall back to other checks if permissions are not provided
+      if (!location || !user) return false
+      if (user.role === 'system_admin') return true
+      if (location.world?.created_by && location.world.created_by === user.id) return true
+      if (location.created_by && location.created_by === user.id) return true
+      
+      return false
+    })()
+    
+    return result
   }, [location, user])
 
   const {
@@ -207,7 +218,15 @@ export default function LocationDetailPage() {
       setLocation(res?.data || res)
     } catch (err) {
       console.error('❌ Failed to load location:', err)
-      setError(err.message || 'Failed to load location')
+      // Check if this is a 403 error with campaign context active
+      const isForbidden = err.status === 403 || err.status === '403' || err.message === 'Forbidden'
+      const hasCampaignContext = Boolean(selectedCampaignId)
+      
+      if (isForbidden && hasCampaignContext) {
+        setError('CAMPAIGN_CONTEXT_ACCESS_DENIED')
+      } else {
+        setError(err.message || 'Failed to load location')
+      }
       setLocation(null)
     } finally {
       setLoading(false)
@@ -811,6 +830,40 @@ export default function LocationDetailPage() {
     return (
       <div className="page-container">
         <p>Loading location...</p>
+      </div>
+    )
+  }
+
+  // Render campaign context access error with helpful message
+  if (error === 'CAMPAIGN_CONTEXT_ACCESS_DENIED') {
+    return (
+      <div className="alert error" style={{ padding: '1.5rem', maxWidth: '600px', margin: '2rem auto' }}>
+        <h2 style={{ marginTop: 0, marginBottom: '1rem' }}>Access Restricted by Campaign Context</h2>
+        <p style={{ marginBottom: '1rem' }}>
+          You don't have access to this location with your current campaign context selected. 
+          This location may belong to a different campaign or world, or your current campaign 
+          context doesn't have permission to view it.
+        </p>
+        <p style={{ marginBottom: '1.5rem' }}>
+          To view this location, please change your campaign context using the selector in the 
+          header to a campaign that has access to this location.
+        </p>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => navigate('/locations')}
+            style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: '#6c757d',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+            }}
+          >
+            Go to Locations
+          </button>
+        </div>
       </div>
     )
   }
