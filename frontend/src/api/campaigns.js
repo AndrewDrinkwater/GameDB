@@ -123,6 +123,39 @@ export async function fetchCampaignEntityNotes(campaignId, params = {}) {
   return handleResponse(res, 'fetch campaign entity notes')
 }
 
+export async function fetchCampaignLocationNotes(campaignId, params = {}) {
+  if (!campaignId) {
+    throw new Error('campaignId is required to fetch notes')
+  }
+
+  const headers = await authHeaders()
+  const query = new URLSearchParams()
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return
+
+    if (Array.isArray(value)) {
+      value
+        .map((entry) => (entry === undefined || entry === null ? '' : String(entry)))
+        .filter((entry) => entry.trim() !== '')
+        .forEach((entry) => {
+          query.append(`${key}[]`, entry)
+        })
+      return
+    }
+
+    query.set(key, value)
+  })
+
+  const queryString = query.toString()
+  const url = `${API_BASE}/campaigns/${campaignId}/location-notes${
+    queryString ? `?${queryString}` : ''
+  }`
+
+  const res = await fetch(url, { headers })
+  return handleResponse(res, 'fetch campaign location notes')
+}
+
 export async function fetchCampaignSessionNotes(campaignId) {
   if (!campaignId) {
     throw new Error('campaignId is required to fetch session notes')

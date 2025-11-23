@@ -4,14 +4,17 @@ import { Link } from 'react-router-dom'
 import { AlertCircle, Filter, RotateCcw, Loader2, Edit2, Trash2 } from 'lucide-react'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
-import { fetchCampaignEntityNotes } from '../../api/campaigns.js'
-import { updateEntityNote, deleteEntityNote, searchEntities } from '../../api/entities.js'
+import { fetchCampaignEntityNotes, fetchCampaignLocationNotes } from '../../api/campaigns.js'
+import { updateEntityNote, deleteEntityNote } from '../../api/entities.js'
+import { updateLocationNote, deleteLocationNote } from '../../api/locations.js'
 import { fetchCharacters } from '../../api/characters.js'
 import { getEntityTypes } from '../../api/entityTypes.js'
+import { fetchLocationTypes } from '../../api/locationTypes.js'
 import TaggedNoteContent from '../../components/notes/TaggedNoteContent.jsx'
 import MentionsInputWrapper from '../../components/notes/MentionsInputWrapper.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
-import { buildNoteSegments, cleanEntityName } from '../../utils/noteMentions.js'
+import LocationInfoPreview from '../../components/locations/LocationInfoPreview.jsx'
+import { buildNoteSegments } from '../../utils/noteMentions.js'
 import './NotesPage.css'
 
 const SHARE_LABELS = {
@@ -135,6 +138,62 @@ const resolveEntityTypeName = (note, entityTypesMap = new Map()) => {
   return ''
 }
 
+// Location-specific resolvers
+const resolveLocationId = (note) => {
+  const candidates = [
+    note?.locationId,
+    note?.location_id,
+    note?.location?.id,
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    return String(candidate)
+  }
+
+  return ''
+}
+
+const resolveLocationName = (note) => {
+  if (note?.location?.name) return note.location.name
+  if (typeof note?.locationName === 'string' && note.locationName.trim()) {
+    return note.locationName
+  }
+  return 'Unnamed location'
+}
+
+const resolveLocationTypeId = (note) => {
+  const candidates = [
+    note?.location?.locationTypeId,
+    note?.location?.location_type_id,
+    note?.location?.locationType?.id,
+    note?.location?.locationType?.location_type_id,
+  ]
+
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    return String(candidate)
+  }
+
+  return ''
+}
+
+const resolveLocationTypeName = (note, locationTypesMap = new Map()) => {
+  if (note?.location?.locationType?.name) return note.location.locationType.name
+  
+  const locationTypeId = resolveLocationTypeId(note)
+  if (locationTypeId && locationTypesMap.has(locationTypeId)) {
+    return locationTypesMap.get(locationTypeId)
+  }
+  
+  return ''
+}
+
+// Check if note is a location note
+const isLocationNote = (note) => {
+  return Boolean(resolveLocationId(note))
+}
+
 export default function EntityNotesPage() {
   const { selectedCampaign, selectedCampaignId } = useCampaignContext()
   const { user } = useAuth()
@@ -154,6 +213,8 @@ export default function EntityNotesPage() {
   const [charactersError, setCharactersError] = useState('')
   const [entityTypes, setEntityTypes] = useState([])
   const [entityTypesLoading, setEntityTypesLoading] = useState(false)
+  const [locationTypes, setLocationTypes] = useState([])
+  const [locationTypesLoading, setLocationTypesLoading] = useState(false)
 
   const loadNotes = useCallback(async () => {
     if (!selectedCampaignId) return
@@ -161,20 +222,40 @@ export default function EntityNotesPage() {
     setNotesState((previous) => ({ ...previous, loading: true, error: '' }))
 
     try {
-      const response = await fetchCampaignEntityNotes(selectedCampaignId)
-      const list = Array.isArray(response?.data)
-        ? response.data
-        : Array.isArray(response)
-        ? response
+      // Load both entity and location notes in parallel
+      const [entityResponse, locationResponse] = await Promise.all([
+        fetchCampaignEntityNotes(selectedCampaignId).catch((err) => {
+          console.error('Failed to load entity notes', err)
+          return { data: [] }
+        }),
+        fetchCampaignLocationNotes(selectedCampaignId).catch((err) => {
+          console.error('Failed to load location notes', err)
+          return { data: [] }
+        }),
+      ])
+
+      const entityList = Array.isArray(entityResponse?.data)
+        ? entityResponse.data
+        : Array.isArray(entityResponse)
+        ? entityResponse
         : []
 
-      setNotesState({ items: list, loading: false, error: '' })
+      const locationList = Array.isArray(locationResponse?.data)
+        ? locationResponse.data
+        : Array.isArray(locationResponse)
+        ? locationResponse
+        : []
+
+      // Combine both lists
+      const combined = [...entityList, ...locationList]
+
+      setNotesState({ items: combined, loading: false, error: '' })
     } catch (error) {
-      console.error('❌ Failed to load campaign entity notes', error)
+      console.error('❌ Failed to load campaign notes', error)
       setNotesState({
         items: [],
         loading: false,
-        error: error?.message || 'Failed to load entity notes',
+        error: error?.message || 'Failed to load notes',
       })
     }
   }, [selectedCampaignId])
@@ -277,6 +358,56 @@ export default function EntityNotesPage() {
     }
   }, [resolvedWorldId])
 
+  // Load location types
+  useEffect(() => {
+    let cancelled = false
+
+    if (!resolvedWorldId) {
+      setLocationTypes([])
+      setLocationTypesLoading(false)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const loadLocationTypes = async () => {
+      setLocationTypesLoading(true)
+      try {
+        const response = await fetchLocationTypes({ worldId: resolvedWorldId })
+        if (cancelled) return
+
+        const source = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response)
+          ? response
+          : []
+
+        const mapped = source
+          .map((locationType) => ({
+            id: locationType?.id ? String(locationType.id) : '',
+            name: locationType?.name || 'Unnamed type',
+          }))
+          .filter((entry) => entry.id)
+
+        setLocationTypes(mapped)
+      } catch (err) {
+        if (cancelled) return
+        console.error('Failed to load location types', err)
+        setLocationTypes([])
+      } finally {
+        if (!cancelled) {
+          setLocationTypesLoading(false)
+        }
+      }
+    }
+
+    loadLocationTypes()
+
+    return () => {
+      cancelled = true
+    }
+  }, [resolvedWorldId])
+
   const shareOptions = useMemo(
     () => (isCampaignDm ? SHARE_OPTIONS_DM : SHARE_OPTIONS_PLAYER),
     [isCampaignDm],
@@ -352,7 +483,7 @@ export default function EntityNotesPage() {
     }
   }, [isCampaignPlayer, selectedCampaignId, editCharacterId])
 
-  // Entity mention search - need to get world ID from the note being edited
+  // Unified mention search (entities and locations) - need to get world ID from the note being edited
   const handleEntityMentionSearch = useCallback(
     async (query, callback) => {
       const trimmedQuery = query?.trim() ?? ''
@@ -387,37 +518,21 @@ export default function EntityNotesPage() {
         const nEntityId = resolveEntityId(n)
         return nEntityId === targetEntityId
       })
-      const worldId = note?.entity?.world_id ?? note?.entity?.world?.id ?? ''
+      const worldId = note?.entity?.world_id ?? note?.entity?.world?.id ?? note?.location?.world_id ?? note?.location?.world?.id ?? ''
 
       if (!worldId) {
         callback([])
         return
       }
 
-      try {
-        const response = await searchEntities({
-          worldId,
-          query: trimmedQuery,
-          limit: 8,
-        })
-        const data = Array.isArray(response?.data) ? response.data : response
-        const formatted = Array.isArray(data)
-          ? data
-              .map((entity) => {
-                const entityId = entity?.id ?? entity?.entity?.id
-                if (!entityId) return null
-                const rawName =
-                  entity?.name || entity?.displayName || entity?.entity?.name || 'Unnamed entity'
-                const display = cleanEntityName(rawName) || 'Unnamed entity'
-                return { id: entityId, display }
-              })
-              .filter(Boolean)
-          : []
-        callback(formatted)
-      } catch (err) {
-        console.error('Failed to search entities for mentions', err)
-        callback([])
-      }
+      // Use unified mention search that includes both entities and locations
+      const { searchMentions } = await import('../../utils/mentionSearch.js')
+      await searchMentions({
+        worldId,
+        query: trimmedQuery,
+        limit: 8,
+        callback,
+      })
     },
     [entityFilter, notesState.items, editingNoteId],
   )
@@ -465,9 +580,12 @@ export default function EntityNotesPage() {
         return
       }
 
-      const entityId = resolveEntityId(note)
-      if (!entityId) {
-        setFormError('Unable to determine entity for this note')
+      const isLocation = isLocationNote(note)
+      const entityId = isLocation ? null : resolveEntityId(note)
+      const locationId = isLocation ? resolveLocationId(note) : null
+
+      if (!entityId && !locationId) {
+        setFormError('Unable to determine entity or location for this note')
         return
       }
 
@@ -491,7 +609,9 @@ export default function EntityNotesPage() {
           payload.characterId = editCharacterId
         }
 
-        const response = await updateEntityNote(entityId, note.id, payload)
+        const response = isLocation
+          ? await updateLocationNote(locationId, note.id, payload)
+          : await updateEntityNote(entityId, note.id, payload)
         const updatedNote = response?.data || response
 
         if (!updatedNote) {
@@ -546,9 +666,12 @@ export default function EntityNotesPage() {
 
       if (!confirmed) return
 
-      const entityId = resolveEntityId(note)
-      if (!entityId) {
-        setFormError('Unable to determine entity for this note')
+      const isLocation = isLocationNote(note)
+      const entityId = isLocation ? null : resolveEntityId(note)
+      const locationId = isLocation ? resolveLocationId(note) : null
+
+      if (!entityId && !locationId) {
+        setFormError('Unable to determine entity or location for this note')
         return
       }
 
@@ -556,9 +679,15 @@ export default function EntityNotesPage() {
       setFormError('')
 
       try {
-        await deleteEntityNote(entityId, note.id, {
-          campaignId: selectedCampaignId,
-        })
+        if (isLocation) {
+          await deleteLocationNote(locationId, note.id, {
+            campaignId: selectedCampaignId,
+          })
+        } else {
+          await deleteEntityNote(entityId, note.id, {
+            campaignId: selectedCampaignId,
+          })
+        }
 
         // Update local state
         setNotesState((previous) => {
@@ -586,12 +715,35 @@ export default function EntityNotesPage() {
     if (!segments.length) return null
 
     return segments.map((segment, index) => {
-      if (segment.type === 'mention' && segment.entityId) {
+      if (segment.type === 'mention') {
+        // Handle location mentions
+        if (segment.locationId) {
+          const key = `${note?.id || 'note'}-mention-${index}`
+          const label = segment.locationName || 'location'
+          return (
+            <span key={key} className="note-mention">
+              @{label}
+              <LocationInfoPreview locationId={segment.locationId} locationName={label} />
+            </span>
+          )
+        }
+        // Handle entity mentions
+        if (segment.entityId) {
+          const key = `${note?.id || 'note'}-mention-${index}`
+          const label = segment.entityName || 'entity'
+          return (
+            <span key={key} className="note-mention">
+              @{label}
+              <EntityInfoPreview entityId={segment.entityId} entityName={label} />
+            </span>
+          )
+        }
+        // Fallback: if it's a mention but we don't have ID info, show the fallback name
+        const fallbackLabel = segment.locationName || segment.entityName || 'mention'
         const key = `${note?.id || 'note'}-mention-${index}`
-        const label = segment.entityName || 'entity'
         return (
           <span key={key} className="note-mention">
-            @{label}
+            @{fallbackLabel}
           </span>
         )
       }
@@ -617,10 +769,13 @@ export default function EntityNotesPage() {
     const entries = new Map()
     sortedNotes.forEach((note) => {
       const entityId = resolveEntityId(note)
-      if (!entityId) return
-      const entityName = resolveEntityName(note)
-      if (!entries.has(entityId)) {
-        entries.set(entityId, entityName)
+      const locationId = resolveLocationId(note)
+      const targetId = entityId || locationId
+      if (!targetId) return
+      const targetName = entityId ? resolveEntityName(note) : resolveLocationName(note)
+      const prefix = locationId ? '[Location] ' : '[Entity] '
+      if (!entries.has(targetId)) {
+        entries.set(targetId, prefix + targetName)
       }
     })
 
@@ -656,31 +811,51 @@ export default function EntityNotesPage() {
     return map
   }, [entityTypes])
 
+  // Create a map of location type IDs to names
+  const locationTypesMap = useMemo(() => {
+    const map = new Map()
+    locationTypes.forEach((locationType) => {
+      if (locationType.id) {
+        map.set(locationType.id, locationType.name)
+      }
+    })
+    return map
+  }, [locationTypes])
+
   const entityTypeOptions = useMemo(() => {
     const entries = new Map()
     sortedNotes.forEach((note) => {
       const entityTypeId = resolveEntityTypeId(note)
-      if (!entityTypeId) return
-      const entityTypeName = resolveEntityTypeName(note, entityTypesMap) || `Type ${entityTypeId.slice(0, 8)}`
-      if (!entries.has(entityTypeId)) {
-        entries.set(entityTypeId, entityTypeName)
+      const locationTypeId = resolveLocationTypeId(note)
+      const typeId = entityTypeId || locationTypeId
+      if (!typeId) return
+      const typeName = entityTypeId
+        ? resolveEntityTypeName(note, entityTypesMap) || `Type ${entityTypeId.slice(0, 8)}`
+        : resolveLocationTypeName(note, locationTypesMap) || `Type ${locationTypeId.slice(0, 8)}`
+      const prefix = locationTypeId ? '[Location] ' : '[Entity] '
+      if (!entries.has(typeId)) {
+        entries.set(typeId, prefix + typeName)
       }
     })
 
     return Array.from(entries.entries())
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
-  }, [sortedNotes, entityTypesMap])
+  }, [sortedNotes, entityTypesMap, locationTypesMap])
 
   const filteredNotes = useMemo(() => {
     return sortedNotes.filter((note) => {
       const entityId = resolveEntityId(note)
+      const locationId = resolveLocationId(note)
+      const targetId = entityId || locationId
       const authorId = resolveAuthorId(note)
       const entityTypeId = resolveEntityTypeId(note)
+      const locationTypeId = resolveLocationTypeId(note)
+      const typeId = entityTypeId || locationTypeId
 
-      if (entityFilter && entityId !== entityFilter) return false
+      if (entityFilter && targetId !== entityFilter) return false
       if (authorFilter && authorId !== authorFilter) return false
-      if (entityTypeFilter && entityTypeId !== entityTypeFilter) return false
+      if (entityTypeFilter && typeId !== entityTypeFilter) return false
       return true
     })
   }, [sortedNotes, entityFilter, authorFilter, entityTypeFilter])
@@ -720,8 +895,8 @@ export default function EntityNotesPage() {
       <div className="notes-page">
         <div className="notes-header">
           <div className="notes-title">
-            <h1>Entity Notes</h1>
-            <p>Select a campaign from the header to view entity notes.</p>
+            <h1>Entity & Location Notes</h1>
+            <p>Select a campaign from the header to view entity and location notes.</p>
           </div>
         </div>
         <div className="notes-empty">
@@ -736,10 +911,10 @@ export default function EntityNotesPage() {
     <div className="notes-page">
       <div className="notes-header">
         <div className="notes-title">
-          <h1>Entity Notes</h1>
+          <h1>Entity & Location Notes</h1>
           <p>
-            Browse the notes created for entities in the{' '}
-            <strong>{campaignName}</strong> campaign, filter by entity or author,
+            Browse the notes created for entities and locations in the{' '}
+            <strong>{campaignName}</strong> campaign, filter by entity/location or author,
             and jump back into the context of your adventures.
           </p>
         </div>
@@ -759,14 +934,14 @@ export default function EntityNotesPage() {
 
       <div className="notes-filters">
         <div className="notes-filter-group">
-          <label htmlFor="entity-filter">Entity</label>
+          <label htmlFor="entity-filter">Entity / Location</label>
           <select
             id="entity-filter"
             value={entityFilter}
             onChange={(event) => setEntityFilter(event.target.value)}
             disabled={notesState.loading || entityOptions.length === 0}
           >
-            <option value="">All entities</option>
+            <option value="">All entities & locations</option>
             {entityOptions.map((option) => (
               <option key={option.id} value={option.id}>
                 {option.name}
@@ -793,14 +968,14 @@ export default function EntityNotesPage() {
         </div>
 
         <div className="notes-filter-group">
-          <label htmlFor="entity-type-filter">Entity type</label>
+          <label htmlFor="entity-type-filter">Type</label>
           <select
             id="entity-type-filter"
             value={entityTypeFilter}
             onChange={(event) => setEntityTypeFilter(event.target.value)}
             disabled={notesState.loading || entityTypeOptions.length === 0}
           >
-            <option value="">All entity types</option>
+            <option value="">All types</option>
             {entityTypeOptions.map((option) => (
               <option key={option.id} value={option.id}>
                 {option.name}
@@ -858,7 +1033,7 @@ export default function EntityNotesPage() {
           <strong>No notes to show</strong>
           <span>
             {totalNotes === 0
-              ? 'No entity notes have been shared in this campaign yet.'
+              ? 'No entity or location notes have been shared in this campaign yet.'
               : 'Adjust your filters to see more notes.'}
           </span>
         </div>
@@ -876,7 +1051,9 @@ export default function EntityNotesPage() {
       {filteredNotes.length > 0 && (
         <div className="notes-list">
           {filteredNotes.map((note) => {
-            const entityId = resolveEntityId(note)
+            const isLocation = isLocationNote(note)
+            const entityId = isLocation ? null : resolveEntityId(note)
+            const locationId = isLocation ? resolveLocationId(note) : null
             const shareType = String(note?.shareType || note?.share_type || 'private')
             const createdAtRaw = note?.created_at || note?.createdAt
             const createdAtDate = createdAtRaw ? new Date(createdAtRaw) : null
@@ -887,14 +1064,17 @@ export default function EntityNotesPage() {
                 : ''
             const authorName = resolveAuthorName(note)
             const characterName = note?.character?.name ?? ''
-            const entityName = resolveEntityName(note)
+            const entityName = isLocation ? null : resolveEntityName(note)
+            const locationName = isLocation ? resolveLocationName(note) : null
             const isEditing = editingNoteId === note?.id
             const canEdit = isNoteAuthor(note)
+            const targetId = entityId || locationId || ''
+            const targetName = entityName || locationName || 'Unknown'
 
             return (
               <article
                 className="note-card"
-                key={note.id ?? `${entityId}-${createdAtIso || 'unknown'}`}
+                key={note.id ?? `${targetId}-${createdAtIso || 'unknown'}`}
               >
                 {isEditing ? (
                   <div className="entity-notes-strict-edit-panel" style={{ padding: '1rem' }}>
@@ -1012,7 +1192,21 @@ export default function EntityNotesPage() {
                     <header className="note-card-header">
                       <div className="note-entity-meta">
                         <h2>
-                          {entityId ? (
+                          {isLocation ? (
+                            locationId ? (
+                              <span className="entity-link-with-preview">
+                                <Link
+                                  to={`/locations/${locationId}`}
+                                  className="entity-name-link"
+                                >
+                                  {locationName}
+                                </Link>
+                                <LocationInfoPreview locationId={locationId} locationName={locationName} />
+                              </span>
+                            ) : (
+                              locationName
+                            )
+                          ) : entityId ? (
                             <span className="entity-link-with-preview">
                               <Link
                                 to={`/entities/${entityId}`}

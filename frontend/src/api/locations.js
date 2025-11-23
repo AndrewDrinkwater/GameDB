@@ -1,6 +1,7 @@
 // src/api/locations.js
 import { getAuthToken } from '../utils/authHelpers.js'
 import { API_BASE } from './config.js'
+import api from './client.js'
 
 // 🔐 Safe token getter that waits for localStorage if necessary
 async function waitForToken(retries = 5, delay = 200) {
@@ -47,7 +48,6 @@ async function handleResponse(res, action = 'request') {
 // === Location API methods ===
 
 export async function fetchLocations(params = {}) {
-  const headers = await authHeaders()
   const queryParams = new URLSearchParams()
   
   if (params.worldId) queryParams.append('worldId', params.worldId)
@@ -56,18 +56,36 @@ export async function fetchLocations(params = {}) {
   }
   if (params.locationTypeId) queryParams.append('locationTypeId', params.locationTypeId)
   if (params.includeEntities) queryParams.append('includeEntities', params.includeEntities)
+  if (params.all) queryParams.append('all', params.all)
   
   const queryString = queryParams.toString()
-  const url = `${API_BASE}/locations${queryString ? `?${queryString}` : ''}`
+  const url = `/locations${queryString ? `?${queryString}` : ''}`
   
-  const res = await fetch(url, { headers })
-  return handleResponse(res, 'fetch locations')
+  return api.get(url)
+}
+
+export async function searchLocations(params = {}) {
+  const queryParams = new URLSearchParams()
+  
+  if (params.worldId) queryParams.append('worldId', params.worldId)
+  if (params.query) queryParams.append('q', params.query)
+  if (params.limit) queryParams.append('limit', params.limit)
+  if (params.offset) queryParams.append('offset', params.offset)
+  if (params.locationTypeIds) {
+    const typeIds = Array.isArray(params.locationTypeIds)
+      ? params.locationTypeIds.join(',')
+      : params.locationTypeIds
+    queryParams.append('locationTypeIds', typeIds)
+  }
+  
+  const queryString = queryParams.toString()
+  const url = `/locations/search${queryString ? `?${queryString}` : ''}`
+  
+  return api.get(url)
 }
 
 export async function fetchLocationById(id) {
-  const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/locations/${id}`, { headers })
-  return handleResponse(res, 'fetch location')
+  return api.get(`/locations/${id}`)
 }
 
 export async function fetchLocationPath(id) {
@@ -83,23 +101,11 @@ export async function fetchLocationEntities(id) {
 }
 
 export async function createLocation(payload) {
-  const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/locations`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  })
-  return handleResponse(res, 'create location')
+  return api.post('/locations', payload)
 }
 
 export async function updateLocation(id, payload) {
-  const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/locations/${id}`, {
-    method: 'PATCH',
-    headers,
-    body: JSON.stringify(payload),
-  })
-  return handleResponse(res, 'update location')
+  return api.patch(`/locations/${id}`, payload)
 }
 
 export async function deleteLocation(id) {
@@ -119,5 +125,99 @@ export async function moveEntityToLocation(entityId, locationId) {
     body: JSON.stringify({ location_id: locationId }),
   })
   return handleResponse(res, 'move entity to location')
+}
+
+export async function addEntityToLocation(locationId, entityId) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_BASE}/locations/${locationId}/entities`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ entity_id: entityId }),
+  })
+  return handleResponse(res, 'add entity to location')
+}
+
+export async function removeEntityFromLocation(locationId, entityId) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_BASE}/locations/${locationId}/entities/${entityId}`, {
+    method: 'DELETE',
+    headers,
+  })
+  return handleResponse(res, 'remove entity from location')
+}
+
+export async function addChildLocation(parentLocationId, childLocationId) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_BASE}/locations/${parentLocationId}/children`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ child_location_id: childLocationId }),
+  })
+  return handleResponse(res, 'add child location')
+}
+
+export async function removeChildLocation(parentLocationId, childLocationId) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_BASE}/locations/${parentLocationId}/children/${childLocationId}`, {
+    method: 'DELETE',
+    headers,
+  })
+  return handleResponse(res, 'remove child location')
+}
+
+export async function updateLocationImportance(locationId, importance) {
+  return api.put(`/locations/${locationId}/importance`, { importance })
+}
+
+// Location notes
+export const fetchLocationNotes = (id, params = {}) => {
+  const query = new URLSearchParams()
+  const campaignId = params.campaignId ?? params.campaign_id
+  if (campaignId) {
+    query.set('campaignId', campaignId)
+  }
+
+  const queryString = query.toString()
+  return api.get(`/locations/${id}/notes${queryString ? `?${queryString}` : ''}`)
+}
+
+export const fetchLocationMentionNotes = (id, params = {}) => {
+  const query = new URLSearchParams()
+  const campaignId = params.campaignId ?? params.campaign_id
+  if (campaignId) {
+    query.set('campaignId', campaignId)
+  }
+
+  const queryString = query.toString()
+  return api.get(`/locations/${id}/mention-notes${queryString ? `?${queryString}` : ''}`)
+}
+
+export const fetchLocationMentionSessionNotes = (id, params = {}) => {
+  const query = new URLSearchParams()
+  const campaignId = params.campaignId ?? params.campaign_id
+  if (campaignId) {
+    query.set('campaignId', campaignId)
+  }
+
+  const queryString = query.toString()
+  return api.get(
+    `/locations/${id}/mentions/session-notes${queryString ? `?${queryString}` : ''}`,
+  )
+}
+
+export const createLocationNote = (id, data) => api.post(`/locations/${id}/notes`, data)
+
+export const updateLocationNote = (locationId, noteId, data) =>
+  api.put(`/locations/${locationId}/notes/${noteId}`, data)
+
+export const deleteLocationNote = (locationId, noteId, params = {}) => {
+  const query = new URLSearchParams()
+  const campaignId = params.campaignId ?? params.campaign_id
+  if (campaignId) {
+    query.set('campaignId', campaignId)
+  }
+
+  const queryString = query.toString()
+  return api.delete(`/locations/${locationId}/notes/${noteId}${queryString ? `?${queryString}` : ''}`)
 }
 

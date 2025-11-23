@@ -14,6 +14,13 @@ import {
   listCollections,
   updateCollection,
 } from '../controllers/entityCollectionController.js'
+import {
+  createCollection as createLocationCollection,
+  deleteCollection as deleteLocationCollection,
+  getCollectionLocations,
+  listCollections as listLocationCollections,
+  updateCollection as updateLocationCollection,
+} from '../controllers/locationCollectionController.js'
 
 const router = express.Router()
 
@@ -30,5 +37,11 @@ router.post('/collections', createCollection)
 router.put('/collections/:id', updateCollection)
 router.delete('/collections/:id', deleteCollection)
 router.get('/collections/:id/entities', getCollectionEntities)
+
+router.get('/location-collections', listLocationCollections)
+router.post('/location-collections', createLocationCollection)
+router.put('/location-collections/:id', updateLocationCollection)
+router.delete('/location-collections/:id', deleteLocationCollection)
+router.get('/location-collections/:id/locations', getCollectionLocations)
 
 export default router

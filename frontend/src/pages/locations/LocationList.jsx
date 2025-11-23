@@ -1,7 +1,7 @@
 // src/pages/locations/LocationList.jsx
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ChevronRight, MapPin, Plus, Trash2, Edit, ArrowUp, X } from 'lucide-react'
+import { ChevronRight, Plus, Trash2, Pencil, ArrowUp, X, RotateCcw } from 'lucide-react'
 import {
   fetchLocations,
   deleteLocation,
@@ -10,10 +10,22 @@ import {
 import { fetchLocationTypes } from '../../api/locationTypes.js'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
+import { ENTITY_CREATION_SCOPES } from '../../utils/worldCreationScopes.js'
 import LocationForm from './LocationForm.jsx'
+import LocationInfoPreview from '../../components/locations/LocationInfoPreview.jsx'
+import ImportanceIndicator from '../../components/shared/ImportanceIndicator.jsx'
+
+const MANAGER_ROLES = new Set(['system_admin'])
 
 export default function LocationList() {
-  const { activeWorldId } = useCampaignContext()
+  const {
+    activeWorldId,
+    selectedCampaignId,
+    contextKey,
+    activeWorld,
+    selectedCampaign,
+    selectedContextType,
+  } = useCampaignContext()
   const { user } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   
@@ -25,9 +37,59 @@ export default function LocationList() {
     searchParams.get('parentId') || null
   )
   const selectedLocationTypeId = searchParams.get('locationType') || null
+  const [previousLocationTypeId, setPreviousLocationTypeId] = useState(selectedLocationTypeId)
   const [path, setPath] = useState([])
   const [panelOpen, setPanelOpen] = useState(false)
   const [editingLocation, setEditingLocation] = useState(null)
+  const [deletingId, setDeletingId] = useState('')
+  
+  const membershipRole = useMemo(() => {
+    if (!selectedCampaign || !user) return ''
+    const member = selectedCampaign.members?.find((entry) => entry.user_id === user.id)
+    return member?.role || ''
+  }, [selectedCampaign, user])
+
+  const isWorldOwner = useMemo(() => {
+    if (!activeWorld || !user?.id) return false
+    const ownerId =
+      activeWorld.created_by ||
+      activeWorld.creator?.id ||
+      activeWorld.owner_id ||
+      activeWorld.owner?.id ||
+      ''
+    return ownerId ? String(ownerId) === String(user.id) : false
+  }, [activeWorld, user?.id])
+
+  const canManage = useMemo(() => {
+    if (!user) return false
+    if (MANAGER_ROLES.has(user.role)) return true
+    if (!activeWorldId) return false
+    if (selectedContextType === 'world') {
+      return isWorldOwner
+    }
+    if (selectedCampaign) {
+      if (membershipRole === 'dm') return true
+      if (isWorldOwner) return true
+    }
+    return false
+  }, [
+    user,
+    activeWorldId,
+    selectedContextType,
+    selectedCampaign,
+    membershipRole,
+    isWorldOwner,
+  ])
+
+  const entityCreationScope = activeWorld?.entity_creation_scope ?? ''
+
+  const canPlayerCreateLocations = useMemo(() => {
+    if (!selectedCampaignId || !selectedCampaign || !user) return false
+    if (entityCreationScope !== ENTITY_CREATION_SCOPES.ALL_PLAYERS) return false
+    return membershipRole === 'player'
+  }, [selectedCampaignId, selectedCampaign, user, entityCreationScope, membershipRole])
+
+  const canCreateLocations = canManage || canPlayerCreateLocations
 
   const loadLocations = useCallback(async () => {
     if (!activeWorldId) return
@@ -46,8 +108,9 @@ export default function LocationList() {
         params.parentId = selectedParentId
       }
       
-      // Filter by location type if provided
-      if (selectedLocationTypeId) {
+      // Filter by location type only at root level (when parentId is not set)
+      // When navigating into children, show all children regardless of type
+      if (selectedLocationTypeId && !selectedParentId) {
         params.locationTypeId = selectedLocationTypeId
       }
       
@@ -59,7 +122,7 @@ export default function LocationList() {
     } finally {
       setLoading(false)
     }
-  }, [activeWorldId, selectedParentId, selectedLocationTypeId])
+  }, [activeWorldId, selectedParentId, selectedLocationTypeId, selectedCampaignId, contextKey])
 
   const loadLocationTypes = useCallback(async () => {
     if (!activeWorldId) return
@@ -99,6 +162,19 @@ export default function LocationList() {
     loadPath()
   }, [loadPath])
 
+  // Clear parentId (breadcrumb filter) when location type changes
+  // This ensures clicking a location type from sidebar shows all locations of that type at root level
+  useEffect(() => {
+    // Only clear parentId if the location type actually changed (not just if it's set)
+    if (selectedLocationTypeId && selectedLocationTypeId !== previousLocationTypeId) {
+      setSelectedParentId(null)
+      setPreviousLocationTypeId(selectedLocationTypeId)
+    } else if (!selectedLocationTypeId && previousLocationTypeId) {
+      // Location type was cleared
+      setPreviousLocationTypeId(null)
+    }
+  }, [selectedLocationTypeId, previousLocationTypeId])
+
   useEffect(() => {
     const params = {}
     if (selectedParentId) {
@@ -110,15 +186,22 @@ export default function LocationList() {
     setSearchParams(params)
   }, [selectedParentId, selectedLocationTypeId, setSearchParams])
 
-  const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this location?')) return
-    
+  const handleDelete = async (location) => {
+    if (!canManage || !location?.id) return
+    const confirmed = window.confirm(
+      `Delete location "${location.name}"? This action cannot be undone.`,
+    )
+    if (!confirmed) return
+
     try {
-      await deleteLocation(id)
+      setDeletingId(location.id)
+      await deleteLocation(location.id)
       loadLocations()
     } catch (err) {
-      console.error('❌ Failed to delete location:', err)
-      alert(err.message)
+      console.error('❌ Failed to delete location', err)
+      setError(err.message || 'Failed to delete location')
+    } finally {
+      setDeletingId('')
     }
   }
 
@@ -156,38 +239,74 @@ export default function LocationList() {
     loadLocations()
   }
 
+  const activeTypeName = selectedLocationTypeId
+    ? locationTypes.find((t) => t.id === selectedLocationTypeId)?.name || ''
+    : ''
+
   if (!activeWorldId) {
     return (
-      <div className="page-container">
-        <div className="page-header">
-          <h1>Locations</h1>
+      <section className="entities-page">
+        <div className="entities-header">
+          <div className="entities-header-top">
+            <div className="entities-header-left">
+              <h1>Locations</h1>
+              <p className="entities-subtitle">
+                Select a campaign or world you own to choose a world context.
+              </p>
+            </div>
+          </div>
         </div>
-        <p>Please select a world to view locations.</p>
-      </div>
+      </section>
     )
   }
 
+  const locationSubtitle = selectedCampaign
+    ? `${selectedCampaign.name}${activeWorld?.name ? ` · ${activeWorld.name}` : ''}`
+    : activeWorld?.name
+      ? `World · ${activeWorld.name}`
+      : ''
+
   return (
-    <div className="page-container">
-      <div className="page-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          <h1>
-            {selectedLocationTypeId
-              ? locationTypes.find((t) => t.id === selectedLocationTypeId)?.name || 'Locations'
-              : 'Locations'}
-          </h1>
-          {selectedLocationTypeId && (
+    <section className="entities-page">
+      <div className="entities-header">
+        <div className="entities-header-top">
+          <div className="entities-header-left">
+            <h1>
+              {selectedLocationTypeId && activeTypeName ? activeTypeName : 'Locations'}
+            </h1>
+            {locationSubtitle && <p className="entities-subtitle">{locationSubtitle}</p>}
+            {selectedLocationTypeId && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <button
+                  className="btn secondary compact"
+                  onClick={() => {
+                    const params = new URLSearchParams(searchParams)
+                    params.delete('locationType')
+                    setSearchParams(params)
+                  }}
+                  title="Clear location type filter"
+                >
+                  <X size={14} /> Clear Filter
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="entities-header-right">
             <button
-              className="btn btn-sm btn-secondary"
-              onClick={() => setSearchParams({})}
-              title="Clear location type filter"
+              type="button"
+              className="icon-btn"
+              title="Refresh locations"
+              onClick={loadLocations}
+              disabled={loading || !activeWorldId}
             >
-              <X size={14} /> Clear Filter
+              <RotateCcw size={16} />
             </button>
-          )}
-          <button className="btn btn-primary" onClick={handleNew}>
-            <Plus size={16} /> New Location
-          </button>
+            {canCreateLocations && (
+              <button className="btn submit" onClick={handleNew} disabled={!activeWorldId || loading}>
+                <Plus size={18} /> Add Location
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -228,7 +347,7 @@ export default function LocationList() {
       )}
 
       {error && (
-        <div className="alert alert-error" style={{ marginBottom: '1rem' }}>
+        <div className="alert error" role="alert" style={{ marginBottom: '1rem' }}>
           {error}
         </div>
       )}
@@ -238,8 +357,8 @@ export default function LocationList() {
       ) : locations.length === 0 ? (
         <p>No locations found. Create your first location to get started.</p>
       ) : (
-        <div className="table-container">
-          <table className="table">
+        <div className="entities-table-wrapper">
+          <table className="entities-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -247,51 +366,97 @@ export default function LocationList() {
                 <th>Description</th>
                 <th>Children</th>
                 <th>Entities</th>
-                <th>Actions</th>
+                {canManage && <th className="actions-column">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {locations.map((location) => (
                 <tr key={location.id}>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <MapPin size={16} />
-                      {location.childCount > 0 ? (
+                    {location.childCount > 0 ? (
+                      <>
                         <button
-                          className="btn btn-link"
                           onClick={() => handleNavigateToChild(location.id)}
-                          style={{ textAlign: 'left', padding: 0 }}
+                          style={{ 
+                            textAlign: 'left', 
+                            padding: 0, 
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                            color: '#1d4ed8',
+                            textDecoration: 'none',
+                            fontFamily: 'inherit',
+                            fontSize: 'inherit'
+                          }}
+                          className="entity-name-link"
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.textDecoration = 'underline'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.textDecoration = 'none'
+                          }}
                         >
                           {location.name}
-                          <ChevronRight size={16} style={{ marginLeft: '0.25rem' }} />
                         </button>
-                      ) : (
-                        <Link to={`/locations/${location.id}`}>{location.name}</Link>
-                      )}
-                    </div>
+                        {'\u00A0'}
+                        <ChevronRight size={16} style={{ marginLeft: '0.25rem', display: 'inline-block', verticalAlign: 'middle', color: '#6b7280' }} />
+                        {location.id ? (
+                          <>
+                            {'\u00A0'}
+                            <LocationInfoPreview locationId={location.id} locationName={location.name || 'location'} />
+                          </>
+                        ) : null}
+                        {'\u00A0'}
+                        <ImportanceIndicator importance={location.importance} />
+                      </>
+                    ) : (
+                      <>
+                        <Link
+                          to={`/locations/${location.id}`}
+                          className="entity-name-link"
+                        >
+                          {location.name}
+                        </Link>
+                        {location.id ? (
+                          <>
+                            {'\u00A0'}
+                            <LocationInfoPreview locationId={location.id} locationName={location.name || 'location'} />
+                          </>
+                        ) : null}
+                        {'\u00A0'}
+                        <ImportanceIndicator importance={location.importance} />
+                      </>
+                    )}
                   </td>
                   <td>{location.locationType?.name || '—'}</td>
                   <td>{location.description || '—'}</td>
                   <td>{location.childCount || 0}</td>
                   <td>{location.entities?.length || 0}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button
-                        className="btn btn-sm btn-secondary"
-                        onClick={() => handleEdit(location)}
-                        title="Edit"
-                      >
-                        <Edit size={14} />
-                      </button>
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => handleDelete(location.id)}
-                        title="Delete"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
+                  {canManage && (
+                    <td className="actions-column">
+                      <div className="entity-actions">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() => handleEdit(location)}
+                          title="Edit location"
+                          disabled={loading}
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn danger"
+                          onClick={() => handleDelete(location)}
+                          title="Delete location"
+                          disabled={deletingId === location.id}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -325,7 +490,7 @@ export default function LocationList() {
           </div>
         </div>
       )}
-    </div>
+    </section>
   )
 }
 

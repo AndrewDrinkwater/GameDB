@@ -1,6 +1,7 @@
 import {
   Campaign,
   Entity,
+  Location,
   SessionNote,
   User,
   UserCampaignRole,
@@ -12,6 +13,7 @@ import {
 } from './entityNoteController.js'
 import { checkWorldAccess } from '../middleware/worldAccess.js'
 import { buildEntityReadContext, canUserReadEntity } from '../utils/entityAccess.js'
+import { buildLocationReadContext, canUserReadLocation } from '../utils/locationAccess.js'
 import {
   notifySessionNoteAdded,
   notifySessionNoteUpdated,
@@ -112,18 +114,36 @@ const formatMentionList = (mentions) => {
   return mentions
     .map((mention) => {
       const entityId =
-        mention?.entityId ?? mention?.entity_id ?? mention?.id ?? mention?.entityID
-      if (!entityId) return null
-
-      const entityName =
-        mention?.entityName ?? mention?.entity_name ?? mention?.label ?? ''
-
-      return {
-        entityId,
-        entity_id: entityId,
-        entityName,
-        entity_name: entityName,
+        mention?.entityId ?? mention?.entity_id ?? mention?.id ?? mention?.entityID ?? null
+      const locationId =
+        mention?.locationId ?? mention?.location_id ?? null
+      const mentionType = mention?.type ?? (locationId ? 'location' : 'entity')
+      
+      if (mentionType === 'location' && locationId) {
+        const locationName =
+          mention?.locationName ?? mention?.location_name ?? mention?.label ?? ''
+        return {
+          locationId,
+          location_id: locationId,
+          locationName,
+          location_name: locationName,
+          type: 'location',
+        }
       }
+      
+      if (entityId) {
+        const entityName =
+          mention?.entityName ?? mention?.entity_name ?? mention?.label ?? ''
+        return {
+          entityId,
+          entity_id: entityId,
+          entityName,
+          entity_name: entityName,
+          type: 'entity',
+        }
+      }
+      
+      return null
     })
     .filter(Boolean)
 }
@@ -305,14 +325,22 @@ export const listEntityMentionSessionNotes = async (req, res) => {
       }
 
       return plain.mentions.some((mention) => {
-        const mentionId = normaliseId(
+        // Check for entity mentions
+        const mentionEntityId = normaliseId(
           mention?.entityId ??
             mention?.entity_id ??
             mention?.id ??
             mention?.entityID ??
             null,
         )
-        return mentionId && mentionId === entityId
+        if (mentionEntityId && mentionEntityId === entityId) {
+          return true
+        }
+        // Also check for location mentions (in case entity ID matches a location ID - unlikely but possible)
+        const mentionLocationId = normaliseId(
+          mention?.locationId ?? mention?.location_id ?? null,
+        )
+        return mentionLocationId && mentionLocationId === entityId
       })
     })
 
@@ -320,6 +348,148 @@ export const listEntityMentionSessionNotes = async (req, res) => {
     return res.json({ success: true, data: payload })
   } catch (err) {
     console.error('❌ Failed to fetch session note mentions', err)
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to load mentions',
+    })
+  }
+}
+
+export const listLocationMentionSessionNotes = async (req, res) => {
+  try {
+    const { id } = req.params
+    const locationId = normaliseId(id)
+    if (!locationId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Location id is required to view mentions',
+      })
+    }
+
+    const rawCampaignId =
+      req.query?.campaignId || req.query?.campaign_id || req.campaignContextId
+    const campaignId = normaliseId(rawCampaignId)
+
+    if (!campaignId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Campaign id is required to view mentions',
+      })
+    }
+
+    const location = await Location.findByPk(locationId)
+    if (!location) {
+      return res.status(404).json({ success: false, message: 'Location not found' })
+    }
+
+    const access = await ensureCampaignAccess(campaignId, req.user)
+    if (access.error) {
+      return res.status(access.error.status).json({
+        success: false,
+        message: access.error.message,
+      })
+    }
+
+    if (
+      access.campaign.world_id &&
+      location.world_id &&
+      String(access.campaign.world_id) !== String(location.world_id)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Campaign must belong to the same world as the location',
+      })
+    }
+
+    const worldAccess = await checkWorldAccess(location.world_id, req.user)
+    if (!worldAccess.world) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'World not found' })
+    }
+
+    const readContext = await buildLocationReadContext({
+      worldId: location.world_id,
+      user: req.user,
+      worldAccess,
+      campaignContextId: access.campaign.id,
+    })
+
+    if (!canUserReadLocation(location, readContext)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' })
+    }
+
+    const notes = await SessionNote.findAll({
+      where: { campaign_id: access.campaign.id },
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'username', 'email', 'role'] },
+        { model: User, as: 'lastEditor', attributes: ['id', 'username', 'email', 'role'] },
+      ],
+      order: [
+        ['session_date', 'DESC'],
+        ['updated_at', 'DESC'],
+      ],
+    })
+
+    const filtered = notes.filter((note) => {
+      const plain =
+        typeof note.get === 'function' ? note.get({ plain: true }) : note
+
+      if (!Array.isArray(plain.mentions)) {
+        return false
+      }
+
+      return plain.mentions.some((mention) => {
+        if (!mention || typeof mention !== 'object') return false
+        
+        // Check the type field first to determine what kind of mention this is
+        const mentionType = mention?.type ?? null
+        
+        // Check for location mentions - check multiple possible field names
+        const mentionLocationId = normaliseId(
+          mention?.locationId ??
+            mention?.location_id ??
+            mention?.locationID ??
+            null,
+        )
+        
+        // If it's explicitly a location mention or has a locationId, check it
+        if (mentionType === 'location' || mentionLocationId) {
+          if (mentionLocationId && mentionLocationId === locationId) {
+            return true
+          }
+          // Also check if mention has a generic id field when type is 'location'
+          if (mentionType === 'location') {
+            const genericId = normaliseId(mention?.id ?? null)
+            if (genericId && genericId === locationId) {
+              return true
+            }
+          }
+        }
+        
+        // Also check for entity mentions (in case location ID matches an entity ID - unlikely but possible)
+        // But only if it's not explicitly a location mention
+        if (mentionType !== 'location') {
+          const mentionEntityId = normaliseId(
+            mention?.entityId ??
+              mention?.entity_id ??
+              mention?.entityID ??
+              mention?.id ?? // Fallback to generic id if no entity-specific field
+              null,
+          )
+          if (mentionEntityId && mentionEntityId === locationId) {
+            return true
+          }
+        }
+        
+        return false
+      })
+    })
+
+    const payload = filtered.map((note) => formatSessionNoteRecord(note))
+    return res.json({ success: true, data: payload })
+  } catch (err) {
+    console.error('❌ Failed to fetch location session note mentions', err)
     return res.status(500).json({
       success: false,
       message: err.message || 'Failed to load mentions',
@@ -351,12 +521,14 @@ export const createCampaignSessionNote = async (req, res) => {
     const content = normaliseString(contentRaw)
     const sessionDate = normaliseDateOnly(dateRaw) || todayDateString()
 
+    const mentions = await extractMentions(content)
+
     const note = await SessionNote.create({
       campaign_id: access.campaign.id,
       session_title: sessionTitle,
       session_date: sessionDate,
       content,
-      mentions: extractMentions(content),
+      mentions,
       created_by: userId,
       updated_by: userId,
     })
@@ -371,16 +543,16 @@ export const createCampaignSessionNote = async (req, res) => {
     // Trigger notifications asynchronously (don't block response)
     ;(async () => {
       try {
-        const mentions = extractMentions(content)
+        const notificationMentions = await extractMentions(content)
 
         // Notify all campaign members when session note is added
         await notifySessionNoteAdded(created, access.campaign.id)
 
         // Notify mentioned entity followers
-        if (mentions && Array.isArray(mentions) && mentions.length > 0) {
+        if (notificationMentions && Array.isArray(notificationMentions) && notificationMentions.length > 0) {
           await notifyEntityMentions(
             content,
-            mentions,
+            notificationMentions,
             access.campaign.id,
             'session_note',
             note.id,
@@ -445,11 +617,13 @@ export const updateCampaignSessionNote = async (req, res) => {
     const content = normaliseString(contentRaw)
     const sessionDate = normaliseDateOnly(dateRaw) || note.session_date || todayDateString()
 
+    const mentions = await extractMentions(content)
+
     await note.update({
       session_title: sessionTitle,
       session_date: sessionDate,
       content,
-      mentions: extractMentions(content),
+      mentions,
       updated_by: access.userId ?? note.updated_by,
     })
 
@@ -463,16 +637,16 @@ export const updateCampaignSessionNote = async (req, res) => {
     // Trigger notifications asynchronously (don't block response)
     ;(async () => {
       try {
-        const mentions = extractMentions(content)
+        const notificationMentions = await extractMentions(content)
 
         // Notify all campaign members when session note is updated
         await notifySessionNoteUpdated(note, access.campaign.id)
 
         // Notify mentioned entity followers
-        if (mentions && Array.isArray(mentions) && mentions.length > 0) {
+        if (notificationMentions && Array.isArray(notificationMentions) && notificationMentions.length > 0) {
           await notifyEntityMentions(
             content,
-            mentions,
+            notificationMentions,
             access.campaign.id,
             'session_note',
             note.id,

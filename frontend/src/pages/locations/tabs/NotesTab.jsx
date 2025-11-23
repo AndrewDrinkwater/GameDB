@@ -3,20 +3,23 @@ import { Mention } from 'react-mentions'
 import MentionsInputWrapper from '../../../components/notes/MentionsInputWrapper.jsx'
 import { AlertCircle, Loader2, Plus, Edit2, X, Check, Trash2 } from 'lucide-react'
 import PropTypes from '../../../utils/propTypes.js'
-import EntityInfoPreview from '../../../components/entities/EntityInfoPreview.jsx'
 import LocationInfoPreview from '../../../components/locations/LocationInfoPreview.jsx'
+import EntityInfoPreview from '../../../components/entities/EntityInfoPreview.jsx'
 import { fetchCharacters } from '../../../api/characters.js'
 import DrawerPanel from '../../../components/DrawerPanel.jsx'
 import {
-  fetchEntityMentionNotes,
-  fetchEntityMentionSessionNotes,
-  searchEntities,
-  updateEntityNote,
-  deleteEntityNote,
-} from '../../../api/entities.js'
+  fetchLocationMentionNotes,
+  fetchLocationMentionSessionNotes,
+  fetchLocations,
+} from '../../../api/locations.js'
+import {
+  createLocationNote,
+  updateLocationNote,
+  deleteLocationNote,
+} from '../../../api/locations.js'
 import { buildNoteSegments, cleanEntityName } from '../../../utils/noteMentions.js'
 import { useAuth } from '../../../context/AuthContext.jsx'
-import './NotesTab.css'
+import '../../entities/tabs/NotesTab.css'
 
 const SHARE_LABELS = {
   private: 'Private',
@@ -135,9 +138,9 @@ const resolveAuthorKey = (note) => {
 
 const emptyArray = Object.freeze([])
 
-const ENTITY_NOTE_PLACEHOLDER = 'What do you want to remember?'
-export default function NotesTab({
-  entity,
+const LOCATION_NOTE_PLACEHOLDER = 'What do you want to remember?'
+export default function LocationNotesTab({
+  location,
   worldId,
   selectedCampaign,
   selectedCampaignId,
@@ -149,7 +152,7 @@ export default function NotesTab({
   error,
   onCreateNote,
   creating,
-  campaignMatchesEntityWorld,
+  campaignMatchesLocationWorld,
   onNoteUpdate,
   onNoteDelete,
 }) {
@@ -165,14 +168,14 @@ export default function NotesTab({
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selectedAuthor, setSelectedAuthor] = useState('all')
   const [activeSubTab, setActiveSubTab] = useState('notes')
-  const [mentionSource, setMentionSource] = useState('entity')
+  const [mentionSource, setMentionSource] = useState('location')
   const [editingNoteId, setEditingNoteId] = useState(null)
   const [editNoteContent, setEditNoteContent] = useState('')
   const [editShareType, setEditShareType] = useState('private')
   const [editCharacterId, setEditCharacterId] = useState('')
   const [updating, setUpdating] = useState(false)
   const [deletingNoteId, setDeletingNoteId] = useState(null)
-  const [mentionEntityNotesState, setMentionEntityNotesState] = useState({
+  const [mentionLocationNotesState, setMentionLocationNotesState] = useState({
     items: emptyArray,
     loading: false,
     error: '',
@@ -189,7 +192,7 @@ export default function NotesTab({
   const canShowForm =
     Boolean(selectedCampaignId) &&
     Boolean(canCreateNote) &&
-    Boolean(campaignMatchesEntityWorld)
+    Boolean(campaignMatchesLocationWorld)
 
   const shareOptions = useMemo(
     () => (isCampaignDm ? SHARE_OPTIONS_DM : SHARE_OPTIONS_PLAYER),
@@ -201,13 +204,13 @@ export default function NotesTab({
       return worldId
     }
 
-    if (entity && typeof entity === 'object') {
-      const nestedWorld = entity.world || {}
-      return nestedWorld.id || entity.world_id || ''
+    if (location && typeof location === 'object') {
+      const nestedWorld = location.world || {}
+      return nestedWorld.id || location.world_id || ''
     }
 
     return ''
-  }, [entity, worldId])
+  }, [location, worldId])
 
   const isNoteAuthor = useCallback(
     (note) => {
@@ -236,7 +239,7 @@ export default function NotesTab({
     setFormError('')
   }, [])
 
-  const handleEntityMentionSearch = useCallback(
+  const handleLocationMentionSearch = useCallback(
     async (query, callback) => {
       const trimmedQuery = query?.trim() ?? ''
       if (typeof callback !== 'function') {
@@ -331,19 +334,6 @@ export default function NotesTab({
     ],
   )
 
-  const handleStartEdit = useCallback(
-    (note) => {
-      if (!note || !entity?.id) return
-      const noteCharId = note?.characterId ?? note?.character_id ?? ''
-      setEditingNoteId(note.id)
-      setEditNoteContent(note?.content ?? '')
-      setEditShareType(note?.shareType ?? note?.share_type ?? 'private')
-      setEditCharacterId(noteCharId)
-      setFormError('')
-    },
-    [entity?.id],
-  )
-
   const handleCancelEdit = useCallback(() => {
     setEditingNoteId(null)
     setEditNoteContent('')
@@ -351,6 +341,19 @@ export default function NotesTab({
     setEditCharacterId('')
     setFormError('')
   }, [])
+
+  const handleStartEdit = useCallback(
+    (note) => {
+      if (!note || !location?.id) return
+      const noteCharId = note?.characterId ?? note?.character_id ?? ''
+      setEditingNoteId(note.id)
+      setEditNoteContent(note?.content ?? '')
+      setEditShareType(note?.shareType ?? note?.share_type ?? 'private')
+      setEditCharacterId(noteCharId)
+      setFormError('')
+    },
+    [location?.id],
+  )
 
   const handleEditNoteContentChange = useCallback((event, nextValue) => {
     const value =
@@ -365,7 +368,7 @@ export default function NotesTab({
 
   const handleSaveEdit = useCallback(
     async (note) => {
-      if (!note || !entity?.id || !selectedCampaignId) return
+      if (!note || !location?.id || !selectedCampaignId) return
 
       const trimmed = editNoteContent.trim()
       if (!trimmed) {
@@ -393,7 +396,7 @@ export default function NotesTab({
           payload.characterId = editCharacterId
         }
 
-        const response = await updateEntityNote(entity.id, note.id, payload)
+        const response = await updateLocationNote(location.id, note.id, payload)
         const updatedNote = response?.data || response
 
         if (!updatedNote) {
@@ -413,7 +416,7 @@ export default function NotesTab({
       }
     },
     [
-      entity?.id,
+      location?.id,
       selectedCampaignId,
       editNoteContent,
       editShareType,
@@ -426,7 +429,7 @@ export default function NotesTab({
 
   const handleDeleteClick = useCallback(
     async (note) => {
-      if (!note?.id || !entity?.id || !selectedCampaignId) return
+      if (!note?.id || !location?.id || !selectedCampaignId) return
 
       const confirmed = window.confirm(
         'Are you sure you want to delete this note? This action cannot be undone.',
@@ -438,7 +441,7 @@ export default function NotesTab({
       setFormError('')
 
       try {
-        await deleteEntityNote(entity.id, note.id, {
+        await deleteLocationNote(location.id, note.id, {
           campaignId: selectedCampaignId,
         })
 
@@ -452,7 +455,7 @@ export default function NotesTab({
         setDeletingNoteId(null)
       }
     },
-    [entity?.id, selectedCampaignId, onNoteDelete],
+    [location?.id, selectedCampaignId, onNoteDelete],
   )
 
   const sortedNotes = useMemo(() => {
@@ -488,11 +491,11 @@ export default function NotesTab({
     return sortedNotes.filter((note) => resolveAuthorKey(note) === selectedAuthor)
   }, [selectedAuthor, sortedNotes])
 
-  const mentionEntityNotes = useMemo(() => {
-    return Array.isArray(mentionEntityNotesState.items)
-      ? mentionEntityNotesState.items
+  const mentionLocationNotes = useMemo(() => {
+    return Array.isArray(mentionLocationNotesState.items)
+      ? mentionLocationNotesState.items
       : emptyArray
-  }, [mentionEntityNotesState.items])
+  }, [mentionLocationNotesState.items])
 
   const mentionSessionNotes = useMemo(() => {
     return Array.isArray(mentionSessionNotesState.items)
@@ -512,7 +515,7 @@ export default function NotesTab({
   }, [authorFilters, selectedAuthor])
 
   useEffect(() => {
-    setMentionEntityNotesState({
+    setMentionLocationNotesState({
       items: emptyArray,
       loading: false,
       error: '',
@@ -525,8 +528,8 @@ export default function NotesTab({
       loaded: false,
     })
     setExpandedSessionNotes(new Set())
-    setMentionSource('entity')
-  }, [selectedCampaignId, entity?.id, campaignMatchesEntityWorld])
+    setMentionSource('location')
+  }, [selectedCampaignId, location?.id, campaignMatchesLocationWorld])
 
   useEffect(() => {
     let cancelled = false
@@ -590,19 +593,19 @@ export default function NotesTab({
     }
   }, [isCampaignPlayer, selectedCampaignId, characterId])
 
-  const loadEntityMentionNotes = useCallback(async () => {
-    if (!entity?.id || !selectedCampaignId || !campaignMatchesEntityWorld) {
+  const loadLocationMentionNotes = useCallback(async () => {
+    if (!location?.id || !selectedCampaignId || !campaignMatchesLocationWorld) {
       return
     }
 
-    setMentionEntityNotesState((previous) => ({
+    setMentionLocationNotesState((previous) => ({
       ...previous,
       loading: true,
       error: '',
     }))
 
     try {
-      const response = await fetchEntityMentionNotes(entity.id, {
+      const response = await fetchLocationMentionNotes(location.id, {
         campaignId: selectedCampaignId,
       })
 
@@ -612,24 +615,24 @@ export default function NotesTab({
           ? response
           : emptyArray
 
-      setMentionEntityNotesState({
+      setMentionLocationNotesState({
         items: data,
         loading: false,
         error: '',
         loaded: true,
       })
     } catch (err) {
-      setMentionEntityNotesState({
+      setMentionLocationNotesState({
         items: emptyArray,
         loading: false,
         error: err?.message || 'Failed to load mentions',
         loaded: true,
       })
     }
-  }, [campaignMatchesEntityWorld, entity?.id, selectedCampaignId])
+  }, [campaignMatchesLocationWorld, location?.id, selectedCampaignId])
 
   const loadSessionMentionNotes = useCallback(async () => {
-    if (!entity?.id || !selectedCampaignId || !campaignMatchesEntityWorld) {
+    if (!location?.id || !selectedCampaignId || !campaignMatchesLocationWorld) {
       return
     }
 
@@ -640,7 +643,7 @@ export default function NotesTab({
     }))
 
     try {
-      const response = await fetchEntityMentionSessionNotes(entity.id, {
+      const response = await fetchLocationMentionSessionNotes(location.id, {
         campaignId: selectedCampaignId,
       })
 
@@ -664,16 +667,16 @@ export default function NotesTab({
         loaded: true,
       })
     }
-  }, [campaignMatchesEntityWorld, entity?.id, selectedCampaignId])
+  }, [campaignMatchesLocationWorld, location?.id, selectedCampaignId])
 
   useEffect(() => {
     if (activeSubTab !== 'mentions') {
       return
     }
 
-    // Load entity mentions when mentions tab is opened
-    if (!mentionEntityNotesState.loading && !mentionEntityNotesState.loaded) {
-      loadEntityMentionNotes()
+    // Load location mentions when mentions tab is opened
+    if (!mentionLocationNotesState.loading && !mentionLocationNotesState.loaded) {
+      loadLocationMentionNotes()
     }
 
     // Load session mentions when mentions tab is opened
@@ -682,13 +685,77 @@ export default function NotesTab({
     }
   }, [
     activeSubTab,
-    mentionEntityNotesState.loading,
-    mentionEntityNotesState.loaded,
+    mentionLocationNotesState.loading,
+    mentionLocationNotesState.loaded,
     mentionSessionNotesState.loading,
     mentionSessionNotesState.loaded,
-    loadEntityMentionNotes,
+    loadLocationMentionNotes,
     loadSessionMentionNotes,
   ])
+
+  const campaignName = selectedCampaign?.name || ''
+
+  // Helper to get note title for display
+  const getNoteTitle = useCallback((note) => {
+    const authorName = resolveAuthorLabel(note)
+    const characterName = note?.character?.name || ''
+    if (characterName) {
+      return `${authorName} (as ${characterName})`
+    }
+    return authorName
+  }, [])
+
+  // Helper to get visibility tag
+  const getVisibilityTag = useCallback((note) => {
+    const share = String(note?.shareType ?? note?.share_type ?? 'private')
+    return SHARE_LABELS[share] || 'Private'
+  }, [])
+
+  const renderNoteBody = useCallback((note) => {
+    const segments = buildNoteSegments(note?.content || '', note?.mentions)
+    if (!segments.length) return null
+
+    return segments.map((segment, index) => {
+      if (segment.type === 'mention') {
+        // Handle location mentions
+        if (segment.locationId) {
+          const key = `${note?.id || 'note'}-mention-${index}`
+          const label = segment.locationName || 'location'
+          return (
+            <span key={key} className="entity-note-mention">
+              @{label}
+              <LocationInfoPreview locationId={segment.locationId} locationName={label} />
+            </span>
+          )
+        }
+        // Handle entity mentions
+        if (segment.entityId) {
+          const key = `${note?.id || 'note'}-mention-${index}`
+          const label = segment.entityName || 'entity'
+          return (
+            <span key={key} className="entity-note-mention">
+              @{label}
+              <EntityInfoPreview entityId={segment.entityId} entityName={label} />
+            </span>
+          )
+        }
+        // Fallback: if it's a mention but we don't have ID info, show the fallback name
+        const fallbackLabel = segment.locationName || segment.entityName || 'mention'
+        const key = `${note?.id || 'note'}-mention-${index}`
+        return (
+          <span key={key} className="entity-note-mention">
+            @{fallbackLabel}
+          </span>
+        )
+      }
+
+      return (
+        <span key={`${note?.id || 'note'}-text-${index}`} className="entity-note-text">
+          {segment.text}
+        </span>
+      )
+    })
+  }, [])
 
   const buildNotePreview = useCallback((note) => {
     const segments = buildNoteSegments(note?.content, note?.mentions)
@@ -697,7 +764,7 @@ export default function NotesTab({
     const plain = segments
       .map((segment) =>
         segment.type === 'mention'
-          ? `@${segment.entityName || 'entity'}`
+          ? `@${segment.locationName || segment.entityName || 'mention'}`
           : segment.text || '',
       )
       .join('')
@@ -751,95 +818,29 @@ export default function NotesTab({
   )
 
   const handleMentionsRefresh = useCallback(() => {
-    if (!entity?.id || !selectedCampaignId || !campaignMatchesEntityWorld) {
+    if (!location?.id || !selectedCampaignId || !campaignMatchesLocationWorld) {
       return
     }
 
-    if (mentionSource === 'entity') {
-      loadEntityMentionNotes()
+    if (mentionSource === 'location') {
+      loadLocationMentionNotes()
     } else {
       loadSessionMentionNotes()
     }
   }, [
-    campaignMatchesEntityWorld,
-    entity?.id,
-    loadEntityMentionNotes,
+    campaignMatchesLocationWorld,
+    location?.id,
+    loadLocationMentionNotes,
     loadSessionMentionNotes,
     mentionSource,
     selectedCampaignId,
   ])
 
-  const renderNoteBody = useCallback((note) => {
-    const segments = buildNoteSegments(note?.content, note?.mentions)
-    if (!segments.length) return null
-
-    return segments.map((segment, index) => {
-      if (segment.type === 'mention') {
-        // Handle location mentions
-        if (segment.locationId) {
-          const key = `${note?.id || 'note'}-mention-${index}`
-          const label = segment.locationName || 'location'
-          return (
-            <span key={key} className="entity-note-mention">
-              @{label}
-              <LocationInfoPreview locationId={segment.locationId} locationName={label} />
-            </span>
-          )
-        }
-        // Handle entity mentions
-        if (segment.entityId) {
-          const key = `${note?.id || 'note'}-mention-${index}`
-          const label = segment.entityName || 'entity'
-          return (
-            <span key={key} className="entity-note-mention">
-              @{label}
-              <EntityInfoPreview entityId={segment.entityId} entityName={label} />
-            </span>
-          )
-        }
-        // Fallback: if it's a mention but we don't have ID info, show the fallback name
-        const fallbackLabel = segment.locationName || segment.entityName || 'mention'
-        const key = `${note?.id || 'note'}-mention-${index}`
-        return (
-          <span key={key} className="entity-note-mention">
-            @{fallbackLabel}
-          </span>
-        )
-      }
-
-      return (
-        <span key={`${note?.id || 'note'}-text-${index}`} className="entity-note-text">
-          {segment.text}
-        </span>
-      )
-    })
-  }, [])
-
-  const shareBadgeClass = useCallback(
-    (share) => `entity-note-share entity-note-share-${share}`,
-    [],
-  )
-
-  const mentionEntityCount = mentionEntityNotes.length
-  const mentionSessionCount = mentionSessionNotes.length
-  const mentionEntityLoading = mentionEntityNotesState.loading
-  const mentionSessionLoading = mentionSessionNotesState.loading
-  const mentionEntityError = mentionEntityNotesState.error
-  const mentionSessionError = mentionSessionNotesState.error
-  const mentionEntityLoaded = mentionEntityNotesState.loaded
-  const mentionSessionLoaded = mentionSessionNotesState.loaded
-  const totalMentionsCount = mentionEntityCount + mentionSessionCount
-  const mentionRefreshDisabled =
-    !selectedCampaignId ||
-    !campaignMatchesEntityWorld ||
-    (mentionSource === 'entity' ? mentionEntityLoading : mentionSessionLoading)
-
-  const showCharacterPicker = isCampaignPlayer && canShowForm
-  const characterLocked = showCharacterPicker && characters.length === 1
-
   const shareDisabled = creating
   const saveDisabled = creating || !noteContent.trim() || (isCampaignPlayer && !characterId)
   const filterDisabled = sortedNotes.length === 0 || authorFilters.length <= 1
+  const showCharacterPicker = isCampaignPlayer && canShowForm
+  const characterLocked = showCharacterPicker && characters.length === 1
 
   useEffect(() => {
     if ((activeSubTab !== 'notes' || !canShowForm) && drawerOpen) {
@@ -847,23 +848,21 @@ export default function NotesTab({
     }
   }, [activeSubTab, canShowForm, drawerOpen, closeDrawer])
 
-  const campaignName = selectedCampaign?.name || ''
-
-  // Helper to get note title for display
-  const getNoteTitle = useCallback((note) => {
-    const authorName = resolveAuthorLabel(note)
-    const characterName = note?.character?.name || ''
-    if (characterName) {
-      return `${authorName} (as ${characterName})`
-    }
-    return authorName
-  }, [])
-
-  // Helper to get visibility tag
-  const getVisibilityTag = useCallback((note) => {
-    const share = String(note?.shareType ?? note?.share_type ?? 'private')
-    return SHARE_LABELS[share] || 'Private'
-  }, [])
+  if (error === 'CAMPAIGN_CONTEXT_ACCESS_DENIED') {
+    return (
+      <div className="entity-notes-container">
+        <div className="alert error" style={{ padding: '1.5rem', maxWidth: '600px', margin: '2rem auto' }}>
+          <h2 style={{ marginTop: 0, marginBottom: '1rem' }}>Access Restricted by Campaign Context</h2>
+          <p style={{ marginBottom: '1rem' }}>
+            You don't have access to notes for this location with your current campaign context selected.
+          </p>
+          <p>
+            To view notes, please change your campaign context using the selector in the header to a campaign that has access to this location.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <>
@@ -975,7 +974,7 @@ export default function NotesTab({
                             value={editNoteContent}
                             onChange={handleEditNoteContentChange}
                             markup="@[__display__](__id__)"
-                            placeholder={ENTITY_NOTE_PLACEHOLDER}
+                            placeholder={LOCATION_NOTE_PLACEHOLDER}
                             className="entity-note-mentions"
                             inputProps={{
                               className: 'entity-notes-strict-textarea',
@@ -992,7 +991,7 @@ export default function NotesTab({
                                 const cleanDisplay = display || (id.includes(':') ? id.split(':')[1] : id)
                                 return `@${cleanDisplay}`
                               }}
-                              data={handleEntityMentionSearch}
+                              data={handleLocationMentionSearch}
                               appendSpaceOnAdd
                             />
                           </MentionsInputWrapper>
@@ -1007,7 +1006,7 @@ export default function NotesTab({
                               >
                                 <input
                                   type="radio"
-                                  name={`entity-note-share-edit-${note.id}`}
+                                  name={`location-note-share-edit-${note.id}`}
                                   value={option.value}
                                   checked={editShareType === option.value}
                                   onChange={() => setEditShareType(option.value)}
@@ -1108,13 +1107,13 @@ export default function NotesTab({
                 <button
                   type="button"
                   className={`entity-notes-strict-mention-toggle-button${
-                    mentionSource === 'entity' ? ' active' : ''
+                    mentionSource === 'location' ? ' active' : ''
                   }`}
-                  onClick={() => setMentionSource('entity')}
+                  onClick={() => setMentionSource('location')}
                 >
-                  Entity Notes
-                  {mentionEntityLoaded ? (
-                    <span className="entity-notes-strict-mention-count">{mentionEntityCount}</span>
+                  Location Notes
+                  {mentionLocationNotesState.loaded ? (
+                    <span className="entity-notes-strict-mention-count">{mentionLocationNotes.length}</span>
                   ) : null}
                 </button>
                 <button
@@ -1125,8 +1124,8 @@ export default function NotesTab({
                   onClick={() => setMentionSource('session')}
                 >
                   Session Notes
-                  {mentionSessionLoaded ? (
-                    <span className="entity-notes-strict-mention-count">{mentionSessionCount}</span>
+                  {mentionSessionNotesState.loaded ? (
+                    <span className="entity-notes-strict-mention-count">{mentionSessionNotes.length}</span>
                   ) : null}
                 </button>
               </div>
@@ -1134,9 +1133,13 @@ export default function NotesTab({
                 type="button"
                 className="btn-secondary"
                 onClick={handleMentionsRefresh}
-                disabled={mentionRefreshDisabled}
+                disabled={
+                  !selectedCampaignId ||
+                  !campaignMatchesLocationWorld ||
+                  (mentionSource === 'location' ? mentionLocationNotesState.loading : mentionSessionNotesState.loading)
+                }
               >
-                {(mentionSource === 'entity' ? mentionEntityLoading : mentionSessionLoading) ? (
+                {(mentionSource === 'location' ? mentionLocationNotesState.loading : mentionSessionNotesState.loading) ? (
                   <>
                     <Loader2 className="spin" size={16} /> Refreshing…
                   </>
@@ -1146,73 +1149,68 @@ export default function NotesTab({
               </button>
             </div>
 
-            {mentionSource === 'entity' ? (
+            {mentionSource === 'location' ? (
               <>
-                {mentionEntityError ? (
+                {mentionLocationNotesState.error ? (
                   <div className="entity-notes-strict-alert error">
                     <AlertCircle size={16} />
-                    <p>{mentionEntityError}</p>
+                    <p>{mentionLocationNotesState.error}</p>
                   </div>
                 ) : null}
-                {mentionEntityLoading ? (
+                {mentionLocationNotesState.loading ? (
                   <div className="entity-notes-strict-loading">
                     <Loader2 className="spin" size={20} />
                     <span>Loading mentions…</span>
                   </div>
                 ) : null}
-                {!mentionEntityLoading && mentionEntityLoaded && mentionEntityCount === 0 ? (
+                {!mentionLocationNotesState.loading && mentionLocationNotesState.loaded && mentionLocationNotes.length === 0 ? (
                   <p className="entity-notes-strict-empty">
-                    This entity hasn&apos;t been mentioned in entity or location notes yet.
+                    This location hasn&apos;t been mentioned in location or entity notes yet.
                   </p>
                 ) : null}
-                {!mentionEntityLoading && mentionEntityLoaded && mentionEntityCount > 0 ? (
+                {!mentionLocationNotesState.loading && mentionLocationNotesState.loaded && mentionLocationNotes.length > 0 ? (
                   <div className="entity-notes-strict-list">
-                    {mentionEntityNotes.map((note, index) => {
+                    {mentionLocationNotes.map((note, index) => {
                       const rawKey =
                         note?.id ??
-                        note?.entityNoteId ??
-                        note?.entity_note_id ??
-                        `entity-mention-${index}`
+                        note?.locationNoteId ??
+                        note?.location_note_id ??
+                        `location-mention-${index}`
                       const noteKey = String(rawKey)
                       const createdAtValue = note?.createdAt ?? note?.created_at
                       const createdAtDate = createdAtValue ? new Date(createdAtValue) : null
                       const formattedTimestamp = formatTimestamp(createdAtDate)
-                      const share = String(note?.shareType ?? note?.share_type ?? 'private')
-                      const isoTimestamp =
-                        createdAtDate && !Number.isNaN(createdAtDate.getTime())
-                          ? createdAtDate.toISOString()
-                          : undefined
-                      const noteEntityName =
-                        note?.entity?.name ?? note?.entityName ?? 'Unnamed entity'
-                      const noteEntityId =
-                        note?.entity?.id ?? note?.entityId ?? note?.entity_id ?? null
                       const noteLocationName =
                         note?.location?.name ?? note?.locationName ?? 'Unnamed location'
                       const noteLocationId =
                         note?.location?.id ?? note?.locationId ?? note?.location_id ?? null
+                      const noteEntityName =
+                        note?.entity?.name ?? note?.entityName ?? 'Unnamed entity'
+                      const noteEntityId =
+                        note?.entity?.id ?? note?.entityId ?? note?.entity_id ?? null
 
                       return (
                         <div
-                          key={`entity-mention-${noteKey}`}
+                          key={`location-mention-${noteKey}`}
                           className="entity-notes-strict-note-item"
                         >
                           <div className="entity-notes-strict-note-header">
                             <div className="entity-notes-strict-note-title-row">
                               <span className="entity-notes-strict-note-title">
                                 {getNoteTitle(note)}
-                                {noteEntityId ? (
-                                  <>
-                                    {' '}on{' '}
-                                    <span style={{ fontWeight: 500 }}>{noteEntityName}</span>
-                                    {' '}
-                                    <EntityInfoPreview entityId={noteEntityId} entityName={noteEntityName} />
-                                  </>
-                                ) : noteLocationId ? (
+                                {noteLocationId ? (
                                   <>
                                     {' '}on{' '}
                                     <span style={{ fontWeight: 500 }}>{noteLocationName}</span>
                                     {' '}
                                     <LocationInfoPreview locationId={noteLocationId} locationName={noteLocationName} />
+                                  </>
+                                ) : noteEntityId ? (
+                                  <>
+                                    {' '}on{' '}
+                                    <span style={{ fontWeight: 500 }}>{noteEntityName}</span>
+                                    {' '}
+                                    <EntityInfoPreview entityId={noteEntityId} entityName={noteEntityName} />
                                   </>
                                 ) : null}
                               </span>
@@ -1233,24 +1231,24 @@ export default function NotesTab({
               </>
             ) : (
               <>
-                {mentionSessionError ? (
+                {mentionSessionNotesState.error ? (
                   <div className="entity-notes-strict-alert error">
                     <AlertCircle size={16} />
-                    <p>{mentionSessionError}</p>
+                    <p>{mentionSessionNotesState.error}</p>
                   </div>
                 ) : null}
-                {mentionSessionLoading ? (
+                {mentionSessionNotesState.loading ? (
                   <div className="entity-notes-strict-loading">
                     <Loader2 className="spin" size={20} />
                     <span>Loading session mentions…</span>
                   </div>
                 ) : null}
-                {!mentionSessionLoading && mentionSessionLoaded && mentionSessionCount === 0 ? (
+                {!mentionSessionNotesState.loading && mentionSessionNotesState.loaded && mentionSessionNotes.length === 0 ? (
                   <p className="entity-notes-strict-empty">
-                    This entity hasn&apos;t been mentioned in session notes yet.
+                    This location hasn&apos;t been mentioned in session notes yet.
                   </p>
                 ) : null}
-                {!mentionSessionLoading && mentionSessionLoaded && mentionSessionCount > 0 ? (
+                {!mentionSessionNotesState.loading && mentionSessionNotesState.loaded && mentionSessionNotes.length > 0 ? (
                   <div className="entity-notes-strict-list">
                     {mentionSessionNotes.map((note, index) => {
                       const rawKey =
@@ -1320,7 +1318,7 @@ export default function NotesTab({
       >
         <div className="entity-notes-form">
           <form onSubmit={handleSubmit} className="entity-notes-form-body">
-            <label className="entity-notes-label" htmlFor="entity-note-content">
+            <label className="entity-notes-label" htmlFor="location-note-content">
               Note
             </label>
             <div className="entity-note-editor-field">
@@ -1328,12 +1326,12 @@ export default function NotesTab({
                 value={noteContent}
                 onChange={handleNoteContentChange}
                 markup="@[__display__](__id__)"
-                placeholder={ENTITY_NOTE_PLACEHOLDER}
+                placeholder={LOCATION_NOTE_PLACEHOLDER}
                 className="entity-note-mentions"
                 inputProps={{
-                  id: 'entity-note-content',
+                  id: 'location-note-content',
                   className: 'entity-note-textarea',
-                  'aria-label': 'Entity note content',
+                  'aria-label': 'Location note content',
                   rows: 5,
                   required: true,
                   'data-autofocus': true,
@@ -1342,12 +1340,8 @@ export default function NotesTab({
                 <Mention
                   trigger="@"
                   markup="@[__display__](__id__)"
-                  displayTransform={(id, display) => {
-                    // Extract display name, handling type prefix in ID
-                    const cleanDisplay = display || (id.includes(':') ? id.split(':')[1] : id)
-                    return `@${cleanDisplay}`
-                  }}
-                  data={handleEntityMentionSearch}
+                  displayTransform={(id, display) => `@${display}`}
+                  data={handleLocationMentionSearch}
                   appendSpaceOnAdd
                 />
               </MentionsInputWrapper>
@@ -1359,7 +1353,7 @@ export default function NotesTab({
                 <label key={option.value} className="entity-notes-share-option">
                   <input
                     type="radio"
-                    name="entity-note-share"
+                    name="location-note-share"
                     value={option.value}
                     checked={shareType === option.value}
                     onChange={() => setShareType(option.value)}
@@ -1372,9 +1366,9 @@ export default function NotesTab({
 
             {showCharacterPicker ? (
               <div className="entity-notes-character">
-                <label htmlFor="entity-note-character">Character</label>
+                <label htmlFor="location-note-character">Character</label>
                 <select
-                  id="entity-note-character"
+                  id="location-note-character"
                   value={characterId}
                   onChange={(event) => setCharacterId(event.target.value)}
                   disabled={charactersLoading || characterLocked}
@@ -1439,8 +1433,8 @@ export default function NotesTab({
   )
 }
 
-NotesTab.propTypes = {
-  entity: PropTypes.object,
+LocationNotesTab.propTypes = {
+  location: PropTypes.object,
   worldId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   selectedCampaign: PropTypes.object,
   selectedCampaignId: PropTypes.oneOfType([
@@ -1455,7 +1449,8 @@ NotesTab.propTypes = {
   error: PropTypes.string,
   onCreateNote: PropTypes.func,
   creating: PropTypes.bool,
-  campaignMatchesEntityWorld: PropTypes.bool,
+  campaignMatchesLocationWorld: PropTypes.bool,
   onNoteUpdate: PropTypes.func,
   onNoteDelete: PropTypes.func,
 }
+

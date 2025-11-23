@@ -1,6 +1,7 @@
 // src/api/locationTypes.js
 import { getAuthToken } from '../utils/authHelpers.js'
 import { API_BASE } from './config.js'
+import api from './client.js'
 
 // 🔐 Safe token getter that waits for localStorage if necessary
 async function waitForToken(retries = 5, delay = 200) {
@@ -100,7 +101,6 @@ export async function getWorldLocationTypeUsage(worldId, params = {}) {
     return Promise.reject(new Error('worldId is required to load location type usage'))
   }
 
-  const headers = await authHeaders()
   const searchParams = new URLSearchParams()
 
   const rawCharacterId =
@@ -114,7 +114,6 @@ export async function getWorldLocationTypeUsage(worldId, params = {}) {
 
   const queryString = searchParams.toString()
   const suffix = queryString ? `?${queryString}` : ''
-  const res = await fetch(`${API_BASE}/worlds/${worldId}/location-types${suffix}`, { headers })
-  return handleResponse(res, 'fetch location type usage')
+  return api.get(`/worlds/${worldId}/location-types${suffix}`)
 }
 

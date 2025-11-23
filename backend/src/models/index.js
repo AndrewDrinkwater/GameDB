@@ -34,6 +34,10 @@ import RequestNoteModel from './requestNote.js'
 import LocationModel from './location.js'
 import LocationTypeModel from './locationType.js'
 import LocationTypeFieldModel from './locationTypeField.js'
+import LocationCampaignImportanceModel from './locationCampaignImportance.js'
+import LocationCollectionModel from './locationCollection.js'
+import LocationNoteModel from './locationNote.js'
+import LocationFollowModel from './locationFollow.js'
 
 // Create Sequelize instance
 // Ensure password is always a string (required by PostgreSQL SCRAM authentication)
@@ -92,6 +96,10 @@ export const RequestNote = RequestNoteModel(sequelize, DataTypes)
 export const Location = LocationModel(sequelize, DataTypes)
 export const LocationType = LocationTypeModel(sequelize, DataTypes)
 export const LocationTypeField = LocationTypeFieldModel(sequelize, DataTypes)
+export const LocationCampaignImportance = LocationCampaignImportanceModel(sequelize, DataTypes)
+export const LocationCollection = LocationCollectionModel(sequelize, DataTypes)
+export const LocationNote = LocationNoteModel(sequelize, DataTypes)
+export const LocationFollow = LocationFollowModel(sequelize, DataTypes)
 
 // --- Associations ---
 if (User.associate)
@@ -152,9 +160,13 @@ if (EntityFollow.associate) EntityFollow.associate({ User, Entity, Campaign })
 if (Notification.associate) Notification.associate({ User, Campaign })
 if (Request.associate) Request.associate({ User, RequestNote })
 if (RequestNote.associate) RequestNote.associate({ Request, User })
-if (Location.associate) Location.associate({ World, User, LocationType, Location, Entity })
+if (Location.associate) Location.associate({ World, User, LocationType, Location, Entity, LocationCampaignImportance })
 if (LocationType.associate) LocationType.associate({ World, LocationType, Location, LocationTypeField })
 if (LocationTypeField.associate) LocationTypeField.associate({ LocationType, EntityType })
+if (LocationCampaignImportance.associate) LocationCampaignImportance.associate({ Location, Campaign })
+if (LocationCollection.associate) LocationCollection.associate({ World, User })
+if (LocationNote.associate) LocationNote.associate({ Location, User, Character, Campaign })
+if (LocationFollow.associate) LocationFollow.associate({ User, Location, Campaign })
 
 // --- Init DB ---
 export async function initDB() {
@@ -199,4 +211,8 @@ export default {
   Location,
   LocationType,
   LocationTypeField,
+  LocationCampaignImportance,
+  LocationCollection,
+  LocationNote,
+  LocationFollow,
 }

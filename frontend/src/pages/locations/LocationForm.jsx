@@ -9,6 +9,7 @@ import {
   fetchLocationEntities,
 } from '../../api/locations.js'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
+import { getAncestorTypeIds } from '../../utils/locationTypeHierarchy.js'
 
 export default function LocationForm({ location, parentId, locationTypes, onClose, onSuccess }) {
   const { activeWorldId } = useCampaignContext()
@@ -26,22 +27,101 @@ export default function LocationForm({ location, parentId, locationTypes, onClos
   const [childLocations, setChildLocations] = useState([])
   const [loadingRelated, setLoadingRelated] = useState(false)
 
-  const loadAvailableParents = useCallback(async () => {
+  const loadAvailableParents = useCallback(async (selectedTypeId = null) => {
     if (!activeWorldId) return
     try {
       const res = await fetchLocations({
         worldId: activeWorldId,
+        all: 'true', // Get all locations, not just root ones
       })
       const allLocations = res?.data || []
-      // Filter out the current location and its descendants to prevent circular references
-      const filtered = location
-        ? allLocations.filter((loc) => loc.id !== location.id)
-        : allLocations
+      
+      // Filter out the current location and its ancestors to prevent circular references
+      let filtered = allLocations
+      
+      if (location?.id) {
+        const currentLocationIdStr = String(location.id)
+        
+        // First, exclude the current location itself
+        filtered = filtered.filter((loc) => {
+          const locIdStr = String(loc.id)
+          return locIdStr !== currentLocationIdStr
+        })
+        
+        // Then, exclude all ancestors (the path from root to current location)
+        // The path includes the current location, so we exclude all items in the path
+        try {
+          const { fetchLocationPath } = await import('../../api/locations.js')
+          const pathRes = await fetchLocationPath(location.id)
+          const path = pathRes?.data || []
+          
+          // Create a set of all IDs in the path (including current location)
+          const pathIds = new Set(
+            path.map((p) => String(p.id))
+          )
+          
+          // Filter out any location that's in the path (ancestors + current)
+          filtered = filtered.filter((loc) => {
+            const locIdStr = String(loc.id)
+            return !pathIds.has(locIdStr)
+          })
+        } catch (err) {
+          console.error('❌ [Parent Selection] Failed to load location path for ancestor exclusion:', err)
+          // If we can't load the path, at least exclude the current location
+        }
+      }
+
+      // Filter by location type hierarchy: only show locations with types that are ancestors
+      // (parent, grandparent, etc.) of the current location's type
+      // Use the passed selectedTypeId, or fall back to location's type
+      const typeIdToUse = selectedTypeId || location?.location_type_id
+      
+      if (typeIdToUse && locationTypes && locationTypes.length > 0) {
+        const currentTypeId = String(typeIdToUse)
+        const currentType = locationTypes.find(t => String(t.id) === currentTypeId)
+        
+        const ancestorTypeIds = getAncestorTypeIds(currentTypeId, locationTypes)
+        
+        // Explicitly exclude the current type itself (to avoid showing peers)
+        const currentTypeIdStr = String(currentTypeId)
+        
+        if (ancestorTypeIds.length > 0) {
+          const ancestorTypeIdSet = new Set(ancestorTypeIds.map(id => String(id)))
+          
+          filtered = filtered.filter((loc) => {
+            const locTypeId = loc.location_type_id || loc.locationType?.id
+            const locTypeIdStr = locTypeId ? String(locTypeId) : ''
+            const isAncestorType = ancestorTypeIdSet.has(locTypeIdStr)
+            const isNotCurrentType = locTypeIdStr !== currentTypeIdStr
+            const matches = locTypeIdStr && isAncestorType && isNotCurrentType
+            
+            // Only include locations with ancestor types (excludes same type and descendant types)
+            // Also explicitly exclude the current type to avoid showing peers
+            return matches
+          })
+        } else {
+          // If no ancestor types found, show no parents (current type has no parent types)
+          filtered = []
+        }
+      } else {
+        // When creating a new location, if we can't filter by type, show all locations
+        // (user hasn't selected a type yet, so we can't enforce hierarchy)
+        // When editing, if we can't filter, show nothing to prevent invalid selections
+        if (!location) {
+          // Creating new location - show all locations until type is selected
+          // filtered already contains all locations (minus circular refs)
+        } else {
+          // Editing existing location - don't show any if we can't filter safely
+          filtered = []
+        }
+      }
+      
       setAvailableParents(filtered)
     } catch (err) {
-      console.error('❌ Failed to load available parents:', err)
+      console.error('❌ [Parent Selection] Failed to load available parents:', err)
+      setAvailableParents([])
     }
-  }, [activeWorldId, location])
+  }, [activeWorldId, location, locationTypes])
 
   const loadEntities = useCallback(async () => {
     if (!location?.id) {
@@ -80,6 +160,7 @@ export default function LocationForm({ location, parentId, locationTypes, onClos
     }
   }, [location?.id, activeWorldId])
 
+  // Initialize form data when location or parentId changes
   useEffect(() => {
     if (location) {
       setFormData({
@@ -102,8 +183,19 @@ export default function LocationForm({ location, parentId, locationTypes, onClos
       setEntities([])
       setChildLocations([])
     }
-    loadAvailableParents()
-  }, [location, parentId, loadAvailableParents, loadEntities, loadChildLocations])
+    // Load available parents with the location's type (if editing) or empty (if creating)
+    loadAvailableParents(location?.location_type_id || null)
+  }, [location, parentId, loadEntities, loadChildLocations])
+
+  // Reload available parents when location type changes in the form
+  useEffect(() => {
+    if (formData.location_type_id) {
+      loadAvailableParents(formData.location_type_id)
+    } else if (!location) {
+      // If creating a new location and no type selected, show all locations (no type filter)
+      loadAvailableParents(null)
+    }
+  }, [formData.location_type_id, loadAvailableParents, location])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -120,13 +212,20 @@ export default function LocationForm({ location, parentId, locationTypes, onClos
         metadata: formData.metadata,
       }
 
+      let result
       if (location) {
-        await updateLocation(location.id, payload)
+        result = await updateLocation(location.id, payload)
       } else {
-        await createLocation(payload)
+        result = await createLocation(payload)
       }
 
-      onSuccess()
+      // Pass the created/updated location to onSuccess if it accepts a parameter
+      const locationData = result?.data || result
+      if (onSuccess.length > 0) {
+        onSuccess(locationData)
+      } else {
+        onSuccess()
+      }
     } catch (err) {
       console.error('❌ Failed to save location:', err)
       setError(err.message)

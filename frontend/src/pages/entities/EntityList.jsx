@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { deleteEntity, getUnassignedEntities, getWorldEntities } from '../../api/entities.js'
+import { getEntityRelationships } from '../../api/entityRelationships.js'
 import {
   getEntityTypeListColumns,
   updateEntityTypeListColumns,
@@ -24,6 +25,7 @@ import EntityForm from './EntityForm.jsx'
 import SearchBar from '../../components/SearchBar.jsx'
 import ConditionBuilderModal from '../../components/ConditionBuilderModal.jsx'
 import EntityInfoPreview from '../../components/entities/EntityInfoPreview.jsx'
+import ImportanceIndicator from '../../components/shared/ImportanceIndicator.jsx'
 import useDataExplorer from '../../hooks/useDataExplorer.js'
 import useIsMobile from '../../hooks/useIsMobile.js'
 import { ENTITY_CREATION_SCOPES } from '../../utils/worldCreationScopes.js'
@@ -246,6 +248,9 @@ export default function EntityList() {
   })
   const [viewingUnassigned, setViewingUnassigned] = useState(false)
   const [selectedImportanceFilters, setSelectedImportanceFilters] = useState([])
+  const [parentEntityRelationships, setParentEntityRelationships] = useState([])
+  const [parentEntityInfo, setParentEntityInfo] = useState(null)
+  const [loadingRelationships, setLoadingRelationships] = useState(false)
 
   const currentSearch = searchParams.toString()
 
@@ -253,6 +258,8 @@ export default function EntityList() {
   const hasWorldContext = Boolean(worldId)
   const selectedFilter = searchParams.get(FILTER_PARAM) ?? ''
   const filterActive = Boolean(selectedFilter)
+  const parentEntityId = searchParams.get('parentEntity') ?? ''
+  const viewingChildren = Boolean(parentEntityId)
 
   const entityFormIdRef = useRef(`entity-form-${Math.random().toString(36).slice(2)}`)
   const previousWorldIdRef = useRef(`${worldId}:${contextKey}`)
@@ -612,6 +619,55 @@ export default function EntityList() {
     }
   }, [selectedFilter, token, sessionReady])
 
+  // Load parent entity relationships when viewing children
+  useEffect(() => {
+    if (!parentEntityId || !token) {
+      setParentEntityRelationships([])
+      setParentEntityInfo(null)
+      return
+    }
+
+    let cancelled = false
+    setLoadingRelationships(true)
+
+    const loadParentData = async () => {
+      try {
+        // Get parent entity info
+        const parentEntity = entities.find((e) => String(e.id) === String(parentEntityId))
+        if (parentEntity) {
+          setParentEntityInfo(parentEntity)
+        }
+
+        // Get relationships to find children
+        const relationshipsRes = await getEntityRelationships(parentEntityId)
+        const relationships = Array.isArray(relationshipsRes?.data)
+          ? relationshipsRes.data
+          : Array.isArray(relationshipsRes)
+            ? relationshipsRes
+            : []
+
+        if (!cancelled) {
+          setParentEntityRelationships(relationships)
+        }
+      } catch (err) {
+        console.error('Failed to load parent entity relationships:', err)
+        if (!cancelled) {
+          setParentEntityRelationships([])
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingRelationships(false)
+        }
+      }
+    }
+
+    loadParentData()
+
+    return () => {
+      cancelled = true
+    }
+  }, [parentEntityId, token, entities])
+
   const filteredEntities = useMemo(() => {
     let filtered = entities
 
@@ -632,8 +688,50 @@ export default function EntityList() {
       })
     }
 
+    // Filter by parent entity (show only children)
+    if (parentEntityId && parentEntityRelationships.length > 0) {
+      const childEntityIds = new Set()
+      const parentId = String(parentEntityId)
+      
+      parentEntityRelationships.forEach((rel) => {
+        const fromId = String(rel.from_entity || rel.fromEntity || rel.from?.id || '')
+        const toId = String(rel.to_entity || rel.toEntity || rel.to?.id || '')
+        const relType = rel.relationshipType || rel.relationship_type
+        const relLabel = relType?.name || relType?.label || relType?.from_label || relType?.to_label || ''
+        const isBidirectional = rel.bidirectional === true
+        
+        // Determine if this relationship indicates parent-child
+        // Patterns that indicate parent: "parent", "owns", "contains", "has child", "has member"
+        // Patterns that indicate child: "child", "belongs to", "part of", "member of"
+        const isParentPattern = /(parent|owns|contains|has child|has member|supervises|manages)/i.test(relLabel)
+        const isChildPattern = /(child|belongs to|part of|member of|reports to|works for)/i.test(relLabel)
+        
+        // If parent is "from" and relationship indicates parent, then "to" is child
+        if (fromId === parentId && (isParentPattern || (!isChildPattern && !isParentPattern))) {
+          childEntityIds.add(toId)
+        }
+        // If parent is "to" and relationship indicates child, then "from" is child
+        else if (toId === parentId && (isChildPattern || (isBidirectional && isParentPattern))) {
+          childEntityIds.add(fromId)
+        }
+        // For bidirectional relationships, if parent is either end, the other end is potentially a child
+        else if (isBidirectional) {
+          if (fromId === parentId) {
+            childEntityIds.add(toId)
+          } else if (toId === parentId) {
+            childEntityIds.add(fromId)
+          }
+        }
+      })
+      
+      filtered = filtered.filter((entity) => {
+        const entityId = String(entity.id)
+        return childEntityIds.has(entityId)
+      })
+    }
+
     return filtered
-  }, [entities, selectedFilter, selectedImportanceFilters, selectedCampaignId])
+  }, [entities, selectedFilter, selectedImportanceFilters, selectedCampaignId, parentEntityId, parentEntityRelationships])
 
   const activeTypeName = useMemo(() => {
     if (!selectedFilter) return ''
@@ -1103,12 +1201,16 @@ export default function EntityList() {
 
     switch (column.key) {
       case 'name':
-        const importance = selectedCampaignId ? entity.importance : null
-        const importanceIcons = {
-          critical: '🔴',
-          important: '🟠',
-          medium: '⚪',
+        const hasChildren = (entity.childCount || 0) > 0
+        
+        const handleChevronClick = (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          const newParams = new URLSearchParams(searchParams)
+          newParams.set('parentEntity', entity.id)
+          setSearchParams(newParams)
         }
+
         return (
           <>
             <Link
@@ -1122,23 +1224,36 @@ export default function EntityList() {
             >
               {entity.name}
             </Link>
+            {hasChildren && (
+              <>
+                {'\u00A0'}
+                <button
+                  type="button"
+                  onClick={handleChevronClick}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    verticalAlign: 'middle',
+                  }}
+                  title="View children"
+                  aria-label="View children"
+                >
+                  <ChevronRight size={14} style={{ color: '#6b7280' }} />
+                </button>
+              </>
+            )}
             {entity.id ? (
               <>
                 {'\u00A0'}
                 <EntityInfoPreview entityId={entity.id} entityName={entity.name || 'entity'} />
               </>
             ) : null}
-            {importance && (
-              <>
-                {'\u00A0'}
-                <span
-                  className="entity-importance-indicator"
-                  title={`Importance: ${importance}`}
-                >
-                  {importanceIcons[importance] || '•'}
-                </span>
-              </>
-            )}
+            {'\u00A0'}
+            <ImportanceIndicator importance={entity.importance} />
           </>
         )
       case 'type':
@@ -1335,6 +1450,57 @@ export default function EntityList() {
         <div className="entities-header-top">
           <div className="entities-header-left">
             <h1>Entities</h1>
+            {viewingChildren && parentEntityInfo && (
+              <div
+                style={{
+                  marginBottom: '0.75rem',
+                  padding: '0.75rem',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: '0.5rem',
+                  border: '1px solid #e5e7eb',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>Viewing children of:</span>
+                  <Link
+                    to={`/entities/${parentEntityInfo.id}`}
+                    style={{
+                      color: '#1e293b',
+                      textDecoration: 'none',
+                      fontWeight: 500,
+                      fontSize: '0.875rem',
+                    }}
+                  >
+                    {parentEntityInfo.name}
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newParams = new URLSearchParams(searchParams)
+                      newParams.delete('parentEntity')
+                      setSearchParams(newParams)
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#6b7280',
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: '0.25rem',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.backgroundColor = '#e5e7eb'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.backgroundColor = 'transparent'
+                    }}
+                  >
+                    (View all entities)
+                  </button>
+                </div>
+              </div>
+            )}
             {viewingUnassigned ? (
               <p className="entities-subtitle">
                 Showing entities without a world assignment.

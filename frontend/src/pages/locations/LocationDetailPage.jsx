@@ -8,12 +8,15 @@ import {
   fetchLocationPath,
   fetchLocationEntities,
   updateLocation,
+  fetchLocationNotes,
+  createLocationNote,
 } from '../../api/locations.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useCampaignContext } from '../../context/CampaignContext.jsx'
 import EntityPageLayout from '../../components/entities/EntityPageLayout.jsx'
-import EntityHeader from '../../components/entities/EntityHeader.jsx'
+import LocationHeader from '../../components/locations/LocationHeader.jsx'
 import TabNav from '../../components/TabNav.jsx'
+import LocationImportanceSelector from '../../components/locations/LocationImportanceSelector.jsx'
 import FormRenderer from '../../components/RecordForm/FormRenderer.jsx'
 import FieldRenderer from '../../components/RecordForm/FieldRenderer.jsx'
 import { formatDateTime } from '../../utils/dateUtils.js'
@@ -21,10 +24,12 @@ import useLocationAccess from '../../hooks/useLocationAccess.js'
 import useIsMobile from '../../hooks/useIsMobile.js'
 import { fetchLocationTypes } from '../../api/locationTypes.js'
 import { getLocationTypeFields } from '../../api/locationTypeFields.js'
+import { getAncestorTypeIds } from '../../utils/locationTypeHierarchy.js'
 import AccessTab from './tabs/AccessTab.jsx'
 import SystemTab from './tabs/SystemTab.jsx'
 import EntitiesTab from './tabs/EntitiesTab.jsx'
 import LocationsTab from './tabs/LocationsTab.jsx'
+import LocationNotesTab from './tabs/NotesTab.jsx'
 import {
   buildMetadataDisplayMap,
   buildMetadataInitialMap,
@@ -146,7 +151,7 @@ export default function LocationDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user, token, sessionReady } = useAuth()
-  const { activeWorldId } = useCampaignContext()
+  const { activeWorldId, selectedCampaignId, selectedCampaign } = useCampaignContext()
   const isMobile = useIsMobile()
 
   const [location, setLocation] = useState(null)
@@ -161,6 +166,12 @@ export default function LocationDetailPage() {
   const [activeTab, setActiveTab] = useState('dossier')
   const [isEditing, setIsEditing] = useState(false)
   const [headerExpanded, setHeaderExpanded] = useState(false)
+  const [notesState, setNotesState] = useState({
+    items: [],
+    loading: false,
+    error: '',
+  })
+  const [notesSaving, setNotesSaving] = useState(false)
 
   const formRef = useRef(null)
   const [formState, setFormState] = useState({
@@ -169,11 +180,22 @@ export default function LocationDetailPage() {
   })
 
   const canEdit = useMemo(() => {
-    if (!location || !user) return false
-    if (user.role === 'system_admin') return true
-    if (location.world?.created_by && location.world.created_by === user.id) return true
-    if (location.created_by && location.created_by === user.id) return true
-    return false
+    const result = (() => {
+      // First check explicit permissions if they exist (from backend)
+      if (location?.permissions && typeof location.permissions.canEdit === 'boolean') {
+        return location.permissions.canEdit
+      }
+      
+      // Fall back to other checks if permissions are not provided
+      if (!location || !user) return false
+      if (user.role === 'system_admin') return true
+      if (location.world?.created_by && location.world.created_by === user.id) return true
+      if (location.created_by && location.created_by === user.id) return true
+      
+      return false
+    })()
+    
+    return result
   }, [location, user])
 
   const {
@@ -205,12 +227,20 @@ export default function LocationDetailPage() {
       setLocation(res?.data || res)
     } catch (err) {
       console.error('❌ Failed to load location:', err)
-      setError(err.message || 'Failed to load location')
+      // Check if this is a 403 error with campaign context active
+      const isForbidden = err.status === 403 || err.status === '403' || err.message === 'Forbidden'
+      const hasCampaignContext = Boolean(selectedCampaignId)
+      
+      if (isForbidden && hasCampaignContext) {
+        setError('CAMPAIGN_CONTEXT_ACCESS_DENIED')
+      } else {
+        setError(err.message || 'Failed to load location')
+      }
       setLocation(null)
     } finally {
       setLoading(false)
     }
-  }, [id])
+  }, [id, selectedCampaignId])
 
   const loadEntities = useCallback(async () => {
     if (!id) return
@@ -449,9 +479,194 @@ export default function LocationDetailPage() {
     setActiveTab(tabId)
   }, [])
 
+  const campaignMatchesLocationWorld = useMemo(() => {
+    if (!selectedCampaign || !location) return false
+    const campaignWorldId = selectedCampaign.world?.id || selectedCampaign.world_id
+    const locationWorldId = location.world?.id || location.world_id
+    if (!campaignWorldId || !locationWorldId) return false
+    return String(campaignWorldId) === String(locationWorldId)
+  }, [selectedCampaign, location])
+
+  const campaignMembership = useMemo(() => {
+    if (!selectedCampaign || !user?.id) return null
+    const members = Array.isArray(selectedCampaign.members)
+      ? selectedCampaign.members
+      : []
+    const match = members.find((member) => {
+      if (!member) return false
+      const memberUserId =
+        member.user_id ?? member.userId ?? member.user?.id ?? member.id ?? null
+      if (!memberUserId) return false
+      return String(memberUserId) === String(user.id)
+    })
+    return match || null
+  }, [selectedCampaign, user?.id])
+
+  const membershipRole = campaignMembership?.role ?? null
+
+  const isCampaignDm = useMemo(() => {
+    if (user?.role === 'system_admin') return true
+    return membershipRole === 'dm'
+  }, [membershipRole, user?.role])
+
+  const isCampaignPlayer = useMemo(
+    () => membershipRole === 'player',
+    [membershipRole],
+  )
+
+  const canCreateNotes = useMemo(
+    () => Boolean(isCampaignDm || isCampaignPlayer),
+    [isCampaignDm, isCampaignPlayer],
+  )
+
+  const fetchNotes = useCallback(async () => {
+    const response = await fetchLocationNotes(id, {
+      campaignId: selectedCampaignId,
+    })
+    const data = Array.isArray(response?.data)
+      ? response.data
+      : Array.isArray(response)
+        ? response
+        : []
+    return data
+  }, [id, selectedCampaignId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!id || !selectedCampaignId || !campaignMatchesLocationWorld) {
+      setNotesState({ items: [], loading: false, error: '' })
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setNotesState((previous) => ({ ...previous, loading: true, error: '' }))
+
+    const loadNotes = async () => {
+      try {
+        const list = await fetchNotes()
+        if (!cancelled) {
+          setNotesState({ items: list, loading: false, error: '' })
+        }
+      } catch (err) {
+        if (!cancelled) {
+          // Check if this is a 403 error with campaign context active
+          const isForbidden = err.status === 403 || err.status === '403' || err.message === 'Forbidden'
+          const hasCampaignContext = Boolean(selectedCampaignId)
+          
+          const errorMessage = isForbidden && hasCampaignContext
+            ? 'CAMPAIGN_CONTEXT_ACCESS_DENIED'
+            : err.message || 'Failed to load notes'
+          
+          setNotesState((previous) => ({
+            ...previous,
+            loading: false,
+            error: errorMessage,
+          }))
+        }
+      }
+    }
+
+    loadNotes()
+
+    return () => {
+      cancelled = true
+    }
+  }, [id, selectedCampaignId, campaignMatchesLocationWorld, fetchNotes])
+
+  const handleNoteCreate = useCallback(
+    async (payload) => {
+      if (!id) {
+        return { success: false, message: 'Location not found' }
+      }
+      if (!selectedCampaignId) {
+        return { success: false, message: 'Select a campaign first' }
+      }
+
+      setNotesSaving(true)
+
+      try {
+        const requestPayload = {
+          ...payload,
+          campaignId: payload?.campaignId ?? selectedCampaignId,
+        }
+
+        const response = await createLocationNote(id, requestPayload)
+        const note = response?.data || response
+
+        if (!note) {
+          throw new Error('Note could not be created')
+        }
+
+        const timestamp =
+          note?.createdAt ?? note?.created_at ?? new Date().toISOString()
+        const normalizedNote =
+          note?.createdAt && note?.created_at
+            ? note
+            : {
+                ...note,
+                ...(note?.createdAt ? {} : { createdAt: timestamp }),
+                ...(note?.created_at ? {} : { created_at: timestamp }),
+              }
+
+        setNotesState((previous) => {
+          const existing = Array.isArray(previous.items) ? previous.items : []
+          return {
+            ...previous,
+            items: [normalizedNote, ...existing],
+          }
+        })
+
+        return { success: true, note: normalizedNote }
+      } catch (err) {
+        console.error('Failed to create location note', err)
+        return { success: false, message: err.message || 'Failed to create note' }
+      } finally {
+        setNotesSaving(false)
+      }
+    },
+    [id, selectedCampaignId],
+  )
+
+  const handleNoteUpdate = useCallback(
+    async (updatedNote) => {
+      if (!updatedNote?.id) return
+
+      setNotesState((previous) => {
+        const existing = Array.isArray(previous.items) ? previous.items : []
+        const index = existing.findIndex(
+          (note) => note?.id && String(note.id) === String(updatedNote.id),
+        )
+
+        if (index < 0) {
+          return previous
+        }
+
+        const next = [...existing]
+        next[index] = updatedNote
+        return { ...previous, items: next }
+      })
+    },
+    [],
+  )
+
+  const handleNoteDelete = useCallback(async (noteId) => {
+    if (!noteId) return
+
+    setNotesState((previous) => {
+      const existing = Array.isArray(previous.items) ? previous.items : []
+      const filtered = existing.filter(
+        (note) => !note?.id || String(note.id) !== String(noteId),
+      )
+      return { ...previous, items: filtered }
+    })
+  }, [])
+
   const tabItems = useMemo(() => {
     const items = [{ id: 'dossier', label: 'Dossier' }]
     
+    items.push({ id: 'notes', label: 'Notes' })
     items.push({ id: 'entities', label: 'Entities' })
     items.push({ id: 'locations', label: 'Locations' })
 
@@ -653,6 +868,13 @@ export default function LocationDetailPage() {
           },
         ]
 
+    // Calculate ancestor type IDs for parent_id field to enforce type hierarchy
+    let parentAllowedTypeIds = []
+    if (location?.location_type_id && locationTypes && locationTypes.length > 0) {
+      const currentTypeId = String(location.location_type_id)
+      parentAllowedTypeIds = getAncestorTypeIds(currentTypeId, locationTypes)
+    }
+
     return {
       title: 'Edit Location',
       sections: [
@@ -667,6 +889,7 @@ export default function LocationDetailPage() {
               label: 'Parent Location', 
               type: 'location_reference',
               dataType: 'location_reference',
+              allowedTypeIds: parentAllowedTypeIds,
             },
             {
               key: 'description',
@@ -684,7 +907,7 @@ export default function LocationDetailPage() {
         },
       ],
     }
-  }, [metadataFields, metadataSectionTitle])
+  }, [metadataFields, metadataSectionTitle, location?.location_type_id, locationTypes])
 
   const dossierSchema = useMemo(() => {
     const metadataSectionFields = metadataFields.length > 0
@@ -805,6 +1028,40 @@ export default function LocationDetailPage() {
     )
   }
 
+  // Render campaign context access error with helpful message
+  if (error === 'CAMPAIGN_CONTEXT_ACCESS_DENIED') {
+    return (
+      <div className="alert error" style={{ padding: '1.5rem', maxWidth: '600px', margin: '2rem auto' }}>
+        <h2 style={{ marginTop: 0, marginBottom: '1rem' }}>Access Restricted by Campaign Context</h2>
+        <p style={{ marginBottom: '1rem' }}>
+          You don't have access to this location with your current campaign context selected. 
+          This location may belong to a different campaign or world, or your current campaign 
+          context doesn't have permission to view it.
+        </p>
+        <p style={{ marginBottom: '1.5rem' }}>
+          To view this location, please change your campaign context using the selector in the 
+          header to a campaign that has access to this location.
+        </p>
+        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => navigate('/locations')}
+            style={{
+              padding: '0.5rem 1rem',
+              backgroundColor: '#6c757d',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+            }}
+          >
+            Go to Locations
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (error || !location) {
     return (
       <div className="page-container">
@@ -856,8 +1113,8 @@ export default function LocationDetailPage() {
                 </button>
               )}
             </div>
-            <EntityHeader
-              entityId={id}
+            <LocationHeader
+              locationId={id}
               name={location.name}
               canEdit={canEdit}
               isEditing={isEditing}
@@ -873,6 +1130,15 @@ export default function LocationDetailPage() {
                 activeTab={activeTab}
                 onChange={handleTabChange}
               />
+              {id && (
+                <LocationImportanceSelector
+                  locationId={id}
+                  importance={location.importance}
+                  onUpdate={(newImportance) => {
+                    setLocation((prev) => (prev ? { ...prev, importance: newImportance } : null))
+                  }}
+                />
+              )}
             </div>
           </div>
         </header>
@@ -939,11 +1205,34 @@ export default function LocationDetailPage() {
             </div>
 
             {/* ENTITIES TAB */}
+            {activeTab === 'notes' && (
+              <LocationNotesTab
+                location={location}
+                worldId={worldId}
+                selectedCampaign={selectedCampaign}
+                selectedCampaignId={selectedCampaignId}
+                isCampaignDm={isCampaignDm}
+                isCampaignPlayer={isCampaignPlayer}
+                canCreateNote={canCreateNotes}
+                notes={notesState.items}
+                loading={notesState.loading}
+                error={notesState.error}
+                onCreateNote={handleNoteCreate}
+                onNoteUpdate={handleNoteUpdate}
+                onNoteDelete={handleNoteDelete}
+                creating={notesSaving}
+                campaignMatchesLocationWorld={campaignMatchesLocationWorld}
+              />
+            )}
+
             {activeTab === 'entities' && (
               <EntitiesTab
                 entities={entities}
                 loading={loading}
                 error={error}
+                locationId={id}
+                worldId={worldId}
+                onEntitiesChange={loadEntities}
               />
             )}
 
@@ -953,6 +1242,10 @@ export default function LocationDetailPage() {
                 location={location}
                 worldId={worldId}
                 path={path}
+                onLocationsChange={() => {
+                  loadPath()
+                  loadLocation()
+                }}
               />
             )}
 

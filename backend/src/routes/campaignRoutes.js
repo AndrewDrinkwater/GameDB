@@ -10,6 +10,7 @@ import {
 } from '../models/index.js'
 import { authenticate as authMiddleware } from '../middleware/authMiddleware.js'
 import { listCampaignEntityNotes } from '../controllers/entityNoteController.js'
+import { listCampaignLocationNotes } from '../controllers/locationNoteController.js'
 import {
   createCampaignSessionNote,
   deleteCampaignSessionNote,
@@ -144,6 +145,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
 })
 
 router.get('/:id/entity-notes', authMiddleware, listCampaignEntityNotes)
+router.get('/:id/location-notes', authMiddleware, listCampaignLocationNotes)
 router.get('/:id/session-notes', authMiddleware, listCampaignSessionNotes)
 router.post('/:id/session-notes', authMiddleware, createCampaignSessionNote)
 router.put('/:id/session-notes/:noteId', authMiddleware, updateCampaignSessionNote)
