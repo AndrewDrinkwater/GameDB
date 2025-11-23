@@ -81,23 +81,11 @@ export async function fetchLocationEntities(id) {
 }
 
 export async function createLocation(payload) {
-  const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/locations`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  })
-  return handleResponse(res, 'create location')
+  return api.post('/locations', payload)
 }
 
 export async function updateLocation(id, payload) {
-  const headers = await authHeaders()
-  const res = await fetch(`${API_BASE}/locations/${id}`, {
-    method: 'PATCH',
-    headers,
-    body: JSON.stringify(payload),
-  })
-  return handleResponse(res, 'update location')
+  return api.patch(`/locations/${id}`, payload)
 }
 
 export async function deleteLocation(id) {
