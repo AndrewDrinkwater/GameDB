@@ -521,12 +521,14 @@ export const createCampaignSessionNote = async (req, res) => {
     const content = normaliseString(contentRaw)
     const sessionDate = normaliseDateOnly(dateRaw) || todayDateString()
 
+    const mentions = await extractMentions(content)
+
     const note = await SessionNote.create({
       campaign_id: access.campaign.id,
       session_title: sessionTitle,
       session_date: sessionDate,
       content,
-      mentions: extractMentions(content),
+      mentions,
       created_by: userId,
       updated_by: userId,
     })
@@ -541,16 +543,16 @@ export const createCampaignSessionNote = async (req, res) => {
     // Trigger notifications asynchronously (don't block response)
     ;(async () => {
       try {
-        const mentions = extractMentions(content)
+        const notificationMentions = await extractMentions(content)
 
         // Notify all campaign members when session note is added
         await notifySessionNoteAdded(created, access.campaign.id)
 
         // Notify mentioned entity followers
-        if (mentions && Array.isArray(mentions) && mentions.length > 0) {
+        if (notificationMentions && Array.isArray(notificationMentions) && notificationMentions.length > 0) {
           await notifyEntityMentions(
             content,
-            mentions,
+            notificationMentions,
             access.campaign.id,
             'session_note',
             note.id,
@@ -615,11 +617,13 @@ export const updateCampaignSessionNote = async (req, res) => {
     const content = normaliseString(contentRaw)
     const sessionDate = normaliseDateOnly(dateRaw) || note.session_date || todayDateString()
 
+    const mentions = await extractMentions(content)
+
     await note.update({
       session_title: sessionTitle,
       session_date: sessionDate,
       content,
-      mentions: extractMentions(content),
+      mentions,
       updated_by: access.userId ?? note.updated_by,
     })
 
@@ -633,16 +637,16 @@ export const updateCampaignSessionNote = async (req, res) => {
     // Trigger notifications asynchronously (don't block response)
     ;(async () => {
       try {
-        const mentions = extractMentions(content)
+        const notificationMentions = await extractMentions(content)
 
         // Notify all campaign members when session note is updated
         await notifySessionNoteUpdated(note, access.campaign.id)
 
         // Notify mentioned entity followers
-        if (mentions && Array.isArray(mentions) && mentions.length > 0) {
+        if (notificationMentions && Array.isArray(notificationMentions) && notificationMentions.length > 0) {
           await notifyEntityMentions(
             content,
-            mentions,
+            notificationMentions,
             access.campaign.id,
             'session_note',
             note.id,
