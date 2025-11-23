@@ -10,69 +10,70 @@ export async function up(queryInterface, Sequelize) {
       {
         id: {
           type: Sequelize.UUID,
-          defaultValue: Sequelize.literal('uuid_generate_v4()'),
-          primaryKey: true,
+          defaultValue: Sequelize.literal('gen_random_uuid()'),
+          primaryKey: true
         },
         world_id: {
           type: Sequelize.UUID,
           allowNull: false,
-          references: { model: 'worlds', key: 'id' },
-          onDelete: 'CASCADE',
+          references: { model: 'Worlds', key: 'id' },
+          onDelete: 'CASCADE'
         },
         owner_id: {
           type: Sequelize.UUID,
           allowNull: false,
-          references: { model: 'users', key: 'id' },
-          onDelete: 'CASCADE',
+          references: { model: 'Users', key: 'id' },
+          onDelete: 'CASCADE'
         },
         name: {
           type: Sequelize.TEXT,
-          allowNull: false,
+          allowNull: false
         },
         description: {
           type: Sequelize.TEXT,
-          allowNull: true,
+          allowNull: true
         },
         shared: {
           type: Sequelize.BOOLEAN,
           allowNull: false,
-          defaultValue: false,
+          defaultValue: false
         },
         selection_mode: {
           type: Sequelize.TEXT,
           allowNull: false,
-          defaultValue: 'manual',
+          defaultValue: 'manual'
         },
         criteria: {
           type: Sequelize.JSONB,
-          allowNull: true,
+          allowNull: true
         },
         location_ids: {
           type: Sequelize.ARRAY(Sequelize.UUID),
           allowNull: false,
-          defaultValue: Sequelize.literal('ARRAY[]::UUID[]'),
+          defaultValue: Sequelize.literal('ARRAY[]::UUID[]')
         },
         created_at: {
           allowNull: false,
           type: Sequelize.DATE,
-          defaultValue: Sequelize.literal('CURRENT_TIMESTAMP'),
+          defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
         },
         updated_at: {
           allowNull: false,
           type: Sequelize.DATE,
-          defaultValue: Sequelize.literal('CURRENT_TIMESTAMP'),
-        },
+          defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
+        }
       },
-      { transaction },
+      { transaction }
     )
 
     await queryInterface.sequelize.query(
       `CREATE INDEX IF NOT EXISTS "${WORLD_INDEX}" ON "${TABLE_NAME}" ("world_id")`,
-      { transaction },
+      { transaction }
     )
+
     await queryInterface.sequelize.query(
       `CREATE INDEX IF NOT EXISTS "${OWNER_INDEX}" ON "${TABLE_NAME}" ("owner_id")`,
-      { transaction },
+      { transaction }
     )
 
     await transaction.commit()
@@ -85,4 +86,3 @@ export async function up(queryInterface, Sequelize) {
 export async function down(queryInterface) {
   await queryInterface.dropTable(TABLE_NAME)
 }
-

@@ -14,7 +14,7 @@ export async function up(queryInterface, Sequelize) {
     user_id: {
       type: Sequelize.UUID,
       allowNull: false,
-      references: { model: 'users', key: 'id' },
+      references: { model: 'Users', key: 'id' },
       onDelete: 'CASCADE',
     },
     file_name: {

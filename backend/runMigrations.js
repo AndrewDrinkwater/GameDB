@@ -5,25 +5,33 @@ import { fileURLToPath, pathToFileURL } from 'url'
 import { Sequelize } from 'sequelize'
 import dotenv from 'dotenv'
 
-dotenv.config()
+// Load .env only when not running a production migration
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config()
+}
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const migrationsDir = path.join(__dirname, 'src', 'migrations')
 
 // --- Connect to DB ---
-// Ensure password is always a string (required by PostgreSQL SCRAM authentication)
-// If DB_PASS is undefined or null, use empty string; otherwise convert to string
-const dbPassword = process.env.DB_PASS == null ? '' : String(process.env.DB_PASS)
+const dbPassword =
+  process.env.DB_PASS == null ? '' : String(process.env.DB_PASS)
 
 const sequelize = new Sequelize({
   database: process.env.DB_NAME,
   username: process.env.DB_USER,
   password: dbPassword,
-  host: process.env.DB_HOST || 'localhost',
+  host: process.env.DB_HOST,
   port: parseInt(process.env.DB_PORT || '5432', 10),
   dialect: 'postgres',
   logging: console.log,
+  dialectOptions: {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false
+    }
+  }
 })
 
 async function runMigrations() {
@@ -50,7 +58,7 @@ async function runMigrations() {
       }
     } catch (err) {
       console.error(`❌ Failed migration ${file}:`, err.message)
-      throw err // stop on failure
+      throw err
     }
   }
 

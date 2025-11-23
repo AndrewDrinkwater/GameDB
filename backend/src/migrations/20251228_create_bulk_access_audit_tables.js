@@ -18,13 +18,13 @@ export async function up(queryInterface, Sequelize) {
     world_id: {
       type: Sequelize.UUID,
       allowNull: false,
-      references: { model: 'worlds', key: 'id' },
+      references: { model: 'Worlds', key: 'id' },
       onDelete: 'CASCADE',
     },
     user_id: {
       type: Sequelize.UUID,
       allowNull: false,
-      references: { model: 'users', key: 'id' },
+      references: { model: 'Users', key: 'id' },
       onDelete: 'CASCADE',
     },
     campaign_context_id: {
