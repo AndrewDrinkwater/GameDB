@@ -1,5 +1,5 @@
 import { Handle, Position } from 'reactflow'
-import { Plus, Info, Link as LinkIcon } from 'lucide-react'
+import { Plus, Info, Link as LinkIcon, ChevronDown, ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import './nodeStyles.css'
 
@@ -11,6 +11,8 @@ export default function LocationNode({ data }) {
   const isOrphan = !data?.parentId
   const dragHoverState = data?.dragHoverState // 'valid', 'invalid', or null
   const isFocused = data?.isFocused || false
+  const isCollapsed = data?.isCollapsed || false
+  const hasChildren = childCount > 0
 
   const handleAddChild = (event) => {
     event?.preventDefault()
@@ -31,6 +33,13 @@ export default function LocationNode({ data }) {
     event?.stopPropagation()
     if (!data?.onSetParent || !locationId) return
     data.onSetParent(String(locationId))
+  }
+
+  const handleToggleCollapse = (event) => {
+    event?.preventDefault()
+    event?.stopPropagation()
+    if (!data?.onToggleCollapse || !locationId || !hasChildren) return
+    data.onToggleCollapse(String(locationId))
   }
 
   const hoverClass =
@@ -64,10 +73,49 @@ export default function LocationNode({ data }) {
       )}
 
       <div className="location-node__content">
-        <div className="location-node__row location-node__row--title">
+        <div 
+          className="location-node__row location-node__row--title"
+          style={{
+            justifyContent: hasChildren && data?.onToggleCollapse ? 'space-between' : 'center'
+          }}
+        >
           <div className="location-node__label" title={label}>
             {label}
           </div>
+          {hasChildren && data?.onToggleCollapse && (
+            <button
+              type="button"
+              className="location-node__collapse-btn"
+              onClick={handleToggleCollapse}
+              onPointerDown={(event) => event.stopPropagation()}
+              aria-label={isCollapsed ? 'Expand node' : 'Collapse node'}
+              title={isCollapsed ? 'Expand node' : 'Collapse node'}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '2px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#64748b',
+                marginLeft: 'auto',
+                transition: 'color 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#475569'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#64748b'
+              }}
+            >
+              {isCollapsed ? (
+                <ChevronRight size={16} strokeWidth={2.5} />
+              ) : (
+                <ChevronDown size={16} strokeWidth={2.5} />
+              )}
+            </button>
+          )}
         </div>
         {typeName && (
           <div className="location-node__row location-node__row--type">

@@ -407,8 +407,9 @@
 }
 
 .location-node__row--title {
-  justify-content: center;
+  justify-content: space-between;
   flex-wrap: nowrap;
+  align-items: center;
 }
 
 .location-node__row--type {
@@ -435,6 +436,14 @@
   white-space: nowrap;
   font-weight: 600;
   letter-spacing: -0.01em;
+  text-align: left;
+}
+
+.location-node__collapse-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .location-node__type-pill {

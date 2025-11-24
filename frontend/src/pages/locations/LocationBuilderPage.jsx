@@ -166,6 +166,7 @@ export default function LocationBuilderPage() {
   const [dragHoverTarget, setDragHoverTarget] = useState(null) // { nodeId, isValid }
   const [draggingNodeId, setDraggingNodeId] = useState(null)
   const [showSearchDropdown, setShowSearchDropdown] = useState(false)
+  const [nodeCollapseState, setNodeCollapseState] = useState(new Map()) // Map<nodeId, boolean>
 
 
   const membershipRole = useMemo(() => {
@@ -405,6 +406,18 @@ export default function LocationBuilderPage() {
     })
   }, [])
 
+  const updateNodeCollapseState = useCallback((nodeId, isCollapsed) => {
+    setNodeCollapseState((prev) => {
+      const next = new Map(prev)
+      if (isCollapsed) {
+        next.set(String(nodeId), true)
+      } else {
+        next.delete(String(nodeId))
+      }
+      return next
+    })
+  }, [])
+
   // Restore viewport after nodes are updated
   useEffect(() => {
     if (shouldPreserveViewport.current && reactFlowInstance.current && window.__locationBuilderViewport) {
@@ -488,8 +501,10 @@ export default function LocationBuilderPage() {
 
       const rootId = rootLocation ? String(rootLocation.id) : null
 
-      // Layout nodes hierarchically
-      const layoutedNodes = layoutLocationsHierarchically(filteredLocations, rootId)
+      // Layout nodes hierarchically with collapse state
+      const layoutResult = layoutLocationsHierarchically(filteredLocations, rootId, nodeCollapseState)
+      const layoutedNodes = layoutResult?.nodes || []
+      const visibleNodeIds = layoutResult?.visibleNodeIds || new Set()
 
       if (!Array.isArray(layoutedNodes) || layoutedNodes.length === 0) {
         setNodes([])
@@ -505,13 +520,25 @@ export default function LocationBuilderPage() {
         }
       })
 
+      // Filter nodes to only include visible ones
+      const visibleNodes = layoutedNodes.filter((node) => {
+        if (!node || !node.id) return false
+        return visibleNodeIds.has(String(node.id))
+      })
+
+      // Build a map of nodeId -> childCount from the tree structure
+      // We need to count children from the original tree, not just visible ones
+      const childCountMap = new Map()
+      filteredLocations.forEach((loc) => {
+        const locId = String(loc.id)
+        const children = filteredLocations.filter(
+          (child) => child && child.parent_id && String(child.parent_id) === locId
+        )
+        childCountMap.set(locId, children.length)
+      })
+
       // Add event handlers to nodes and ensure all required properties
-      const nodesWithHandlers = layoutedNodes
-        .filter((node) => {
-          // Strict validation - ensure node exists and has required properties
-          if (!node || !node.id) return false
-          return true
-        })
+      const nodesWithHandlers = visibleNodes
         .map((node) => {
           const nodeId = String(node.id)
           // If node is currently being dragged, preserve its current position
@@ -531,6 +558,9 @@ export default function LocationBuilderPage() {
             }
           }
 
+          // Get childCount from the map (calculated from actual tree structure)
+          const childCount = childCountMap.get(nodeId) || 0
+
           return {
             id: nodeId,
             type: node.type || 'location',
@@ -543,7 +573,7 @@ export default function LocationBuilderPage() {
               typeName: node.data?.typeName || 'Location',
               locationId: String(node.id),
               parentId: node.data?.parentId || node.parentId || null,
-              childCount: node.data?.childCount || 0,
+              childCount: childCount,
               description: node.data?.description || '',
               locationTypeId: node.data?.locationTypeId || null,
               dragHoverState:
@@ -583,12 +613,18 @@ export default function LocationBuilderPage() {
               onOpenInfo: (locationId) => {
                 setInfoDrawerLocationId(locationId)
               },
+              onToggleCollapse: (locationId) => {
+                const nodeId = String(locationId)
+                const isCurrentlyCollapsed = nodeCollapseState.get(nodeId) === true
+                updateNodeCollapseState(nodeId, !isCurrentlyCollapsed)
+              },
+              isCollapsed: nodeCollapseState.get(String(node.id)) === true,
             },
           }
         })
 
-      // Build edges from parent_id relationships
-      const locationEdges = buildLocationEdges(filteredLocations)
+      // Build edges from parent_id relationships, filtered by visible nodes
+      const locationEdges = buildLocationEdges(filteredLocations, visibleNodeIds)
 
       // Only set nodes if we have valid nodes
       if (nodesWithHandlers.length > 0) {
@@ -604,7 +640,7 @@ export default function LocationBuilderPage() {
       setNodes([])
       setEdges([])
     }
-  }, [filteredLocations, selectedLocationId, focusedLocationId, canCreateLocations, navigate, draggingNodeId, dragHoverTarget])
+  }, [filteredLocations, selectedLocationId, focusedLocationId, canCreateLocations, navigate, draggingNodeId, dragHoverTarget, nodeCollapseState, updateNodeCollapseState])
 
   const onNodesChange = useCallback((changes) => {
     setNodes((nds) => applyNodeChanges(changes, nds))

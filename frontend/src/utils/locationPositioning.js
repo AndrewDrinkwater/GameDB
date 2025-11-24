@@ -5,7 +5,7 @@
 const NODE_WIDTH = 200
 const NODE_HEIGHT = 140
 const H_SPACING = 50
-const V_SPACING = 80
+const V_SPACING = 120
 
 // Export for React Flow node dimensions
 export const DEFAULT_LOCATION_WIDTH = NODE_WIDTH
@@ -45,9 +45,10 @@ function sortChildren(children, nodeMap) {
  * Builds strict tree structure from parent_id relationships
  * Computes depth for every node (root = 0, children = parent depth + 1)
  * Attaches children array to each node
+ * Applies collapse state from collapseState Map
  * Returns: { nodeMap: Map<id, node>, rootNodes: string[] }
  */
-function buildTreeStructure(nodes) {
+function buildTreeStructure(nodes, collapseState = null) {
   const nodeMap = new Map()
   const parentToChildren = new Map()
   
@@ -102,11 +103,14 @@ function buildTreeStructure(nodes) {
   }
   
   // Ensure all nodes have a depth (orphans get depth 0)
+  // Apply collapse state to nodes
   nodeMap.forEach((node, nodeId) => {
     if (!depth.has(nodeId)) {
       depth.set(nodeId, 0)
     }
     node.depth = depth.get(nodeId)
+    // Apply collapse state (default to false if not in map)
+    node.isCollapsed = collapseState ? (collapseState.get(nodeId) === true) : false
   })
   
   return { nodeMap, rootNodes }
@@ -114,6 +118,7 @@ function buildTreeStructure(nodes) {
 
 /**
  * Computes subtree width for each node (bottom-up)
+ * If node is collapsed: subtreeWidth = NODE_WIDTH (treated as leaf)
  * If node has no children: subtreeWidth = NODE_WIDTH
  * Else: subtreeWidth = sum(child.subtreeWidth) + H_SPACING * (childCount - 1)
  */
@@ -140,6 +145,12 @@ function computeSubtreeWidths(nodeMap) {
       const node = nodeMap.get(nodeId)
       if (!node) return
       
+      // If collapsed, treat as leaf (no children considered)
+      if (node.isCollapsed) {
+        node.subtreeWidth = NODE_WIDTH
+        return
+      }
+      
       const children = node.children || []
       
       if (children.length === 0) {
@@ -164,9 +175,15 @@ function computeSubtreeWidths(nodeMap) {
  * Recursively layouts children of a parent node
  * Each sibling subtree gets its own horizontal "slot" based on subtreeWidth
  * Ensures parent is perfectly centered above children
+ * Skips children if parent is collapsed
  */
 function layoutChildren(parent, nodeMap) {
   if (!parent || !parent.children || parent.children.length === 0) {
+    return
+  }
+  
+  // If parent is collapsed, don't layout children
+  if (parent.isCollapsed) {
     return
   }
   
@@ -249,6 +266,28 @@ function assignCoordinates(nodeMap, rootNodes) {
 }
 
 /**
+ * Recursively collects visible nodes (nodes where all ancestors are expanded)
+ * @param {Object} node - The node to check
+ * @param {Map} nodeMap - Map of all nodes
+ * @param {Array} result - Array to collect visible nodes (mutated)
+ */
+function collectVisibleNodes(node, nodeMap, result = []) {
+  if (!node) return
+  
+  result.push(node)
+  
+  // If node is collapsed, don't include its children
+  if (!node.isCollapsed && node.children) {
+    node.children.forEach((childId) => {
+      const child = nodeMap.get(childId)
+      if (child) {
+        collectVisibleNodes(child, nodeMap, result)
+      }
+    })
+  }
+}
+
+/**
  * Converts location data to React Flow node format
  */
 function normalizeLocationNode(location) {
@@ -274,8 +313,12 @@ function normalizeLocationNode(location) {
 /**
  * Main function to layout location nodes hierarchically
  * Implements deterministic tree layout according to final rule set
+ * @param {Array} locations - Array of location objects
+ * @param {string|null} rootLocationId - Optional root location ID
+ * @param {Map<string, boolean>|null} collapseState - Map of node IDs to collapse state
+ * @returns {Object} Object with { nodes: Array, visibleNodeIds: Set }
  */
-export function layoutLocationsHierarchically(locations, rootLocationId = null) {
+export function layoutLocationsHierarchically(locations, rootLocationId = null, collapseState = null) {
   if (!Array.isArray(locations) || locations.length === 0) {
     return []
   }
@@ -312,7 +355,8 @@ export function layoutLocationsHierarchically(locations, rootLocationId = null) 
   })
   
   // Build tree structure (attaches children arrays and computes depth)
-  const { nodeMap, rootNodes } = buildTreeStructure(nodes)
+  // Pass collapseState to apply collapse state to nodes
+  const { nodeMap, rootNodes } = buildTreeStructure(nodes, collapseState)
   
   // Debug: Log tree structure
   if (import.meta.env.DEV) {
@@ -332,8 +376,19 @@ export function layoutLocationsHierarchically(locations, rootLocationId = null) 
   // Assign X/Y coordinates (top-down)
   assignCoordinates(nodeMap, rootNodes)
   
+  // Collect visible nodes (all nodes where ancestors are expanded)
+  const visibleNodes = []
+  rootNodes.forEach((rootId) => {
+    const root = nodeMap.get(rootId)
+    if (root) {
+      collectVisibleNodes(root, nodeMap, visibleNodes)
+    }
+  })
+  const visibleNodeIds = new Set(visibleNodes.map((n) => String(n.id)))
+  
   // Convert back to React Flow node format
-  return nodes.map((node) => {
+  return {
+    nodes: nodes.map((node) => {
     if (!node || !node.id) return null
     
     const nodeId = String(node.id)
@@ -359,13 +414,18 @@ export function layoutLocationsHierarchically(locations, rootLocationId = null) 
         levelIndex: 0,
       },
     }
-  }).filter(Boolean)
+  }).filter(Boolean),
+    visibleNodeIds: visibleNodeIds,
+  }
 }
 
 /**
  * Builds React Flow edges from location parent_id relationships
+ * Only includes edges where both source and target are visible
+ * @param {Array} locations - Array of location objects
+ * @param {Set<string>|null} visibleNodeIds - Set of visible node IDs (optional)
  */
-export function buildLocationEdges(locations) {
+export function buildLocationEdges(locations, visibleNodeIds = null) {
   if (!Array.isArray(locations)) return []
   
   const edges = []
@@ -375,6 +435,13 @@ export function buildLocationEdges(locations) {
     
     const sourceId = String(location.parent_id)
     const targetId = String(location.id)
+    
+    // Filter: only include edges where both nodes are visible
+    if (visibleNodeIds) {
+      if (!visibleNodeIds.has(sourceId) || !visibleNodeIds.has(targetId)) {
+        return
+      }
+    }
     
     if (sourceId && targetId && sourceId !== targetId) {
       edges.push({
