@@ -7,6 +7,11 @@ const NODE_HEIGHT = 140
 const H_SPACING = 50
 const V_SPACING = 120
 
+// Directory-style layout constants (for 6+ children)
+const DIRECTORY_INDENT = NODE_WIDTH + 40 // Indentation for directory mode children (200 + 40 = 240)
+const DIRECTORY_GAP = 40 // Spacing from parent to first child (used only once)
+const SIBLING_GAP = 40 // Spacing between sibling nodes in directory mode
+
 // Export for React Flow node dimensions
 export const DEFAULT_LOCATION_WIDTH = NODE_WIDTH
 export const DEFAULT_LOCATION_HEIGHT = NODE_HEIGHT
@@ -118,9 +123,11 @@ function buildTreeStructure(nodes, collapseState = null) {
 
 /**
  * Computes subtree width for each node (bottom-up)
- * If node is collapsed: subtreeWidth = NODE_WIDTH (treated as leaf)
- * If node has no children: subtreeWidth = NODE_WIDTH
- * Else: subtreeWidth = sum(child.subtreeWidth) + H_SPACING * (childCount - 1)
+ * Two-mode layout based on child count:
+ * - Horizontal mode (≤5 children): subtreeWidth = sum(child.subtreeWidth) + H_SPACING * (childCount - 1)
+ * - Directory mode (≥6 children): subtreeWidth = NODE_WIDTH (doesn't widen layout, flows vertically only)
+ * - If collapsed: subtreeWidth = NODE_WIDTH (treated as leaf)
+ * - If no children: subtreeWidth = NODE_WIDTH
  */
 function computeSubtreeWidths(nodeMap) {
   // Process nodes bottom-up (from deepest to shallowest)
@@ -152,12 +159,13 @@ function computeSubtreeWidths(nodeMap) {
       }
       
       const children = node.children || []
+      const childCount = children.length
       
-      if (children.length === 0) {
+      if (childCount === 0) {
         // No children: subtreeWidth = NODE_WIDTH
         node.subtreeWidth = NODE_WIDTH
-      } else {
-        // Has children: sum of child subtreeWidths + spacing
+      } else if (childCount <= 5) {
+        // Horizontal mode (≤5 children): sum of child subtreeWidths + spacing
         let totalWidth = 0
         children.forEach((childId) => {
           const child = nodeMap.get(childId)
@@ -165,19 +173,82 @@ function computeSubtreeWidths(nodeMap) {
             totalWidth += child.subtreeWidth || NODE_WIDTH
           }
         })
-        node.subtreeWidth = totalWidth + H_SPACING * (children.length - 1)
+        node.subtreeWidth = totalWidth + H_SPACING * (childCount - 1)
+      } else {
+        // Directory mode (≥6 children): subtreeWidth = NODE_WIDTH (doesn't widen layout, flows vertically only)
+        node.subtreeWidth = NODE_WIDTH
       }
     })
   }
 }
 
 /**
- * Recursively layouts children of a parent node
- * Each sibling subtree gets its own horizontal "slot" based on subtreeWidth
- * Ensures parent is perfectly centered above children
- * Skips children if parent is collapsed
+ * Computes the total height of a subtree (node + all descendants)
+ * Used for dynamic vertical stacking in directory mode
+ * @param {Object} node - The node to compute height for
+ * @param {Map} nodeMap - Map of all nodes
+ * @param {boolean} parentIsDirectoryMode - Whether the parent is in directory mode
+ * @returns {number} Total height of the subtree
  */
-function layoutChildren(parent, nodeMap) {
+function computeSubtreeHeight(node, nodeMap, parentIsDirectoryMode = false) {
+  if (!node) return NODE_HEIGHT
+  
+  // If collapsed, treat as leaf (no children considered)
+  if (node.isCollapsed) {
+    return NODE_HEIGHT
+  }
+  
+  const children = node.children || []
+  const childCount = children.length
+  
+  // If parent is in directory mode, this node also uses directory mode for height calculation
+  const useDirectoryMode = parentIsDirectoryMode || childCount >= 6
+  
+  if (childCount === 0) {
+    // No children: height is just the node itself
+    return NODE_HEIGHT
+  } else if (!useDirectoryMode && childCount <= 5) {
+    // Horizontal mode: children are at same Y level (same depth)
+    // The subtree height is node + max child subtree height
+    // (children don't stack, but their subtrees can extend downward)
+    let maxChildHeight = 0
+    children.forEach((childId) => {
+      const child = nodeMap.get(childId)
+      if (child) {
+        const childHeight = computeSubtreeHeight(child, nodeMap, false)
+        if (childHeight > maxChildHeight) {
+          maxChildHeight = childHeight
+        }
+      }
+    })
+    return NODE_HEIGHT + maxChildHeight
+  } else {
+    // Directory mode: height is NODE_HEIGHT + sum of all child subtree heights
+    // NO V_SPACING, NO extra padding, NO double counting
+    // Only: node box height + combined heights of all directory-mode children
+    let totalHeight = NODE_HEIGHT
+    children.forEach((childId) => {
+      const child = nodeMap.get(childId)
+      if (child) {
+        totalHeight += computeSubtreeHeight(child, nodeMap, true)
+      }
+    })
+    return totalHeight
+  }
+}
+
+/**
+ * Recursively layouts children of a parent node
+ * Two-mode layout based on child count:
+ * - Horizontal mode (≤5 children): Children in horizontal row, centered under parent
+ * - Directory mode (≥6 children): Children in vertical list, indented to the right (folder-style)
+ * If parent is in directory mode, all children also use directory mode regardless of their count
+ * Skips children if parent is collapsed
+ * @param {Object} parent - The parent node
+ * @param {Map} nodeMap - Map of all nodes
+ * @param {boolean} parentIsDirectoryMode - Whether the parent is in directory mode
+ */
+function layoutChildren(parent, nodeMap, parentIsDirectoryMode = false) {
   if (!parent || !parent.children || parent.children.length === 0) {
     return
   }
@@ -187,26 +258,70 @@ function layoutChildren(parent, nodeMap) {
     return
   }
   
-  const totalWidth = parent.subtreeWidth || NODE_WIDTH
-  let currentX = parent.x - totalWidth / 2
+  const children = parent.children || []
+  const childCount = children.length
   
-  parent.children.forEach((childId) => {
-    const child = nodeMap.get(childId)
-    if (!child) return
+  // If parent is in directory mode, children also use directory mode regardless of count
+  const useDirectoryMode = parentIsDirectoryMode || childCount >= 6
+  
+  if (!useDirectoryMode && childCount <= 5) {
+    // HORIZONTAL MODE (≤5 children)
+    // Position children in one horizontal row, centered under parent
+    const totalWidth = parent.subtreeWidth || NODE_WIDTH
+    let currentX = parent.x - totalWidth / 2
     
-    const childSubtreeWidth = child.subtreeWidth || NODE_WIDTH
-    const childCenterX = currentX + childSubtreeWidth / 2
+    children.forEach((childId) => {
+      const child = nodeMap.get(childId)
+      if (!child) return
+      
+      const childSubtreeWidth = child.subtreeWidth || NODE_WIDTH
+      const childCenterX = currentX + childSubtreeWidth / 2
+      
+      // Set child position - use depth-based Y to maintain V_SPACING
+      child.x = childCenterX
+      child.y = child.depth * (NODE_HEIGHT + V_SPACING)
+      
+      // Move to next sibling subtree
+      currentX += childSubtreeWidth + H_SPACING
+      
+      // Recursively layout this child's children (not in directory mode unless they have 6+)
+      layoutChildren(child, nodeMap, false)
+    })
+  } else {
+    // DIRECTORY MODE (≥6 children OR parent is in directory mode)
+    // Directory-style layout: parent stays at normal position, children indented and stacked vertically
+    // Parent does NOT center over children - it acts like a folder header
+    // Uses dynamic vertical stacking based on subtree heights to prevent overlaps
     
-    // Set child position
-    child.x = childCenterX
-    child.y = child.depth * (NODE_HEIGHT + V_SPACING)
+    // Start first child below parent: DIRECTORY_GAP is added ONLY once before the first child
+    let yCursor = parent.y + NODE_HEIGHT + DIRECTORY_GAP
     
-    // Move to next sibling subtree
-    currentX += childSubtreeWidth + H_SPACING
-    
-    // Recursively layout this child's children
-    layoutChildren(child, nodeMap)
-  })
+    children.forEach((childId, index) => {
+      const child = nodeMap.get(childId)
+      if (!child) return
+      
+      // Children are indented to the right by DIRECTORY_INDENT
+      child.x = parent.x + DIRECTORY_INDENT
+      
+      // Position child at current Y cursor
+      child.y = yCursor
+      
+      // Compute this child's subtree height (NODE_HEIGHT + sum of its children's heights)
+      // Pass true to indicate this child is in directory mode context
+      const subtreeHeight = computeSubtreeHeight(child, nodeMap, true)
+      
+      // Advance cursor by subtree height
+      yCursor += subtreeHeight
+      
+      // Add SIBLING_GAP before next sibling (if any) - spacing between sibling nodes
+      if (index < children.length - 1) {
+        yCursor += SIBLING_GAP
+      }
+      
+      // Recursively layout this child's children (they will also use directory mode)
+      layoutChildren(child, nodeMap, true)
+    })
+  }
 }
 
 /**
@@ -422,11 +537,20 @@ export function layoutLocationsHierarchically(locations, rootLocationId = null, 
 /**
  * Builds React Flow edges from location parent_id relationships
  * Only includes edges where both source and target are visible
+ * If a node is vertically stacked (parent has 6+ children), connect to left side instead of top
  * @param {Array} locations - Array of location objects
  * @param {Set<string>|null} visibleNodeIds - Set of visible node IDs (optional)
  */
 export function buildLocationEdges(locations, visibleNodeIds = null) {
   if (!Array.isArray(locations)) return []
+  
+  // Build a map of parent ID to child count to determine if nodes are vertically stacked
+  const parentChildCount = new Map()
+  locations.forEach((location) => {
+    if (!location || !location.parent_id) return
+    const parentId = String(location.parent_id)
+    parentChildCount.set(parentId, (parentChildCount.get(parentId) || 0) + 1)
+  })
   
   const edges = []
   
@@ -444,6 +568,11 @@ export function buildLocationEdges(locations, visibleNodeIds = null) {
     }
     
     if (sourceId && targetId && sourceId !== targetId) {
+      // Determine if target node is in a vertical stack
+      // A node is vertically stacked ONLY if its parent has 6+ children (directory mode)
+      const parentChildCountForSource = parentChildCount.get(sourceId) || 0
+      const isInVerticalStack = parentChildCountForSource >= 6
+      
       edges.push({
         id: `edge-${sourceId}-${targetId}`,
         source: sourceId,
@@ -464,7 +593,9 @@ export function buildLocationEdges(locations, visibleNodeIds = null) {
           childId: targetId,
         },
         sourceHandle: 'bottom',
-        targetHandle: 'top',
+        // ONLY connect to left side if node is in vertical stack (parent has 6+ children)
+        // Otherwise, connect to top side (horizontal mode)
+        targetHandle: isInVerticalStack ? 'left' : 'top',
       })
     }
   })

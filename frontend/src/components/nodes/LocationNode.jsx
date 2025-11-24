@@ -57,19 +57,34 @@ export default function LocationNode({ data }) {
       style={data?.style || {}}
     >
       {!isOrphan && (
-        <Handle
-          id="top"
-          type="target"
-          position={Position.Top}
-          style={{
-            width: 14,
-            height: 14,
-            background: 'linear-gradient(135deg, #cbd5f5 0%, #a5b4fc 100%)',
-            border: '2px solid #ffffff',
-            borderRadius: '999px',
-            boxShadow: '0 2px 4px rgba(15, 23, 42, 0.2), 0 0 0 1px rgba(99, 102, 241, 0.1)',
-          }}
-        />
+        <>
+          <Handle
+            id="top"
+            type="target"
+            position={Position.Top}
+            style={{
+              width: 14,
+              height: 14,
+              background: 'linear-gradient(135deg, #cbd5f5 0%, #a5b4fc 100%)',
+              border: '2px solid #ffffff',
+              borderRadius: '999px',
+              boxShadow: '0 2px 4px rgba(15, 23, 42, 0.2), 0 0 0 1px rgba(99, 102, 241, 0.1)',
+            }}
+          />
+          <Handle
+            id="left"
+            type="target"
+            position={Position.Left}
+            style={{
+              width: 14,
+              height: 14,
+              background: 'linear-gradient(135deg, #cbd5f5 0%, #a5b4fc 100%)',
+              border: '2px solid #ffffff',
+              borderRadius: '999px',
+              boxShadow: '0 2px 4px rgba(15, 23, 42, 0.2), 0 0 0 1px rgba(99, 102, 241, 0.1)',
+            }}
+          />
+        </>
       )}
 
       <div className="location-node__content">
