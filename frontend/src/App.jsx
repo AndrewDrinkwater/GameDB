@@ -39,6 +39,7 @@ import RequestDetailPage from './pages/requests/RequestDetailPage.jsx'
 import CreateRequestPage from './pages/requests/CreateRequestPage.jsx'
 import LocationList from './pages/locations/LocationList.jsx'
 import LocationDetailPage from './pages/locations/LocationDetailPage.jsx'
+import LocationBuilderPage from './pages/locations/LocationBuilderPage.jsx'
 import LocationTypeList from './pages/locationTypes/LocationTypeList.jsx'
 import LocationTypeFields from './pages/locationTypes/LocationTypeFields.jsx'
 
@@ -105,6 +106,7 @@ const router = createBrowserRouter(
         {/* Location routes */}
         <Route path="locations">
           <Route index element={<LocationList />} />
+          <Route path="builder" element={<LocationBuilderPage />} />
           <Route path=":id" element={<LocationDetailPage />} />
         </Route>
 
